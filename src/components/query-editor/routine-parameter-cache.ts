@@ -42,13 +42,20 @@ function incrementGeneration(connectionId: string): void {
   generationMap.set(connectionId, getGeneration(connectionId) + 1)
 }
 
-function makeCacheKey(
-  connectionId: string,
-  database: string,
-  routineName: string,
-  routineType: string
-): string {
+function makeCacheKey({
+  connectionId,
+  database,
+  routineName,
+  routineType,
+}: RoutineIdentity): string {
   return `${connectionId}:${database.toLowerCase()}:${routineName.toLowerCase()}:${routineType.toLowerCase()}`
+}
+
+export interface RoutineIdentity {
+  connectionId: string
+  database: string
+  routineName: string
+  routineType: string
 }
 
 /**
@@ -56,13 +63,18 @@ function makeCacheKey(
  * Fetches lazily on first access; deduplicates concurrent requests.
  * Returns null on error (never rejects).
  */
-export async function getRoutineParameters(
-  connectionId: string,
-  database: string,
-  routineName: string,
-  routineType: string
-): Promise<RoutineParameterCacheEntry | null> {
-  const key = makeCacheKey(connectionId, database, routineName, routineType)
+export async function getRoutineParameters({
+  connectionId,
+  database,
+  routineName,
+  routineType,
+}: RoutineIdentity): Promise<RoutineParameterCacheEntry | null> {
+  const key = makeCacheKey({
+    connectionId: connectionId,
+    database: database,
+    routineName: routineName,
+    routineType: routineType,
+  })
 
   // Cache hit
   if (cacheMap.has(key)) {
@@ -70,8 +82,9 @@ export async function getRoutineParameters(
   }
 
   // Deduplicate concurrent requests
-  if (pendingFetches.has(key)) {
-    return pendingFetches.get(key)!
+  const pendingFetch = pendingFetches.get(key)
+  if (pendingFetch) {
+    return pendingFetch
   }
 
   const capturedGeneration = getGeneration(connectionId)
@@ -79,12 +92,12 @@ export async function getRoutineParameters(
   const fetchPromise = (async (): Promise<RoutineParameterCacheEntry | null> => {
     try {
       const ipcRoutineType = toRoutineKind(routineType)
-      const response = await getRoutineParametersWithReturnType(
-        connectionId,
-        database,
-        routineName,
-        ipcRoutineType
-      )
+      const response = await getRoutineParametersWithReturnType({
+        connectionId: connectionId,
+        database: database,
+        routineName: routineName,
+        routineType: ipcRoutineType,
+      })
       if (!isCurrentGeneration(connectionId, capturedGeneration)) {
         return null
       }
@@ -192,7 +205,12 @@ export function getCachedRoutineParameters(
 ): RoutineParameterCacheEntry | null | undefined {
   let anyFetched = false
   for (const rt of ['function', 'procedure'] as const) {
-    const key = makeCacheKey(connectionId, database, routineName, rt)
+    const key = makeCacheKey({
+      connectionId: connectionId,
+      database: database,
+      routineName: routineName,
+      routineType: rt,
+    })
     if (cacheMap.has(key)) {
       anyFetched = true
       const value = cacheMap.get(key)

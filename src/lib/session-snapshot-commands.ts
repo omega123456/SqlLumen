@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeArgumentCommand, invokeCommand, NO_ARGUMENTS } from './ipc/dispatch'
 
 /**
  * Session snapshot IPC wrappers.
@@ -51,32 +51,18 @@ export interface CreateSnapshotArgs {
 // IPC Wrappers
 // ---------------------------------------------------------------------------
 
-/**
- * Create a snapshot with its metadata and prune to `keep` atomically.
- * Returns the new snapshot id.
- */
 export async function createSessionSnapshot(args: CreateSnapshotArgs): Promise<number> {
-  return invoke<number>('create_session_snapshot', {
-    triggerType: args.triggerType,
-    connectionCount: args.connectionCount,
-    tabCount: args.tabCount,
-    summaryJson: args.summaryJson,
-    stateJson: args.stateJson,
-    keep: args.keep,
-  })
+  return invokeCommand({ command: 'create_session_snapshot', payload: args })
 }
 
-/** List all snapshot summaries, newest first (no `state_json`). */
 export async function listSessionSnapshots(): Promise<SnapshotSummary[]> {
-  return invoke<SnapshotSummary[]>('list_session_snapshots')
+  return invokeArgumentCommand({ command: 'list_session_snapshots', argument: NO_ARGUMENTS })
 }
 
-/** Fetch the full `state_json` for one snapshot, or null if it no longer exists. */
 export async function getSessionSnapshot(id: number): Promise<string | null> {
-  return invoke<string | null>('get_session_snapshot', { id })
+  return invokeArgumentCommand({ command: 'get_session_snapshot', argument: { id } })
 }
 
-/** Delete one snapshot by id. */
 export async function deleteSessionSnapshot(id: number): Promise<void> {
-  await invoke<void>('delete_session_snapshot', { id })
+  await invokeArgumentCommand({ command: 'delete_session_snapshot', argument: { id } })
 }

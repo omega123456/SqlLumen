@@ -72,13 +72,15 @@ fn test_update_favorite() {
 
     let updated = update_favorite_impl(
         &state,
-        id,
-        UpdateFavoriteInput {
-            name: "updated".to_string(),
-            sql_text: "SELECT 42".to_string(),
-            description: Some("Updated description".to_string()),
-            category: Some("queries".to_string()),
-            connection_id: None,
+        sqllumen_lib::commands::favorites::UpdateFavoriteRequest {
+            id,
+            input: UpdateFavoriteInput {
+                name: "updated".to_string(),
+                sql_text: "SELECT 42".to_string(),
+                description: Some("Updated description".to_string()),
+                category: Some("queries".to_string()),
+                connection_id: None,
+            },
         },
     )
     .expect("update");
@@ -97,13 +99,15 @@ fn test_update_nonexistent_favorite() {
     let state = common::test_app_state();
     let updated = update_favorite_impl(
         &state,
-        99999,
-        UpdateFavoriteInput {
-            name: "x".to_string(),
-            sql_text: "SELECT 1".to_string(),
-            description: None,
-            category: None,
-            connection_id: None,
+        sqllumen_lib::commands::favorites::UpdateFavoriteRequest {
+            id: 99999,
+            input: UpdateFavoriteInput {
+                name: "x".to_string(),
+                sql_text: "SELECT 1".to_string(),
+                description: None,
+                category: None,
+                connection_id: None,
+            },
         },
     )
     .expect("should not error");
@@ -292,13 +296,15 @@ fn test_update_favorite_impl_error_when_table_missing() {
     }
     let result = update_favorite_impl(
         &state,
-        1,
-        UpdateFavoriteInput {
-            name: "x".to_string(),
-            sql_text: "SELECT 1".to_string(),
-            description: None,
-            category: None,
-            connection_id: None,
+        sqllumen_lib::commands::favorites::UpdateFavoriteRequest {
+            id: 1,
+            input: UpdateFavoriteInput {
+                name: "x".to_string(),
+                sql_text: "SELECT 1".to_string(),
+                description: None,
+                category: None,
+                connection_id: None,
+            },
         },
     );
     assert!(
@@ -417,13 +423,15 @@ fn test_update_favorite_rescope_to_global() {
     // Re-scope to global
     let updated = update_favorite_impl(
         &state,
-        id,
-        UpdateFavoriteInput {
-            name: "scoped".to_string(),
-            sql_text: "SELECT * FROM scoped".to_string(),
-            description: None,
-            category: None,
-            connection_id: None, // None = global
+        sqllumen_lib::commands::favorites::UpdateFavoriteRequest {
+            id,
+            input: UpdateFavoriteInput {
+                name: "scoped".to_string(),
+                sql_text: "SELECT * FROM scoped".to_string(),
+                description: None,
+                category: None,
+                connection_id: None, // None = global
+            },
         },
     )
     .expect("update");
@@ -444,13 +452,15 @@ fn test_update_favorite_rescope_to_connection() {
     // Re-scope to p1
     let updated = update_favorite_impl(
         &state,
-        id,
-        UpdateFavoriteInput {
-            name: "global_q".to_string(),
-            sql_text: "SELECT * FROM global_q".to_string(),
-            description: None,
-            category: None,
-            connection_id: Some("p1".to_string()),
+        sqllumen_lib::commands::favorites::UpdateFavoriteRequest {
+            id,
+            input: UpdateFavoriteInput {
+                name: "global_q".to_string(),
+                sql_text: "SELECT * FROM global_q".to_string(),
+                description: None,
+                category: None,
+                connection_id: Some("p1".to_string()),
+            },
         },
     )
     .expect("update");

@@ -241,7 +241,7 @@ export function TableDataTab({
     const existing = useTableDataStore.getState().tabs[tabId]
     const needsInitialLoad = isActive && !existing
     if (needsInitialLoad) {
-      initTab(tabId, connectionId, database, table)
+      initTab(tabId, { connectionId: connectionId, database: database, table: table })
       loadTableData(tabId)
     }
     // DO NOT call cleanupTab on unmount — workspace-store handles that

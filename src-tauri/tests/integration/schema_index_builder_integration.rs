@@ -331,7 +331,10 @@ fn test_diff_chunks_new_chunk() {
         "hash123".to_string(),
     )];
 
-    let (needs_embed, to_delete) = builder::diff_chunks(&stored, &new_chunks);
+    let builder::ChunkDiff {
+        needs_embed,
+        to_delete,
+    } = builder::diff_chunks(&stored, &new_chunks);
     assert_eq!(needs_embed.len(), 1, "New chunk should need embedding");
     assert_eq!(needs_embed[0], "table:mydb.users");
     assert!(to_delete.is_empty(), "Nothing to delete");
@@ -346,7 +349,10 @@ fn test_diff_chunks_unchanged() {
         "hash123".to_string(),
     )];
 
-    let (needs_embed, to_delete) = builder::diff_chunks(&stored, &new_chunks);
+    let builder::ChunkDiff {
+        needs_embed,
+        to_delete,
+    } = builder::diff_chunks(&stored, &new_chunks);
     assert!(
         needs_embed.is_empty(),
         "Unchanged chunk should not need embedding"
@@ -363,7 +369,10 @@ fn test_diff_chunks_changed() {
         "new_hash".to_string(),
     )];
 
-    let (needs_embed, to_delete) = builder::diff_chunks(&stored, &new_chunks);
+    let builder::ChunkDiff {
+        needs_embed,
+        to_delete,
+    } = builder::diff_chunks(&stored, &new_chunks);
     assert_eq!(needs_embed.len(), 1, "Changed chunk should need embedding");
     assert!(to_delete.is_empty(), "Key still exists, nothing to delete");
 }
@@ -380,7 +389,10 @@ fn test_diff_chunks_deleted() {
         "hash1".to_string(),
     )];
 
-    let (needs_embed, to_delete) = builder::diff_chunks(&stored, &new_chunks);
+    let builder::ChunkDiff {
+        needs_embed,
+        to_delete,
+    } = builder::diff_chunks(&stored, &new_chunks);
     assert!(
         needs_embed.is_empty(),
         "Existing unchanged chunk should not need embedding"
@@ -414,7 +426,10 @@ fn test_diff_chunks_mixed_scenario() {
         ), // new
     ];
 
-    let (needs_embed, to_delete) = builder::diff_chunks(&stored, &new_chunks);
+    let builder::ChunkDiff {
+        needs_embed,
+        to_delete,
+    } = builder::diff_chunks(&stored, &new_chunks);
     assert_eq!(needs_embed.len(), 2, "Changed + new should need embedding");
     assert!(needs_embed.contains(&"table:db.b".to_string()));
     assert!(needs_embed.contains(&"table:db.d".to_string()));
@@ -432,7 +447,10 @@ fn test_generate_all_chunks_table_only() {
         create_table_sql: "CREATE TABLE `users` (\n  `id` int NOT NULL,\n  PRIMARY KEY (`id`)\n) ENGINE=InnoDB AUTO_INCREMENT=10".to_string(),
     }];
 
-    let (table_chunks, fk_chunks) = builder::generate_all_chunks(&inputs);
+    let builder::GeneratedChunks {
+        table_chunks,
+        foreign_key_chunks: fk_chunks,
+    } = builder::generate_all_chunks(&inputs);
     assert_eq!(table_chunks.len(), 1);
     assert!(fk_chunks.is_empty());
 
@@ -514,7 +532,10 @@ fn test_generate_all_chunks_with_fks() {
 ) ENGINE=InnoDB"#.to_string(),
     }];
 
-    let (table_chunks, fk_chunks) = builder::generate_all_chunks(&inputs);
+    let builder::GeneratedChunks {
+        table_chunks,
+        foreign_key_chunks: fk_chunks,
+    } = builder::generate_all_chunks(&inputs);
     assert_eq!(table_chunks.len(), 1);
     assert_eq!(fk_chunks.len(), 1);
 
@@ -544,7 +565,10 @@ fn test_incremental_build_simulation() {
         },
     ];
 
-    let (chunks_v1, _fks_v1) = builder::generate_all_chunks(&inputs_v1);
+    let builder::GeneratedChunks {
+        table_chunks: chunks_v1,
+        ..
+    } = builder::generate_all_chunks(&inputs_v1);
     // Store as "existing"
     let stored_v1: Vec<(String, String)> = chunks_v1
         .iter()
@@ -570,7 +594,10 @@ fn test_incremental_build_simulation() {
         },
     ];
 
-    let (chunks_v2, _fks_v2) = builder::generate_all_chunks(&inputs_v2);
+    let builder::GeneratedChunks {
+        table_chunks: chunks_v2,
+        ..
+    } = builder::generate_all_chunks(&inputs_v2);
     let new_for_diff: Vec<(String, String, String)> = chunks_v2
         .iter()
         .map(|tc| {
@@ -582,7 +609,10 @@ fn test_incremental_build_simulation() {
         })
         .collect();
 
-    let (needs_embed, to_delete) = builder::diff_chunks(&stored_v1, &new_for_diff);
+    let builder::ChunkDiff {
+        needs_embed,
+        to_delete,
+    } = builder::diff_chunks(&stored_v1, &new_for_diff);
 
     // users is unchanged → not in needs_embed
     assert!(
@@ -624,7 +654,10 @@ fn test_incremental_build_with_table_removal() {
         },
     ];
 
-    let (chunks_v1, _) = builder::generate_all_chunks(&inputs_v1);
+    let builder::GeneratedChunks {
+        table_chunks: chunks_v1,
+        ..
+    } = builder::generate_all_chunks(&inputs_v1);
     let stored_v1: Vec<(String, String)> = chunks_v1
         .iter()
         .map(|tc| (tc.chunk_key.clone(), tc.ddl_hash.clone()))
@@ -644,7 +677,10 @@ fn test_incremental_build_with_table_removal() {
         },
     ];
 
-    let (chunks_v2, _) = builder::generate_all_chunks(&inputs_v2);
+    let builder::GeneratedChunks {
+        table_chunks: chunks_v2,
+        ..
+    } = builder::generate_all_chunks(&inputs_v2);
     let new_for_diff: Vec<(String, String, String)> = chunks_v2
         .iter()
         .map(|tc| {
@@ -656,7 +692,10 @@ fn test_incremental_build_with_table_removal() {
         })
         .collect();
 
-    let (needs_embed, to_delete) = builder::diff_chunks(&stored_v1, &new_for_diff);
+    let builder::ChunkDiff {
+        needs_embed,
+        to_delete,
+    } = builder::diff_chunks(&stored_v1, &new_for_diff);
 
     assert!(needs_embed.is_empty(), "No changes to existing tables");
     assert_eq!(to_delete.len(), 1, "One table was dropped");
@@ -782,7 +821,10 @@ fn test_generate_fk_chunk_text_cross_db() {
 
 #[test]
 fn test_diff_chunks_both_empty() {
-    let (needs_embed, to_delete) = builder::diff_chunks(&[], &[]);
+    let builder::ChunkDiff {
+        needs_embed,
+        to_delete,
+    } = builder::diff_chunks(&[], &[]);
     assert!(needs_embed.is_empty());
     assert!(to_delete.is_empty());
 }
@@ -993,10 +1035,14 @@ fn test_ddl_hash_stable_when_row_count_fluctuates() {
     let mut row_counts_b: HashMap<(String, String), i64> = HashMap::new();
     row_counts_b.insert(("mydb".to_string(), "users".to_string()), 1042);
 
-    let (chunks_a, _) =
-        builder::generate_all_chunks_with_row_counts(std::slice::from_ref(&input), &row_counts_a);
-    let (chunks_b, _) =
-        builder::generate_all_chunks_with_row_counts(std::slice::from_ref(&input), &row_counts_b);
+    let builder::GeneratedChunks {
+        table_chunks: chunks_a,
+        ..
+    } = builder::generate_all_chunks_with_row_counts(std::slice::from_ref(&input), &row_counts_a);
+    let builder::GeneratedChunks {
+        table_chunks: chunks_b,
+        ..
+    } = builder::generate_all_chunks_with_row_counts(std::slice::from_ref(&input), &row_counts_b);
 
     assert_eq!(
         chunks_a[0].ddl_hash, chunks_b[0].ddl_hash,
@@ -1026,8 +1072,10 @@ fn test_diff_chunks_skips_reembedding_when_only_row_count_fluctuates() {
     // First build: TABLE_ROWS = 5000
     let mut rc1: HashMap<(String, String), i64> = HashMap::new();
     rc1.insert(("shop".to_string(), "orders".to_string()), 5000);
-    let (chunks1, _) =
-        builder::generate_all_chunks_with_row_counts(std::slice::from_ref(&input), &rc1);
+    let builder::GeneratedChunks {
+        table_chunks: chunks1,
+        ..
+    } = builder::generate_all_chunks_with_row_counts(std::slice::from_ref(&input), &rc1);
     let stored_hashes: Vec<(String, String)> = chunks1
         .iter()
         .map(|c| (c.chunk_key.clone(), c.ddl_hash.clone()))
@@ -1036,14 +1084,19 @@ fn test_diff_chunks_skips_reembedding_when_only_row_count_fluctuates() {
     // Second build: TABLE_ROWS = 5123 (InnoDB estimate fluctuation)
     let mut rc2: HashMap<(String, String), i64> = HashMap::new();
     rc2.insert(("shop".to_string(), "orders".to_string()), 5123);
-    let (chunks2, _) =
-        builder::generate_all_chunks_with_row_counts(std::slice::from_ref(&input), &rc2);
+    let builder::GeneratedChunks {
+        table_chunks: chunks2,
+        ..
+    } = builder::generate_all_chunks_with_row_counts(std::slice::from_ref(&input), &rc2);
     let new_chunks: Vec<(String, String, String)> = chunks2
         .iter()
         .map(|c| (c.chunk_key.clone(), c.ddl_text.clone(), c.ddl_hash.clone()))
         .collect();
 
-    let (needs_embed, to_delete) = builder::diff_chunks(&stored_hashes, &new_chunks);
+    let builder::ChunkDiff {
+        needs_embed,
+        to_delete,
+    } = builder::diff_chunks(&stored_hashes, &new_chunks);
 
     assert!(
         needs_embed.is_empty(),
@@ -1079,7 +1132,10 @@ fn test_reuse_roundtrip_hash_stability() {
     row_counts.insert(("mydb".to_string(), "users".to_string()), 500);
 
     // First pass: generate chunk from raw DDL
-    let (chunks_v1, _) = builder::generate_all_chunks_with_row_counts(&[input], &row_counts);
+    let builder::GeneratedChunks {
+        table_chunks: chunks_v1,
+        ..
+    } = builder::generate_all_chunks_with_row_counts(&[input], &row_counts);
     let original_hash = &chunks_v1[0].ddl_hash;
     let stored_ddl_text = &chunks_v1[0].ddl_text;
 
@@ -1095,7 +1151,10 @@ fn test_reuse_roundtrip_hash_stability() {
         table_name: "users".to_string(),
         create_table_sql: stored_ddl_text.clone(),
     };
-    let (chunks_v2, _) = builder::generate_all_chunks_with_row_counts(&[reused_input], &row_counts);
+    let builder::GeneratedChunks {
+        table_chunks: chunks_v2,
+        ..
+    } = builder::generate_all_chunks_with_row_counts(&[reused_input], &row_counts);
     let roundtrip_hash = &chunks_v2[0].ddl_hash;
 
     assert_eq!(

@@ -5,7 +5,8 @@
 //! command wrappers in `commands::table_data` extract the pool from `AppState`).
 
 use crate::mysql::cache_status::{cache_status_json, CacheStatus};
-use crate::mysql::metadata_cache::MetadataCache;
+use crate::mysql::metadata_cache::{MetadataCache, MetadataTableKey, TableKeyMetadata};
+use crate::mysql::result_cache::{CacheKey, VersionedValue};
 use crate::mysql::schema_queries::safe_identifier;
 #[cfg(not(coverage))]
 use crate::mysql::sqlx_type_names::{
@@ -174,7 +175,87 @@ pub struct ExportTableDataRequest {
     pub page_size: Option<u32>,
 }
 
-/// Options for exporting table data to a file.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoreTableDataCacheRequest {
+    pub connection_id: String,
+    pub tab_id: String,
+    pub database: String,
+    pub table: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateTableRowRequest {
+    pub connection_id: String,
+    pub database: String,
+    pub table: String,
+    pub primary_key_columns: Vec<String>,
+    pub original_primary_key_values: HashMap<String, serde_json::Value>,
+    pub updated_values: HashMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InsertTableRowRequest {
+    pub connection_id: String,
+    pub database: String,
+    pub table: String,
+    pub values: HashMap<String, serde_json::Value>,
+    pub primary_key_info: PrimaryKeyInfo,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteTableRowRequest {
+    pub connection_id: String,
+    pub database: String,
+    pub table: String,
+    pub primary_key_columns: Vec<String>,
+    pub primary_key_values: HashMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchBlobValueRequest {
+    pub connection_id: String,
+    pub database: String,
+    pub table: String,
+    pub column: String,
+    pub primary_key_pairs: Vec<(String, serde_json::Value)>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WriteFileBytesRequest {
+    pub path: String,
+    pub base64: String,
+}
+
+pub struct TableDataContext<'a> {
+    pub pool: &'a sqlx::MySqlPool,
+    pub connection_id: &'a str,
+    pub metadata_cache: &'a MetadataCache,
+}
+
+#[derive(Debug, Clone)]
+pub struct TableDataPageQuery {
+    pub tab_id: String,
+    pub database: String,
+    pub table: String,
+    pub page: u32,
+    pub page_size: u32,
+    pub sort: Option<SortInfo>,
+    pub filter_model: Vec<FilterCondition>,
+}
+
+#[cfg(not(coverage))]
+#[derive(Clone, Copy)]
+struct CellEncoding {
+    is_binary: bool,
+    is_primary_key: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportTableOptions {
@@ -221,18 +302,17 @@ impl TableCacheTarget<'_> {
 
 pub fn restore_table_data_cache_impl(
     state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
-    database: &str,
-    table: &str,
+    request: &RestoreTableDataCacheRequest,
 ) -> TableDataCacheRestoreResponse {
     let target = TableCacheTarget {
-        connection_id,
-        tab_id,
-        database,
-        table,
+        connection_id: &request.connection_id,
+        tab_id: &request.tab_id,
+        database: &request.database,
+        table: &request.table,
     };
-    let lookup = state.table_data_cache.get(connection_id, tab_id);
+    let lookup = state
+        .table_data_cache
+        .get(&request.connection_id, &request.tab_id);
     let status = lookup.lookup_status();
     if let Some(entry) = lookup.into_entry() {
         return TableDataCacheRestoreResponse {
@@ -276,12 +356,13 @@ fn sync_table_data_cache_response(
             status: lookup_status,
         };
     }
-    let was_written = state.table_data_cache.insert_if_current(
-        target.connection_id,
-        target.tab_id,
+    let write = VersionedValue {
         expected_invalidation_version,
-        response,
-    );
+        value: response,
+    };
+    let was_written = state
+        .table_data_cache
+        .insert_if_current(CacheKey::new(target.connection_id, target.tab_id), write);
     if was_written {
         return TableDataCacheSyncResponse {
             status: CacheStatus::Synced,
@@ -762,9 +843,12 @@ fn serialize_temporal_value(value: MySqlValueRef<'_>) -> Option<serde_json::Valu
 fn serialize_table_value(
     row: &sqlx::mysql::MySqlRow,
     column_index: usize,
-    is_binary: bool,
-    is_primary_key: bool,
+    encoding: CellEncoding,
 ) -> serde_json::Value {
+    let CellEncoding {
+        is_binary,
+        is_primary_key,
+    } = encoding;
     let raw_value = match row.try_get_raw(column_index) {
         Ok(value) => value,
         Err(_) => return serde_json::Value::Null,
@@ -1048,7 +1132,6 @@ fn bind_json_value<'q>(
 /// Validate any blob-envelopes in a set of column values before binding, so a
 /// malformed envelope (e.g. invalid base64) surfaces as a clean error instead of
 /// being silently coerced. Non-envelope values are ignored.
-#[cfg_attr(coverage, allow(dead_code))]
 pub fn validate_blob_envelopes(values: &HashMap<String, serde_json::Value>) -> Result<(), String> {
     for (col, value) in values {
         if let Some(Err(error)) = decode_blob_envelope(value) {
@@ -1084,7 +1167,7 @@ pub async fn fetch_table_pk_impl(
     pool: &sqlx::MySqlPool,
     database: &str,
     table: &str,
-) -> Result<(Option<PrimaryKeyInfo>, Vec<TableDataColumnMeta>), String> {
+) -> Result<TableKeyMetadata, String> {
     // ── 1. Fetch all column metadata ───────────────────────────────────────
     let col_sql = "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, \
                    COLUMN_DEFAULT, EXTRA \
@@ -1182,14 +1265,14 @@ pub async fn fetch_table_pk_impl(
             .iter()
             .any(|column| is_auto_increment_key_column(column, &primary_key_columns));
 
-        return Ok((
-            Some(PrimaryKeyInfo {
+        return Ok(TableKeyMetadata {
+            primary_key: Some(PrimaryKeyInfo {
                 key_columns: primary_key_columns,
                 has_auto_increment,
                 is_unique_key_fallback: false,
             }),
             columns,
-        ));
+        });
     }
 
     // ── 3. Fallback: UNIQUE constraint with all non-nullable columns ───────
@@ -1247,81 +1330,74 @@ pub async fn fetch_table_pk_impl(
                 .iter()
                 .any(|column| is_auto_increment_key_column(column, cols));
 
-            return Ok((
-                Some(PrimaryKeyInfo {
+            return Ok(TableKeyMetadata {
+                primary_key: Some(PrimaryKeyInfo {
                     key_columns: cols.clone(),
                     has_auto_increment,
                     is_unique_key_fallback: true,
                 }),
                 columns,
-            ));
+            });
         }
     }
 
-    // No usable key found
-    Ok((None, columns))
+    Ok(TableKeyMetadata {
+        primary_key: None,
+        columns,
+    })
 }
 
 #[cfg(not(coverage))]
 pub async fn fetch_table_pk_cached(
-    pool: &sqlx::MySqlPool,
-    connection_id: &str,
+    context: &TableDataContext<'_>,
     database: &str,
     table: &str,
-    metadata_cache: &MetadataCache,
-) -> Result<(Option<PrimaryKeyInfo>, Vec<TableDataColumnMeta>), String> {
-    if let Some((primary_key, columns)) = metadata_cache.get(connection_id, database, table) {
-        return Ok((primary_key, columns));
+) -> Result<TableKeyMetadata, String> {
+    let key = MetadataTableKey::new(context.connection_id, database, table);
+    if let Some(metadata) = context.metadata_cache.get(&key) {
+        return Ok(metadata);
     }
 
-    let (primary_key, columns) = fetch_table_pk_impl(pool, database, table).await?;
-    metadata_cache.insert(
-        connection_id,
-        database,
-        table,
-        primary_key.clone(),
-        columns.clone(),
-    );
+    let metadata = fetch_table_pk_impl(context.pool, database, table).await?;
+    context.metadata_cache.insert(key, metadata.clone());
 
-    Ok((primary_key, columns))
+    Ok(metadata)
 }
 
-/// Coverage stub: returns cached metadata when present and otherwise skips MySQL access.
 #[cfg(coverage)]
 pub async fn fetch_table_pk_cached(
-    _pool: &sqlx::MySqlPool,
-    connection_id: &str,
+    context: &TableDataContext<'_>,
     database: &str,
     table: &str,
-    metadata_cache: &MetadataCache,
-) -> Result<(Option<PrimaryKeyInfo>, Vec<TableDataColumnMeta>), String> {
-    Ok(metadata_cache
-        .get(connection_id, database, table)
-        .unwrap_or_else(|| (None, Vec::new())))
+) -> Result<TableKeyMetadata, String> {
+    let key = MetadataTableKey::new(context.connection_id, database, table);
+    Ok(context
+        .metadata_cache
+        .get(&key)
+        .unwrap_or_else(|| TableKeyMetadata {
+            primary_key: None,
+            columns: Vec::new(),
+        }))
 }
 
 // ── fetch_table_data_impl ──────────────────────────────────────────────────────
 
 #[cfg(not(coverage))]
-#[allow(clippy::too_many_arguments)]
 pub async fn fetch_table_data_impl(
-    pool: &sqlx::MySqlPool,
-    connection_id: &str,
-    tab_id: &str,
+    context: &TableDataContext<'_>,
     running_queries: &TokioRwLock<HashMap<(String, String), u64>>,
-    metadata_cache: &MetadataCache,
-    database: &str,
-    table: &str,
-    page: u32,
-    page_size: u32,
-    sort: Option<SortInfo>,
-    filter_model: Vec<FilterCondition>,
+    query: &TableDataPageQuery,
 ) -> Result<TableDataResponse, String> {
     let start = std::time::Instant::now();
+    let pool = context.pool;
+    let database = query.database.as_str();
+    let table = query.table.as_str();
+    let page_size = query.page_size;
 
-    // Get column metadata and PK info
-    let (primary_key_info, columns) =
-        fetch_table_pk_cached(pool, connection_id, database, table, metadata_cache).await?;
+    let TableKeyMetadata {
+        primary_key: primary_key_info,
+        columns,
+    } = fetch_table_pk_cached(context, database, table).await?;
 
     // Build PK column set for binary serialization and projection handling
     let primary_key_column_set: std::collections::HashSet<&str> = primary_key_info
@@ -1336,11 +1412,10 @@ pub async fn fetch_table_data_impl(
         .unwrap_or_default();
 
     // Build filter WHERE clause
-    let filter_clause = translate_filter_model_with_columns(&filter_model, &columns);
+    let filter_clause = translate_filter_model_with_columns(&query.filter_model, &columns);
     let where_sql = where_clause_sql(&filter_clause.sql);
 
-    // Build ORDER BY clause
-    let order_sql = match &sort {
+    let order_sql = match &query.sort {
         Some(sort_spec) => {
             let safe_col = safe_identifier(&sort_spec.column)?;
             let dir = sort_direction_keyword(&sort_spec.direction);
@@ -1354,7 +1429,7 @@ pub async fn fetch_table_data_impl(
     let projection = build_table_data_projection(&columns, &primary_key_column_set)?;
 
     // Build and execute DATA query
-    let page = page.max(1);
+    let page = query.page.max(1);
     let offset = (page - 1) as u64 * page_size as u64;
     let data_sql = format!(
         "SELECT {projection} FROM {safe_db}.{safe_table}{where_sql}{order_sql} LIMIT {page_size} OFFSET {offset}"
@@ -1369,7 +1444,7 @@ pub async fn fetch_table_data_impl(
         .acquire()
         .await
         .map_err(|error| format!("Failed to acquire connection: {error}"))?;
-    let cancel_key = (connection_id.to_string(), tab_id.to_string());
+    let cancel_key = (context.connection_id.to_string(), query.tab_id.clone());
     let thread_id: Option<u64> = sqlx::query_scalar("SELECT CONNECTION_ID()")
         .fetch_one(&mut *conn)
         .await
@@ -1408,13 +1483,11 @@ pub async fn fetch_table_data_impl(
                 serialized_row.push(serde_json::Value::Null);
                 continue;
             }
-            let is_primary_key = primary_key_column_set.contains(col_meta.name.as_str());
-            serialized_row.push(serialize_table_value(
-                row,
-                column_index,
-                col_meta.is_binary,
-                is_primary_key,
-            ));
+            let encoding = CellEncoding {
+                is_binary: col_meta.is_binary,
+                is_primary_key: primary_key_column_set.contains(col_meta.name.as_str()),
+            };
+            serialized_row.push(serialize_table_value(row, column_index, encoding));
         }
         serialized_rows.push(serialized_row);
     }
@@ -1429,27 +1502,17 @@ pub async fn fetch_table_data_impl(
     })
 }
 
-/// Coverage stub: returns a default empty response without querying MySQL.
 #[cfg(coverage)]
-#[allow(clippy::too_many_arguments)]
 pub async fn fetch_table_data_impl(
-    _pool: &sqlx::MySqlPool,
-    _connection_id: &str,
-    _tab_id: &str,
+    _context: &TableDataContext<'_>,
     _running_queries: &TokioRwLock<HashMap<(String, String), u64>>,
-    _metadata_cache: &MetadataCache,
-    _database: &str,
-    _table: &str,
-    page: u32,
-    page_size: u32,
-    _sort: Option<SortInfo>,
-    _filter_model: Vec<FilterCondition>,
+    query: &TableDataPageQuery,
 ) -> Result<TableDataResponse, String> {
     Ok(TableDataResponse {
         columns: vec![],
         rows: Arc::new(vec![]),
-        current_page: page,
-        page_size,
+        current_page: query.page,
+        page_size: query.page_size,
         primary_key: None,
         execution_time_ms: 0,
     })
@@ -1460,12 +1523,11 @@ pub async fn fetch_table_data_impl(
 #[cfg(not(coverage))]
 pub async fn update_table_row_impl(
     pool: &sqlx::MySqlPool,
-    database: &str,
-    table: &str,
-    primary_key_columns: &[String],
-    original_primary_key_values: &HashMap<String, serde_json::Value>,
-    updated_values: &HashMap<String, serde_json::Value>,
+    request: &UpdateTableRowRequest,
 ) -> Result<(), String> {
+    let primary_key_columns = &request.primary_key_columns;
+    let original_primary_key_values = &request.original_primary_key_values;
+    let updated_values = &request.updated_values;
     if primary_key_columns.is_empty() {
         return Err("Cannot update: no primary key columns specified".to_string());
     }
@@ -1474,8 +1536,8 @@ pub async fn update_table_row_impl(
     }
     validate_blob_envelopes(updated_values)?;
 
-    let safe_db = safe_identifier(database)?;
-    let safe_table = safe_identifier(table)?;
+    let safe_db = safe_identifier(&request.database)?;
+    let safe_table = safe_identifier(&request.table)?;
 
     // Build SET clause
     let mut set_parts = Vec::new();
@@ -1530,15 +1592,10 @@ pub async fn update_table_row_impl(
     ensure_single_row_affected(&result)
 }
 
-/// Coverage stub for update.
 #[cfg(coverage)]
 pub async fn update_table_row_impl(
     _pool: &sqlx::MySqlPool,
-    _database: &str,
-    _table: &str,
-    _primary_key_columns: &[String],
-    _original_primary_key_values: &HashMap<String, serde_json::Value>,
-    _updated_values: &HashMap<String, serde_json::Value>,
+    _request: &UpdateTableRowRequest,
 ) -> Result<(), String> {
     Ok(())
 }
@@ -1548,18 +1605,22 @@ pub async fn update_table_row_impl(
 #[cfg(not(coverage))]
 pub async fn insert_table_row_impl(
     pool: &sqlx::MySqlPool,
-    connection_id: &str,
     metadata_cache: &MetadataCache,
-    database: &str,
-    table: &str,
-    values: &HashMap<String, serde_json::Value>,
-    primary_key_info: &PrimaryKeyInfo,
+    request: &InsertTableRowRequest,
 ) -> Result<Vec<(String, serde_json::Value)>, String> {
+    let values = &request.values;
+    let primary_key_info = &request.primary_key_info;
     validate_blob_envelopes(values)?;
-    let safe_db = safe_identifier(database)?;
-    let safe_table = safe_identifier(table)?;
-    let (_, columns) =
-        fetch_table_pk_cached(pool, connection_id, database, table, metadata_cache).await?;
+    let safe_db = safe_identifier(&request.database)?;
+    let safe_table = safe_identifier(&request.table)?;
+    let context = TableDataContext {
+        pool,
+        connection_id: &request.connection_id,
+        metadata_cache,
+    };
+    let columns = fetch_table_pk_cached(&context, &request.database, &request.table)
+        .await?
+        .columns;
     let primary_key_column_set: std::collections::HashSet<&str> = primary_key_info
         .key_columns
         .iter()
@@ -1648,12 +1709,13 @@ pub async fn insert_table_row_impl(
                 .map(|column_index| {
                     let col_name = row.column(column_index).name().to_string();
                     let col_meta = columns.get(column_index);
-                    let is_binary = col_meta.map(|column| column.is_binary).unwrap_or(false);
-                    let is_primary_key = col_meta
-                        .map(|column| primary_key_column_set.contains(column.name.as_str()))
-                        .unwrap_or(false);
-                    let value =
-                        serialize_table_value(&row, column_index, is_binary, is_primary_key);
+                    let encoding = CellEncoding {
+                        is_binary: col_meta.map(|column| column.is_binary).unwrap_or(false),
+                        is_primary_key: col_meta
+                            .map(|column| primary_key_column_set.contains(column.name.as_str()))
+                            .unwrap_or(false),
+                    };
+                    let value = serialize_table_value(&row, column_index, encoding);
                     (col_name, value)
                 })
                 .collect();
@@ -1677,16 +1739,11 @@ fn inserted_primary_key_value(
     }
 }
 
-/// Coverage stub for insert.
 #[cfg(coverage)]
 pub async fn insert_table_row_impl(
     _pool: &sqlx::MySqlPool,
-    _connection_id: &str,
     _metadata_cache: &MetadataCache,
-    _database: &str,
-    _table: &str,
-    _values: &HashMap<String, serde_json::Value>,
-    _primary_key_info: &PrimaryKeyInfo,
+    _request: &InsertTableRowRequest,
 ) -> Result<Vec<(String, serde_json::Value)>, String> {
     Ok(vec![])
 }
@@ -1696,17 +1753,16 @@ pub async fn insert_table_row_impl(
 #[cfg(not(coverage))]
 pub async fn delete_table_row_impl(
     pool: &sqlx::MySqlPool,
-    database: &str,
-    table: &str,
-    primary_key_columns: &[String],
-    primary_key_values: &HashMap<String, serde_json::Value>,
+    request: &DeleteTableRowRequest,
 ) -> Result<(), String> {
+    let primary_key_columns = &request.primary_key_columns;
+    let primary_key_values = &request.primary_key_values;
     if primary_key_columns.is_empty() {
         return Err("Cannot delete: no primary key columns specified".to_string());
     }
 
-    let safe_db = safe_identifier(database)?;
-    let safe_table = safe_identifier(table)?;
+    let safe_db = safe_identifier(&request.database)?;
+    let safe_table = safe_identifier(&request.table)?;
 
     let mut where_parts = Vec::new();
     let mut params: Vec<serde_json::Value> = Vec::new();
@@ -1742,14 +1798,10 @@ pub async fn delete_table_row_impl(
     ensure_single_row_affected(&result)
 }
 
-/// Coverage stub for delete.
 #[cfg(coverage)]
 pub async fn delete_table_row_impl(
     _pool: &sqlx::MySqlPool,
-    _database: &str,
-    _table: &str,
-    _primary_key_columns: &[String],
-    _primary_key_values: &HashMap<String, serde_json::Value>,
+    _request: &DeleteTableRowRequest,
 ) -> Result<(), String> {
     Ok(())
 }
@@ -1787,24 +1839,18 @@ impl Drop for TempFileGuard {
 
 #[cfg(not(coverage))]
 pub async fn export_table_data_impl(
-    pool: &sqlx::MySqlPool,
-    connection_id: &str,
-    metadata_cache: &MetadataCache,
+    context: &TableDataContext<'_>,
     options: &ExportTableOptions,
 ) -> Result<(), String> {
     use futures::TryStreamExt;
     use std::io::Write;
 
+    let pool = context.pool;
     let safe_db = safe_identifier(&options.database)?;
     let safe_table = safe_identifier(&options.table)?;
-    let (_, columns) = fetch_table_pk_cached(
-        pool,
-        connection_id,
-        &options.database,
-        &options.table,
-        metadata_cache,
-    )
-    .await?;
+    let columns = fetch_table_pk_cached(context, &options.database, &options.table)
+        .await?
+        .columns;
 
     // Build WHERE, ORDER BY, and optional LIMIT/OFFSET (to export only the current page)
     let filter_clause = translate_filter_model_with_columns(&options.filter_model, &columns);
@@ -2026,14 +2072,12 @@ pub async fn export_table_data_impl(
                     .collect();
 
                 // Reuse the shared SQL writer for a single-row batch
-                crate::export::sql_writer::write_sql(
-                    &mut writer,
-                    cols,
-                    &[serialized],
-                    false,
-                    table_name,
-                )
-                .map_err(|error| format!("SQL write error: {error}"))?;
+                let single_row = crate::export::ExportRows {
+                    columns: cols,
+                    rows: &[serialized],
+                };
+                crate::export::sql_writer::write_sql(&mut writer, &single_row, table_name)
+                    .map_err(|error| format!("SQL write error: {error}"))?;
             }
 
             writer
@@ -2057,9 +2101,7 @@ pub async fn export_table_data_impl(
 /// Coverage stub for export.
 #[cfg(coverage)]
 pub async fn export_table_data_impl(
-    _pool: &sqlx::MySqlPool,
-    _connection_id: &str,
-    _metadata_cache: &MetadataCache,
+    _context: &TableDataContext<'_>,
     _options: &ExportTableOptions,
 ) -> Result<(), String> {
     Ok(())
@@ -2076,18 +2118,16 @@ pub async fn export_table_data_impl(
 #[cfg(not(coverage))]
 pub async fn fetch_blob_value_impl(
     pool: &sqlx::MySqlPool,
-    database: &str,
-    table: &str,
-    column: &str,
-    primary_key_pairs: &[(String, serde_json::Value)],
+    request: &FetchBlobValueRequest,
 ) -> Result<BlobValueResponse, String> {
+    let primary_key_pairs = &request.primary_key_pairs;
     if primary_key_pairs.is_empty() {
         return Err("Cannot fetch blob: no primary key values specified".to_string());
     }
 
-    let safe_db = safe_identifier(database)?;
-    let safe_table = safe_identifier(table)?;
-    let safe_col = safe_identifier(column)?;
+    let safe_db = safe_identifier(&request.database)?;
+    let safe_table = safe_identifier(&request.table)?;
+    let safe_col = safe_identifier(&request.column)?;
 
     let mut where_parts = Vec::with_capacity(primary_key_pairs.len());
     for (primary_key_column, _) in primary_key_pairs {
@@ -2184,14 +2224,10 @@ pub async fn fetch_blob_value_impl(
     }
 }
 
-/// Coverage stub for blob fetch.
 #[cfg(coverage)]
 pub async fn fetch_blob_value_impl(
     _pool: &sqlx::MySqlPool,
-    _database: &str,
-    _table: &str,
-    _column: &str,
-    _primary_key_pairs: &[(String, serde_json::Value)],
+    _request: &FetchBlobValueRequest,
 ) -> Result<BlobValueResponse, String> {
     Ok(BlobValueResponse {
         base64: None,

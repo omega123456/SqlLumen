@@ -7,16 +7,20 @@ use sqllumen_lib::logging::log_store::{
 };
 use tempfile::tempdir;
 
+struct TestLevel<'a> {
+    name: &'a str,
+    num: i64,
+}
+
 fn log_entry(
     timestamp: chrono::DateTime<Utc>,
-    level: &str,
-    level_num: i64,
+    level: TestLevel<'_>,
     message: &str,
 ) -> sqllumen_lib::logging::log_store::NewLogEntry {
     sqllumen_lib::logging::log_store::NewLogEntry {
         timestamp: timestamp.to_rfc3339(),
-        level: level.to_string(),
-        level_num,
+        level: level.name.to_string(),
+        level_num: level.num,
         target: "test.target".to_string(),
         message: message.to_string(),
     }
@@ -48,15 +52,25 @@ fn list_logs_pages_newest_first_with_threshold_and_universe_cap() {
         };
         rows.push(log_entry(
             timestamp,
-            level,
-            level_num,
+            TestLevel {
+                name: level,
+                num: level_num,
+            },
             &format!("message-{index}"),
         ));
     }
 
     insert_log_entries(&mut conn, &rows).expect("insert log entries");
 
-    let first_page = list_logs(&conn, 1, Some(40), now).expect("list first page");
+    let first_page = list_logs(
+        &conn,
+        &sqllumen_lib::logging::log_store::LogPageQuery {
+            page: 1,
+            level_num: Some(40),
+            now,
+        },
+    )
+    .expect("list first page");
     assert_eq!(first_page.page, 1);
     assert_eq!(first_page.page_size, LOG_PAGE_SIZE);
     assert_eq!(first_page.total, 334);
@@ -80,7 +94,15 @@ fn list_logs_pages_newest_first_with_threshold_and_universe_cap() {
         .iter()
         .all(|entry| entry.level == "ERROR"));
 
-    let last_page = list_logs(&conn, 17, Some(40), now).expect("list last page");
+    let last_page = list_logs(
+        &conn,
+        &sqllumen_lib::logging::log_store::LogPageQuery {
+            page: 17,
+            level_num: Some(40),
+            now,
+        },
+    )
+    .expect("list last page");
     assert_eq!(last_page.entries.len(), 14);
     let last_page_messages: Vec<_> = last_page
         .entries
@@ -91,7 +113,15 @@ fn list_logs_pages_newest_first_with_threshold_and_universe_cap() {
     assert!(last_page_messages.contains(&"message-999"));
     assert!(last_page.entries.iter().all(|entry| entry.level == "ERROR"));
 
-    let unfiltered_page = list_logs(&conn, 1, None, now).expect("list unfiltered page");
+    let unfiltered_page = list_logs(
+        &conn,
+        &sqllumen_lib::logging::log_store::LogPageQuery {
+            page: 1,
+            level_num: None,
+            now,
+        },
+    )
+    .expect("list unfiltered page");
     assert_eq!(unfiltered_page.total, 1000);
     assert_eq!(
         unfiltered_page
@@ -107,9 +137,30 @@ fn export_logs_returns_oldest_first_in_requested_range() {
     let mut conn = test_conn();
     let now = Utc.with_ymd_and_hms(2026, 6, 6, 12, 0, 0).unwrap();
     let rows = vec![
-        log_entry(now - Duration::days(2), "INFO", 30, "older"),
-        log_entry(now - Duration::days(1), "WARN", 40, "middle"),
-        log_entry(now, "ERROR", 50, "newer"),
+        log_entry(
+            now - Duration::days(2),
+            TestLevel {
+                name: "INFO",
+                num: 30,
+            },
+            "older",
+        ),
+        log_entry(
+            now - Duration::days(1),
+            TestLevel {
+                name: "WARN",
+                num: 40,
+            },
+            "middle",
+        ),
+        log_entry(
+            now,
+            TestLevel {
+                name: "ERROR",
+                num: 50,
+            },
+            "newer",
+        ),
     ];
     insert_log_entries(&mut conn, &rows).expect("insert log entries");
 
@@ -132,9 +183,30 @@ fn prune_logs_removes_rows_older_than_seven_days() {
     let mut conn = test_conn();
     let now = Utc.with_ymd_and_hms(2026, 6, 6, 12, 0, 0).unwrap();
     let rows = vec![
-        log_entry(now - Duration::days(8), "INFO", 30, "stale"),
-        log_entry(now - Duration::days(7), "INFO", 30, "edge"),
-        log_entry(now - Duration::days(1), "INFO", 30, "fresh"),
+        log_entry(
+            now - Duration::days(8),
+            TestLevel {
+                name: "INFO",
+                num: 30,
+            },
+            "stale",
+        ),
+        log_entry(
+            now - Duration::days(7),
+            TestLevel {
+                name: "INFO",
+                num: 30,
+            },
+            "edge",
+        ),
+        log_entry(
+            now - Duration::days(1),
+            TestLevel {
+                name: "INFO",
+                num: 30,
+            },
+            "fresh",
+        ),
     ];
     insert_log_entries(&mut conn, &rows).expect("insert log entries");
 
@@ -228,8 +300,18 @@ fn initialize_log_database_preserves_pre_existing_rows() {
         )
         .expect("create pre-existing schema");
         let now = Utc.with_ymd_and_hms(2026, 6, 6, 12, 0, 0).unwrap();
-        insert_log_entries(&mut conn, &[log_entry(now, "info", 4, "pre-existing")])
-            .expect("insert pre-existing row");
+        insert_log_entries(
+            &mut conn,
+            &[log_entry(
+                now,
+                TestLevel {
+                    name: "info",
+                    num: 4,
+                },
+                "pre-existing",
+            )],
+        )
+        .expect("insert pre-existing row");
     }
 
     let conn = initialize_log_database(&db_path).expect("initialize existing log database");

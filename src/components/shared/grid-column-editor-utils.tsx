@@ -7,7 +7,8 @@ import {
   isEnumColumn,
 } from '../table-data/enum-field-utils'
 import type { TableDataColumnMeta, ForeignKeyColumnInfo } from '../../types/schema'
-import type { CellEditorBaseProps, CellEditorCallbackProps } from './grid-cell-editors'
+import type { CellEditorBaseProps } from './grid-cell-editors'
+import type { EditorCallbacksContextType } from './editor-callbacks-context'
 import { EnumCellEditor, NullableCellEditor } from './grid-cell-editors'
 import { isJsonSqlType } from '../../lib/grid-column-style'
 
@@ -27,7 +28,7 @@ void getEnumFallbackValue
 
 export function getCellEditorForColumn(
   column: TableDataColumnMeta | undefined,
-  callbacks: CellEditorCallbackProps,
+  callbacks: EditorCallbacksContextType,
   foreignKey?: ForeignKeyColumnInfo
 ): CellEditorConfig {
   const temporalType = column ? getTemporalColumnType(column.dataType) : null

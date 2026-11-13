@@ -1,15 +1,9 @@
-//! Object editor commands: DDL fetch, save, drop, and routine parameters.
-//!
-//! Each public `*_impl` function is the testable core logic, and the
-//! `#[tauri::command]` wrappers are thin delegates.
-
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 #[cfg(not(coverage))]
-use crate::commands::query_history_bridge::{
-    log_single_entry, log_single_entry_if_resolved, resolve_connection_context,
-};
+use crate::commands::query_history_bridge::{log_single_entry, resolve_connection_context};
+use crate::commands::requests::{RoutineRequest, SchemaObjectRequest};
 #[cfg(not(coverage))]
 use crate::db::history::NewHistoryEntry;
 #[cfg(not(coverage))]
@@ -116,15 +110,14 @@ fn unescape_backtick_identifier(identifier: &str) -> String {
     identifier.replace("``", "`")
 }
 
-/// Parse the optional database qualifier, object name, and DDL type keyword from a
-/// DDL CREATE statement.
-///
-/// Returns `(optional_database, object_name, type_keyword)`.
-///
-/// Handles:
-/// - Backtick-quoted and unquoted identifiers
-/// - Optional `OR REPLACE`, `DEFINER`, `SQL SECURITY`, `ALGORITHM` clauses
-pub fn parse_ddl_name(body: &str) -> Result<(Option<String>, String, String), String> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedDdlName {
+    pub database: Option<String>,
+    pub name: String,
+    pub type_keyword: String,
+}
+
+pub fn parse_ddl_name(body: &str) -> Result<ParsedDdlName, String> {
     // Capture groups:
     //   1 = type keyword (PROCEDURE, FUNCTION, VIEW, TRIGGER, EVENT)
     //   2 = backtick-quoted database
@@ -156,7 +149,11 @@ pub fn parse_ddl_name(body: &str) -> Result<(Option<String>, String, String), St
         .or_else(|| caps.get(5).map(|matched| matched.as_str().to_string()))
         .ok_or("Could not extract object name from DDL")?;
 
-    Ok((db, name, type_keyword))
+    Ok(ParsedDdlName {
+        database: db,
+        name,
+        type_keyword,
+    })
 }
 
 fn object_name_label(is_view: bool) -> &'static str {
@@ -212,13 +209,12 @@ pub fn validate_view_ddl_prefix(body: &str, mode: &str) -> Result<(), String> {
 #[cfg(not(coverage))]
 pub async fn get_object_body_impl(
     state: &AppState,
-    connection_id: &str,
-    database: &str,
-    object_name: &str,
-    object_type: &str,
+    request: &SchemaObjectRequest,
 ) -> Result<String, String> {
-    let pool = get_pool(state, connection_id)?;
-    let ddl = schema_queries::query_ddl(&pool, database, object_name, object_type).await?;
+    let pool = get_pool(state, &request.connection_id)?;
+    let ddl = schema_queries::query_ddl(&pool, request.object_ref()).await?;
+    let object_type = request.object_type.as_str();
+    let object_name = &request.object_name;
 
     if ddl.is_empty() {
         return Err(format!(
@@ -226,7 +222,6 @@ pub async fn get_object_body_impl(
         ));
     }
 
-    // For views: normalise SHOW CREATE VIEW output to CREATE OR REPLACE VIEW
     if object_type == "view" {
         let re = Regex::new(
             r"(?i)^(\s*CREATE\s+)((?:ALGORITHM\s*=\s*\w+\s+)?(?:DEFINER\s*=\s*\S+\s+)?(?:SQL\s+SECURITY\s+\w+\s+)?)VIEW\s+",
@@ -242,11 +237,9 @@ pub async fn get_object_body_impl(
 #[cfg(coverage)]
 pub async fn get_object_body_impl(
     _state: &AppState,
-    _connection_id: &str,
-    _database: &str,
-    _object_name: &str,
-    object_type: &str,
+    request: &SchemaObjectRequest,
 ) -> Result<String, String> {
+    let object_type = request.object_type.as_str();
     match object_type {
         "view" => Ok("CREATE OR REPLACE VIEW `v` AS SELECT 1".to_string()),
         "procedure" => Ok("CREATE PROCEDURE `p`() BEGIN SELECT 1; END".to_string()),
@@ -274,8 +267,11 @@ pub async fn save_object_impl(
     let safe_db = schema_queries::safe_identifier(&request.database)?;
     let safe_name = schema_queries::safe_identifier(&request.object_name)?;
 
-    // Parse object name and type from DDL body
-    let (parsed_db, parsed_name, parsed_type) = parse_ddl_name(&request.body)?;
+    let ParsedDdlName {
+        database: parsed_db,
+        name: parsed_name,
+        type_keyword: parsed_type,
+    } = parse_ddl_name(&request.body)?;
 
     // Database qualifier validation
     if let Some(ref ddl_db) = parsed_db {
@@ -427,8 +423,11 @@ pub async fn save_object_impl(
     let _ = schema_queries::safe_identifier(&request.database)?;
     let _ = schema_queries::safe_identifier(&request.object_name)?;
 
-    // Parse object name and type from DDL body
-    let (parsed_db, parsed_name, parsed_type) = parse_ddl_name(&request.body)?;
+    let ParsedDdlName {
+        database: parsed_db,
+        name: parsed_name,
+        type_keyword: parsed_type,
+    } = parse_ddl_name(&request.body)?;
 
     // Database qualifier validation
     if let Some(ref ddl_db) = parsed_db {
@@ -482,14 +481,13 @@ pub async fn save_object_impl(
 #[cfg(not(coverage))]
 pub async fn drop_object_impl(
     state: &AppState,
-    connection_id: &str,
-    database: &str,
-    object_name: &str,
-    object_type: &str,
+    request: &SchemaObjectRequest,
 ) -> Result<(), String> {
-    check_not_read_only(state, connection_id)?;
-    let pool = get_pool(state, connection_id)?;
-    let safe_db = schema_queries::safe_identifier(database)?;
+    check_not_read_only(state, &request.connection_id)?;
+    let pool = get_pool(state, &request.connection_id)?;
+    let object_name = &request.object_name;
+    let object_type = request.object_type.as_str();
+    let safe_db = schema_queries::safe_identifier(&request.database)?;
     let safe_name = schema_queries::safe_identifier(object_name)?;
     let type_keyword = object_type_keyword(object_type)?;
     let sql = format!("DROP {type_keyword} IF EXISTS {safe_db}.{safe_name}");
@@ -505,15 +503,12 @@ pub async fn drop_object_impl(
 #[cfg(coverage)]
 pub async fn drop_object_impl(
     state: &AppState,
-    connection_id: &str,
-    database: &str,
-    object_name: &str,
-    object_type: &str,
+    request: &SchemaObjectRequest,
 ) -> Result<(), String> {
-    check_not_read_only(state, connection_id)?;
-    let _ = schema_queries::safe_identifier(database)?;
-    let _ = schema_queries::safe_identifier(object_name)?;
-    let _ = object_type_keyword(object_type)?;
+    check_not_read_only(state, &request.connection_id)?;
+    let _ = schema_queries::safe_identifier(&request.database)?;
+    let _ = schema_queries::safe_identifier(&request.object_name)?;
+    let _ = object_type_keyword(&request.object_type)?;
     Ok(())
 }
 
@@ -524,18 +519,13 @@ pub async fn drop_object_impl(
 #[cfg(not(coverage))]
 async fn get_routine_parameters_inner(
     state: &AppState,
-    connection_id: &str,
-    database: &str,
-    routine_name: &str,
-    routine_type: &str,
+    request: &RoutineRequest,
     include_return_type: bool,
 ) -> Result<Vec<RoutineParameter>, String> {
-    let pool = get_pool(state, connection_id)?;
+    let pool = get_pool(state, &request.connection_id)?;
     let rows = schema_queries::query_routine_parameters_inner(
         &pool,
-        database,
-        routine_name,
-        routine_type,
+        request.routine_ref(),
         include_return_type,
     )
     .await?;
@@ -553,29 +543,15 @@ async fn get_routine_parameters_inner(
 #[cfg(not(coverage))]
 pub async fn get_routine_parameters_impl(
     state: &AppState,
-    connection_id: &str,
-    database: &str,
-    routine_name: &str,
-    routine_type: &str,
+    request: &RoutineRequest,
 ) -> Result<Vec<RoutineParameter>, String> {
-    get_routine_parameters_inner(
-        state,
-        connection_id,
-        database,
-        routine_name,
-        routine_type,
-        false,
-    )
-    .await
+    get_routine_parameters_inner(state, request, false).await
 }
 
 #[cfg(coverage)]
 pub async fn get_routine_parameters_impl(
     _state: &AppState,
-    _connection_id: &str,
-    _database: &str,
-    _routine_name: &str,
-    _routine_type: &str,
+    _request: &RoutineRequest,
 ) -> Result<Vec<RoutineParameter>, String> {
     Ok(vec![])
 }
@@ -583,29 +559,14 @@ pub async fn get_routine_parameters_impl(
 #[cfg(not(coverage))]
 pub async fn get_routine_parameters_with_return_type_impl(
     state: &AppState,
-    connection_id: &str,
-    database: &str,
-    routine_name: &str,
-    routine_type: &str,
+    request: &RoutineRequest,
 ) -> Result<RoutineParametersWithFoundResponse, String> {
-    let params = get_routine_parameters_inner(
-        state,
-        connection_id,
-        database,
-        routine_name,
-        routine_type,
-        true,
-    )
-    .await?;
+    let params = get_routine_parameters_inner(state, request, true).await?;
 
-    // When the parameters query returns zero rows, we cannot distinguish between
-    // "routine exists but has no parameters" and "routine does not exist" using
-    // INFORMATION_SCHEMA.PARAMETERS alone. Check INFORMATION_SCHEMA.ROUTINES.
     let mut found = true;
     if params.is_empty() {
-        let pool = get_pool(state, connection_id)?;
-        found = schema_queries::query_routine_exists(&pool, database, routine_name, routine_type)
-            .await?;
+        let pool = get_pool(state, &request.connection_id)?;
+        found = schema_queries::query_routine_exists(&pool, request.routine_ref()).await?;
     }
 
     Ok(RoutineParametersWithFoundResponse {
@@ -617,13 +578,9 @@ pub async fn get_routine_parameters_with_return_type_impl(
 #[cfg(coverage)]
 pub async fn get_routine_parameters_with_return_type_impl(
     _state: &AppState,
-    _connection_id: &str,
-    _database: &str,
-    routine_name: &str,
-    _routine_type: &str,
+    request: &RoutineRequest,
 ) -> Result<RoutineParametersWithFoundResponse, String> {
-    // In coverage mode, treat routines with names starting with "missing" as not found
-    let found = !routine_name.to_lowercase().starts_with("missing");
+    let found = !request.routine_name.to_lowercase().starts_with("missing");
     Ok(RoutineParametersWithFoundResponse {
         parameters: vec![],
         found,
@@ -637,32 +594,20 @@ pub async fn get_routine_parameters_with_return_type_impl(
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn get_object_body(
-    connection_id: String,
-    database: String,
-    object_name: String,
-    object_type: String,
+    payload: SchemaObjectRequest,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let start = std::time::Instant::now();
-    let result = get_object_body_impl(
-        &state,
-        &connection_id,
-        &database,
-        &object_name,
-        &object_type,
-    )
-    .await;
+    let result = get_object_body_impl(&state, &payload).await;
 
     let duration_ms = start.elapsed().as_millis() as i64;
-    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
-    let type_upper = object_type.to_uppercase();
+    let type_upper = payload.object_type.to_uppercase();
+    let database = &payload.database;
+    let object_name = &payload.object_name;
     let sql_text = format!("SHOW CREATE {type_upper} `{database}`.`{object_name}`");
 
-    log_single_entry_if_resolved(
+    resolve_connection_context(&state, &payload.connection_id).log_single_entry_if_resolved(
         &state.db,
-        conn_id,
-        database_name,
-        &connection_id,
         |conn_id, database_name| NewHistoryEntry {
             connection_id: conn_id,
             database_name,
@@ -695,9 +640,10 @@ pub async fn save_object(
     let result = save_object_impl(request, &state).await;
 
     let duration_ms = start.elapsed().as_millis() as i64;
-    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id_for_log);
+    let context = resolve_connection_context(&state, &connection_id_for_log);
+    let database_name = context.database_name;
 
-    let Some(conn_id) = conn_id else {
+    let Some(conn_id) = context.connection_id else {
         tracing::warn!(
             session_id = %connection_id_for_log,
             "skipping query history logging: no saved connection id resolved for session"
@@ -766,32 +712,20 @@ pub async fn save_object(
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn drop_object(
-    connection_id: String,
-    database: String,
-    object_name: String,
-    object_type: String,
+    payload: SchemaObjectRequest,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let start = std::time::Instant::now();
-    let result = drop_object_impl(
-        &state,
-        &connection_id,
-        &database,
-        &object_name,
-        &object_type,
-    )
-    .await;
+    let result = drop_object_impl(&state, &payload).await;
 
     let duration_ms = start.elapsed().as_millis() as i64;
-    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
-    let type_keyword = object_type_keyword(&object_type).unwrap_or("UNKNOWN");
+    let type_keyword = object_type_keyword(&payload.object_type).unwrap_or("UNKNOWN");
+    let database = &payload.database;
+    let object_name = &payload.object_name;
     let sql_text = format!("DROP {type_keyword} IF EXISTS `{database}`.`{object_name}`");
 
-    log_single_entry_if_resolved(
+    resolve_connection_context(&state, &payload.connection_id).log_single_entry_if_resolved(
         &state.db,
-        conn_id,
-        database_name,
-        &connection_id,
         |conn_id, database_name| NewHistoryEntry {
             connection_id: conn_id,
             database_name,
@@ -810,37 +744,17 @@ pub async fn drop_object(
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn get_routine_parameters(
-    connection_id: String,
-    database: String,
-    routine_name: String,
-    routine_type: String,
+    payload: RoutineRequest,
     state: State<'_, AppState>,
 ) -> Result<Vec<RoutineParameter>, String> {
-    get_routine_parameters_impl(
-        &state,
-        &connection_id,
-        &database,
-        &routine_name,
-        &routine_type,
-    )
-    .await
+    get_routine_parameters_impl(&state, &payload).await
 }
 
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn get_routine_parameters_with_return_type(
-    connection_id: String,
-    database: String,
-    routine_name: String,
-    routine_type: String,
+    payload: RoutineRequest,
     state: State<'_, AppState>,
 ) -> Result<RoutineParametersWithFoundResponse, String> {
-    get_routine_parameters_with_return_type_impl(
-        &state,
-        &connection_id,
-        &database,
-        &routine_name,
-        &routine_type,
-    )
-    .await
+    get_routine_parameters_with_return_type_impl(&state, &payload).await
 }

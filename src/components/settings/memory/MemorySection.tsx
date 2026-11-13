@@ -66,12 +66,14 @@ function scopeIcon(scope: MemoryScope) {
   return <ScopeIcon size={HEADER_ICON_SIZE} aria-hidden />
 }
 
-function isDropAccepted(
-  scope: MemoryScope,
-  connectionId: string | undefined,
-  groupId: string | undefined,
+interface MemoryDropCandidate {
+  scope: MemoryScope
+  connectionId: string | undefined
+  groupId: string | undefined
   payload: MemoryDragPayload | null
-): boolean {
+}
+
+function isDropAccepted({ scope, connectionId, groupId, payload }: MemoryDropCandidate): boolean {
   if (!payload) return false
   // Reject dropping onto the memory's current owner (no-op move).
   if (payload.fromScope === scope) {
@@ -304,7 +306,15 @@ export function MemorySection({
     onHover(null)
     const payload = resolveDragPayload(event.dataTransfer)
     if (!payload) return
-    if (!isDropAccepted(scope, connectionId, groupId, payload)) return
+    if (
+      !isDropAccepted({
+        scope: scope,
+        connectionId: connectionId,
+        groupId: groupId,
+        payload: payload,
+      })
+    )
+      return
     onDrop({ scope, connectionId, groupId }, payload)
   }
 
@@ -326,7 +336,14 @@ export function MemorySection({
         // instead of also lighting up its parent group section.
         event.stopPropagation()
         event.preventDefault()
-        const dropAccepted = payload ? isDropAccepted(scope, connectionId, groupId, payload) : true
+        const dropAccepted = payload
+          ? isDropAccepted({
+              scope: scope,
+              connectionId: connectionId,
+              groupId: groupId,
+              payload: payload,
+            })
+          : true
         event.dataTransfer.dropEffect = dropAccepted ? 'move' : 'none'
         const hoverChanged = dropAccepted !== isDragOver
         if (hoverChanged) onHover(dropAccepted ? sectionKey : null)

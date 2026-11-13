@@ -128,7 +128,11 @@ describe('handleRunStatement', () => {
     // Create tab first, then set status
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
     useQueryStore.getState().setTabStatus('tab-1', 'running')
-    handleRunStatement('conn-1', 'tab-1', { sql: 'SELECT 1', start: 0, end: 8 })
+    handleRunStatement({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      statement: { sql: 'SELECT 1', start: 0, end: 8 },
+    })
     // Status should remain running — no query was dispatched
     expect(useQueryStore.getState().tabs['tab-1']?.tabStatus).toBe('running')
   })
@@ -136,25 +140,41 @@ describe('handleRunStatement', () => {
   it('does nothing when tab status is ai-pending', () => {
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
     useQueryStore.getState().setTabStatus('tab-1', 'ai-pending')
-    handleRunStatement('conn-1', 'tab-1', { sql: 'SELECT 1', start: 0, end: 8 })
+    handleRunStatement({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      statement: { sql: 'SELECT 1', start: 0, end: 8 },
+    })
     expect(useQueryStore.getState().tabs['tab-1']?.tabStatus).toBe('ai-pending')
   })
 
   it('does nothing when tab status is ai-reviewing', () => {
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
     useQueryStore.getState().setTabStatus('tab-1', 'ai-reviewing')
-    handleRunStatement('conn-1', 'tab-1', { sql: 'SELECT 1', start: 0, end: 8 })
+    handleRunStatement({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      statement: { sql: 'SELECT 1', start: 0, end: 8 },
+    })
     expect(useQueryStore.getState().tabs['tab-1']?.tabStatus).toBe('ai-reviewing')
   })
 
   it('does nothing when sql is whitespace-only', () => {
-    handleRunStatement('conn-1', 'tab-1', { sql: '   ', start: 0, end: 3 })
+    handleRunStatement({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      statement: { sql: '   ', start: 0, end: 3 },
+    })
     // No tab state should have been created
     expect(useQueryStore.getState().tabs['tab-1']).toBeUndefined()
   })
 
   it('executes query for valid sql', async () => {
-    handleRunStatement('conn-1', 'tab-1', { sql: 'SELECT 1', start: 0, end: 8 })
+    handleRunStatement({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      statement: { sql: 'SELECT 1', start: 0, end: 8 },
+    })
     // Wait for async execution
     await vi.waitFor(() => {
       const tabState = useQueryStore.getState().tabs['tab-1']
@@ -175,7 +195,12 @@ describe('handleAskAi', () => {
       },
     })
 
-    handleAskAi('conn-1', 'tab-1', { sql: 'SELECT 1', start: 0, end: 8 }, 'SELECT 1')
+    handleAskAi({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      statement: { sql: 'SELECT 1', start: 0, end: 8 },
+      fullText: 'SELECT 1',
+    })
 
     expect(useAiStore.getState().tabs['tab-1']?.isPanelOpen).toBe(true)
   })
@@ -184,7 +209,7 @@ describe('handleAskAi', () => {
     const text = 'SELECT 1\nFROM users'
     const stmt = { sql: 'SELECT 1\nFROM users', start: 0, end: 19 }
 
-    handleAskAi('conn-1', 'tab-1', stmt, text)
+    handleAskAi({ connectionId: 'conn-1', tabId: 'tab-1', statement: stmt, fullText: text })
 
     const ctx = useAiStore.getState().tabs['tab-1']?.attachedContext
     expect(ctx).not.toBeNull()
@@ -198,7 +223,7 @@ describe('handleAskAi', () => {
     const text = 'SELECT * FROM users;'
     const stmt = { sql: 'SELECT * FROM users', start: 0, end: 20 }
 
-    handleAskAi('conn-1', 'tab-1', stmt, text)
+    handleAskAi({ connectionId: 'conn-1', tabId: 'tab-1', statement: stmt, fullText: text })
 
     const ctx = useAiStore.getState().tabs['tab-1']?.attachedContext
     expect(ctx).not.toBeNull()
@@ -216,7 +241,7 @@ describe('handleAskAi', () => {
     // stmt.sql is trimmed without semicolon; start=0, end=20 (past the ';')
     const stmt = { sql: 'SELECT *\nFROM users', start: 0, end: 20 }
 
-    handleAskAi('conn-1', 'tab-1', stmt, text)
+    handleAskAi({ connectionId: 'conn-1', tabId: 'tab-1', statement: stmt, fullText: text })
 
     const ctx = useAiStore.getState().tabs['tab-1']?.attachedContext
     expect(ctx).not.toBeNull()
@@ -234,7 +259,7 @@ describe('handleAskAi', () => {
     // splitStatements: stmtStart=2 (after whitespace), end=11, sql="SELECT 1"
     const stmt = { sql: 'SELECT 1', start: 2, end: 11 }
 
-    handleAskAi('conn-1', 'tab-1', stmt, text)
+    handleAskAi({ connectionId: 'conn-1', tabId: 'tab-1', statement: stmt, fullText: text })
 
     const ctx = useAiStore.getState().tabs['tab-1']?.attachedContext
     expect(ctx).not.toBeNull()
@@ -254,7 +279,12 @@ describe('handleAskAi', () => {
     })
 
     const spy = vi.spyOn(useAiStore.getState(), 'openPanel')
-    handleAskAi('conn-1', 'tab-1', { sql: 'SELECT 1', start: 0, end: 8 }, 'SELECT 1')
+    handleAskAi({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      statement: { sql: 'SELECT 1', start: 0, end: 8 },
+      fullText: 'SELECT 1',
+    })
     expect(spy).not.toHaveBeenCalled()
     spy.mockRestore()
   })

@@ -457,10 +457,16 @@ fn parse_backtick_list(list: &str) -> Vec<String> {
 /// Returns `(to_embed, to_delete_keys)`:
 /// - `to_embed`: `Vec<(chunk_key, ddl_text, ddl_hash, ChunkType, db, table, ref_db, ref_table)>` — new or changed
 /// - `to_delete_keys`: `Vec<String>` — chunk keys that existed before but are no longer present
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChunkDiff {
+    pub needs_embed: Vec<String>,
+    pub to_delete: Vec<String>,
+}
+
 pub fn diff_chunks(
     stored_hashes: &[(String, String)],
     new_chunks: &[(String, String, String)], // (chunk_key, ddl_text, ddl_hash)
-) -> (Vec<String>, Vec<String>) {
+) -> ChunkDiff {
     let stored_map: HashMap<&str, &str> = stored_hashes
         .iter()
         .map(|(key, hash)| (key.as_str(), hash.as_str()))
@@ -492,7 +498,10 @@ pub fn diff_chunks(
         }
     }
 
-    (needs_embed, to_delete)
+    ChunkDiff {
+        needs_embed,
+        to_delete,
+    }
 }
 
 // ── Signature short-circuit partition (pure) ────────────────────────────
@@ -636,14 +645,42 @@ impl EmbeddingProgressTracker {
 /// 7. Store results, report progress
 /// 8. Set status = "ready"
 #[cfg(not(coverage))]
+#[derive(Clone, Copy)]
+pub struct IndexBuildResources<'a> {
+    pub sqlite_conn: &'a Mutex<rusqlite::Connection>,
+    pub mysql_pool: &'a sqlx::MySqlPool,
+    pub http_client: &'a reqwest::Client,
+    pub cancellation: &'a CancellationToken,
+}
+
+#[cfg(not(coverage))]
+#[derive(Clone, Copy)]
+struct DdlSource<'a> {
+    pool: &'a sqlx::MySqlPool,
+    cancellation: &'a CancellationToken,
+}
+
+#[cfg(not(coverage))]
+#[derive(Clone, Copy)]
+struct DdlFetchProgress<'a> {
+    profile_id: &'a str,
+    on_progress: Option<&'a ProgressCallback>,
+    initial_done: usize,
+    total: usize,
+}
+
+#[cfg(not(coverage))]
 pub async fn build_index(
     config: &BuildConfig,
-    sqlite_conn: &Mutex<rusqlite::Connection>,
-    mysql_pool: &sqlx::MySqlPool,
-    http_client: &reqwest::Client,
+    resources: &IndexBuildResources<'_>,
     on_progress: Option<&ProgressCallback>,
-    cancellation: &CancellationToken,
 ) -> Result<BuildResult, String> {
+    let IndexBuildResources {
+        sqlite_conn,
+        mysql_pool,
+        http_client,
+        cancellation,
+    } = *resources;
     let start = Instant::now();
     let started_at = Utc::now().to_rfc3339();
 
@@ -808,16 +845,17 @@ pub async fn build_index(
     // 3d. Parallel SHOW CREATE TABLE for tables that actually changed.
     let mut fetched_ddls = Vec::new();
     if !to_fetch.is_empty() {
-        fetched_ddls = fetch_create_tables_parallel(
-            mysql_pool,
-            to_fetch,
-            &config.connection_id,
+        let source = DdlSource {
+            pool: mysql_pool,
             cancellation,
+        };
+        let progress = DdlFetchProgress {
+            profile_id: &config.connection_id,
             on_progress,
-            reused_ddls.len(),
-            tables_total,
-        )
-        .await?;
+            initial_done: reused_ddls.len(),
+            total: tables_total,
+        };
+        fetched_ddls = fetch_create_tables_parallel(source, to_fetch, progress).await?;
     }
 
     let mut all_ddl_inputs: Vec<TableDdlInput> = Vec::with_capacity(tables_total);
@@ -853,8 +891,10 @@ pub async fn build_index(
     );
 
     // 4. Generate chunk data (table + FK chunks)
-    let (table_chunks, foreign_key_chunks) =
-        generate_all_chunks_with_row_counts(&all_ddl_inputs, &row_counts);
+    let GeneratedChunks {
+        table_chunks,
+        foreign_key_chunks,
+    } = generate_all_chunks_with_row_counts(&all_ddl_inputs, &row_counts);
     tracing::debug!(
         profile_id = %config.connection_id,
         table_chunk_rows = table_chunks.len(),
@@ -1001,7 +1041,10 @@ pub async fn build_index(
         })
         .collect();
 
-    let (needs_embed_keys, to_delete_keys) = diff_chunks(&stored_hashes, &new_for_diff);
+    let ChunkDiff {
+        needs_embed: needs_embed_keys,
+        to_delete: to_delete_keys,
+    } = diff_chunks(&stored_hashes, &new_for_diff);
 
     // Delete removed chunks (by specific chunk key, not by table — avoids
     // cascade-deleting unrelated FK chunks that share the same table).
@@ -1141,10 +1184,14 @@ pub async fn build_index(
         );
 
         let embed_started = Instant::now();
-        let embeddings =
-            embeddings::embed_texts(http_client, &config.endpoint, &config.model_id, texts, None)
-                .await
-                .map_err(|error| format!("Embedding failed: {error}"))?;
+        let embedding_model = embeddings::EmbeddingModel {
+            base_url: &config.endpoint,
+            model: &config.model_id,
+        };
+        let input = embeddings::EmbeddingInput::texts(texts);
+        let embeddings = embeddings::embed_texts(http_client, embedding_model, input)
+            .await
+            .map_err(|error| format!("Embedding failed: {error}"))?;
         tracing::debug!(
             profile_id = %config.connection_id,
             batch_start,
@@ -1265,7 +1312,12 @@ pub async fn build_index(
             current_signatures.keys().cloned().collect();
         for (db, tbl) in stored_signatures.keys() {
             if !current_keys.contains(&(db.clone(), tbl.clone())) {
-                storage::delete_signature(&conn, &config.connection_id, db, tbl)
+                let stale_table = storage::IndexedTableRef {
+                    connection_id: &config.connection_id,
+                    db_name: db,
+                    table_name: tbl,
+                };
+                storage::delete_signature(&conn, &stale_table)
                     .map_err(|error| format!("Failed to delete stale signature: {error}"))?;
             }
         }
@@ -1324,12 +1376,15 @@ fn is_foreign_key_of_table(foreign_key: &FkInput, table_chunk: &GeneratedTableCh
 #[cfg(not(coverage))]
 pub async fn rebuild_tables(
     config: &BuildConfig,
-    tables: &[(String, String)], // Vec<(db_name, table_name)>
-    sqlite_conn: &Mutex<rusqlite::Connection>,
-    mysql_pool: &sqlx::MySqlPool,
-    http_client: &reqwest::Client,
-    cancellation: &CancellationToken,
+    tables: &[(String, String)],
+    resources: &IndexBuildResources<'_>,
 ) -> Result<(), String> {
+    let IndexBuildResources {
+        sqlite_conn,
+        mysql_pool,
+        http_client,
+        cancellation,
+    } = *resources;
     let started_at = Utc::now().to_rfc3339();
     tracing::info!(
         profile_id = %config.connection_id,
@@ -1347,9 +1402,14 @@ pub async fn rebuild_tables(
             .lock()
             .map_err(|error| format!("SQLite lock: {error}"))?;
         for (db, tbl) in tables {
-            storage::delete_chunks_by_table(&conn, &config.connection_id, db, tbl)
+            let target_table = storage::IndexedTableRef {
+                connection_id: &config.connection_id,
+                db_name: db,
+                table_name: tbl,
+            };
+            storage::delete_chunks_by_table(&conn, &target_table)
                 .map_err(|error| format!("Failed to delete chunks for {db}.{tbl}: {error}"))?;
-            storage::delete_signature(&conn, &config.connection_id, db, tbl)
+            storage::delete_signature(&conn, &target_table)
                 .map_err(|error| format!("Failed to delete signature for {db}.{tbl}: {error}"))?;
         }
     }
@@ -1386,7 +1446,10 @@ pub async fn rebuild_tables(
     }
 
     // 3. Generate new table + FK chunks
-    let (table_chunks, foreign_key_chunks) = generate_all_chunks(&ddl_inputs);
+    let GeneratedChunks {
+        table_chunks,
+        foreign_key_chunks,
+    } = generate_all_chunks(&ddl_inputs);
 
     // 3a. Store FK edges for rebuilt tables
     {
@@ -1416,14 +1479,12 @@ pub async fn rebuild_tables(
                         })
                 })
                 .collect();
-            storage::replace_fk_edges_for_table(
-                &conn,
-                &config.connection_id,
-                &tc.db_name,
-                &tc.table_name,
-                &edges,
-            )
-            .map_err(|error| {
+            let source_table = storage::IndexedTableRef {
+                connection_id: &config.connection_id,
+                db_name: &tc.db_name,
+                table_name: &tc.table_name,
+            };
+            storage::replace_fk_edges_for_table(&conn, &source_table, &edges).map_err(|error| {
                 format!(
                     "Failed to store FK edges for {}.{}: {error}",
                     tc.db_name, tc.table_name
@@ -1505,10 +1566,14 @@ pub async fn rebuild_tables(
         );
 
         let embed_started = Instant::now();
-        let embeddings =
-            embeddings::embed_texts(http_client, &config.endpoint, &config.model_id, texts, None)
-                .await
-                .map_err(|error| format!("Embedding failed: {error}"))?;
+        let embedding_model = embeddings::EmbeddingModel {
+            base_url: &config.endpoint,
+            model: &config.model_id,
+        };
+        let input = embeddings::EmbeddingInput::texts(texts);
+        let embeddings = embeddings::embed_texts(http_client, embedding_model, input)
+            .await
+            .map_err(|error| format!("Embedding failed: {error}"))?;
         tracing::debug!(
             profile_id = %config.connection_id,
             batch_start,
@@ -1555,15 +1620,7 @@ pub async fn rebuild_tables(
 
     // Restore any inbound FK chunks deleted during the targeted wipe by running
     // a full incremental diff-based build afterward.
-    build_index(
-        config,
-        sqlite_conn,
-        mysql_pool,
-        http_client,
-        None,
-        cancellation,
-    )
-    .await?;
+    build_index(config, resources, None).await?;
 
     tracing::info!(
         profile_id = %config.connection_id,
@@ -1796,9 +1853,13 @@ pub type GeneratedFkChunk = (String, String, String, FkInput);
 /// - table_chunks: `Vec<GeneratedTableChunk>`
 /// - fk_chunks: `Vec<(chunk_key, fk_text, fk_hash, FkInput)>`
 /// - fk_edges: `Vec<FkEdge>` — flat list of all FK edges for bulk storage
-pub fn generate_all_chunks(
-    ddl_inputs: &[TableDdlInput],
-) -> (Vec<GeneratedTableChunk>, Vec<GeneratedFkChunk>) {
+#[derive(Debug, Clone)]
+pub struct GeneratedChunks {
+    pub table_chunks: Vec<GeneratedTableChunk>,
+    pub foreign_key_chunks: Vec<GeneratedFkChunk>,
+}
+
+pub fn generate_all_chunks(ddl_inputs: &[TableDdlInput]) -> GeneratedChunks {
     generate_all_chunks_with_row_counts(ddl_inputs, &HashMap::new())
 }
 
@@ -1806,7 +1867,7 @@ pub fn generate_all_chunks(
 pub fn generate_all_chunks_with_row_counts(
     ddl_inputs: &[TableDdlInput],
     row_counts: &HashMap<(String, String), i64>,
-) -> (Vec<GeneratedTableChunk>, Vec<GeneratedFkChunk>) {
+) -> GeneratedChunks {
     let mut table_chunks = Vec::new();
     let mut foreign_key_chunks = Vec::new();
 
@@ -1896,7 +1957,10 @@ pub fn generate_all_chunks_with_row_counts(
         }
     }
 
-    (table_chunks, foreign_key_chunks)
+    GeneratedChunks {
+        table_chunks,
+        foreign_key_chunks,
+    }
 }
 
 // ── MySQL fetch helpers (excluded from coverage builds) ──────────────────
@@ -2347,14 +2411,17 @@ async fn fetch_create_table(
 /// fetches so the previously silent phase is visible in tracing output.
 #[cfg(not(coverage))]
 async fn fetch_create_tables_parallel(
-    pool: &sqlx::MySqlPool,
+    source: DdlSource<'_>,
     targets: Vec<(String, String)>,
-    profile_id: &str,
-    cancellation: &CancellationToken,
-    on_progress: Option<&ProgressCallback>,
-    initial_done: usize,
-    total: usize,
+    progress: DdlFetchProgress<'_>,
 ) -> Result<Vec<TableDdlInput>, String> {
+    let DdlSource { pool, cancellation } = source;
+    let DdlFetchProgress {
+        profile_id,
+        on_progress,
+        initial_done,
+        total,
+    } = progress;
     use futures::stream::{self, StreamExt};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;

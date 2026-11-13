@@ -1,4 +1,4 @@
-import type { AiMemory, MemoryScope } from '../../lib/ai-memory-commands'
+import type { AiMemory, MoveMemoryRequest, SaveMemoryRequest } from '../../lib/ai-memory-commands'
 import { PLAYWRIGHT_MOCK_CONNECTION_ID } from './connections'
 
 /**
@@ -54,8 +54,8 @@ export function getConnectionMemoriesFixture(connectionId: string | null | undef
 }
 
 /** Build a saved-memory response for `save_memory` from request args. */
-export function getSavedMemoryFixture(args: Record<string, unknown> | undefined): AiMemory {
-  const scope = (args?.scope as MemoryScope) ?? 'connection'
+export function getSavedMemoryFixture(args: Partial<SaveMemoryRequest> | undefined): AiMemory {
+  const scope = args?.scope ?? 'connection'
   return {
     id: 1,
     scope,
@@ -68,8 +68,8 @@ export function getSavedMemoryFixture(args: Record<string, unknown> | undefined)
 }
 
 /** Build a moved-memory response for `move_memory` from request args. */
-export function getMovedMemoryFixture(args: Record<string, unknown> | undefined): AiMemory {
-  const scope = (args?.toScope as MemoryScope) ?? 'connection'
+export function getMovedMemoryFixture(args: Partial<MoveMemoryRequest> | undefined): AiMemory {
+  const scope = args?.toScope ?? 'connection'
   return {
     id: 99,
     scope,

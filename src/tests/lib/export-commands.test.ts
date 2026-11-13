@@ -16,13 +16,17 @@ describe('exportResults', () => {
     const mockResponse = { bytesWritten: 2048, rowsExported: 10 }
     ipc.override('export_results', () => mockResponse)
 
-    const result = await exportResults('conn-1', 'tab-1', {
-      format: 'csv',
-      filePath: '/tmp/export.csv',
-      includeHeaders: true,
+    const result = await exportResults({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      options: {
+        format: 'csv',
+        filePath: '/tmp/export.csv',
+        includeHeaders: true,
+      },
     })
 
-    const args = ipc.calls('export_results')[0] as Record<string, unknown>
+    const args = ipc.payloads('export_results')[0] as Record<string, unknown>
     expect(args.connectionId).toBe('conn-1')
     expect(args.tabId).toBe('tab-1')
     expect(args.options).toEqual({
@@ -36,14 +40,18 @@ describe('exportResults', () => {
   it('passes tableName for sql-insert format', async () => {
     ipc.override('export_results', () => ({ bytesWritten: 512, rowsExported: 5 }))
 
-    const result = await exportResults('conn-1', 'tab-1', {
-      format: 'sql-insert',
-      filePath: '/tmp/export.sql',
-      includeHeaders: true,
-      tableName: 'my_table',
+    const result = await exportResults({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      options: {
+        format: 'sql-insert',
+        filePath: '/tmp/export.sql',
+        includeHeaders: true,
+        tableName: 'my_table',
+      },
     })
 
-    const args = ipc.calls('export_results')[0] as Record<string, unknown>
+    const args = ipc.payloads('export_results')[0] as Record<string, unknown>
     expect(args.options).toEqual({
       format: 'sql-insert',
       filePath: '/tmp/export.sql',
@@ -57,48 +65,52 @@ describe('exportResults', () => {
   it('does not include resultIndex when omitted', async () => {
     ipc.override('export_results', () => ({ bytesWritten: 100, rowsExported: 1 }))
 
-    await exportResults('conn-1', 'tab-1', {
-      format: 'csv',
-      filePath: '/tmp/export.csv',
-      includeHeaders: true,
+    await exportResults({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      options: {
+        format: 'csv',
+        filePath: '/tmp/export.csv',
+        includeHeaders: true,
+      },
     })
 
-    const args = ipc.calls('export_results')[0] as Record<string, unknown>
+    const args = ipc.payloads('export_results')[0] as Record<string, unknown>
     expect('resultIndex' in args).toBe(false)
   })
 
   it('includes resultIndex when provided', async () => {
     ipc.override('export_results', () => ({ bytesWritten: 100, rowsExported: 1 }))
 
-    await exportResults(
-      'conn-1',
-      'tab-1',
-      {
+    await exportResults({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      options: {
         format: 'csv',
         filePath: '/tmp/export.csv',
         includeHeaders: true,
       },
-      2
-    )
+      resultIndex: 2,
+    })
 
-    expect((ipc.calls('export_results')[0] as Record<string, unknown>).resultIndex).toBe(2)
+    expect((ipc.payloads('export_results')[0] as Record<string, unknown>).resultIndex).toBe(2)
   })
 
   it('never sends rowIndices: the backend exports the current view', async () => {
     ipc.override('export_results', () => ({ bytesWritten: 100, rowsExported: 1 }))
 
-    await exportResults(
-      'conn-1',
-      'tab-1',
-      {
+    await exportResults({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      options: {
         format: 'csv',
         filePath: '/tmp/export.csv',
         includeHeaders: true,
       },
-      0
-    )
+      resultIndex: 0,
+    })
 
-    const args = ipc.calls('export_results')[0] as Record<string, unknown>
+    const args = ipc.payloads('export_results')[0] as Record<string, unknown>
     expect('rowIndices' in args).toBe(false)
   })
 })
@@ -119,7 +131,7 @@ describe('streaming full export wrappers', () => {
     })
 
     expect(jobId).toBe('job-42')
-    expect(ipc.calls('start_result_export')[0]).toEqual({
+    expect(ipc.payloads('start_result_export')[0]).toEqual({
       connectionId: 'conn-1',
       tabId: 'tab-1',
       resultIndex: 2,
@@ -141,7 +153,7 @@ describe('streaming full export wrappers', () => {
       filePath: '/tmp/all.csv',
       includeHeaders: true,
     })
-    expect((ipc.calls('start_result_export')[0] as Record<string, unknown>).tableName).toBeNull()
+    expect((ipc.payloads('start_result_export')[0] as Record<string, unknown>).tableName).toBeNull()
   })
 
   it('getResultExportProgress returns the job progress', async () => {

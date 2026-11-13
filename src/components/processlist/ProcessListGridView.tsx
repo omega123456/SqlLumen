@@ -16,10 +16,6 @@ const FALLBACK_INFO_COLUMN_WIDTH_PX = 260
 const FALLBACK_INFO_ANCHOR = { x: 320, y: 200, width: FALLBACK_INFO_COLUMN_WIDTH_PX, height: 36 }
 
 type GridRow = ProcessRow & Record<string, unknown>
-type ProcessListPlaywrightApi = {
-  openInfoPopover?: (connectionId: string, rowIndex: number) => boolean
-}
-
 const EMPTY_SET = new Set<number>()
 const EMPTY_PROCESS_ROWS: ProcessRow[] = []
 const PROCESSLIST_SELECTED_COLUMN_KEY = '__processlistSelected'
@@ -271,12 +267,9 @@ export function ProcessListGridView({ connectionId, isActive = true }: ProcessLi
   useEffect(() => {
     if (!isPlaywrightBuild()) return
 
-    const playwrightWindow = window as typeof window & {
-      __processListTestApi__?: ProcessListPlaywrightApi
-    }
-    const previousApi = playwrightWindow.__processListTestApi__
+    const previousApi = window.__processListTestApi__
 
-    playwrightWindow.__processListTestApi__ = {
+    window.__processListTestApi__ = {
       ...previousApi,
       openInfoPopover: (targetConnectionId: string, rowIndex: number) => {
         if (targetConnectionId !== connectionId) return false
@@ -285,13 +278,13 @@ export function ProcessListGridView({ connectionId, isActive = true }: ProcessLi
     }
 
     return () => {
-      if (playwrightWindow.__processListTestApi__?.openInfoPopover) {
-        delete playwrightWindow.__processListTestApi__.openInfoPopover
+      if (window.__processListTestApi__?.openInfoPopover) {
+        delete window.__processListTestApi__.openInfoPopover
       }
-      const remainingTestApi = playwrightWindow.__processListTestApi__
+      const remainingTestApi = window.__processListTestApi__
       if (!remainingTestApi) return
       if (Object.keys(remainingTestApi).length > 0) return
-      delete playwrightWindow.__processListTestApi__
+      delete window.__processListTestApi__
     }
   }, [connectionId, openInfoPopoverForRow])
 

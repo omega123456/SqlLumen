@@ -52,12 +52,19 @@ function isKeyboardActivatableNodeType(type: NodeType): boolean {
   return isSingleClickActivatableNodeType(type) || isDoubleClickActivatableNodeType(type)
 }
 
-function getEffectiveFilterMatchIds(
-  nodeId: string,
-  filterMatchIds: Set<string> | undefined,
-  filterScopeRootId: string | null,
+interface FilterScopeQuery {
+  nodeId: string
+  filterMatchIds: Set<string> | undefined
+  filterScopeRootId: string | null
   nodes: Record<string, TreeNodeData>
-): Set<string> | undefined {
+}
+
+function getEffectiveFilterMatchIds({
+  nodeId,
+  filterMatchIds,
+  filterScopeRootId,
+  nodes,
+}: FilterScopeQuery): Set<string> | undefined {
   if (!filterMatchIds) {
     return undefined
   }
@@ -77,19 +84,27 @@ function getEffectiveFilterMatchIds(
   return undefined
 }
 
-function shouldRenderNodeInFilter(
-  nodeId: string,
-  node: TreeNodeData,
-  filterMatchIds: Set<string> | undefined,
-  filterScopeRootId: string | null,
+interface NodeFilterQuery {
+  nodeId: string
+  node: TreeNodeData
+  filterMatchIds: Set<string> | undefined
+  filterScopeRootId: string | null
   nodes: Record<string, TreeNodeData>
-): boolean {
-  const effectiveFilterMatchIds = getEffectiveFilterMatchIds(
-    nodeId,
-    filterMatchIds,
-    filterScopeRootId,
-    nodes
-  )
+}
+
+function shouldRenderNodeInFilter({
+  nodeId,
+  node,
+  filterMatchIds,
+  filterScopeRootId,
+  nodes,
+}: NodeFilterQuery): boolean {
+  const effectiveFilterMatchIds = getEffectiveFilterMatchIds({
+    nodeId: nodeId,
+    filterMatchIds: filterMatchIds,
+    filterScopeRootId: filterScopeRootId,
+    nodes: nodes,
+  })
 
   const shouldRenderColumnDespiteFilter =
     node.type === 'column' && node.parentId != null && nodes[node.parentId] != null
@@ -101,13 +116,21 @@ function shouldRenderNodeInFilter(
   )
 }
 
-function isNodeVisibleInTree(
-  nodeId: string | null,
-  filterMatchIds: Set<string> | undefined,
-  filterScopeRootId: string | null,
-  nodes: Record<string, TreeNodeData>,
+interface TreeVisibilityQuery {
+  nodeId: string | null
+  filterMatchIds: Set<string> | undefined
+  filterScopeRootId: string | null
+  nodes: Record<string, TreeNodeData>
   expandedNodes: Set<string>
-): boolean {
+}
+
+function isNodeVisibleInTree({
+  nodeId,
+  filterMatchIds,
+  filterScopeRootId,
+  nodes,
+  expandedNodes,
+}: TreeVisibilityQuery): boolean {
   if (!nodeId) {
     return false
   }
@@ -121,7 +144,13 @@ function isNodeVisibleInTree(
     }
 
     if (
-      !shouldRenderNodeInFilter(currentId, currentNode, filterMatchIds, filterScopeRootId, nodes)
+      !shouldRenderNodeInFilter({
+        nodeId: currentId,
+        node: currentNode,
+        filterMatchIds: filterMatchIds,
+        filterScopeRootId: filterScopeRootId,
+        nodes: nodes,
+      })
     ) {
       return false
     }
@@ -131,12 +160,12 @@ function isNodeVisibleInTree(
       return true
     }
 
-    const parentEffectiveFilterMatchIds = getEffectiveFilterMatchIds(
-      parentId,
-      filterMatchIds,
-      filterScopeRootId,
-      nodes
-    )
+    const parentEffectiveFilterMatchIds = getEffectiveFilterMatchIds({
+      nodeId: parentId,
+      filterMatchIds: filterMatchIds,
+      filterScopeRootId: filterScopeRootId,
+      nodes: nodes,
+    })
     const parentFilterDrivesExpand =
       parentEffectiveFilterMatchIds != null &&
       hasMatchingDescendantInFilter(parentId, parentEffectiveFilterMatchIds, nodes)
@@ -211,7 +240,7 @@ function focusSiblingTreeItem(event: React.KeyboardEvent, delta: 1 | -1): void {
   const tree = event.currentTarget.closest('[role="tree"]')
   if (!tree) return
   const allItems = Array.from(tree.querySelectorAll<HTMLElement>('[role="treeitem"]'))
-  const currentIndex = allItems.indexOf(event.currentTarget as HTMLElement)
+  const currentIndex = allItems.findIndex((item) => item === event.currentTarget)
   if (currentIndex < 0) return
   allItems[currentIndex + delta]?.focus()
 }
@@ -342,7 +371,12 @@ export function TreeNode({
   )
 
   const effectiveFilterMatchIds = useMemo(() => {
-    return getEffectiveFilterMatchIds(nodeId, filterMatchIds, filterScopeRootId, nodesMap)
+    return getEffectiveFilterMatchIds({
+      nodeId: nodeId,
+      filterMatchIds: filterMatchIds,
+      filterScopeRootId: filterScopeRootId,
+      nodes: nodesMap,
+    })
   }, [filterMatchIds, filterScopeRootId, nodeId, nodesMap])
 
   /** Force-expand only the ancestor path to matches; matched nodes themselves stay collapsed
@@ -383,13 +417,13 @@ export function TreeNode({
 
   const selectedNodeIsVisible = useMemo(
     () =>
-      isNodeVisibleInTree(
-        selectedNodeId,
-        filterMatchIds,
-        filterScopeRootId,
-        nodesMap,
-        expandedNodes
-      ),
+      isNodeVisibleInTree({
+        nodeId: selectedNodeId,
+        filterMatchIds: filterMatchIds,
+        filterScopeRootId: filterScopeRootId,
+        nodes: nodesMap,
+        expandedNodes: expandedNodes,
+      }),
     [expandedNodes, filterMatchIds, filterScopeRootId, nodesMap, selectedNodeId]
   )
 
@@ -409,7 +443,15 @@ export function TreeNode({
   // If filter is active, skip nodes that don't match and have no matching descendants.
   // Expanded table columns are intentionally exempt: the filter chooses which tables are
   // visible, but once a visible table is expanded its columns should remain browseable.
-  if (!shouldRenderNodeInFilter(nodeId, node, filterMatchIds, filterScopeRootId, nodesMap)) {
+  if (
+    !shouldRenderNodeInFilter({
+      nodeId: nodeId,
+      node: node,
+      filterMatchIds: filterMatchIds,
+      filterScopeRootId: filterScopeRootId,
+      nodes: nodesMap,
+    })
+  ) {
     return null
   }
 

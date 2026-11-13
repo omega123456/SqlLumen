@@ -35,18 +35,18 @@ const TAB: &str = "tab-export";
 const QID: &str = "query-export";
 
 fn truncated_result() -> StoredResult {
-    let mut stored = StoredResult::new(
-        QID.to_string(),
-        vec![ColumnMeta {
+    let mut stored = StoredResult::new(sqllumen_lib::mysql::query_executor::StoredResultParts {
+        query_id: QID.to_string(),
+        columns: vec![ColumnMeta {
             name: "n".to_string(),
             data_type: "BIGINT".to_string(),
         }],
-        common::shared_rows(vec![vec![json!(1)], vec![json!(2)]]),
-        1,
-        2,
-        0,
-        false,
-    );
+        rows: common::shared_rows(vec![vec![json!(1)], vec![json!(2)]]),
+        execution_time_ms: 1,
+        total_time_ms: 2,
+        affected_rows: 0,
+        auto_limit_applied: false,
+    });
     stored.truncated = true;
     stored.row_ceiling = 2;
     stored.source_sql = "SELECT n FROM big".to_string();
@@ -56,16 +56,21 @@ fn truncated_result() -> StoredResult {
 
 fn state_with(stored: StoredResult) -> AppState {
     let state = common::test_app_state();
-    state.result_cache.insert(CONN, TAB, vec![stored]);
+    state.result_cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new(CONN, TAB),
+        vec![stored],
+    );
     state
 }
 
 fn input(file_path: &Path, format: ExportFormat) -> StartResultExportInput {
     StartResultExportInput {
-        connection_id: CONN.to_string(),
-        tab_id: TAB.to_string(),
-        result_index: 0,
-        query_id: QID.to_string(),
+        slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+            connection_id: CONN.to_string(),
+            tab_id: TAB.to_string(),
+            result_index: 0,
+            query_id: QID.to_string(),
+        },
         format,
         file_path: file_path.to_string_lossy().into_owned(),
         include_headers: true,
@@ -100,14 +105,38 @@ fn temp_path_appends_tmp_to_the_target() {
 #[test]
 fn a_truncated_rerunnable_result_validates() {
     let state = state_with(truncated_result());
-    let (sql, database) = validate_full_export(&state, CONN, TAB, 0, QID).expect("valid");
+    let sqllumen_lib::export::result_export::FullExportSource {
+        source_sql: sql,
+        run_database: database,
+    } = validate_full_export(
+        &state,
+        &sqllumen_lib::mysql::result_view::ResultSlotKey {
+            connection_id: CONN.to_string(),
+            tab_id: TAB.to_string(),
+            result_index: 0,
+            query_id: QID.to_string(),
+        },
+    )
+    .expect("valid");
     assert_eq!(sql, "SELECT n FROM big");
     assert_eq!(database, RunDatabase::Named("shop".to_string()));
 
     let mut no_database = truncated_result();
     no_database.run_database = RunDatabase::NoDatabase;
     let state = state_with(no_database);
-    let (_, database) = validate_full_export(&state, CONN, TAB, 0, QID).expect("valid");
+    let sqllumen_lib::export::result_export::FullExportSource {
+        source_sql: _,
+        run_database: database,
+    } = validate_full_export(
+        &state,
+        &sqllumen_lib::mysql::result_view::ResultSlotKey {
+            connection_id: CONN.to_string(),
+            tab_id: TAB.to_string(),
+            result_index: 0,
+            query_id: QID.to_string(),
+        },
+    )
+    .expect("valid");
     assert_eq!(database, RunDatabase::NoDatabase);
 }
 
@@ -143,17 +172,53 @@ fn results_that_cannot_be_rerun_are_refused() {
 #[test]
 fn missing_stale_and_expired_results_are_refused() {
     let state = common::test_app_state();
-    let error = validate_full_export(&state, CONN, TAB, 0, QID).expect_err("no results");
+    let error = validate_full_export(
+        &state,
+        &sqllumen_lib::mysql::result_view::ResultSlotKey {
+            connection_id: CONN.to_string(),
+            tab_id: TAB.to_string(),
+            result_index: 0,
+            query_id: QID.to_string(),
+        },
+    )
+    .expect_err("no results");
     assert!(error.contains("No results found"), "{error}");
 
     let state = state_with(truncated_result());
-    let error = validate_full_export(&state, CONN, TAB, 3, QID).expect_err("index");
+    let error = validate_full_export(
+        &state,
+        &sqllumen_lib::mysql::result_view::ResultSlotKey {
+            connection_id: CONN.to_string(),
+            tab_id: TAB.to_string(),
+            result_index: 3,
+            query_id: QID.to_string(),
+        },
+    )
+    .expect_err("index");
     assert!(error.contains("out of range"), "{error}");
-    let error = validate_full_export(&state, CONN, TAB, 0, "older-query").expect_err("stale");
+    let error = validate_full_export(
+        &state,
+        &sqllumen_lib::mysql::result_view::ResultSlotKey {
+            connection_id: CONN.to_string(),
+            tab_id: TAB.to_string(),
+            result_index: 0,
+            query_id: "older-query".to_string(),
+        },
+    )
+    .expect_err("stale");
     assert_eq!(error, STALE_QUERY_MESSAGE);
 
     state.result_cache.remove(CONN, TAB);
-    let error = validate_full_export(&state, CONN, TAB, 0, QID).expect_err("expired");
+    let error = validate_full_export(
+        &state,
+        &sqllumen_lib::mysql::result_view::ResultSlotKey {
+            connection_id: CONN.to_string(),
+            tab_id: TAB.to_string(),
+            result_index: 0,
+            query_id: QID.to_string(),
+        },
+    )
+    .expect_err("expired");
     assert_eq!(error, RESULTS_EXPIRED_MESSAGE);
 }
 

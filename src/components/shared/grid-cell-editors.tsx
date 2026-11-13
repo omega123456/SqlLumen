@@ -19,6 +19,7 @@ import type { TableDataColumnMeta, ForeignKeyColumnInfo } from '../../types/sche
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { ENUM_NULL_SENTINEL, getEnumFallbackValue } from '../table-data/enum-field-utils'
 import { useCellStoreSync } from './editor-callbacks-context'
+import type { SyncCellValue, UpdateCellValue } from './editor-callbacks-context'
 import { useFkLookup } from './fk-lookup-context'
 import { FkLookupTriggerButton } from './FkLookupTriggerButton'
 import { TextInput } from '../common/TextInput'
@@ -49,13 +50,8 @@ export interface CellEditorBaseProps {
   foreignKey?: ForeignKeyColumnInfo
   // Store callbacks (provided via closures in column defs)
   tabId?: string
-  updateCellValue?: (tabId: string, columnName: string, value: unknown) => void
-  syncCellValue?: (
-    tabId: string,
-    rowData: Record<string, unknown> | undefined,
-    columnName: string,
-    value: unknown
-  ) => void
+  updateCellValue?: UpdateCellValue
+  syncCellValue?: SyncCellValue
   initialInputValue?: string
   cancelRestoreValue?: unknown
   selectAllOnFocus?: boolean
@@ -523,15 +519,4 @@ export function EnumCellEditor(props: EnumCellEditorProps) {
       )}
     </div>
   )
-}
-
-export interface CellEditorCallbackProps {
-  tabId: string
-  updateCellValue: (tabId: string, columnName: string, value: unknown) => void
-  syncCellValue: (
-    tabId: string,
-    rowData: Record<string, unknown> | undefined,
-    columnName: string,
-    value: unknown
-  ) => void
 }

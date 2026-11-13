@@ -140,7 +140,8 @@ fn read_embedding_config_falls_back_to_chat_endpoint() {
     // Stored-but-empty embedding key must succeed via fallback, not error.
     set(&conn, "ai.embeddingEndpoint", "");
 
-    let (endpoint, model) = read_embedding_config(&conn).expect("read config");
+    let sqllumen_lib::ai_memory::EmbeddingConfig { endpoint, model } =
+        read_embedding_config(&conn).expect("read config");
     assert_eq!(endpoint, "http://chat.local:11434/v1");
     assert_eq!(model, "nomic-embed-text");
 }
@@ -156,7 +157,8 @@ fn read_embedding_config_uses_embedding_endpoint_when_set() {
     );
     set(&conn, "ai.embeddingModel", "nomic-embed-text");
 
-    let (endpoint, model) = read_embedding_config(&conn).expect("read config");
+    let sqllumen_lib::ai_memory::EmbeddingConfig { endpoint, model } =
+        read_embedding_config(&conn).expect("read config");
     assert_eq!(endpoint, "http://embeddings.local:8080/v1");
     assert_eq!(model, "nomic-embed-text");
 }

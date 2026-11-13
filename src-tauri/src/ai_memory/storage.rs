@@ -2,7 +2,7 @@ use rusqlite::{params, Connection, Result};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::embedding_to_bytes;
-use super::types::{AiMemory, MemoryScope};
+use super::types::{AiMemory, MemoryMove, MemoryOwner, MemoryScope, MemoryVector};
 use crate::schema_index::storage::sanitize_table_name;
 
 fn now_secs() -> i64 {
@@ -218,14 +218,13 @@ pub fn get_global_memory_by_id(conn: &Connection, memory_id: i64) -> Result<Opti
 
 // ── Scope-dispatching helpers ───────────────────────────────────────────────
 
-/// Insert a memory at the given scope/owner. Returns the new row id.
 pub fn insert_memory_scoped(
     conn: &Connection,
-    scope: MemoryScope,
-    owner_id: Option<&str>,
+    owner: MemoryOwner<'_>,
     content: &str,
 ) -> Result<i64, String> {
-    match scope {
+    let owner_id = owner.owner_id;
+    match owner.scope {
         MemoryScope::Connection => {
             let id =
                 owner_id.ok_or_else(|| "connection scope requires a connection id".to_string())?;
@@ -327,25 +326,22 @@ pub fn ensure_vec_table_named(conn: &Connection, table: &str, dim: usize) -> Res
     Ok(table.to_string())
 }
 
-/// Ensure the vec0 table for a scope/owner. Returns the table name.
 pub fn ensure_vec_table_for_scope(
     conn: &Connection,
-    scope: MemoryScope,
-    owner_id: Option<&str>,
+    owner: MemoryOwner<'_>,
     dim: usize,
 ) -> Result<String, String> {
-    let table = vec_table_for_scope(scope, owner_id)?;
+    let table = vec_table_for_scope(owner.scope, owner.owner_id)?;
     ensure_vec_table_named(conn, &table, dim).map_err(|error| error.to_string())
 }
 
-/// Insert an embedding vector for a memory.
 pub fn insert_memory_vector(
     conn: &Connection,
     table_name: &str,
-    memory_id: i64,
-    embedding: &[f32],
+    vector: &MemoryVector<'_>,
 ) -> Result<()> {
-    let bytes = embedding_to_bytes(embedding);
+    let memory_id = vector.memory_id;
+    let bytes = embedding_to_bytes(vector.embedding);
     conn.execute(
         &format!("INSERT INTO {table_name} (id, embedding) VALUES (?1, ?2)"),
         params![memory_id, bytes],
@@ -382,14 +378,12 @@ pub fn delete_memory_vector(conn: &Connection, connection_id: &str, memory_id: i
     delete_vector_from_table(conn, &vec_table_name(connection_id), memory_id)
 }
 
-/// Delete a memory's vector for the given scope/owner. Gracefully handles a missing table.
 pub fn delete_memory_vector_scoped(
     conn: &Connection,
-    scope: MemoryScope,
-    owner_id: Option<&str>,
+    owner: MemoryOwner<'_>,
     memory_id: i64,
 ) -> Result<(), String> {
-    let table = vec_table_for_scope(scope, owner_id)?;
+    let table = vec_table_for_scope(owner.scope, owner.owner_id)?;
     delete_vector_from_table(conn, &table, memory_id).map_err(|error| error.to_string())
 }
 
@@ -405,37 +399,37 @@ pub fn delete_memory_vector_scoped(
 ///
 /// Runs inside its own transaction so a partial move never leaves orphaned
 /// rows/vectors.
-#[allow(clippy::too_many_arguments)]
-pub fn move_memory(
-    conn: &mut Connection,
-    from_scope: MemoryScope,
-    from_owner_id: Option<&str>,
-    memory_id: i64,
-    to_scope: MemoryScope,
-    to_owner_id: Option<&str>,
-    embedding: &[f32],
-) -> Result<AiMemory, String> {
-    let source = get_memory_by_id_scoped(conn, from_scope, memory_id)?
+pub fn move_memory(conn: &mut Connection, request: &MemoryMove<'_>) -> Result<AiMemory, String> {
+    let MemoryMove {
+        memory_id,
+        from,
+        to,
+        embedding,
+    } = *request;
+    let source = get_memory_by_id_scoped(conn, from.scope, memory_id)?
         .ok_or_else(|| format!("Memory with id {memory_id} not found at source scope"))?;
 
-    let target_table = vec_table_for_scope(to_scope, to_owner_id)?;
+    let target_table = vec_table_for_scope(to.scope, to.owner_id)?;
 
     let tx = conn
         .unchecked_transaction()
         .map_err(|error| error.to_string())?;
 
-    let new_id = insert_memory_scoped(&tx, to_scope, to_owner_id, &source.content)?;
+    let new_id = insert_memory_scoped(&tx, to, &source.content)?;
     ensure_vec_table_named(&tx, &target_table, embedding.len())
         .map_err(|error| error.to_string())?;
-    insert_memory_vector(&tx, &target_table, new_id, embedding)
-        .map_err(|error| error.to_string())?;
+    let vector = MemoryVector {
+        memory_id: new_id,
+        embedding,
+    };
+    insert_memory_vector(&tx, &target_table, &vector).map_err(|error| error.to_string())?;
 
-    delete_memory_vector_scoped(&tx, from_scope, from_owner_id, memory_id)?;
-    delete_memory_scoped(&tx, from_scope, memory_id)?;
+    delete_memory_vector_scoped(&tx, from, memory_id)?;
+    delete_memory_scoped(&tx, from.scope, memory_id)?;
 
     tx.commit().map_err(|error| error.to_string())?;
 
-    get_memory_by_id_scoped(conn, to_scope, new_id)?
+    get_memory_by_id_scoped(conn, to.scope, new_id)?
         .ok_or_else(|| "Failed to read back moved memory".to_string())
 }
 

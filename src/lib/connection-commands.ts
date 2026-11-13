@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeArgumentCommand, invokeCommand, NO_ARGUMENTS } from './ipc/dispatch'
 import type {
   SavedConnection,
   ConnectionGroup,
@@ -7,155 +7,137 @@ import type {
   TestConnectionResult,
 } from '../types/connection'
 
-// --- Connection CRUD ---
+export interface SaveConnectionInput extends Omit<ConnectionFormData, 'password'> {
+  password: string | null
+  sortOrder: number
+}
 
-/**
- * Save a new connection profile. Returns the new connection's UUID.
- * Empty password is converted to null (meaning "no password").
- */
+export interface UpdateConnectionInput extends SaveConnectionInput {
+  clearPassword: boolean
+}
+
+export interface TestConnectionInput {
+  host: string
+  port: number
+  username: string
+  password: string
+  profileId: string | null
+  defaultDatabase: string | null
+  sslEnabled: boolean
+  sslCaPath: string | null
+  sslCertPath: string | null
+  sslKeyPath: string | null
+  connectTimeoutSecs: number
+}
+
+export interface OpenConnectionResult {
+  sessionId: string
+  serverVersion: string
+}
+
+export type ConnectionStatus = 'connected' | 'disconnected' | 'reconnecting'
+
+const DEFAULT_SORT_ORDER = 0
+
+function toSaveConnectionInput(data: ConnectionFormData): SaveConnectionInput {
+  return { ...data, password: data.password || null, sortOrder: DEFAULT_SORT_ORDER }
+}
+
+function toTestConnectionInput(
+  params: ConnectionFormData,
+  profileId: string | null
+): TestConnectionInput {
+  return {
+    host: params.host,
+    port: params.port,
+    username: params.username,
+    password: params.password,
+    profileId: profileId,
+    defaultDatabase: params.defaultDatabase,
+    sslEnabled: params.sslEnabled,
+    sslCaPath: params.sslCaPath,
+    sslCertPath: params.sslCertPath,
+    sslKeyPath: params.sslKeyPath,
+    connectTimeoutSecs: params.connectTimeoutSecs,
+  }
+}
+
 export async function saveConnection(data: ConnectionFormData): Promise<string> {
-  return invoke<string>('save_connection', {
-    data: {
-      ...data,
-      password: data.password || null,
-      sortOrder: 0,
-    },
+  return invokeArgumentCommand({
+    command: 'save_connection',
+    argument: { data: toSaveConnectionInput(data) },
   })
 }
 
-/**
- * Get a single saved connection by ID.
- */
 export async function getConnection(id: string): Promise<SavedConnection> {
-  return invoke<SavedConnection>('get_connection', { id })
+  return invokeArgumentCommand({ command: 'get_connection', argument: { id } })
 }
 
-/**
- * List all saved connections.
- */
 export async function listConnections(): Promise<SavedConnection[]> {
-  return invoke<SavedConnection[]>('list_connections')
+  return invokeArgumentCommand({ command: 'list_connections', argument: NO_ARGUMENTS })
 }
 
-/**
- * Update an existing connection profile.
- * Empty password means "don't change the existing password".
- */
 export async function updateConnection(
   id: string,
   data: ConnectionFormData,
   options?: { clearPassword?: boolean }
 ): Promise<void> {
-  return invoke<void>('update_connection', {
-    id: id,
-    data: {
-      ...data,
-      password: data.password || null,
-      clearPassword: options?.clearPassword ?? false,
-      sortOrder: 0,
-    },
-  })
+  const input = { ...toSaveConnectionInput(data), clearPassword: options?.clearPassword ?? false }
+  return invokeCommand({ command: 'update_connection', payload: { id: id, data: input } })
 }
 
-/**
- * Delete a connection by ID.
- */
 export async function deleteConnection(id: string): Promise<void> {
-  return invoke<void>('delete_connection', { id })
+  return invokeArgumentCommand({ command: 'delete_connection', argument: { id } })
 }
 
 // --- Group CRUD ---
 
-/**
- * Create a new connection group. Returns the new group's UUID.
- */
 export async function createConnectionGroup(name: string): Promise<string> {
-  return invoke<string>('create_connection_group', { name })
+  return invokeArgumentCommand({ command: 'create_connection_group', argument: { name } })
 }
 
-/**
- * List all connection groups.
- */
 export async function listConnectionGroups(): Promise<ConnectionGroup[]> {
-  return invoke<ConnectionGroup[]>('list_connection_groups')
+  return invokeArgumentCommand({ command: 'list_connection_groups', argument: NO_ARGUMENTS })
 }
 
-/**
- * Update a connection group's name.
- */
 export async function updateConnectionGroup(id: string, name: string): Promise<void> {
-  return invoke<void>('update_connection_group', { id, name })
+  return invokeCommand({ command: 'update_connection_group', payload: { id, name } })
 }
 
-/**
- * Delete a connection group by ID.
- */
 export async function deleteConnectionGroup(id: string): Promise<void> {
-  return invoke<void>('delete_connection_group', { id })
+  return invokeArgumentCommand({ command: 'delete_connection_group', argument: { id } })
 }
 
 // --- MySQL connectivity ---
 
-/**
- * Test a MySQL connection with the given parameters.
- * Only passes fields relevant to the connection test (excludes name, color, etc.).
- *
- * When the connection is already saved and no new password was typed, pass
- * `profileId` so the backend resolves the stored password from secure storage.
- */
 export async function testConnection(
   params: ConnectionFormData,
   profileId?: string | null
 ): Promise<TestConnectionResult> {
-  return invoke<TestConnectionResult>('test_connection', {
-    input: {
-      host: params.host,
-      port: params.port,
-      username: params.username,
-      password: params.password,
-      profileId: profileId ?? null,
-      defaultDatabase: params.defaultDatabase,
-      sslEnabled: params.sslEnabled,
-      sslCaPath: params.sslCaPath,
-      sslCertPath: params.sslCertPath,
-      sslKeyPath: params.sslKeyPath,
-      connectTimeoutSecs: params.connectTimeoutSecs,
-    },
+  return invokeArgumentCommand({
+    command: 'test_connection',
+    argument: { input: toTestConnectionInput(params, profileId ?? null) },
   })
 }
 
-/**
- * Open a saved connection profile. Returns a new runtime session id and server version.
- * Multiple calls with the same profile id create independent sessions (separate pools).
- */
-export async function openConnection(
-  profileId: string
-): Promise<{ sessionId: string; serverVersion: string }> {
-  return invoke<{ sessionId: string; serverVersion: string }>('open_connection', {
-    payload: { profileId },
-  })
+export async function openConnection(profileId: string): Promise<OpenConnectionResult> {
+  return invokeCommand({ command: 'open_connection', payload: { profileId } })
 }
 
-/**
- * Close an open connection session by its runtime session id.
- */
 export async function closeConnection(sessionId: string): Promise<void> {
-  return invoke<void>('close_connection', { connectionId: sessionId })
-}
-
-/**
- * Get the current status of an open connection session.
- * Returns null if the session id is not found in the registry.
- */
-export async function getConnectionStatus(
-  sessionId: string
-): Promise<'connected' | 'disconnected' | 'reconnecting' | null> {
-  return invoke<'connected' | 'disconnected' | 'reconnecting' | null>('get_connection_status', {
-    connectionId: sessionId,
+  return invokeArgumentCommand({
+    command: 'close_connection',
+    argument: { connectionId: sessionId },
   })
 }
 
-/** List sessions that remain open in the native connection registry. */
+export async function getConnectionStatus(sessionId: string): Promise<ConnectionStatus | null> {
+  return invokeArgumentCommand({
+    command: 'get_connection_status',
+    argument: { connectionId: sessionId },
+  })
+}
+
 export async function listOpenConnectionSessions(): Promise<OpenConnectionSession[]> {
-  return invoke<OpenConnectionSession[]>('list_open_connection_sessions')
+  return invokeArgumentCommand({ command: 'list_open_connection_sessions', argument: NO_ARGUMENTS })
 }

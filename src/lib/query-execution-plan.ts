@@ -8,6 +8,7 @@
  */
 
 import { isCallSql } from '../stores/query-store'
+import type { ConnectionTabRequest } from './ipc/requests'
 import {
   splitStatements,
   findStatementAtCursor,
@@ -59,14 +60,19 @@ export function buildExecuteQueryPlan(
   return buildExecuteQueryPlanFromSql(sql)
 }
 
+interface QueryPlanExecutor {
+  executeQuery: (connectionId: string, tabId: string, sql: string) => Promise<void>
+  executeMultiQuery: (connectionId: string, tabId: string, statements: string[]) => Promise<void>
+  executeCallQuery: (connectionId: string, tabId: string, sql: string) => Promise<void>
+}
+
+interface NavigatingQueryPlanExecutor extends QueryPlanExecutor {
+  requestNavigationAction: (tabId: string, action: () => void) => void
+}
+
 export async function executeQueryPlan(
-  queryState: {
-    executeQuery: (connectionId: string, tabId: string, sql: string) => Promise<void>
-    executeMultiQuery: (connectionId: string, tabId: string, statements: string[]) => Promise<void>
-    executeCallQuery: (connectionId: string, tabId: string, sql: string) => Promise<void>
-  },
-  connectionId: string,
-  tabId: string,
+  queryState: QueryPlanExecutor,
+  { connectionId, tabId }: ConnectionTabRequest,
   plan: ExecuteQueryPlan
 ): Promise<void> {
   if (plan.kind === 'multi') {
@@ -83,17 +89,11 @@ export async function executeQueryPlan(
 }
 
 export function runExecuteQueryPlan(
-  queryState: {
-    requestNavigationAction: (tabId: string, action: () => void) => void
-    executeQuery: (connectionId: string, tabId: string, sql: string) => Promise<void>
-    executeMultiQuery: (connectionId: string, tabId: string, statements: string[]) => Promise<void>
-    executeCallQuery: (connectionId: string, tabId: string, sql: string) => Promise<void>
-  },
-  connectionId: string,
-  tabId: string,
+  queryState: NavigatingQueryPlanExecutor,
+  target: ConnectionTabRequest,
   plan: ExecuteQueryPlan
 ): void {
-  queryState.requestNavigationAction(tabId, () => {
-    void executeQueryPlan(queryState, connectionId, tabId, plan)
+  queryState.requestNavigationAction(target.tabId, () => {
+    void executeQueryPlan(queryState, target, plan)
   })
 }

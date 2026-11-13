@@ -440,7 +440,7 @@ describe('TableDataToolbar', () => {
     await user.click(screen.getByTestId('btn-save'))
 
     await waitFor(() => {
-      expect(ipc.calls('insert_table_row').length).toBeGreaterThan(0)
+      expect(ipc.payloads('insert_table_row').length).toBeGreaterThan(0)
     })
   })
 
@@ -506,7 +506,7 @@ describe('TableDataToolbar', () => {
     // Dialog should close
     expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument()
     await waitFor(() => {
-      expect(ipc.calls('delete_table_row').length).toBeGreaterThan(0)
+      expect(ipc.payloads('delete_table_row').length).toBeGreaterThan(0)
     })
   })
 
@@ -595,7 +595,7 @@ describe('TableDataToolbar', () => {
     await user.click(screen.getByTestId('confirm-confirm-button'))
 
     await waitFor(() => {
-      expect(ipc.calls('delete_table_row').length).toBe(2)
+      expect(ipc.payloads('delete_table_row').length).toBe(2)
     })
     // Checked selection is cleared after the bulk delete.
     expect(useTableDataStore.getState().tabs['tab-1'].checkedRowKeys).toEqual([])
@@ -626,7 +626,7 @@ describe('TableDataToolbar', () => {
     // Exactly one persisted-row delete IPC call (id: 2). The draft is dropped
     // locally without IPC, and must not cause a second persisted row to vanish.
     await waitFor(() => {
-      expect(ipc.calls('delete_table_row').length).toBe(1)
+      expect(ipc.payloads('delete_table_row').length).toBe(1)
     })
 
     const state = useTableDataStore.getState().tabs['tab-1']
@@ -656,7 +656,7 @@ describe('TableDataToolbar', () => {
     fireEvent.click(screen.getByTestId('confirm-confirm-button'))
 
     await waitFor(() => {
-      expect(ipc.calls('delete_table_row').length).toBeGreaterThan(0)
+      expect(ipc.payloads('delete_table_row').length).toBeGreaterThan(0)
     })
     // editState should be cleared (discard + delete)
     const state = useTableDataStore.getState().tabs['tab-1']
@@ -679,7 +679,7 @@ describe('TableDataToolbar', () => {
     expect(saveBtn).not.toBeDisabled()
     fireEvent.click(saveBtn)
     await waitFor(() => {
-      expect(ipc.calls('update_table_row').length).toBeGreaterThan(0)
+      expect(ipc.payloads('update_table_row').length).toBeGreaterThan(0)
     })
   })
 

@@ -257,7 +257,8 @@ fn test_alter_no_changes_returns_empty() {
     let original = schema(vec![column("id")]);
     let current = original.clone();
 
-    let (ddl, warnings) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, warnings } =
+        generate_alter_table_ddl(&original, &current, "appdb");
     assert_eq!(ddl, "");
     assert!(warnings.is_empty());
 }
@@ -267,7 +268,7 @@ fn test_alter_add_column_after() {
     let original = schema(vec![column("id"), column("name")]);
     let current = schema(vec![column("id"), column("email"), column("name")]);
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(ddl.contains("ADD COLUMN `email` INT NOT NULL AFTER `id`"));
 }
 
@@ -276,7 +277,7 @@ fn test_alter_add_column_first() {
     let original = schema(vec![column("id")]);
     let current = schema(vec![column("uuid"), column("id")]);
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(ddl.contains("ADD COLUMN `uuid` INT NOT NULL FIRST"));
 }
 
@@ -285,7 +286,7 @@ fn test_alter_drop_column() {
     let original = schema(vec![column("id"), column("name")]);
     let current = schema(vec![column("id")]);
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(ddl.contains("DROP COLUMN `name`"));
 }
 
@@ -297,7 +298,7 @@ fn test_alter_modify_column_type() {
     changed.length = "255".to_string();
     let current = schema(vec![changed]);
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(ddl.contains("MODIFY COLUMN `name` VARCHAR(255) NOT NULL"));
 }
 
@@ -308,7 +309,7 @@ fn test_alter_modify_column_nullable() {
     changed.nullable = true;
     let current = schema(vec![changed]);
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(ddl.contains("MODIFY COLUMN `name` INT NULL"));
 }
 
@@ -321,7 +322,7 @@ fn test_alter_modify_column_default() {
     };
     let current = schema(vec![changed]);
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(ddl.contains("MODIFY COLUMN `status` INT NOT NULL DEFAULT 'active'"));
 }
 
@@ -333,7 +334,7 @@ fn test_alter_add_index() {
         .indexes
         .push(index("uniq_email", "UNIQUE", &["email"]));
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(ddl.contains("ADD UNIQUE KEY `uniq_email` (`email`)"));
 }
 
@@ -345,7 +346,7 @@ fn test_alter_drop_index() {
         .push(index("idx_email", "INDEX", &["email"]));
     let current = schema(vec![column("email")]);
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(ddl.contains("DROP INDEX `idx_email`"));
 }
 
@@ -355,7 +356,8 @@ fn test_alter_skips_empty_named_index() {
     let mut current = schema(vec![column("email")]);
     current.indexes.push(index("", "INDEX", &["email"]));
 
-    let (ddl, warnings) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, warnings } =
+        generate_alter_table_ddl(&original, &current, "appdb");
 
     assert_eq!(ddl, "");
     assert!(warnings.is_empty());
@@ -369,7 +371,7 @@ fn test_alter_add_fk() {
         .foreign_keys
         .push(foreign_key("fk_users_role", "role_id"));
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(ddl.contains(
         "ADD CONSTRAINT `fk_users_role` FOREIGN KEY (`role_id`) REFERENCES `appdb`.`roles` (`id`)"
     ));
@@ -383,7 +385,7 @@ fn test_alter_add_cross_database_fk() {
     fk.referenced_database = "authdb".to_string();
     current.foreign_keys.push(fk);
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(ddl.contains(
         "ADD CONSTRAINT `fk_users_role` FOREIGN KEY (`role_id`) REFERENCES `authdb`.`roles` (`id`)"
     ));
@@ -397,7 +399,7 @@ fn test_alter_drop_fk() {
         .push(foreign_key("fk_users_role", "role_id"));
     let current = schema(vec![column("role_id")]);
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(ddl.contains("DROP FOREIGN KEY `fk_users_role`"));
 }
 
@@ -409,7 +411,7 @@ fn test_alter_composite_fk_not_dropped() {
     original.foreign_keys.push(fk);
     let current = schema(vec![column("role_id")]);
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(!ddl.contains("DROP FOREIGN KEY"));
 }
 
@@ -421,7 +423,7 @@ fn test_alter_composite_fk_not_added() {
     fk.is_composite = true;
     current.foreign_keys.push(fk);
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(!ddl.contains("ADD CONSTRAINT"));
 }
 
@@ -431,7 +433,7 @@ fn test_alter_table_properties() {
     let mut current = schema(vec![column("id")]);
     current.properties.engine = "InnoDB".to_string();
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(ddl.contains("ENGINE=InnoDB"));
 }
 
@@ -442,7 +444,8 @@ fn test_alter_column_rename_warning() {
     renamed.original_name = "old_name".to_string();
     let current = schema(vec![renamed]);
 
-    let (ddl, warnings) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, warnings } =
+        generate_alter_table_ddl(&original, &current, "appdb");
     assert!(warnings
         .iter()
         .any(|warning| warning.contains("Column 'old_name' was renamed to 'new_name'")));
@@ -457,7 +460,8 @@ fn test_alter_new_column_without_original_name_does_not_warn_as_rename() {
     new_column.original_name = String::new();
     let current = schema(vec![column("id"), new_column]);
 
-    let (ddl, warnings) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, warnings } =
+        generate_alter_table_ddl(&original, &current, "appdb");
 
     assert!(warnings.is_empty());
     assert!(ddl.contains("ADD COLUMN `email` INT NOT NULL AFTER `id`"));
@@ -495,7 +499,7 @@ fn test_alter_clause_order() {
     };
     current.properties.engine = "InnoDB".to_string();
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
 
     let drop_fk = ddl
         .find("DROP FOREIGN KEY `fk_users_role`")
@@ -581,7 +585,11 @@ fn test_generate_ddl_response_serialization() {
 
 #[test]
 fn test_parse_column_type_preserves_unsigned_modifier() {
-    let (column_type, length, modifier) = parse_column_type("int(11) unsigned");
+    let sqllumen_lib::commands::table_designer::ParsedColumnType {
+        base_type: column_type,
+        length,
+        type_modifier: modifier,
+    } = parse_column_type("int(11) unsigned");
 
     assert_eq!(column_type, "INT");
     assert_eq!(length, "11");
@@ -590,7 +598,11 @@ fn test_parse_column_type_preserves_unsigned_modifier() {
 
 #[test]
 fn test_parse_column_type_handles_decimal_precision_scale() {
-    let (column_type, length, modifier) = parse_column_type("decimal(10,2)");
+    let sqllumen_lib::commands::table_designer::ParsedColumnType {
+        base_type: column_type,
+        length,
+        type_modifier: modifier,
+    } = parse_column_type("decimal(10,2)");
 
     assert_eq!(column_type, "DECIMAL");
     assert_eq!(length, "10,2");
@@ -599,7 +611,11 @@ fn test_parse_column_type_handles_decimal_precision_scale() {
 
 #[test]
 fn test_parse_column_type_splits_unsigned_without_length() {
-    let (column_type, length, modifier) = parse_column_type("int unsigned");
+    let sqllumen_lib::commands::table_designer::ParsedColumnType {
+        base_type: column_type,
+        length,
+        type_modifier: modifier,
+    } = parse_column_type("int unsigned");
 
     assert_eq!(column_type, "INT");
     assert_eq!(length, "");
@@ -610,27 +626,41 @@ fn test_parse_column_type_splits_unsigned_without_length() {
 fn invalidate_metadata_cache_for_applied_table_ddl_evicts_detected_tables() {
     let state = common::test_app_state();
 
-    state
-        .metadata_cache
-        .insert("conn-1", "appdb", "users", None, Vec::new());
-    state
-        .metadata_cache
-        .insert("conn-1", "otherdb", "users", None, Vec::new());
+    state.metadata_cache.insert(
+        sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new("conn-1", "appdb", "users"),
+        sqllumen_lib::mysql::metadata_cache::TableKeyMetadata {
+            primary_key: None,
+            columns: Vec::new(),
+        },
+    );
+    state.metadata_cache.insert(
+        sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new("conn-1", "otherdb", "users"),
+        sqllumen_lib::mysql::metadata_cache::TableKeyMetadata {
+            primary_key: None,
+            columns: Vec::new(),
+        },
+    );
 
     invalidate_metadata_cache_for_applied_table_ddl(
         &state,
-        "conn-1",
-        "appdb",
-        "ALTER TABLE users ADD COLUMN email VARCHAR(255)",
+        &sqllumen_lib::commands::table_designer::ApplyTableDdlRequest {
+            connection_id: "conn-1".to_string(),
+            database: "appdb".to_string(),
+            ddl: "ALTER TABLE users ADD COLUMN email VARCHAR(255)".to_string(),
+        },
     );
 
     assert!(state
         .metadata_cache
-        .get("conn-1", "appdb", "users")
+        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+            "conn-1", "appdb", "users"
+        ))
         .is_none());
     assert!(state
         .metadata_cache
-        .get("conn-1", "otherdb", "users")
+        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+            "conn-1", "otherdb", "users"
+        ))
         .is_some());
 }
 
@@ -638,22 +668,41 @@ fn invalidate_metadata_cache_for_applied_table_ddl_evicts_detected_tables() {
 fn invalidate_metadata_cache_for_applied_table_ddl_falls_back_to_connection_on_parse_failure() {
     let state = common::test_app_state();
 
-    state
-        .metadata_cache
-        .insert("conn-1", "appdb", "users", None, Vec::new());
-    state
-        .metadata_cache
-        .insert("conn-1", "appdb", "orders", None, Vec::new());
+    state.metadata_cache.insert(
+        sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new("conn-1", "appdb", "users"),
+        sqllumen_lib::mysql::metadata_cache::TableKeyMetadata {
+            primary_key: None,
+            columns: Vec::new(),
+        },
+    );
+    state.metadata_cache.insert(
+        sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new("conn-1", "appdb", "orders"),
+        sqllumen_lib::mysql::metadata_cache::TableKeyMetadata {
+            primary_key: None,
+            columns: Vec::new(),
+        },
+    );
 
-    invalidate_metadata_cache_for_applied_table_ddl(&state, "conn-1", "appdb", "ALTER");
+    invalidate_metadata_cache_for_applied_table_ddl(
+        &state,
+        &sqllumen_lib::commands::table_designer::ApplyTableDdlRequest {
+            connection_id: "conn-1".to_string(),
+            database: "appdb".to_string(),
+            ddl: "ALTER".to_string(),
+        },
+    );
 
     assert!(state
         .metadata_cache
-        .get("conn-1", "appdb", "users")
+        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+            "conn-1", "appdb", "users"
+        ))
         .is_none());
     assert!(state
         .metadata_cache
-        .get("conn-1", "appdb", "orders")
+        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+            "conn-1", "appdb", "orders"
+        ))
         .is_none());
 }
 
@@ -816,7 +865,7 @@ fn test_alter_table_charset_change() {
     let mut current = schema(vec![column("id")]);
     current.properties.charset = "utf8mb4".to_string();
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(
         ddl.contains("DEFAULT CHARSET=utf8mb4"),
         "missing charset change, got: {ddl}"
@@ -830,7 +879,7 @@ fn test_alter_table_collation_change() {
     let mut current = schema(vec![column("id")]);
     current.properties.collation = "utf8mb4_unicode_ci".to_string();
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(
         ddl.contains("COLLATE=utf8mb4_unicode_ci"),
         "missing collation change, got: {ddl}"
@@ -844,7 +893,7 @@ fn test_alter_table_auto_increment_change() {
     let mut current = schema(vec![column("id")]);
     current.properties.auto_increment = Some(500);
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(
         ddl.contains("AUTO_INCREMENT=500"),
         "missing AUTO_INCREMENT change, got: {ddl}"
@@ -858,7 +907,7 @@ fn test_alter_table_row_format_change() {
     let mut current = schema(vec![column("id")]);
     current.properties.row_format = "Compressed".to_string();
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(
         ddl.contains("ROW_FORMAT=Compressed"),
         "missing ROW_FORMAT change, got: {ddl}"
@@ -872,7 +921,7 @@ fn test_alter_table_comment_change() {
     let mut current = schema(vec![column("id")]);
     current.properties.comment = "updated comment".to_string();
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(
         ddl.contains("COMMENT='updated comment'"),
         "missing COMMENT change, got: {ddl}"
@@ -886,7 +935,7 @@ fn test_alter_table_comment_cleared() {
     original.properties.comment = "old comment".to_string();
     let current = schema(vec![column("id")]);
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(
         ddl.contains("COMMENT=''"),
         "clearing comment should produce empty COMMENT clause, got: {ddl}"
@@ -901,7 +950,7 @@ fn test_alter_table_add_primary_key() {
     pk_col.is_primary_key = true;
     let current = schema(vec![pk_col]);
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(
         ddl.contains("ADD PRIMARY KEY (`id`)"),
         "missing ADD PRIMARY KEY, got: {ddl}"
@@ -916,7 +965,7 @@ fn test_alter_table_drop_primary_key() {
     let original = schema(vec![pk_col]);
     let current = schema(vec![column("id")]);
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(
         ddl.contains("DROP PRIMARY KEY"),
         "missing DROP PRIMARY KEY, got: {ddl}"
@@ -934,7 +983,7 @@ fn test_alter_table_change_primary_key_columns() {
     pk_email.is_primary_key = true;
     let current = schema(vec![column("id"), pk_email]);
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(
         ddl.contains("DROP PRIMARY KEY"),
         "should drop old PK, got: {ddl}"
@@ -954,7 +1003,7 @@ fn test_alter_table_add_fulltext_index() {
         .indexes
         .push(index("ft_body", "FULLTEXT", &["body"]));
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(
         ddl.contains("ADD FULLTEXT KEY `ft_body` (`body`)"),
         "missing FULLTEXT ADD, got: {ddl}"
@@ -970,7 +1019,7 @@ fn test_alter_table_add_regular_index() {
         .indexes
         .push(index("idx_email", "INDEX", &["email"]));
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(
         ddl.contains("ADD INDEX `idx_email` (`email`)"),
         "missing ADD INDEX, got: {ddl}"
@@ -985,7 +1034,7 @@ fn test_alter_table_modify_column_type_modifier_change() {
     changed.type_modifier = "UNSIGNED".to_string();
     let current = schema(vec![changed]);
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(
         ddl.contains("MODIFY COLUMN `age` INT UNSIGNED NOT NULL"),
         "modifier change should trigger MODIFY, got: {ddl}"
@@ -1000,7 +1049,7 @@ fn test_alter_table_modify_column_auto_increment_change() {
     changed.is_auto_increment = true;
     let current = schema(vec![changed]);
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(
         ddl.contains("MODIFY COLUMN `id` INT NOT NULL AUTO_INCREMENT"),
         "auto_increment change should trigger MODIFY, got: {ddl}"
@@ -1013,7 +1062,8 @@ fn test_alter_table_invalid_original_schema_returns_empty() {
     let original = schema(vec![column("")]);
     let current = schema(vec![column("id")]);
 
-    let (ddl, warnings) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, warnings } =
+        generate_alter_table_ddl(&original, &current, "appdb");
     assert_eq!(ddl, "");
     assert!(warnings.is_empty());
 }
@@ -1024,7 +1074,8 @@ fn test_alter_table_invalid_current_schema_returns_empty() {
     let original = schema(vec![column("id")]);
     let current = schema(vec![column("")]);
 
-    let (ddl, warnings) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, warnings } =
+        generate_alter_table_ddl(&original, &current, "appdb");
     assert_eq!(ddl, "");
     assert!(warnings.is_empty());
 }
@@ -1035,7 +1086,8 @@ fn test_alter_table_invalid_database_returns_empty() {
     let original = schema(vec![column("id")]);
     let current = schema(vec![column("id"), column("email")]);
 
-    let (ddl, warnings) = generate_alter_table_ddl(&original, &current, &"x".repeat(65));
+    let GenerateDdlResponse { ddl, warnings } =
+        generate_alter_table_ddl(&original, &current, &"x".repeat(65));
     assert_eq!(ddl, "");
     assert!(warnings.is_empty());
 }
@@ -1047,7 +1099,8 @@ fn test_alter_table_blank_table_name_returns_empty() {
     let mut current = schema(vec![column("id"), column("email")]);
     current.table_name = "   ".to_string();
 
-    let (ddl, warnings) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, warnings } =
+        generate_alter_table_ddl(&original, &current, "appdb");
     assert_eq!(ddl, "");
     assert!(warnings.is_empty());
 }
@@ -1160,7 +1213,7 @@ fn test_alter_table_multiple_option_changes() {
     current.properties.row_format = "Fixed".to_string();
     current.properties.comment = "new comment".to_string();
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(ddl.contains("ENGINE=MyISAM"), "got: {ddl}");
     assert!(ddl.contains("DEFAULT CHARSET=latin1"), "got: {ddl}");
     assert!(ddl.contains("COLLATE=latin1_swedish_ci"), "got: {ddl}");
@@ -1266,7 +1319,7 @@ fn test_alter_table_unchanged_index_is_preserved() {
     changed_name.nullable = true;
     current.columns[1] = changed_name;
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     // The MODIFY should be present but no index changes
     assert!(
         ddl.contains("MODIFY COLUMN `name` INT NULL"),
@@ -1301,7 +1354,7 @@ fn test_alter_table_unchanged_foreign_key_is_preserved() {
     changed_name.nullable = true;
     current.columns[1] = changed_name;
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(
         ddl.contains("MODIFY COLUMN `name` INT NULL"),
         "should still MODIFY the changed column, got: {ddl}"
@@ -1323,7 +1376,7 @@ fn test_alter_table_auto_increment_removed() {
     original.properties.auto_increment = Some(100);
     let current = schema(vec![column("id")]);
 
-    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    let GenerateDdlResponse { ddl, .. } = generate_alter_table_ddl(&original, &current, "appdb");
     // When auto_increment becomes None, the diff_table_options does NOT emit a clause
     // (since there's no "unset auto_increment" in MySQL ALTER TABLE).
     // The DDL should be empty since nothing else changed.
@@ -1440,12 +1493,10 @@ mod command_wrapper_integration {
 
     #[tauri::command]
     async fn load_table_for_designer(
+        payload: sqllumen_lib::commands::table_designer::LoadTableForDesignerRequest,
         state: tauri::State<'_, AppState>,
-        connection_id: String,
-        database: String,
-        table_name: String,
     ) -> Result<DesignerTableSchema, String> {
-        load_table_for_designer_impl(&state, &connection_id, &database, &table_name).await
+        load_table_for_designer_impl(&state, &payload).await
     }
 
     fn invoke_tauri_command<T: DeserializeOwned>(
@@ -1757,9 +1808,11 @@ mod command_wrapper_integration {
             &webview,
             "load_table_for_designer",
             json!({
-                "connectionId": open_result.session_id,
-                "database": "app_db",
-                "tableName": "users",
+                "payload": {
+                    "connectionId": open_result.session_id,
+                    "database": "app_db",
+                    "tableName": "users",
+                }
             }),
         )
         .expect("load_table_for_designer IPC should decode unsigned AUTO_INCREMENT metadata");
@@ -1880,7 +1933,15 @@ mod coverage_stubs {
     async fn load_table_for_designer_stub_errors_for_missing_connection() {
         let state = common::test_app_state();
 
-        let result = load_table_for_designer_impl(&state, "missing", "appdb", "users").await;
+        let result = load_table_for_designer_impl(
+            &state,
+            &sqllumen_lib::commands::table_designer::LoadTableForDesignerRequest {
+                connection_id: "missing".to_string(),
+                database: "appdb".to_string(),
+                table_name: "users".to_string(),
+            },
+        )
+        .await;
 
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("not open"));
@@ -1891,9 +1952,16 @@ mod coverage_stubs {
         let state = common::test_app_state();
         register_lazy_pool(&state, "conn-1", false);
 
-        let result = load_table_for_designer_impl(&state, "conn-1", "appdb", "users")
-            .await
-            .expect("registered connection should succeed");
+        let result = load_table_for_designer_impl(
+            &state,
+            &sqllumen_lib::commands::table_designer::LoadTableForDesignerRequest {
+                connection_id: "conn-1".to_string(),
+                database: "appdb".to_string(),
+                table_name: "users".to_string(),
+            },
+        )
+        .await
+        .expect("registered connection should succeed");
 
         assert_eq!(result.table_name, "users");
         assert!(result.columns.is_empty());
@@ -1957,27 +2025,51 @@ mod coverage_stubs {
     async fn apply_table_ddl_stub_checks_read_only_missing_connection_and_empty_sql() {
         let read_only_state = common::test_app_state();
         register_lazy_pool(&read_only_state, "conn-ro", true);
-        let read_only_result =
-            apply_table_ddl_impl(&read_only_state, "conn-ro", "appdb", "ALTER TABLE x").await;
+        let read_only_result = apply_table_ddl_impl(
+            &read_only_state,
+            &sqllumen_lib::commands::table_designer::ApplyTableDdlRequest {
+                connection_id: "conn-ro".to_string(),
+                database: "appdb".to_string(),
+                ddl: "ALTER TABLE x".to_string(),
+            },
+        )
+        .await;
         assert!(read_only_result.is_err());
         assert!(read_only_result.unwrap_err().contains("read-only"));
 
         let state = common::test_app_state();
-        let missing_connection =
-            apply_table_ddl_impl(&state, "missing", "appdb", "ALTER TABLE x").await;
+        let missing_connection = apply_table_ddl_impl(
+            &state,
+            &sqllumen_lib::commands::table_designer::ApplyTableDdlRequest {
+                connection_id: "missing".to_string(),
+                database: "appdb".to_string(),
+                ddl: "ALTER TABLE x".to_string(),
+            },
+        )
+        .await;
         assert!(missing_connection.is_err());
         assert!(missing_connection.unwrap_err().contains("not open"));
 
         register_lazy_pool(&state, "conn-1", false);
-        let empty_ddl = apply_table_ddl_impl(&state, "conn-1", "appdb", "   ").await;
+        let empty_ddl = apply_table_ddl_impl(
+            &state,
+            &sqllumen_lib::commands::table_designer::ApplyTableDdlRequest {
+                connection_id: "conn-1".to_string(),
+                database: "appdb".to_string(),
+                ddl: "   ".to_string(),
+            },
+        )
+        .await;
         assert!(empty_ddl.is_err());
         assert!(empty_ddl.unwrap_err().contains("DDL cannot be empty"));
 
         let success = apply_table_ddl_impl(
             &state,
-            "conn-1",
-            "appdb",
-            "ALTER TABLE `users` ADD COLUMN `x` INT",
+            &sqllumen_lib::commands::table_designer::ApplyTableDdlRequest {
+                connection_id: "conn-1".to_string(),
+                database: "appdb".to_string(),
+                ddl: "ALTER TABLE `users` ADD COLUMN `x` INT".to_string(),
+            },
         )
         .await;
         assert!(success.is_ok());
@@ -1987,27 +2079,43 @@ mod coverage_stubs {
     fn invalidate_metadata_cache_for_applied_table_ddl_evicts_detected_tables() {
         let state = common::test_app_state();
 
-        state
-            .metadata_cache
-            .insert("conn-1", "appdb", "users", None, Vec::new());
-        state
-            .metadata_cache
-            .insert("conn-1", "otherdb", "users", None, Vec::new());
+        state.metadata_cache.insert(
+            sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new("conn-1", "appdb", "users"),
+            sqllumen_lib::mysql::metadata_cache::TableKeyMetadata {
+                primary_key: None,
+                columns: Vec::new(),
+            },
+        );
+        state.metadata_cache.insert(
+            sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "conn-1", "otherdb", "users",
+            ),
+            sqllumen_lib::mysql::metadata_cache::TableKeyMetadata {
+                primary_key: None,
+                columns: Vec::new(),
+            },
+        );
 
         invalidate_metadata_cache_for_applied_table_ddl(
             &state,
-            "conn-1",
-            "appdb",
-            "ALTER TABLE users ADD COLUMN email VARCHAR(255)",
+            &sqllumen_lib::commands::table_designer::ApplyTableDdlRequest {
+                connection_id: "conn-1".to_string(),
+                database: "appdb".to_string(),
+                ddl: "ALTER TABLE users ADD COLUMN email VARCHAR(255)".to_string(),
+            },
         );
 
         assert!(state
             .metadata_cache
-            .get("conn-1", "appdb", "users")
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "conn-1", "appdb", "users"
+            ))
             .is_none());
         assert!(state
             .metadata_cache
-            .get("conn-1", "otherdb", "users")
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "conn-1", "otherdb", "users"
+            ))
             .is_some());
     }
 
@@ -2015,22 +2123,41 @@ mod coverage_stubs {
     fn invalidate_metadata_cache_for_applied_table_ddl_falls_back_to_connection_on_parse_failure() {
         let state = common::test_app_state();
 
-        state
-            .metadata_cache
-            .insert("conn-1", "appdb", "users", None, Vec::new());
-        state
-            .metadata_cache
-            .insert("conn-1", "appdb", "orders", None, Vec::new());
+        state.metadata_cache.insert(
+            sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new("conn-1", "appdb", "users"),
+            sqllumen_lib::mysql::metadata_cache::TableKeyMetadata {
+                primary_key: None,
+                columns: Vec::new(),
+            },
+        );
+        state.metadata_cache.insert(
+            sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new("conn-1", "appdb", "orders"),
+            sqllumen_lib::mysql::metadata_cache::TableKeyMetadata {
+                primary_key: None,
+                columns: Vec::new(),
+            },
+        );
 
-        invalidate_metadata_cache_for_applied_table_ddl(&state, "conn-1", "appdb", "ALTER");
+        invalidate_metadata_cache_for_applied_table_ddl(
+            &state,
+            &sqllumen_lib::commands::table_designer::ApplyTableDdlRequest {
+                connection_id: "conn-1".to_string(),
+                database: "appdb".to_string(),
+                ddl: "ALTER".to_string(),
+            },
+        );
 
         assert!(state
             .metadata_cache
-            .get("conn-1", "appdb", "users")
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "conn-1", "appdb", "users"
+            ))
             .is_none());
         assert!(state
             .metadata_cache
-            .get("conn-1", "appdb", "orders")
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "conn-1", "appdb", "orders"
+            ))
             .is_none());
     }
 }

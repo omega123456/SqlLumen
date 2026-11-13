@@ -152,13 +152,13 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
     markHistoryLoading(connectionId, append)
 
     try {
-      const result: HistoryPage = await listHistoryCmd(
-        connectionId,
-        page,
-        get().pageSize,
-        search || null,
-        since
-      )
+      const result: HistoryPage = await listHistoryCmd({
+        connectionId: connectionId,
+        page: page,
+        pageSize: get().pageSize,
+        search: search,
+        since: since,
+      })
       // A newer load (or search) for this connection superseded this one.
       if (isStale()) return
 

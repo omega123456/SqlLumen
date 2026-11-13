@@ -387,7 +387,7 @@ describe('ObjectEditorStore', () => {
       expect(tab.isSaving).toBe(false)
       // Save succeeded but get_routine_parameters_with_return_type should NOT
       // have been called (views don't have routine caches to invalidate)
-      const routineParamCalls = ipc.calls('get_routine_parameters_with_return_type')
+      const routineParamCalls = ipc.payloads('get_routine_parameters_with_return_type')
       expect(routineParamCalls.length).toBe(0)
     })
 
@@ -407,7 +407,7 @@ describe('ObjectEditorStore', () => {
 
       // On failure, no cache invalidation calls happen — the fixture for
       // get_routine_parameters_with_return_type should not be called
-      const routineParamCalls = ipc.calls('get_routine_parameters_with_return_type')
+      const routineParamCalls = ipc.payloads('get_routine_parameters_with_return_type')
       expect(routineParamCalls.length).toBe(0)
     })
   })

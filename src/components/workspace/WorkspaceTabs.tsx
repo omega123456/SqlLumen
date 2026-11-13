@@ -183,14 +183,14 @@ export function WorkspaceTabs({
       return
     }
 
-    const target = getWorkspaceStackActivationTarget(
-      stackKey,
-      visibleNonPinnedTabs,
-      stackRecency[stackKey] ?? null,
-      {
+    const target = getWorkspaceStackActivationTarget({
+      stackKey: stackKey,
+      tabs: visibleNonPinnedTabs,
+      recentTabId: stackRecency[stackKey] ?? null,
+      options: {
         hideScopedTableDataTabs: hideTableDataTabs,
-      }
-    )
+      },
+    })
     if (!target) {
       return
     }
@@ -200,14 +200,14 @@ export function WorkspaceTabs({
   const focusStackMembers = (stackKey: WorkspaceTabStackKey) => {
     const targetStackTabs = stackTabsFor(stackGroups, stackKey)
     const targetTabId =
-      getWorkspaceStackActivationTarget(
-        stackKey,
-        visibleNonPinnedTabs,
-        stackRecency[stackKey] ?? null,
-        {
+      getWorkspaceStackActivationTarget({
+        stackKey: stackKey,
+        tabs: visibleNonPinnedTabs,
+        recentTabId: stackRecency[stackKey] ?? null,
+        options: {
           hideScopedTableDataTabs: hideTableDataTabs,
-        }
-      )?.id ?? targetStackTabs[0]?.id
+        },
+      })?.id ?? targetStackTabs[0]?.id
 
     if (!targetTabId) {
       return

@@ -577,7 +577,9 @@ describe('ColumnEditor', () => {
     expect(getTab()?.currentSchema.columns[1]?.nullable).toBe(false)
 
     await act(async () => {
-      useTableDesignerStore.getState().updateColumn('tab-1', 1, 'isAutoIncrement', true)
+      useTableDesignerStore
+        .getState()
+        .updateColumn('tab-1', { index: 1, field: 'isAutoIncrement', value: true })
     })
     expect(getTab()?.currentSchema.columns[1]?.isAutoIncrement).toBe(true)
 

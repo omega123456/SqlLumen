@@ -24,10 +24,13 @@ mod fetch_blob_value_against_mock {
 
         let resp = fetch_blob_value_impl(
             &pool,
-            "app_db",
-            "assets",
-            "photo",
-            &[("id".to_string(), json!(7))],
+            &sqllumen_lib::mysql::table_data::FetchBlobValueRequest {
+                connection_id: String::new(),
+                database: "app_db".to_string(),
+                table: "assets".to_string(),
+                column: "photo".to_string(),
+                primary_key_pairs: vec![("id".to_string(), json!(7))],
+            },
         )
         .await
         .expect("fetch should succeed");
@@ -46,10 +49,13 @@ mod fetch_blob_value_against_mock {
 
         let resp = fetch_blob_value_impl(
             &pool,
-            "app_db",
-            "assets",
-            "photo",
-            &[("id".to_string(), json!(7))],
+            &sqllumen_lib::mysql::table_data::FetchBlobValueRequest {
+                connection_id: String::new(),
+                database: "app_db".to_string(),
+                table: "assets".to_string(),
+                column: "photo".to_string(),
+                primary_key_pairs: vec![("id".to_string(), json!(7))],
+            },
         )
         .await
         .expect("fetch should succeed");
@@ -71,10 +77,13 @@ mod fetch_blob_value_against_mock {
 
         let resp = fetch_blob_value_impl(
             &pool,
-            "app_db",
-            "assets",
-            "photo",
-            &[("id".to_string(), json!(7))],
+            &sqllumen_lib::mysql::table_data::FetchBlobValueRequest {
+                connection_id: String::new(),
+                database: "app_db".to_string(),
+                table: "assets".to_string(),
+                column: "photo".to_string(),
+                primary_key_pairs: vec![("id".to_string(), json!(7))],
+            },
         )
         .await
         .expect("fetch should succeed");
@@ -99,10 +108,13 @@ mod fetch_blob_value_against_mock {
 
         let resp = fetch_blob_value_impl(
             &pool,
-            "app_db",
-            "assets",
-            "photo",
-            &[("id".to_string(), json!(7))],
+            &sqllumen_lib::mysql::table_data::FetchBlobValueRequest {
+                connection_id: String::new(),
+                database: "app_db".to_string(),
+                table: "assets".to_string(),
+                column: "photo".to_string(),
+                primary_key_pairs: vec![("id".to_string(), json!(7))],
+            },
         )
         .await
         .expect("fetch should succeed");
@@ -118,9 +130,18 @@ mod fetch_blob_value_against_mock {
         let server = MockMySqlServer::start_script(vec![len_step(LEN_SQL, MockCell::Null)]).await;
         let pool = connect_mock_pool(&server).await;
 
-        let err = fetch_blob_value_impl(&pool, "app_db", "assets", "photo", &[])
-            .await
-            .expect_err("empty pk pairs should error");
+        let err = fetch_blob_value_impl(
+            &pool,
+            &sqllumen_lib::mysql::table_data::FetchBlobValueRequest {
+                connection_id: String::new(),
+                database: "app_db".to_string(),
+                table: "assets".to_string(),
+                column: "photo".to_string(),
+                primary_key_pairs: vec![],
+            },
+        )
+        .await
+        .expect_err("empty pk pairs should error");
 
         pool.close().await;
 
@@ -205,7 +226,11 @@ mod blob_file_bytes_integration {
         let path = temp_path("wrapper.bin");
         let path_str = path.to_string_lossy().to_string();
 
-        write_file_bytes(path_str.clone(), B64.encode(raw)).expect("wrapper write should succeed");
+        let request = sqllumen_lib::mysql::table_data::WriteFileBytesRequest {
+            path: path_str.clone(),
+            base64: B64.encode(raw),
+        };
+        write_file_bytes(request).expect("wrapper write should succeed");
         let read_b64 = read_file_bytes(path_str).expect("wrapper read should succeed");
         assert_eq!(B64.decode(read_b64).unwrap(), raw);
 

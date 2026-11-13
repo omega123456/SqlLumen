@@ -229,7 +229,7 @@ describe('initAiMemoryStore', () => {
     } as never)
 
     await new Promise((r) => setTimeout(r, 50))
-    const logCalls = ipc.calls('log_frontend')
+    const logCalls = ipc.payloads('log_frontend')
     const hasReembedError = logCalls.some(
       (call) =>
         (call as Record<string, unknown>)?.level === 'error' &&

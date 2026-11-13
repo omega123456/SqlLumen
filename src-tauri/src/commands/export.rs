@@ -1,20 +1,31 @@
 use crate::export::{ExportOptions, ExportResult};
 use crate::mysql::query_executor::SharedRow;
 use crate::state::AppState;
+use serde::Deserialize;
 
-// Re-export so existing test imports continue to work.
 pub use crate::export::export_with_data;
 
-/// Look up stored results by (connection_id, tab_id) and copy the row pointers
-/// of the result's **current view** (sort and filter applied, deleted rows
-/// excluded). Row data is shared, not cloned.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportResultsRequest {
+    pub connection_id: String,
+    pub tab_id: String,
+    pub options: ExportOptions,
+    pub result_index: Option<usize>,
+}
+
+struct ExportData {
+    columns: Vec<String>,
+    rows: Vec<SharedRow>,
+}
+
 fn resolve_export_data(
     state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
-    result_index: Option<usize>,
-) -> Result<(Vec<String>, Vec<SharedRow>), String> {
-    let cache_result = state.result_cache.get(connection_id, tab_id);
+    request: &ExportResultsRequest,
+) -> Result<ExportData, String> {
+    let tab_id = request.tab_id.as_str();
+    let result_index = request.result_index;
+    let cache_result = state.result_cache.get(&request.connection_id, tab_id);
     if cache_result.is_expired() {
         return Err(crate::mysql::result_view::RESULTS_EXPIRED_MESSAGE.to_string());
     }
@@ -34,35 +45,28 @@ fn resolve_export_data(
         .iter()
         .map(|column| column.name.clone())
         .collect();
-    Ok((cols, crate::mysql::result_view::view_rows(stored)))
+    Ok(ExportData {
+        columns: cols,
+        rows: crate::mysql::result_view::view_rows(stored),
+    })
 }
 
-/// Core export logic — testable without the Tauri runtime.
-/// Looks up stored results by (connection_id, tab_id), copies the current
-/// view's row pointers, then delegates to format-specific writers.
 pub fn export_results_impl(
     state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
-    options: ExportOptions,
-    result_index: Option<usize>,
+    request: ExportResultsRequest,
 ) -> Result<ExportResult, String> {
-    let (columns, rows) = resolve_export_data(state, connection_id, tab_id, result_index)?;
-    export_with_data(&columns, &rows, options)
+    let ExportData { columns, rows } = resolve_export_data(state, &request)?;
+    export_with_data(&columns, &rows, request.options)
 }
 
 #[tauri::command]
 pub async fn export_results(
     state: tauri::State<'_, AppState>,
-    connection_id: String,
-    tab_id: String,
-    options: ExportOptions,
-    result_index: Option<usize>,
+    payload: ExportResultsRequest,
 ) -> Result<ExportResult, String> {
-    // Copy the view's row pointers from the cache, then release it before writing.
-    let (columns, rows) = resolve_export_data(&state, &connection_id, &tab_id, result_index)?;
+    let ExportData { columns, rows } = resolve_export_data(&state, &payload)?;
+    let options = payload.options;
 
-    // Write file in spawn_blocking to avoid blocking the async runtime
     tokio::task::spawn_blocking(move || export_with_data(&columns, &rows, options))
         .await
         .map_err(|error| error.to_string())?
@@ -70,38 +74,15 @@ pub async fn export_results(
 
 // ── Streaming full export of truncated results ────────────────────────────────
 
-/// Start a streaming full export of a truncated, re-runnable result. Returns
-/// the job id at once; the re-run runs in the background on the editor
-/// session (queued behind any running editor query).
-#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn start_result_export(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
-    connection_id: String,
-    tab_id: String,
-    result_index: usize,
-    query_id: String,
-    format: crate::export::ExportFormat,
-    file_path: String,
-    include_headers: bool,
-    table_name: Option<String>,
+    payload: crate::export::result_export::StartResultExportInput,
 ) -> Result<String, String> {
     use tauri::Manager;
 
-    let prepared = crate::export::result_export::start_result_export_impl(
-        &state,
-        crate::export::result_export::StartResultExportInput {
-            connection_id,
-            tab_id,
-            result_index,
-            query_id,
-            format,
-            file_path,
-            include_headers,
-            table_name,
-        },
-    )?;
+    let prepared = crate::export::result_export::start_result_export_impl(&state, payload)?;
     let job_id = prepared.job_id.clone();
     tauri::async_runtime::spawn(async move {
         let state = app.state::<AppState>();

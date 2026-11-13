@@ -445,13 +445,25 @@ pub fn apply_create_if_not_exists(object_type: CopyObjectType, ddl: &str) -> Str
 /// name the destination schema explicitly. Replace only the keyword-scoped
 /// header identifier, leaving body SQL, string literals, comments, and table DDL
 /// alone.
-pub fn rewrite_non_table_ddl_schema(
-    object_type: CopyObjectType,
-    ddl: &str,
-    _source_database: &str,
-    target_database: &str,
-    object_name: &str,
-) -> String {
+#[derive(Debug, Clone, Copy)]
+pub struct CopyObject<'a> {
+    pub object_type: CopyObjectType,
+    pub name: &'a str,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct TargetObject<'a> {
+    pub object_type: CopyObjectType,
+    pub target_database: &'a str,
+    pub object_name: &'a str,
+}
+
+pub fn rewrite_non_table_ddl_schema(ddl: &str, target: TargetObject<'_>) -> String {
+    let TargetObject {
+        object_type,
+        target_database,
+        object_name,
+    } = target;
     let is_unqualifiable = object_type == CopyObjectType::Table
         || target_database.is_empty()
         || object_name.is_empty();
@@ -476,10 +488,11 @@ pub fn rewrite_non_table_ddl_schema(
     let target_qualified = format!("`{escaped_target}`.`{escaped_object}`");
 
     let search_start = keyword_pos + keyword.len();
-    let Some((replace_start, replace_end)) = find_create_header_identifier(ddl, search_start)
-    else {
+    let Some(header_range) = find_create_header_identifier(ddl, search_start) else {
         return ddl.to_string();
     };
+    let replace_start = header_range.start;
+    let replace_end = header_range.end;
 
     let mut rewritten =
         String::with_capacity(ddl.len() - (replace_end - replace_start) + target_qualified.len());
@@ -489,7 +502,7 @@ pub fn rewrite_non_table_ddl_schema(
     rewritten
 }
 
-fn find_create_header_identifier(ddl: &str, search_start: usize) -> Option<(usize, usize)> {
+fn find_create_header_identifier(ddl: &str, search_start: usize) -> Option<std::ops::Range<usize>> {
     let after_keyword = &ddl[search_start..];
     let ws_len = after_keyword
         .bytes()
@@ -505,7 +518,7 @@ fn find_create_header_identifier(ddl: &str, search_start: usize) -> Option<(usiz
     let dot_pos = first_end + ws_after_first;
     let is_schema_qualified = ddl[dot_pos..].starts_with('.');
     if !is_schema_qualified {
-        return Some((name_start, first_end));
+        return Some(name_start..first_end);
     }
     let after_dot = dot_pos + 1;
     let ws_after_dot = ddl[after_dot..]
@@ -514,7 +527,7 @@ fn find_create_header_identifier(ddl: &str, search_start: usize) -> Option<(usiz
         .count();
     let object_start = after_dot + ws_after_dot;
     let object_end = parse_mysql_identifier_end(ddl, object_start)?;
-    Some((name_start, object_end))
+    Some(name_start..object_end)
 }
 
 fn is_unquoted_identifier_char(character: char) -> bool {
@@ -642,7 +655,25 @@ pub fn batch_byte_budget(max_allowed_packet: Option<u64>) -> u64 {
 /// `VALUES` clause; `byte_len` is its serialized length (used for the byte
 /// budget). Reuses [`value_byte_len`]/the shared literal building from
 /// `sql_dump` so the measured size matches the bytes actually sent.
-pub fn render_row(row: &[SqlDumpValue]) -> (String, usize) {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenderedRow {
+    pub tuple: String,
+    pub byte_len: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct BatchFill {
+    pub row_count: usize,
+    pub byte_count: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct BatchLimits {
+    pub byte_budget: usize,
+    pub row_cap: usize,
+}
+
+pub fn render_row(row: &[SqlDumpValue]) -> RenderedRow {
     use crate::export::sql_dump::value_to_literal;
     let mut tuple = String::with_capacity(2 + row.len() * 8);
     tuple.push('(');
@@ -654,8 +685,8 @@ pub fn render_row(row: &[SqlDumpValue]) -> (String, usize) {
         tuple.push_str(&lit);
     }
     tuple.push(')');
-    let len = tuple.len();
-    (tuple, len)
+    let byte_len = tuple.len();
+    RenderedRow { tuple, byte_len }
 }
 
 const TUPLE_SEPARATOR: &str = ", ";
@@ -667,17 +698,15 @@ pub fn tuple_separator_len(tuples_in_batch: usize) -> usize {
     TUPLE_SEPARATOR.len()
 }
 
-/// Decide whether a current batch must be closed before adding the next row.
 pub fn should_start_new_batch(
-    current_count: usize,
-    current_bytes: usize,
+    current: BatchFill,
     next_row_bytes: usize,
-    byte_budget: usize,
-    row_cap: usize,
+    limits: BatchLimits,
 ) -> bool {
-    let prospective = current_bytes + tuple_separator_len(current_count) + next_row_bytes;
-    let row_cap_hit = current_count >= row_cap.max(1);
-    let budget_hit = current_count > 0 && prospective > byte_budget;
+    let current_count = current.row_count;
+    let prospective = current.byte_count + tuple_separator_len(current_count) + next_row_bytes;
+    let row_cap_hit = current_count >= limits.row_cap.max(1);
+    let budget_hit = current_count > 0 && prospective > limits.byte_budget;
 
     row_cap_hit || budget_hit
 }
@@ -694,35 +723,34 @@ pub fn should_start_new_batch(
 ///
 /// Pure and allocation-light so adaptive sizing is unit-testable without a DB.
 pub fn plan_batches(
-    rows: &[(String, usize)],
-    byte_budget: u64,
+    rows: &[RenderedRow],
+    limits: BatchLimits,
     prefix_len: usize,
-    row_cap: usize,
-) -> Vec<(usize, usize)> {
+) -> Vec<std::ops::Range<usize>> {
     let mut batches = Vec::new();
     if rows.is_empty() {
         return batches;
     }
-    let cap = row_cap.max(1);
-    let budget = byte_budget as usize;
 
     let mut start = 0usize;
-    let mut acc = prefix_len; // running serialized size of the current batch
-    let mut count = 0usize;
+    let mut fill = BatchFill {
+        row_count: 0,
+        byte_count: prefix_len,
+    };
 
-    for (index, (_, row_len)) in rows.iter().enumerate() {
-        // Separator before this row (", " between value tuples), only if not first.
-        if should_start_new_batch(count, acc, *row_len, budget, cap) {
-            // Close the current batch [start, idx) and start a new one at idx.
-            batches.push((start, index));
+    for (index, row) in rows.iter().enumerate() {
+        if should_start_new_batch(fill, row.byte_len, limits) {
+            batches.push(start..index);
             start = index;
-            acc = prefix_len;
-            count = 0;
+            fill = BatchFill {
+                row_count: 0,
+                byte_count: prefix_len,
+            };
         }
-        acc += tuple_separator_len(count) + row_len;
-        count += 1;
+        fill.byte_count += tuple_separator_len(fill.row_count) + row.byte_len;
+        fill.row_count += 1;
     }
-    batches.push((start, rows.len()));
+    batches.push(start..rows.len());
     batches
 }
 
@@ -760,12 +788,11 @@ pub fn new_running_progress(job_id: String, objects_total: usize) -> CopyJobProg
 /// resets the per-table row counters).
 pub fn begin_object(
     progress: &mut CopyJobProgress,
-    object_type: CopyObjectType,
-    name: &str,
+    object: CopyObject<'_>,
     rows_total: Option<u64>,
 ) {
-    progress.current_object = Some(name.to_string());
-    progress.current_object_type = Some(object_type.label().to_string());
+    progress.current_object = Some(object.name.to_string());
+    progress.current_object_type = Some(object.object_type.label().to_string());
     progress.rows_total = rows_total;
     progress.rows_done = rows_total.map(|_| 0);
 }
@@ -823,6 +850,56 @@ mod engine {
     use std::collections::HashMap;
     use std::sync::Arc;
     use std::sync::RwLock;
+
+    pub type CopyJobMap = Arc<RwLock<HashMap<String, CopyJobProgress>>>;
+
+    pub struct CopyJob {
+        pub jobs: CopyJobMap,
+        pub job_id: String,
+    }
+
+    impl CopyJob {
+        fn is_cancel_requested(&self) -> bool {
+            let map = self
+                .jobs
+                .read()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            map.get(&self.job_id).is_some_and(should_cancel)
+        }
+
+        fn record_rows_done(&self, rows_done: u64) {
+            let mut map = self
+                .jobs
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if let Some(progress) = map.get_mut(&self.job_id) {
+                progress.rows_done = Some(rows_done);
+            }
+        }
+    }
+
+    pub struct DatabaseEncoding {
+        pub charset: String,
+        pub collation: String,
+    }
+
+    struct CopyPools<'a> {
+        source: &'a MySqlPool,
+        target: &'a MySqlPool,
+    }
+
+    struct CopyRun<'a> {
+        params: &'a CopyToHostParams,
+        job: &'a CopyJob,
+        source: &'a MySqlPool,
+        byte_budget: u64,
+    }
+
+    struct PendingInsert<'a> {
+        prefix: &'a str,
+        rows: &'a [RenderedRow],
+        rows_done: u64,
+    }
 
     /// A resolved target pool, either reused from a live writable profile session
     /// or opened internally for this copy job.
@@ -891,7 +968,7 @@ mod engine {
     pub async fn read_source_charset(
         source: &MySqlPool,
         database: &str,
-    ) -> Result<(String, String), String> {
+    ) -> Result<DatabaseEncoding, String> {
         let sql = "SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME \
                    FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?";
         query_log::log_outgoing_sql_bound(sql, &[database.to_string()]);
@@ -905,9 +982,10 @@ mod engine {
             })?
             .ok_or_else(|| format!("Source database '{database}' not found"))?;
         query_log::log_mysql_row(&row);
-        let charset: String = row.try_get(0).unwrap_or_default();
-        let collation: String = row.try_get(1).unwrap_or_default();
-        Ok((charset, collation))
+        Ok(DatabaseEncoding {
+            charset: row.try_get(0).unwrap_or_default(),
+            collation: row.try_get(1).unwrap_or_default(),
+        })
     }
 
     /// Whether `database` exists on the target server.
@@ -939,13 +1017,14 @@ mod engine {
     pub async fn ensure_target_database(
         source: &MySqlPool,
         target: &mut MySqlConnection,
-        source_database: &str,
-        target_database: &str,
+        params: &CopyToHostParams,
     ) -> Result<(), String> {
+        let target_database = params.target_database.as_str();
         if target_database_exists(&mut *target, target_database).await? {
             return Ok(());
         }
-        let (charset, collation) = read_source_charset(source, source_database).await?;
+        let DatabaseEncoding { charset, collation } =
+            read_source_charset(source, &params.source_database).await?;
         validate_mysql_identifier_token("charset", &charset)?;
         validate_mysql_identifier_token("collation", &collation)?;
         let safe_db = safe_identifier(target_database)?;
@@ -1003,16 +1082,20 @@ mod engine {
     /// Generate, transform, and apply the DDL for a single object to the target.
     ///
     /// All target writes go through the pinned connection.
-    pub async fn copy_object_structure(
-        source: &MySqlPool,
+    async fn copy_object_structure(
+        run: &CopyRun<'_>,
         target: &mut MySqlConnection,
-        source_database: &str,
-        target_database: &str,
-        object_type: CopyObjectType,
-        name: &str,
-        options: &CopyOptions,
+        object: CopyObject<'_>,
     ) -> Result<(), String> {
-        let mut ddl = query_ddl(source, source_database, name, object_type.ddl_type_str()).await?;
+        let CopyObject { object_type, name } = object;
+        let options = &run.params.options;
+        let target_database = run.params.target_database.as_str();
+        let source_object = crate::mysql::schema_queries::SchemaObjectRef {
+            database: &run.params.source_database,
+            object_name: name,
+            object_type: object_type.ddl_type_str(),
+        };
+        let mut ddl = query_ddl(run.source, source_object).await?;
         if ddl.trim().is_empty() {
             return Err(format!(
                 "Empty DDL for {} '{name}' (insufficient privileges?)",
@@ -1027,8 +1110,12 @@ mod engine {
         if options.create_if_not_exists {
             ddl = apply_create_if_not_exists(object_type, &ddl);
         }
-        ddl =
-            rewrite_non_table_ddl_schema(object_type, &ddl, source_database, target_database, name);
+        let target_object = TargetObject {
+            object_type,
+            target_database,
+            object_name: name,
+        };
+        ddl = rewrite_non_table_ddl_schema(&ddl, target_object);
 
         if options.drop_if_exists {
             // Validate the identifier (length/shape) before interpolating it,
@@ -1086,19 +1173,14 @@ mod engine {
     /// is reached. Updates `progress.rows_done` after each flushed batch and
     /// honors cancellation at batch boundaries. Returns `Ok(true)` if completed,
     /// `Ok(false)` if cancelled mid-way.
-    #[allow(clippy::too_many_arguments)]
-    pub async fn copy_table_data(
-        source: &MySqlPool,
+    async fn copy_table_data(
+        run: &CopyRun<'_>,
         target: &mut MySqlConnection,
-        source_database: &str,
-        target_database: &str,
         table: &str,
-        options: &CopyOptions,
-        byte_budget: u64,
-        jobs: &Arc<RwLock<HashMap<String, CopyJobProgress>>>,
-        job_id: &str,
     ) -> Result<bool, String> {
-        let safe_db = safe_identifier(source_database)?;
+        let options = &run.params.options;
+        let target_database = run.params.target_database.as_str();
+        let safe_db = safe_identifier(&run.params.source_database)?;
         let safe_table = safe_identifier(table)?;
 
         if options.truncate_before_insert {
@@ -1117,27 +1199,21 @@ mod engine {
         // otherwise be loaded into RAM in full).
         let select_sql = format!("SELECT * FROM {safe_db}.{safe_table}");
         query_log::log_outgoing_sql(&select_sql);
-        let mut stream = sqlx::query(sqlx::AssertSqlSafe(select_sql.as_str())).fetch(source);
+        let mut stream = sqlx::query(sqlx::AssertSqlSafe(select_sql.as_str())).fetch(run.source);
 
-        let budget = byte_budget as usize;
-        let cap = COPY_BATCH_ROW_CAP.max(1);
+        let limits = BatchLimits {
+            byte_budget: run.byte_budget as usize,
+            row_cap: COPY_BATCH_ROW_CAP.max(1),
+        };
 
-        // Built lazily from the first streamed row (column list → INSERT prefix).
         let mut prefix: Option<String> = None;
-        // Accumulated rendered value-tuples for the current batch.
-        let mut batch: Vec<(String, usize)> = Vec::new();
-        let mut acc = 0usize; // running serialized size incl. prefix
+        let mut batch: Vec<RenderedRow> = Vec::new();
+        let mut acc = 0usize;
         let mut rows_done: u64 = 0;
 
         loop {
-            // Cancel checkpoint at batch boundary (before fetching the next row).
-            {
-                let map = jobs.read().unwrap_or_else(|poisoned| poisoned.into_inner());
-                if let Some(progress) = map.get(job_id) {
-                    if should_cancel(progress) {
-                        return Ok(false);
-                    }
-                }
+            if run.job.is_cancel_requested() {
+                return Ok(false);
             }
 
             let next = stream.next().await.transpose().map_err(|error| {
@@ -1176,38 +1252,33 @@ mod engine {
                     crate::commands::sql_dump::serialize_dump_value(&row, column_index)
                 })
                 .collect();
-            let (tuple, tuple_len) = render_row(&values);
+            let rendered = render_row(&values);
+            let fill = BatchFill {
+                row_count: batch.len(),
+                byte_count: acc,
+            };
 
-            // Decide whether this row fits the current batch or starts a new one.
-            if should_start_new_batch(batch.len(), acc, tuple_len, budget, cap) {
-                // Flush the full batch, then start a new one with this row.
-                rows_done = flush_batch(
-                    &mut *target,
-                    prefix.as_deref().unwrap_or(""),
-                    &batch,
+            if should_start_new_batch(fill, rendered.byte_len, limits) {
+                let insert = PendingInsert {
+                    prefix: prefix.as_deref().unwrap_or(""),
+                    rows: &batch,
                     rows_done,
-                    jobs,
-                    job_id,
-                )
-                .await?;
+                };
+                rows_done = flush_batch(&mut *target, &insert, run.job).await?;
                 batch.clear();
                 acc = prefix.as_deref().map(str::len).unwrap_or(0);
             }
-            acc += tuple_separator_len(batch.len()) + tuple_len;
-            batch.push((tuple, tuple_len));
+            acc += tuple_separator_len(batch.len()) + rendered.byte_len;
+            batch.push(rendered);
         }
 
-        // Flush any remaining partial batch.
         if !batch.is_empty() {
-            flush_batch(
-                &mut *target,
-                prefix.as_deref().unwrap_or(""),
-                &batch,
+            let insert = PendingInsert {
+                prefix: prefix.as_deref().unwrap_or(""),
+                rows: &batch,
                 rows_done,
-                jobs,
-                job_id,
-            )
-            .await?;
+            };
+            flush_batch(&mut *target, &insert, run.job).await?;
         }
 
         Ok(true)
@@ -1217,40 +1288,28 @@ mod engine {
     /// then bump `progress.rows_done`. Returns the updated running row count.
     async fn flush_batch(
         target: &mut MySqlConnection,
-        prefix: &str,
-        batch: &[(String, usize)],
-        rows_done: u64,
-        jobs: &Arc<RwLock<HashMap<String, CopyJobProgress>>>,
-        job_id: &str,
+        insert: &PendingInsert<'_>,
+        job: &CopyJob,
     ) -> Result<u64, String> {
-        let mut stmt = String::with_capacity(prefix.len() + batch.len() * 32);
-        stmt.push_str(prefix);
-        for (batch_index, (tuple, _)) in batch.iter().enumerate() {
+        let mut stmt = String::with_capacity(insert.prefix.len() + insert.rows.len() * 32);
+        stmt.push_str(insert.prefix);
+        for (batch_index, row) in insert.rows.iter().enumerate() {
             if batch_index > 0 {
                 stmt.push_str(", ");
             }
-            stmt.push_str(tuple);
+            stmt.push_str(&row.tuple);
         }
         run_target_statement(&mut *target, &stmt).await?;
 
-        let new_rows_done = rows_done + batch.len() as u64;
-        let mut map = jobs
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if let Some(progress) = map.get_mut(job_id) {
-            progress.rows_done = Some(new_rows_done);
-        }
+        let new_rows_done = insert.rows_done + insert.rows.len() as u64;
+        job.record_rows_done(new_rows_done);
         Ok(new_rows_done)
     }
 
     /// Run a full copy job to completion, writing terminal status into `jobs`.
-    pub async fn run_copy(
-        state: &AppState,
-        params: CopyToHostParams,
-        jobs: Arc<RwLock<HashMap<String, CopyJobProgress>>>,
-        job_id: String,
-    ) {
-        let result = run_copy_inner(state, &params, &jobs, &job_id).await;
+    pub async fn run_copy(state: &AppState, params: CopyToHostParams, job: CopyJob) {
+        let result = run_copy_inner(state, &params, &job).await;
+        let CopyJob { jobs, job_id } = job;
         // Terminal-status write must never be silently dropped on a poisoned
         // lock — recover the guard so the job does not stay `Running` forever.
         let mut map = jobs
@@ -1282,8 +1341,7 @@ mod engine {
     async fn run_copy_inner(
         state: &AppState,
         params: &CopyToHostParams,
-        jobs: &Arc<RwLock<HashMap<String, CopyJobProgress>>>,
-        job_id: &str,
+        job: &CopyJob,
     ) -> Result<bool, String> {
         let source = state
             .registry
@@ -1296,8 +1354,11 @@ mod engine {
             })?;
 
         let resolved = resolve_target_pool(state, &params.target_connection_id).await?;
-        let outcome =
-            run_copy_with_pools(state, params, jobs, job_id, &source, &resolved.pool).await;
+        let pools = CopyPools {
+            source: &source,
+            target: &resolved.pool,
+        };
+        let outcome = run_copy_with_pools(params, job, &pools).await;
         resolved.dispose().await;
         outcome
     }
@@ -1311,13 +1372,11 @@ mod engine {
     /// while the writes land on another, defeating both the default-database
     /// switch and the FK-check guarantee.
     async fn run_copy_with_pools(
-        _state: &AppState,
         params: &CopyToHostParams,
-        jobs: &Arc<RwLock<HashMap<String, CopyJobProgress>>>,
-        job_id: &str,
-        source: &MySqlPool,
-        target: &MySqlPool,
+        job: &CopyJob,
+        pools: &CopyPools<'_>,
     ) -> Result<bool, String> {
+        let source = pools.source;
         validate_cross_database_non_table_copy(
             &params.objects,
             &params.source_database,
@@ -1326,24 +1385,24 @@ mod engine {
 
         // Pin one target connection for the whole job (mirrors sql_dump's
         // `pool.acquire()` + `&mut *conn` streaming pattern).
-        let mut conn = target
+        let mut conn = pools
+            .target
             .acquire()
             .await
             .map_err(|error| format!("Failed to acquire target connection: {error}"))?;
 
-        ensure_target_database(
-            source,
-            &mut conn,
-            &params.source_database,
-            &params.target_database,
-        )
-        .await?;
+        ensure_target_database(source, &mut conn, params).await?;
 
-        let byte_budget = batch_byte_budget(read_max_allowed_packet(&mut conn).await);
+        let run = CopyRun {
+            params,
+            job,
+            source,
+            byte_budget: batch_byte_budget(read_max_allowed_packet(&mut conn).await),
+        };
 
         // Disable FK checks for the duration; always restore.
         run_target_statement(&mut conn, FK_CHECKS_DISABLE).await?;
-        let body = copy_objects(params, jobs, job_id, source, &mut conn, byte_budget).await;
+        let body = copy_objects(&run, &mut conn).await;
         // Finally: restore FK checks regardless of the body outcome.
         let restore = run_target_statement(&mut conn, FK_CHECKS_ENABLE).await;
 
@@ -1364,14 +1423,11 @@ mod engine {
 
     /// Iterate the work list, copying each object and updating progress. All
     /// target writes go through the pinned connection `target`.
-    async fn copy_objects(
-        params: &CopyToHostParams,
-        jobs: &Arc<RwLock<HashMap<String, CopyJobProgress>>>,
-        job_id: &str,
-        source: &MySqlPool,
-        target: &mut MySqlConnection,
-        byte_budget: u64,
-    ) -> Result<bool, String> {
+    async fn copy_objects(run: &CopyRun<'_>, target: &mut MySqlConnection) -> Result<bool, String> {
+        let params = run.params;
+        let source = run.source;
+        let jobs = &run.job.jobs;
+        let job_id = run.job.job_id.as_str();
         let work = params.objects.work_list();
         let opts = &params.options;
 
@@ -1392,7 +1448,11 @@ mod engine {
                     mark_cancelled(progress);
                     return Ok(false);
                 }
-                begin_object(progress, object_type, &name, rows_total);
+                let object = CopyObject {
+                    object_type,
+                    name: &name,
+                };
+                begin_object(progress, object, rows_total);
             }
 
             // Structure phase (all object types; routines/triggers/events are
@@ -1400,32 +1460,16 @@ mod engine {
             let is_table = object_type == CopyObjectType::Table;
             let do_structure = opts.copy_structure || !is_table;
             if do_structure {
-                copy_object_structure(
-                    source,
-                    &mut *target,
-                    &params.source_database,
-                    &params.target_database,
+                let object = CopyObject {
                     object_type,
-                    &name,
-                    opts,
-                )
-                .await?;
+                    name: &name,
+                };
+                copy_object_structure(run, &mut *target, object).await?;
             }
 
             // Data phase (tables only, when copy_data is set).
             if is_table && opts.copy_data {
-                let completed = copy_table_data(
-                    source,
-                    &mut *target,
-                    &params.source_database,
-                    &params.target_database,
-                    &name,
-                    opts,
-                    byte_budget,
-                    jobs,
-                    job_id,
-                )
-                .await?;
+                let completed = copy_table_data(run, &mut *target, &name).await?;
                 if !completed {
                     let mut map = jobs
                         .write()
@@ -1451,7 +1495,7 @@ mod engine {
 
 #[cfg(not(coverage))]
 pub use engine::{
-    copy_object_structure, copy_table_data, ensure_target_database, open_pool_for_profile,
-    read_max_allowed_packet, read_source_charset, resolve_target_pool, run_copy,
-    run_target_statement, target_database_exists, ResolvedTargetPool,
+    ensure_target_database, open_pool_for_profile, read_max_allowed_packet, read_source_charset,
+    resolve_target_pool, run_copy, run_target_statement, target_database_exists, CopyJob,
+    CopyJobMap, DatabaseEncoding, ResolvedTargetPool,
 };

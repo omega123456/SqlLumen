@@ -75,22 +75,28 @@ fn write_export_file(
 /// This is the shared export dispatcher used by both the query-result export
 /// path (`commands::export`) and the table-data export path
 /// (`mysql::table_data::export_table_data_impl`).
+pub struct ExportRows<'a, R> {
+    pub columns: &'a [String],
+    pub rows: &'a [R],
+}
+
 pub fn export_with_data<R: AsRef<[serde_json::Value]>>(
     columns: &[String],
     rows: &[R],
     options: ExportOptions,
 ) -> Result<ExportResult, String> {
     let rows_exported = rows.len();
+    let table = ExportRows { columns, rows };
 
     let bytes_written = match options.format {
         ExportFormat::Csv => write_export_file(&options.file_path, "CSV", |file| {
-            csv_writer::write_csv(file, columns, rows, options.include_headers)
+            csv_writer::write_csv(file, &table, options.include_headers)
         })?,
         ExportFormat::Json => write_export_file(&options.file_path, "JSON", |file| {
-            json_writer::write_json(file, columns, rows, options.include_headers)
+            json_writer::write_json(file, &table)
         })?,
         ExportFormat::Xlsx => {
-            xlsx_writer::write_xlsx(&options.file_path, columns, rows, options.include_headers)?
+            xlsx_writer::write_xlsx(&options.file_path, &table, options.include_headers)?
         }
         ExportFormat::SqlInsert => {
             let table_name = options
@@ -98,7 +104,7 @@ pub fn export_with_data<R: AsRef<[serde_json::Value]>>(
                 .as_deref()
                 .unwrap_or(DEFAULT_SQL_EXPORT_TABLE_NAME);
             write_export_file(&options.file_path, "SQL", |file| {
-                sql_writer::write_sql(file, columns, rows, options.include_headers, table_name)
+                sql_writer::write_sql(file, &table, table_name)
             })?
         }
     };

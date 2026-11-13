@@ -21,6 +21,14 @@ export function isTargetOutside(
   return !isTargetInside(container, target)
 }
 
+export function elementOf(target: EventTarget | null): Element | null {
+  return target instanceof Element ? target : null
+}
+
+export function isTargetWithin(target: EventTarget | null, selector: string): boolean {
+  return target instanceof Element && target.closest(selector) !== null
+}
+
 export function isTargetInside(
   container: Node | null | undefined,
   target: EventTarget | null

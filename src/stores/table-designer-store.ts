@@ -49,46 +49,35 @@ export interface TableDesignerTabState {
   selectedSubTab: DesignerSubTab
 }
 
+export interface TableDesignerTarget {
+  mode: 'create' | 'alter'
+  connectionId: string
+  databaseName: string
+  objectName: string
+}
+
+export interface DesignerFieldEdit<TRow> {
+  index: number
+  field: keyof TRow
+  value: unknown
+}
+
 export interface TableDesignerStore {
   tabs: Record<string, TableDesignerTabState>
-  initTab: (
-    tabId: string,
-    mode: 'create' | 'alter',
-    connectionId: string,
-    databaseName: string,
-    objectName: string
-  ) => void
+  initTab: (tabId: string, target: TableDesignerTarget) => void
   updateTabContext: (
     tabId: string,
     update: { mode: 'create' | 'alter'; objectName: string }
   ) => void
   loadSchema: (tabId: string) => Promise<void>
-  updateColumn: (
-    tabId: string,
-    columnIndex: number,
-    field: keyof TableDesignerColumnDef,
-    value: unknown
-  ) => void
+  updateColumn: (tabId: string, edit: DesignerFieldEdit<TableDesignerColumnDef>) => void
   addColumn: (tabId: string) => void
   deleteColumn: (tabId: string, columnIndex: number) => void
   reorderColumn: (tabId: string, fromIndex: number, toIndex: number) => void
-  updateIndex: (
-    tabId: string,
-    indexPosition: number,
-    field: keyof TableDesignerIndexDef,
-    value: unknown
-  ) => void
+  updateIndex: (tabId: string, edit: DesignerFieldEdit<TableDesignerIndexDef>) => void
   addIndex: (tabId: string) => void
   deleteIndex: (tabId: string, indexPosition: number) => void
-  updateForeignKey: {
-    (
-      tabId: string,
-      foreignKeyIndex: number,
-      field: keyof TableDesignerForeignKeyDef,
-      value: unknown
-    ): void
-    (tabId: string, foreignKeyIndex: number, field: string, value: unknown): void
-  }
+  updateForeignKey: (tabId: string, edit: DesignerFieldEdit<TableDesignerForeignKeyDef>) => void
   addForeignKey: (tabId: string) => void
   deleteForeignKey: (tabId: string, foreignKeyIndex: number) => void
   updateProperties: (tabId: string, field: keyof TableDesignerProperties, value: unknown) => void
@@ -384,12 +373,12 @@ function computeIsDirty(state: TableDesignerTabState): boolean {
   )
 }
 
-function createDefaultTabState(
-  mode: 'create' | 'alter',
-  connectionId: string,
-  databaseName: string,
-  objectName: string
-): TableDesignerTabState {
+function createDefaultTabState({
+  mode,
+  connectionId,
+  databaseName,
+  objectName,
+}: TableDesignerTarget): TableDesignerTabState {
   return {
     connectionId: connectionId,
     databaseName: databaseName,
@@ -509,7 +498,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
   return {
     tabs: {},
 
-    initTab: (tabId, mode, connectionId, databaseName, objectName) => {
+    initTab: (tabId, target) => {
       set((state) => {
         if (state.tabs[tabId]) {
           return state
@@ -518,7 +507,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
         return {
           tabs: {
             ...state.tabs,
-            [tabId]: createDefaultTabState(mode, connectionId, databaseName, objectName),
+            [tabId]: createDefaultTabState(target),
           },
         }
       })
@@ -577,7 +566,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
       }
     },
 
-    updateColumn: (tabId, columnIndex, field, value) => {
+    updateColumn: (tabId, { index: columnIndex, field, value }) => {
       mutateSchema(tabId, (tab) => {
         if (!isIndexInBounds(columnIndex, tab.currentSchema.columns.length)) {
           return null
@@ -693,7 +682,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
       })
     },
 
-    updateIndex: (tabId, indexPosition, field, value) => {
+    updateIndex: (tabId, { index: indexPosition, field, value }) => {
       mutateSchema(tabId, (tab) => {
         if (!isIndexInBounds(indexPosition, tab.currentSchema.indexes.length)) {
           return null
@@ -741,14 +730,14 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
       })
     },
 
-    updateForeignKey: (tabId, foreignKeyIndex, field, value) => {
+    updateForeignKey: (tabId, { index: foreignKeyIndex, field, value }) => {
       mutateSchema(tabId, (tab) => {
         if (!isIndexInBounds(foreignKeyIndex, tab.currentSchema.foreignKeys.length)) {
           return null
         }
 
         const schema = cloneValue(tab.currentSchema)
-        ;(schema.foreignKeys[foreignKeyIndex] as unknown as Record<string, unknown>)[field] = value
+        ;(schema.foreignKeys[foreignKeyIndex][field] as unknown) = value
 
         return { schema }
       })

@@ -322,7 +322,7 @@ describe('useQueryStore — setActiveResultIndex', () => {
     useQueryStore.getState().setActiveResultIndex('tab-1', 1)
 
     expect(useQueryStore.getState().tabs['tab-1']!.activeResultIndex).toBe(1)
-    expect(ipc.calls('touch_results')).toHaveLength(0)
+    expect(ipc.payloads('touch_results')).toHaveLength(0)
   })
 })
 
@@ -937,14 +937,14 @@ describe('useQueryStore — sortResults', () => {
       firstWindow: { offset: 0, rows: [[3], [1], [2]], baseIndices: [0, 1, 2] },
     }))
 
-    await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', null)
+    await useQueryStore.getState().sortResults('tab-1', 'id', null)
 
     const tab = useQueryStore.getState().tabs['tab-1']!
     expect(tab.results[0].sortColumn).toBeNull()
     expect(tab.results[0].sortDirection).toBeNull()
     expect(rowsOf('tab-1', 0)).toEqual([[3], [1], [2]])
-    expect(ipc.calls('reexecute_single_result')).toHaveLength(0)
-    expect(ipc.calls('execute_call_query')).toHaveLength(0)
+    expect(ipc.payloads('reexecute_single_result')).toHaveLength(0)
+    expect(ipc.payloads('execute_call_query')).toHaveLength(0)
   })
 
   it('applies a sort through set_result_view for the active result', async () => {
@@ -956,10 +956,10 @@ describe('useQueryStore — sortResults', () => {
       firstWindow: { offset: 0, rows: [[1], [2], [3]], baseIndices: [1, 2, 0] },
     }))
 
-    await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', 'asc')
+    await useQueryStore.getState().sortResults('tab-1', 'id', 'asc')
 
     const tab = useQueryStore.getState().tabs['tab-1']!
-    expect(ipc.calls('set_result_view')[0]).toMatchObject({ resultIndex: 0, queryId: 'q1' })
+    expect(ipc.payloads('set_result_view')[0]).toMatchObject({ resultIndex: 0, queryId: 'q1' })
     expect(tab.results[0].sortColumn).toBe('id')
     expect(tab.results[0].sortDirection).toBe('asc')
     expect(rowsOf('tab-1', 0)).toEqual([[1], [2], [3]])
@@ -971,7 +971,7 @@ describe('useQueryStore — sortResults', () => {
       throw new Error('Sort failed')
     })
 
-    await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', 'desc')
+    await useQueryStore.getState().sortResults('tab-1', 'id', 'desc')
 
     const result = useQueryStore.getState().tabs['tab-1']!.results[0]
     expect(result.sortDirection).toBe('asc')
@@ -1029,9 +1029,9 @@ describe('useQueryStore — sortResults on a later result of a multi-result tab'
       firstWindow: { offset: 0, rows: [['Alice'], ['Bob']], baseIndices: [1, 0] },
     }))
 
-    await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'name', 'asc')
+    await useQueryStore.getState().sortResults('tab-1', 'name', 'asc')
 
-    expect(ipc.calls('set_result_view')[0]).toMatchObject({ resultIndex: 1, queryId: 'q2' })
+    expect(ipc.payloads('set_result_view')[0]).toMatchObject({ resultIndex: 1, queryId: 'q2' })
     expect(rowsOf('tab-1', 1)).toEqual([['Alice'], ['Bob']])
     expect(rowsOf('tab-1', 0)).toEqual([[1]])
     expect(useQueryStore.getState().tabs['tab-1']!.results[0].sortColumn).toBeNull()

@@ -38,7 +38,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   // Default mock: returns `page`-worth of rows so pagination/append can be tested.
   // Total is large enough that "load more" is always available.
-  ipc.override('list_history', (args) => {
+  ipc.overridePayload('list_history', (args) => {
     const request = args as Record<string, unknown>
     const page = (request.page as number) ?? 1
     const pageSize = (request.pageSize as number) ?? 50
@@ -69,7 +69,7 @@ describe('useHistoryStore', () => {
 
     it('forwards the time-range cutoff to the backend and stores it', async () => {
       let receivedSince: unknown
-      ipc.override('list_history', (args) => {
+      ipc.overridePayload('list_history', (args) => {
         const request = args as Record<string, unknown>
         receivedSince = request.since
         return { entries: [makeEntry(1, request.connectionId)], total: 1, page: 1, pageSize: 50 }
@@ -112,7 +112,7 @@ describe('useHistoryStore', () => {
   describe('loadMore', () => {
     it('appends the next page and preserves the stored time range', async () => {
       const seenSince: unknown[] = []
-      ipc.override('list_history', (args) => {
+      ipc.overridePayload('list_history', (args) => {
         const request = args as Record<string, unknown>
         seenSince.push(request.since)
         const page = (request.page as number) ?? 1
@@ -218,7 +218,7 @@ describe('useHistoryStore', () => {
       useHistoryStore.getState().setSearch('conn-1', 'SEL')
 
       expect(useHistoryStore.getState().searchByConnection['conn-1']).toBe('SEL')
-      expect(ipc.calls('list_history')).toHaveLength(0)
+      expect(ipc.payloads('list_history')).toHaveLength(0)
     })
 
     it('sends one list_history call with the last value for rapid typing', async () => {
@@ -229,7 +229,7 @@ describe('useHistoryStore', () => {
       store.setSearch('conn-1', 'SEL')
 
       await vi.advanceTimersByTimeAsync(HISTORY_SEARCH_DEBOUNCE_MS - 1)
-      expect(ipc.calls('list_history')).toHaveLength(0)
+      expect(ipc.payloads('list_history')).toHaveLength(0)
 
       await vi.advanceTimersByTimeAsync(1)
       vi.useRealTimers()
@@ -237,7 +237,7 @@ describe('useHistoryStore', () => {
         expect(useHistoryStore.getState().isLoadingByConnection['conn-1']).toBe(false)
       })
 
-      const calls = ipc.calls('list_history') as Array<Record<string, unknown>>
+      const calls = ipc.payloads('list_history') as Array<Record<string, unknown>>
       expect(calls).toHaveLength(1)
       expect(calls[0]).toMatchObject({ connectionId: 'conn-1', page: 1, search: 'SEL' })
     })
@@ -250,9 +250,9 @@ describe('useHistoryStore', () => {
       await vi.advanceTimersByTimeAsync(HISTORY_SEARCH_DEBOUNCE_MS)
       vi.useRealTimers()
       await vi.waitFor(() => {
-        expect(ipc.calls('list_history')).toHaveLength(2)
+        expect(ipc.payloads('list_history')).toHaveLength(2)
       })
-      const searches = (ipc.calls('list_history') as Array<Record<string, unknown>>).map(
+      const searches = (ipc.payloads('list_history') as Array<Record<string, unknown>>).map(
         (call) => call.search
       )
       expect(searches.sort()).toEqual(['a', 'b'])
@@ -260,7 +260,7 @@ describe('useHistoryStore', () => {
 
     it('ignores a stale response that arrives after a newer one', async () => {
       const resolvers: Record<string, (value: unknown) => void> = {}
-      ipc.override('list_history', (args) => {
+      ipc.overridePayload('list_history', (args) => {
         const request = args as Record<string, unknown>
         const search = String(request.search ?? '')
         return new Promise((resolve) => {
@@ -298,7 +298,7 @@ describe('useHistoryStore', () => {
       })
 
       const initial = useHistoryStore.getState().loadHistory('conn-1', { page: 1, search: '' })
-      await vi.waitFor(() => expect(ipc.calls('list_history')).toHaveLength(1))
+      await vi.waitFor(() => expect(ipc.payloads('list_history')).toHaveLength(1))
       useHistoryStore.getState().setSearch('conn-1', 'orders')
 
       resolveInitial({ entries: [makeEntry(1, 'conn-1')], total: 1, page: 1, pageSize: 50 })
@@ -335,7 +335,7 @@ describe('useHistoryStore', () => {
       useHistoryStore.getState().reset()
 
       await vi.advanceTimersByTimeAsync(HISTORY_SEARCH_DEBOUNCE_MS * 2)
-      expect(ipc.calls('list_history')).toHaveLength(0)
+      expect(ipc.payloads('list_history')).toHaveLength(0)
     })
   })
 

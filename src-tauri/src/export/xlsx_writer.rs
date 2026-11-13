@@ -1,21 +1,19 @@
+use crate::export::ExportRows;
 use rust_xlsxwriter::{Format, Workbook, Worksheet};
 
-/// Write query results as an Excel (.xlsx) file.
-///
-/// - `file_path`: destination path for the .xlsx file
-/// - `columns`: column names for the optional header row
-/// - `rows`: data rows (each row is a slice of `serde_json::Value`)
-/// - `include_headers`: whether to write a bold header row and freeze the top row
-///
-/// Returns the file size in bytes after writing.
-/// NULL values produce empty cells.
-/// Column widths are auto-sized based on header + data content (capped at 50 chars).
+#[derive(Debug, Clone, Copy)]
+pub struct CellPosition {
+    pub row: u32,
+    pub col: u16,
+}
+
 pub fn write_xlsx<R: AsRef<[serde_json::Value]>>(
     file_path: &str,
-    columns: &[String],
-    rows: &[R],
+    table: &ExportRows<'_, R>,
     include_headers: bool,
 ) -> Result<u64, String> {
+    let columns = table.columns;
+    let rows = table.rows;
     let mut workbook = Workbook::new();
     let worksheet = workbook.add_worksheet();
     worksheet
@@ -39,7 +37,11 @@ pub fn write_xlsx<R: AsRef<[serde_json::Value]>>(
 
     for row in rows.iter().map(AsRef::as_ref) {
         for (column_index, value) in row.iter().enumerate() {
-            write_xlsx_cell(worksheet, current_row, column_index as u16, value)?;
+            let position = CellPosition {
+                row: current_row,
+                col: column_index as u16,
+            };
+            write_xlsx_cell(worksheet, position, value)?;
         }
         current_row += 1;
     }
@@ -75,10 +77,10 @@ pub fn write_xlsx<R: AsRef<[serde_json::Value]>>(
 /// Shared by the slice writer and the streaming writer.
 pub fn write_xlsx_cell(
     worksheet: &mut Worksheet,
-    row: u32,
-    col: u16,
+    position: CellPosition,
     value: &serde_json::Value,
 ) -> Result<(), String> {
+    let CellPosition { row, col } = position;
     match value {
         serde_json::Value::Null => {} // empty cell
         serde_json::Value::Number(number) => match number.as_f64() {

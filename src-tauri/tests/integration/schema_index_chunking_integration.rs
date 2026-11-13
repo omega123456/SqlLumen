@@ -221,8 +221,16 @@ fn fk_edges_replace_and_get() {
         },
     ];
 
-    storage::replace_fk_edges_for_table(&conn, "conn-1", "mydb", "orders", &edges)
-        .expect("replace edges");
+    storage::replace_fk_edges_for_table(
+        &conn,
+        &sqllumen_lib::schema_index::storage::IndexedTableRef {
+            connection_id: "conn-1",
+            db_name: "mydb",
+            table_name: "orders",
+        },
+        &edges,
+    )
+    .expect("replace edges");
 
     let all = storage::get_fk_edges_for_connection(&conn, "conn-1").expect("get edges");
     assert_eq!(all.len(), 2);
@@ -246,7 +254,16 @@ fn fk_edges_replace_overwrites_existing() {
         on_delete: None,
         on_update: None,
     }];
-    storage::replace_fk_edges_for_table(&conn, "conn-1", "db", "t", &edges_v1).expect("v1");
+    storage::replace_fk_edges_for_table(
+        &conn,
+        &sqllumen_lib::schema_index::storage::IndexedTableRef {
+            connection_id: "conn-1",
+            db_name: "db",
+            table_name: "t",
+        },
+        &edges_v1,
+    )
+    .expect("v1");
 
     let edges_v2 = vec![FkEdge {
         connection_id: "conn-1".to_string(),
@@ -260,7 +277,16 @@ fn fk_edges_replace_overwrites_existing() {
         on_delete: None,
         on_update: None,
     }];
-    storage::replace_fk_edges_for_table(&conn, "conn-1", "db", "t", &edges_v2).expect("v2");
+    storage::replace_fk_edges_for_table(
+        &conn,
+        &sqllumen_lib::schema_index::storage::IndexedTableRef {
+            connection_id: "conn-1",
+            db_name: "db",
+            table_name: "t",
+        },
+        &edges_v2,
+    )
+    .expect("v2");
 
     let all = storage::get_fk_edges_for_connection(&conn, "conn-1").expect("get");
     assert_eq!(all.len(), 1, "old edges should be replaced");
@@ -283,7 +309,16 @@ fn delete_fk_edges_for_connection() {
         on_delete: None,
         on_update: None,
     }];
-    storage::replace_fk_edges_for_table(&conn, "conn-1", "db", "t", &edges).expect("insert");
+    storage::replace_fk_edges_for_table(
+        &conn,
+        &sqllumen_lib::schema_index::storage::IndexedTableRef {
+            connection_id: "conn-1",
+            db_name: "db",
+            table_name: "t",
+        },
+        &edges,
+    )
+    .expect("insert");
 
     storage::delete_fk_edges_for_connection(&conn, "conn-1").expect("delete");
 
@@ -325,7 +360,16 @@ fn delete_all_chunks_also_wipes_fk_edges() {
         on_delete: None,
         on_update: None,
     }];
-    storage::replace_fk_edges_for_table(&conn, "conn-1", "db", "t", &edges).expect("insert edges");
+    storage::replace_fk_edges_for_table(
+        &conn,
+        &sqllumen_lib::schema_index::storage::IndexedTableRef {
+            connection_id: "conn-1",
+            db_name: "db",
+            table_name: "t",
+        },
+        &edges,
+    )
+    .expect("insert edges");
 
     storage::delete_all_chunks(&conn, "conn-1").expect("wipe");
 
@@ -494,7 +538,16 @@ fn replace_fk_edges_for_connection_replaces_all() {
         on_delete: None,
         on_update: None,
     }];
-    storage::replace_fk_edges_for_table(&conn, "conn-1", "db", "a", &edges1).expect("insert 1");
+    storage::replace_fk_edges_for_table(
+        &conn,
+        &sqllumen_lib::schema_index::storage::IndexedTableRef {
+            connection_id: "conn-1",
+            db_name: "db",
+            table_name: "a",
+        },
+        &edges1,
+    )
+    .expect("insert 1");
 
     let edges2 = vec![FkEdge {
         connection_id: "conn-1".to_string(),
@@ -508,7 +561,16 @@ fn replace_fk_edges_for_connection_replaces_all() {
         on_delete: None,
         on_update: None,
     }];
-    storage::replace_fk_edges_for_table(&conn, "conn-1", "db", "c", &edges2).expect("insert 2");
+    storage::replace_fk_edges_for_table(
+        &conn,
+        &sqllumen_lib::schema_index::storage::IndexedTableRef {
+            connection_id: "conn-1",
+            db_name: "db",
+            table_name: "c",
+        },
+        &edges2,
+    )
+    .expect("insert 2");
 
     // Now replace all edges for the connection at once
     let new_edges = vec![FkEdge {

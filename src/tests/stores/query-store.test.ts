@@ -837,9 +837,9 @@ describe('useQueryStore — sortResults', () => {
       firstWindow: { offset: 0, rows: [[1], [2], [3]], baseIndices: [1, 2, 0] },
     }))
 
-    await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', 'asc')
+    await useQueryStore.getState().sortResults('tab-1', 'id', 'asc')
 
-    expect(ipc.calls('set_result_view')[0]).toMatchObject({
+    expect(ipc.payloads('set_result_view')[0]).toMatchObject({
       queryId: 'q-sort',
       baseViewVersion: 1,
       viewSpec: { sort: { column: 'id', direction: 'asc' }, filters: [] },
@@ -863,11 +863,13 @@ describe('useQueryStore — sortResults', () => {
       firstWindow: { offset: 0, rows: [[3], [1], [2]], baseIndices: [0, 1, 2] },
     }))
 
-    await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', null)
+    await useQueryStore.getState().sortResults('tab-1', 'id', null)
 
-    expect(ipc.calls('set_result_view')[0]).toMatchObject({ viewSpec: { sort: null, filters: [] } })
-    expect(ipc.calls('execute_query')).toHaveLength(0)
-    expect(ipc.calls('reexecute_single_result')).toHaveLength(0)
+    expect(ipc.payloads('set_result_view')[0]).toMatchObject({
+      viewSpec: { sort: null, filters: [] },
+    })
+    expect(ipc.payloads('execute_query')).toHaveLength(0)
+    expect(ipc.payloads('reexecute_single_result')).toHaveLength(0)
     const f = flat('tab-1')
     expect(f.sortColumn).toBeNull()
     expect(f.sortDirection).toBeNull()
@@ -903,14 +905,14 @@ describe('useQueryStore — sortResults', () => {
       firstWindow: { offset: 0, rows: [[true, false, 'x']], baseIndices: [0] },
     }))
 
-    await useQueryStore.getState().sortResults('conn-1', 'tab-bool', 'label', 'desc')
+    await useQueryStore.getState().sortResults('tab-bool', 'label', 'desc')
 
     expect(flat('tab-bool').rows).toEqual([[1, 0, 'x']])
   })
 
   it('ignores a sort request for an unknown tab', async () => {
-    await useQueryStore.getState().sortResults('conn-1', 'missing', 'id', 'asc')
-    expect(ipc.calls('set_result_view')).toHaveLength(0)
+    await useQueryStore.getState().sortResults('missing', 'id', 'asc')
+    expect(ipc.payloads('set_result_view')).toHaveLength(0)
   })
 
   it('skips the state update if the tab was cleaned up during the sort', async () => {
@@ -929,7 +931,7 @@ describe('useQueryStore — sortResults', () => {
             })
         })
     )
-    const sortPromise = useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', 'asc')
+    const sortPromise = useQueryStore.getState().sortResults('tab-1', 'id', 'asc')
     useQueryStore.getState().cleanupTab('conn-1', 'tab-1')
     release?.()
     await sortPromise
@@ -1733,7 +1735,7 @@ describe('useQueryStore — deleteResultRows', () => {
   }
 
   function removedResponse() {
-    ipc.override('remove_result_rows', (args) => {
+    ipc.overridePayload('remove_result_rows', (args) => {
       const removed = (args?.baseIndices as number[]).length
       return { viewVersion: 2, viewRowCount: 3 - removed, totalRows: 3 - removed }
     })
@@ -1747,16 +1749,16 @@ describe('useQueryStore — deleteResultRows', () => {
     const count = await useQueryStore.getState().deleteResultRows('tab-del')
 
     expect(count).toBe(2)
-    const calls = ipc.calls('delete_table_row') as Array<Record<string, unknown>>
+    const calls = ipc.payloads('delete_table_row') as Array<Record<string, unknown>>
     expect(calls).toHaveLength(2)
     expect(calls[0]).toMatchObject({
       database: 'testdb',
       table: 'users',
-      pkColumns: ['id'],
-      pkValues: { id: 1 },
+      primaryKeyColumns: ['id'],
+      primaryKeyValues: { id: 1 },
     })
-    expect(calls[1]).toMatchObject({ pkValues: { id: 3 } })
-    expect(ipc.calls('remove_result_rows')[0]).toEqual({
+    expect(calls[1]).toMatchObject({ primaryKeyValues: { id: 3 } })
+    expect(ipc.payloads('remove_result_rows')[0]).toEqual({
       connectionId: 'conn-1',
       tabId: 'tab-del',
       resultIndex: 0,
@@ -1765,8 +1767,8 @@ describe('useQueryStore — deleteResultRows', () => {
       baseIndices: [0, 2],
     })
     // D16: no re-execute after a delete.
-    expect(ipc.calls('execute_query')).toHaveLength(0)
-    expect(ipc.calls('reexecute_single_result')).toHaveLength(0)
+    expect(ipc.payloads('execute_query')).toHaveLength(0)
+    expect(ipc.payloads('reexecute_single_result')).toHaveLength(0)
 
     const result = flat('tab-del')
     expect(result.totalRows).toBe(1)
@@ -1800,8 +1802,8 @@ describe('useQueryStore — deleteResultRows', () => {
 
     await useQueryStore.getState().deleteResultRows('tab-del-sel')
 
-    expect(ipc.calls('fetch_result_window')).toHaveLength(1)
-    expect(ipc.calls('remove_result_rows')[0]).toMatchObject({ baseIndices: [2, 0, 1] })
+    expect(ipc.payloads('fetch_result_window')).toHaveLength(1)
+    expect(ipc.payloads('remove_result_rows')[0]).toMatchObject({ baseIndices: [2, 0, 1] })
   })
 
   it('retries a superseded tombstone write once against the current version', async () => {
@@ -1816,7 +1818,7 @@ describe('useQueryStore — deleteResultRows', () => {
 
     await useQueryStore.getState().deleteResultRows('tab-del-cas')
 
-    const calls = ipc.calls('remove_result_rows') as Array<Record<string, unknown>>
+    const calls = ipc.payloads('remove_result_rows') as Array<Record<string, unknown>>
     expect(calls.map((call) => call.baseViewVersion)).toEqual([1, 5])
     expect(flat('tab-del-cas').viewVersion).toBe(6)
   })
@@ -1856,7 +1858,7 @@ describe('useQueryStore — deleteResultRows', () => {
       'error',
       "2 rows deleted, but the result couldn't be updated. Re-run the query to refresh."
     )
-    expect(ipc.calls('execute_query')).toHaveLength(0)
+    expect(ipc.payloads('execute_query')).toHaveLength(0)
   })
 
   it('treats a second superseded refusal like any other tombstone failure', async () => {
@@ -1868,7 +1870,7 @@ describe('useQueryStore — deleteResultRows', () => {
 
     await useQueryStore.getState().deleteResultRows('tab-del-cas2')
 
-    expect(ipc.calls('remove_result_rows')).toHaveLength(2)
+    expect(ipc.payloads('remove_result_rows')).toHaveLength(2)
     expect(flat('tab-del-cas2').isStale).toBe(true)
   })
 
@@ -1879,7 +1881,7 @@ describe('useQueryStore — deleteResultRows', () => {
     const count = await useQueryStore.getState().deleteResultRows('tab-del-ro')
 
     expect(count).toBe(0)
-    expect(ipc.calls('delete_table_row')).toHaveLength(0)
+    expect(ipc.payloads('delete_table_row')).toHaveLength(0)
     await expectToast('error', 'Enable edit mode')
   })
 
@@ -1894,7 +1896,7 @@ describe('useQueryStore — deleteResultRows', () => {
     setupEditableResult('tab-del-noconn', { editConnectionId: null })
     expect(await useQueryStore.getState().deleteResultRows('tab-del-noconn')).toBe(0)
     await expectToast('error', 'No active connection')
-    expect(ipc.calls('delete_table_row')).toHaveLength(0)
+    expect(ipc.payloads('delete_table_row')).toHaveLength(0)
   })
 
   it('refuses to delete when the key columns are absent from the result set', async () => {
@@ -1904,7 +1906,7 @@ describe('useQueryStore — deleteResultRows', () => {
     const count = await useQueryStore.getState().deleteResultRows('tab-del-nokey')
 
     expect(count).toBe(0)
-    expect(ipc.calls('delete_table_row')).toHaveLength(0)
+    expect(ipc.payloads('delete_table_row')).toHaveLength(0)
     await expectToast('error', 'key columns')
   })
 
@@ -1916,8 +1918,8 @@ describe('useQueryStore — deleteResultRows', () => {
 
     setupEditableResult('tab-del-cap', { viewRowCount: 100_000, checkedRanges: [[0, 100_000]] })
     expect(await useQueryStore.getState().deleteResultRows('tab-del-cap')).toBe(0)
-    expect(ipc.calls('delete_table_row')).toHaveLength(0)
-    expect(ipc.calls('fetch_result_window')).toHaveLength(0)
+    expect(ipc.payloads('delete_table_row')).toHaveLength(0)
+    expect(ipc.payloads('fetch_result_window')).toHaveLength(0)
   })
 
   it('shows Delete failed and deletes nothing when the checked rows cannot be loaded', async () => {
@@ -1932,7 +1934,7 @@ describe('useQueryStore — deleteResultRows', () => {
     })
 
     expect(await useQueryStore.getState().deleteResultRows('tab-del-load')).toBe(0)
-    expect(ipc.calls('delete_table_row')).toHaveLength(0)
+    expect(ipc.payloads('delete_table_row')).toHaveLength(0)
     await expectToast('error', 'offline')
   })
 
@@ -1964,7 +1966,7 @@ describe('useQueryStore — deleteResultRows', () => {
     const count = await useQueryStore.getState().deleteResultRows('tab-del-err')
 
     expect(count).toBe(1)
-    expect(ipc.calls('remove_result_rows')[0]).toMatchObject({ baseIndices: [0] })
+    expect(ipc.payloads('remove_result_rows')[0]).toMatchObject({ baseIndices: [0] })
     const result = flat('tab-del-err')
     expect(result.saveError).toBe('FK constraint')
     await expectToast('error', 'FK constraint')
@@ -1985,7 +1987,7 @@ describe('useQueryStore — deleteResultRows', () => {
     const count = await useQueryStore.getState().deleteResultRows('tab-del-first-err')
 
     expect(count).toBe(0)
-    expect(ipc.calls('remove_result_rows')).toHaveLength(0)
+    expect(ipc.payloads('remove_result_rows')).toHaveLength(0)
     const result = flat('tab-del-first-err')
     expect(result.rows).toHaveLength(3)
     expect(result.saveError).toBe('access denied')
@@ -1998,7 +2000,7 @@ describe('useQueryStore — deleteResultRows', () => {
 
     const count = await useQueryStore.getState().deleteResultRows('tab-del-empty')
     expect(count).toBe(0)
-    expect(ipc.calls('delete_table_row')).toHaveLength(0)
+    expect(ipc.payloads('delete_table_row')).toHaveLength(0)
     expect(flat('tab-del-empty').rows).toHaveLength(3)
   })
 
@@ -2041,7 +2043,9 @@ describe('useQueryStore — row actions', () => {
     useQueryStore.getState().setContent('tab-act', 'SELECT 1')
     patchResult('tab-act', { queryId: 'q-act' })
     const onCancel = vi.fn()
-    const handle = useQueryStore.getState().beginRowAction('tab-act', 'Copying', 5000, onCancel)
+    const handle = useQueryStore
+      .getState()
+      .beginRowAction('tab-act', { verb: 'Copying', total: 5000, onCancel: onCancel })
     expect(flat('tab-act').rowActionProgress).toMatchObject({ cancellable: true, total: 5000 })
     handle.update(2000)
     useQueryStore.getState().cancelRowAction('tab-act')
@@ -2056,7 +2060,9 @@ describe('useQueryStore — row actions', () => {
     try {
       useQueryStore.getState().setContent('tab-act2', 'SELECT 1')
       patchResult('tab-act2', { queryId: 'q-act2' })
-      const handle = useQueryStore.getState().beginRowAction('tab-act2', 'Pasting', 4000)
+      const handle = useQueryStore
+        .getState()
+        .beginRowAction('tab-act2', { verb: 'Pasting', total: 4000 })
       vi.advanceTimersByTime(1000)
       handle.update(2000)
       expect(flat('tab-act2').rowActionProgress).toMatchObject({ visible: true, done: 2000 })
@@ -2116,10 +2122,10 @@ describe('useQueryStore — totalTimeMs propagation', () => {
       firstWindow: { offset: 0, rows: [], baseIndices: [] },
     }))
 
-    await useQueryStore.getState().sortResults('conn-1', 'tab-sort-total', 'id', null)
+    await useQueryStore.getState().sortResults('tab-sort-total', 'id', null)
 
     expect(flat('tab-sort-total').totalTimeMs).toBe(33)
-    expect(ipc.calls('execute_query')).toHaveLength(0)
+    expect(ipc.payloads('execute_query')).toHaveLength(0)
   })
 
   it('preserves totalTimeMs after changeRowLimit re-executes', async () => {
@@ -2345,7 +2351,7 @@ describe('full export job', () => {
     seedTruncatedTab()
     await startAndFirstPoll()
 
-    expect(ipc.calls('start_result_export')[0]).toEqual({
+    expect(ipc.payloads('start_result_export')[0]).toEqual({
       connectionId: CONN,
       tabId: TAB,
       resultIndex: 0,
@@ -2522,7 +2528,7 @@ describe('full export job', () => {
     progress = running(0)
     ipc.override('start_result_export', () => 'job-1')
     await startAndFirstPoll()
-    expect(ipc.calls('start_result_export')).toHaveLength(2)
+    expect(ipc.payloads('start_result_export')).toHaveLength(2)
     expect(job()).toMatchObject({ jobId: 'job-1', status: 'running' })
   })
 
@@ -2559,7 +2565,7 @@ describe('full export job', () => {
     await started
     expect(job()).toBeUndefined()
     expect(useToastStore.getState().toasts).toHaveLength(0)
-    expect(ipc.calls('log_frontend')).toContainEqual({
+    expect(ipc.payloads('log_frontend')).toContainEqual({
       level: 'info',
       message: expect.stringContaining('start_result_export failed after its job was dropped'),
     })
@@ -2617,6 +2623,6 @@ describe('full export job', () => {
     seedTruncatedTab()
     await startAndFirstPoll()
     await useQueryStore.getState().startFullExport(TAB, REQUEST)
-    expect(ipc.calls('start_result_export')).toHaveLength(1)
+    expect(ipc.payloads('start_result_export')).toHaveLength(1)
   })
 })

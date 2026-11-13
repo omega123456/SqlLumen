@@ -105,7 +105,7 @@ describe('useSchemaStore — toggleExpand on database', () => {
     useSchemaStore.getState().toggleExpand(dbNodeId, 'conn-1')
 
     // Should NOT call any backend function for categories
-    expect(ipc.calls('list_schema_objects')).toHaveLength(0)
+    expect(ipc.payloads('list_schema_objects')).toHaveLength(0)
 
     const connState = useSchemaStore.getState().connectionStates['conn-1']
     const children = Object.values(connState.nodes).filter((n) => n.parentId === dbNodeId)
@@ -189,7 +189,7 @@ describe('useSchemaStore — toggleExpand on category', () => {
       expect(connState.nodes[tablesCatId].isLoaded).toBe(true)
     })
 
-    expect(ipc.calls('list_schema_objects')[0]).toEqual({
+    expect(ipc.payloads('list_schema_objects')[0]).toEqual({
       connectionId: 'conn-1',
       database: 'mydb',
       objectType: 'table',
@@ -278,7 +278,7 @@ describe('useSchemaStore — loadChildren for table node', () => {
       expect(cs.nodes[usersNodeId].isLoaded).toBe(true)
     })
 
-    expect(ipc.calls('list_columns')[0]).toEqual({
+    expect(ipc.payloads('list_columns')[0]).toEqual({
       connectionId: 'conn-1',
       database: 'mydb',
       table: 'users',
@@ -662,7 +662,7 @@ describe('useSchemaStore — refreshCategory', () => {
     await useSchemaStore.getState().refreshCategory('conn-1', 'mydb', 'table')
 
     // Should not throw and should not call backend
-    expect(ipc.calls('list_schema_objects')).toHaveLength(0)
+    expect(ipc.payloads('list_schema_objects')).toHaveLength(0)
   })
 })
 

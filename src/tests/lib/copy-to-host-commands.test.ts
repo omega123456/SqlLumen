@@ -32,7 +32,7 @@ describe('listCopyableObjects', () => {
     ipc.override('list_copyable_objects', () => mockResponse)
 
     const result = await listCopyableObjects('conn-1', 'shop')
-    expect(ipc.calls('list_copyable_objects')).toEqual([
+    expect(ipc.payloads('list_copyable_objects')).toEqual([
       { connectionId: 'conn-1', database: 'shop' },
     ])
     expect(result).toEqual(mockResponse)

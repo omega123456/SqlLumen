@@ -1,6 +1,13 @@
 import { useEffect, useRef, type RefObject } from 'react'
 import { isTargetOutside } from '../../lib/input-events'
 
+export interface DismissOnOutsideClick {
+  ref: RefObject<HTMLElement | null>
+  active: boolean
+  onDismiss: () => void
+  options?: { closeOnEscape?: boolean }
+}
+
 /**
  * Dismiss a popover / context-menu when the user clicks outside or (optionally) presses Escape.
  *
@@ -9,12 +16,12 @@ import { isTargetOutside } from '../../lib/input-events'
  *
  * The `onDismiss` callback is stored in a ref so callers don't need to memoize it.
  */
-export function useDismissOnOutsideClick(
-  ref: RefObject<HTMLElement | null>,
-  active: boolean,
-  onDismiss: () => void,
-  options?: { closeOnEscape?: boolean }
-): void {
+export function useDismissOnOutsideClick({
+  ref,
+  active,
+  onDismiss,
+  options,
+}: DismissOnOutsideClick): void {
   const onDismissRef = useRef(onDismiss)
 
   useEffect(() => {

@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getTemporalColumnType, getTodayMysqlString } from '../../lib/date-utils'
 import { useCellStoreSync } from '../shared/editor-callbacks-context'
+import type { EditorCallbacksContextType } from '../shared/editor-callbacks-context'
 import type { TableDataColumnMeta } from '../../types/schema'
 import { isNullish } from '../../lib/value-checks'
 
@@ -41,18 +42,6 @@ export interface CellEditorParams extends GridEditorProps {
   columnMeta: TableDataColumnMeta
   initialInputValue?: string
   selectAllOnFocus?: boolean
-}
-
-/** Callbacks that the hook needs — typically provided via closures in column defs. */
-export interface CellEditorCallbacks {
-  tabId: string
-  updateCellValue: (tabId: string, column: string, value: unknown) => void
-  syncCellValue: (
-    tabId: string,
-    rowData: Record<string, unknown> | undefined,
-    column: string,
-    value: unknown
-  ) => void
 }
 
 export interface CellEditorResult {
@@ -103,7 +92,7 @@ function placeCaretOnFocus(input: HTMLInputElement | null, selectAll: boolean): 
 
 export function useCellEditor(
   params: CellEditorParams,
-  callbacks: CellEditorCallbacks
+  callbacks: EditorCallbacksContextType
 ): CellEditorResult {
   const columnMeta = params.columnMeta
   const temporalType = getTemporalColumnType(columnMeta.dataType)

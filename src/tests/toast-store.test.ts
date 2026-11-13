@@ -49,25 +49,25 @@ describe('useToastStore', () => {
   it('showError logs to application logger at error level', async () => {
     useToastStore.getState().showError('Title', 'Body')
     await Promise.resolve()
-    expect(ipc.calls('log_frontend')).toContainEqual({ level: 'error', message: 'Title: Body' })
+    expect(ipc.payloads('log_frontend')).toContainEqual({ level: 'error', message: 'Title: Body' })
   })
 
   it('showWarning logs to application logger at warn level', async () => {
     useToastStore.getState().showWarning('Title', 'Body')
     await Promise.resolve()
-    expect(ipc.calls('log_frontend')).toContainEqual({ level: 'warn', message: 'Title: Body' })
+    expect(ipc.payloads('log_frontend')).toContainEqual({ level: 'warn', message: 'Title: Body' })
   })
 
   it('showError log line uses title only when message is omitted', async () => {
     useToastStore.getState().showError('Only')
     await Promise.resolve()
-    expect(ipc.calls('log_frontend')).toContainEqual({ level: 'error', message: 'Only' })
+    expect(ipc.payloads('log_frontend')).toContainEqual({ level: 'error', message: 'Only' })
   })
 
   it('showWarning log line uses title only when message is omitted', async () => {
     useToastStore.getState().showWarning('Only')
     await Promise.resolve()
-    expect(ipc.calls('log_frontend')).toContainEqual({ level: 'warn', message: 'Only' })
+    expect(ipc.payloads('log_frontend')).toContainEqual({ level: 'warn', message: 'Only' })
   })
 
   it('error and warning accept duration override', () => {

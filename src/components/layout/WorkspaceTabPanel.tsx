@@ -6,14 +6,7 @@ import { HistoryTab as HistoryTabComponent } from '../history/HistoryTab'
 import ProcessListTabComponent from '../processlist/ProcessListTab'
 import TableDesignerSkeleton from '../skeletons/TableDesignerSkeleton'
 import MonacoEditorSkeleton from '../skeletons/MonacoEditorSkeleton'
-import type {
-  HistoryTab as HistoryTabType,
-  ObjectEditorTab as ObjectEditorTabType,
-  QueryEditorTab as QueryEditorTabType,
-  SchemaInfoTab as SchemaInfoTabType,
-  TableDesignerTab as TableDesignerTabType,
-  WorkspaceTab,
-} from '../../types/schema'
+import type { WorkspaceTab } from '../../types/schema'
 import styles from './WorkspaceTabPanel.module.css'
 
 const LazyTableDesignerTab = lazy(() => import('../table-designer/TableDesignerTab'))
@@ -40,27 +33,27 @@ interface WorkspaceTabContentProps {
 function WorkspaceTabContent({ tab, isActive, connection }: WorkspaceTabContentProps) {
   if (tab.type === 'table-data') return <TableDataTab tab={tab} isActive={isActive} />
   if (tab.type === 'schema-info') {
-    return <SchemaInfoTab tab={tab as SchemaInfoTabType} isActive={isActive} />
+    return <SchemaInfoTab tab={tab} isActive={isActive} />
   }
   if (tab.type === 'query-editor') {
-    return <QueryEditorTab tab={tab as QueryEditorTabType} isActive={isActive} />
+    return <QueryEditorTab tab={tab} isActive={isActive} />
   }
   if (tab.type === 'table-designer') {
     return (
       <Suspense fallback={<TableDesignerSkeleton />}>
-        <LazyTableDesignerTab tab={tab as TableDesignerTabType} isActive={isActive} />
+        <LazyTableDesignerTab tab={tab} isActive={isActive} />
       </Suspense>
     )
   }
   if (tab.type === 'object-editor') {
     return (
       <Suspense fallback={<MonacoEditorSkeleton />}>
-        <LazyObjectEditorTab tab={tab as ObjectEditorTabType} isActive={isActive} />
+        <LazyObjectEditorTab tab={tab} isActive={isActive} />
       </Suspense>
     )
   }
   if (tab.type === 'history') {
-    return <HistoryTabComponent tab={tab as HistoryTabType} isActive={isActive} />
+    return <HistoryTabComponent tab={tab} isActive={isActive} />
   }
   if (tab.type === 'processlist') {
     return (

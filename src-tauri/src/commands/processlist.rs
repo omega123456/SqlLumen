@@ -1,11 +1,4 @@
-//! Tauri IPC command wrappers for MySQL process list operations.
-//!
-//! Under `cfg(coverage)`, all Tauri command wrappers are excluded — tests exercise
-//! the `*_impl` functions directly.
-
-use crate::commands::query_history_bridge::{
-    log_single_entry_if_resolved, resolve_connection_context,
-};
+use crate::commands::query_history_bridge::resolve_connection_context;
 use crate::db::history::NewHistoryEntry;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
@@ -22,6 +15,13 @@ pub struct ProcessRow {
     pub time: i64,
     pub state: Option<String>,
     pub info: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KillQueriesRequest {
+    pub session_id: String,
+    pub ids: Vec<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,9 +112,10 @@ fn kill_query_sql(id: u64, has_rds_kill: bool) -> String {
 
 pub async fn kill_queries_impl(
     state: &AppState,
-    session_id: &str,
-    ids: Vec<u64>,
+    request: KillQueriesRequest,
 ) -> Result<Vec<KillResult>, String> {
+    let KillQueriesRequest { session_id, ids } = request;
+    let session_id = session_id.as_str();
     let pool = state
         .registry
         .get_pool(session_id)
@@ -135,7 +136,7 @@ pub async fn kill_queries_impl(
             false
         }
     };
-    let (connection_id, database_name) = resolve_connection_context(state, session_id);
+    let history_context = resolve_connection_context(state, session_id);
 
     let mut results = Vec::with_capacity(ids.len());
     for id in ids {
@@ -164,11 +165,8 @@ pub async fn kill_queries_impl(
                 }
             }
         };
-        log_single_entry_if_resolved(
+        history_context.clone().log_single_entry_if_resolved(
             &state.db,
-            connection_id.clone(),
-            database_name.clone(),
-            session_id,
             |connection_id, database_name| NewHistoryEntry {
                 connection_id,
                 database_name,
@@ -190,8 +188,7 @@ pub async fn kill_queries_impl(
 #[tauri::command]
 pub async fn kill_queries(
     state: tauri::State<'_, AppState>,
-    session_id: String,
-    ids: Vec<u64>,
+    payload: KillQueriesRequest,
 ) -> Result<Vec<KillResult>, String> {
-    kill_queries_impl(&state, &session_id, ids).await
+    kill_queries_impl(&state, payload).await
 }

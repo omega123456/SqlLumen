@@ -1,5 +1,12 @@
 import type { RoutineParameter } from '../types/schema'
 
+export interface ExecuteTemplateInputs {
+  databaseName: string
+  routineName: string
+  routineType: 'procedure' | 'function'
+  parameters: RoutineParameter[]
+}
+
 /**
  * Build a SQL template for executing a stored procedure or function.
  *
@@ -11,12 +18,12 @@ import type { RoutineParameter } from '../types/schema'
  * - dataType is lowercased in the comment.
  * - Parameters are sorted by ordinalPosition.
  */
-export function buildExecuteTemplate(
-  databaseName: string,
-  routineName: string,
-  routineType: 'procedure' | 'function',
-  parameters: RoutineParameter[]
-): string {
+export function buildExecuteTemplate({
+  databaseName,
+  routineName,
+  routineType,
+  parameters,
+}: ExecuteTemplateInputs): string {
   const keyword = routineType === 'procedure' ? 'CALL' : 'SELECT'
   const qualifiedName = `\`${databaseName}\`.\`${routineName}\``
 

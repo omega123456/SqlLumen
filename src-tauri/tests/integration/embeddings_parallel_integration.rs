@@ -59,7 +59,18 @@ async fn embed_texts_preserves_output_ordering_across_batches() {
     let base_url = format!("{}/v1", server.uri());
 
     let texts: Vec<String> = (0..3).map(|i| format!("text_{i}")).collect();
-    let result = embed_texts(&client, &base_url, "test-model", texts, None).await;
+    let result = embed_texts(
+        &client,
+        sqllumen_lib::schema_index::embeddings::EmbeddingModel {
+            base_url: &base_url,
+            model: "test-model",
+        },
+        sqllumen_lib::schema_index::embeddings::EmbeddingInput {
+            texts,
+            dimensions: None,
+        },
+    )
+    .await;
 
     assert!(result.is_ok());
     let vecs = result.unwrap();
@@ -88,7 +99,18 @@ async fn embed_texts_multi_batch_parallel_preserves_ordering() {
 
     // 70 texts → 3 batches (32 + 32 + 6) with MAX_BATCH_SIZE=32
     let texts: Vec<String> = (0..70).map(|i| format!("text_{i}")).collect();
-    let result = embed_texts(&client, &base_url, "test-model", texts, None).await;
+    let result = embed_texts(
+        &client,
+        sqllumen_lib::schema_index::embeddings::EmbeddingModel {
+            base_url: &base_url,
+            model: "test-model",
+        },
+        sqllumen_lib::schema_index::embeddings::EmbeddingInput {
+            texts,
+            dimensions: None,
+        },
+    )
+    .await;
 
     assert!(result.is_ok(), "should succeed: {:?}", result);
     let vecs = result.unwrap();
@@ -132,10 +154,14 @@ async fn embed_texts_halving_retry_on_413_produces_correct_output() {
 
     let result = embed_texts(
         &client,
-        &base_url,
-        "model",
-        vec!["a".to_string(), "b".to_string()],
-        None,
+        sqllumen_lib::schema_index::embeddings::EmbeddingModel {
+            base_url: &base_url,
+            model: "model",
+        },
+        sqllumen_lib::schema_index::embeddings::EmbeddingInput {
+            texts: vec!["a".to_string(), "b".to_string()],
+            dimensions: None,
+        },
     )
     .await;
 
@@ -171,10 +197,14 @@ async fn embed_texts_with_dimensions_sends_field() {
 
     let result = embed_texts(
         &client,
-        &base_url,
-        "model",
-        vec!["test".to_string()],
-        Some(256),
+        sqllumen_lib::schema_index::embeddings::EmbeddingModel {
+            base_url: &base_url,
+            model: "model",
+        },
+        sqllumen_lib::schema_index::embeddings::EmbeddingInput {
+            texts: vec!["test".to_string()],
+            dimensions: Some(256),
+        },
     )
     .await;
 
@@ -201,7 +231,18 @@ async fn embed_texts_without_dimensions_omits_field() {
     let client = test_client();
     let base_url = format!("{}/v1", server.uri());
 
-    let result = embed_texts(&client, &base_url, "model", vec!["test".to_string()], None).await;
+    let result = embed_texts(
+        &client,
+        sqllumen_lib::schema_index::embeddings::EmbeddingModel {
+            base_url: &base_url,
+            model: "model",
+        },
+        sqllumen_lib::schema_index::embeddings::EmbeddingInput {
+            texts: vec!["test".to_string()],
+            dimensions: None,
+        },
+    )
+    .await;
 
     assert!(result.is_ok());
 }

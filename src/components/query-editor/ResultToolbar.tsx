@@ -444,19 +444,23 @@ export function ResultToolbar({
       0
     )
     const controller = new AbortController()
-    const action = beginRowAction(
-      tabId,
-      'Copying',
-      total,
-      chunkCount > 1 ? () => controller.abort() : undefined
-    )
+    const action = beginRowAction(tabId, {
+      verb: 'Copying',
+      total: total,
+      onCancel: chunkCount > 1 ? () => controller.abort() : undefined,
+    })
     let rows: CachedRow[] = []
     try {
       for (const range of checkedRanges) {
         const doneBefore = rows.length
-        const chunk = await readViewRange(tabId, activeResultIndex, range, {
-          signal: controller.signal,
-          onProgress: ({ done }) => action.update(doneBefore + done),
+        const chunk = await readViewRange({
+          tabId: tabId,
+          resultIndex: activeResultIndex,
+          range: range,
+          options: {
+            signal: controller.signal,
+            onProgress: ({ done }) => action.update(doneBefore + done),
+          },
         })
         rows = rows.concat(chunk)
       }

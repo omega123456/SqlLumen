@@ -19,25 +19,38 @@ export interface CreateDatabaseDialogProps {
   onCancel: () => void
 }
 
+interface CreateDatabaseFormState {
+  name: string
+  isSubmitting: boolean
+  error: string | null
+  nameError: string | null
+}
+
+const IDLE_FORM_STATE: CreateDatabaseFormState = {
+  name: '',
+  isSubmitting: false,
+  error: null,
+  nameError: null,
+}
+
 export function CreateDatabaseDialog({
   isOpen,
   connectionId,
   onSuccess,
   onCancel,
 }: CreateDatabaseDialogProps) {
-  const [name, setName] = useState('')
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [nameError, setNameError] = useState<string | null>(null)
+  const [formState, setFormState] = useState<CreateDatabaseFormState>(IDLE_FORM_STATE)
+  const { name, isSubmitting, error, nameError } = formState
 
-  const encoding = useDatabaseEncoding(connectionId, isOpen)
+  const patchFormState = useCallback((patch: Partial<CreateDatabaseFormState>) => {
+    setFormState((current) => ({ ...current, ...patch }))
+  }, [])
+
+  const encoding = useDatabaseEncoding({ connectionId: connectionId, isOpen: isOpen })
 
   useEffect(() => {
     if (!isOpen) return
-    setName('')
-    setIsSubmitting(false)
-    setError(null)
-    setNameError(null)
+    setFormState(IDLE_FORM_STATE)
   }, [isOpen])
 
   const validateName = useCallback((value: string): string | null => {
@@ -49,38 +62,46 @@ export function CreateDatabaseDialog({
 
   const handleNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value
-    setName(value)
     if (nameError) {
-      setNameError(validateName(value))
+      patchFormState({ name: value, nameError: validateName(value) })
+      return
     }
+    patchFormState({ name: value })
   }
 
   const handleSubmit = useCallback(async () => {
     const validation = validateName(name)
     if (validation) {
-      setNameError(validation)
+      patchFormState({ nameError: validation })
       return
     }
 
-    setIsSubmitting(true)
-    setError(null)
+    patchFormState({ isSubmitting: true, error: null })
 
     try {
-      await createDatabase(
-        connectionId,
-        name.trim(),
-        encoding.charset || undefined,
-        encoding.collation || undefined
-      )
+      await createDatabase({
+        connectionId: connectionId,
+        name: name.trim(),
+        charset: encoding.charset || null,
+        collation: encoding.collation || null,
+      })
       onSuccess(name.trim())
     } catch (error) {
       const message = toErrorMessage(error)
-      setError(message)
+      patchFormState({ error: message })
       showErrorToast('Failed to create database', message)
     } finally {
-      setIsSubmitting(false)
+      patchFormState({ isSubmitting: false })
     }
-  }, [connectionId, encoding.charset, encoding.collation, name, onSuccess, validateName])
+  }, [
+    connectionId,
+    encoding.charset,
+    encoding.collation,
+    name,
+    onSuccess,
+    validateName,
+    patchFormState,
+  ])
 
   const handleFormSubmit = useFormSubmit(handleSubmit)
 

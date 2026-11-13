@@ -8,6 +8,7 @@ use crate::export::csv_writer::write_csv;
 use crate::logging::log_store::{self, LogPage};
 use crate::state::AppState;
 use chrono::{DateTime, NaiveDate, NaiveTime, SecondsFormat, TimeZone, Utc};
+use serde::Deserialize;
 use serde_json::Value;
 use std::fs::File;
 
@@ -46,11 +47,15 @@ impl LogLevelFilter {
     }
 }
 
-pub fn list_logs_impl(state: &AppState, page: i64, level: &str) -> Result<LogPage, String> {
-    let filter = LogLevelFilter::parse(level)?;
+pub fn list_logs_impl(state: &AppState, request: &ListLogsRequest) -> Result<LogPage, String> {
+    let filter = LogLevelFilter::parse(&request.level)?;
     let conn = lock_connection(&state.logs_db)?;
-    log_store::list_logs(&conn, page, filter.threshold(), Utc::now())
-        .map_err(|error| error.to_string())
+    let query = log_store::LogPageQuery {
+        page: request.page,
+        level_num: filter.threshold(),
+        now: Utc::now(),
+    };
+    log_store::list_logs(&conn, &query).map_err(|error| error.to_string())
 }
 
 fn write_exported_logs_csv(
@@ -73,42 +78,61 @@ fn write_exported_logs_csv(
             ]
         })
         .collect::<Vec<_>>();
-    write_csv(&mut file, &columns, &rows, true).map_err(|error| error.to_string())?;
+    let table = crate::export::ExportRows {
+        columns: &columns,
+        rows: &rows,
+    };
+    write_csv(&mut file, &table, true).map_err(|error| error.to_string())?;
 
     i64::try_from(exported.len()).map_err(|_| "exported row count overflow".to_string())
 }
 
-pub fn export_logs_impl(
-    state: &AppState,
-    start_timestamp: &str,
-    end_timestamp: &str,
-    file_path: &str,
-) -> Result<i64, String> {
-    let range = parse_export_range(start_timestamp, end_timestamp)?;
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportLogsRequest {
+    pub start_timestamp: String,
+    pub end_timestamp: String,
+    pub file_path: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListLogsRequest {
+    pub page: i64,
+    pub level: String,
+}
+
+pub fn export_logs_impl(state: &AppState, request: &ExportLogsRequest) -> Result<i64, String> {
+    let range = parse_export_range(&request.start_timestamp, &request.end_timestamp)?;
     let exported = {
         let conn = lock_connection(&state.logs_db)?;
         log_store::export_logs_in_range(&conn, &range.start_timestamp, &range.end_timestamp)
             .map_err(|error| error.to_string())?
     };
 
-    write_exported_logs_csv(file_path, &exported)
+    write_exported_logs_csv(&request.file_path, &exported)
 }
 
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn list_logs(
-    page: i64,
-    level: String,
+    payload: ListLogsRequest,
     state: tauri::State<'_, AppState>,
 ) -> Result<LogPage, String> {
-    let threshold = LogLevelFilter::parse(&level)?.threshold();
+    let threshold = LogLevelFilter::parse(&payload.level)?.threshold();
+    let page = payload.page;
     let logs_db = std::sync::Arc::clone(&state.logs_db);
     // Runs off the main thread so a slow query never freezes the WebView. Note that
     // `logs_db` is a single shared connection, so this lock serializes against log
     // ingestion for the duration of the query.
     tauri::async_runtime::spawn_blocking(move || {
         let conn = logs_db.lock().map_err(|error| error.to_string())?;
-        log_store::list_logs(&conn, page, threshold, Utc::now()).map_err(|error| error.to_string())
+        let query = log_store::LogPageQuery {
+            page,
+            level_num: threshold,
+            now: Utc::now(),
+        };
+        log_store::list_logs(&conn, &query).map_err(|error| error.to_string())
     })
     .await
     .map_err(|error| error.to_string())?
@@ -117,12 +141,11 @@ pub async fn list_logs(
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn export_logs(
-    start_timestamp: String,
-    end_timestamp: String,
-    file_path: String,
+    payload: ExportLogsRequest,
     state: tauri::State<'_, AppState>,
 ) -> Result<i64, String> {
-    let range = parse_export_range(&start_timestamp, &end_timestamp)?;
+    let range = parse_export_range(&payload.start_timestamp, &payload.end_timestamp)?;
+    let file_path = payload.file_path;
     let logs_db = std::sync::Arc::clone(&state.logs_db);
     tauri::async_runtime::spawn_blocking(move || {
         let exported = {

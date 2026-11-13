@@ -66,7 +66,14 @@ fn save_and_load_schema_cache_snapshot_impl_round_trip() {
     let state = test_app_state();
     let json = r#"{"databases":["app"],"tables":{"app":[{"name":"users"}]},"columns":{},"routines":{},"foreignKeys":{},"indexes":{}}"#;
 
-    save_schema_cache_snapshot_impl(&state, "profile-1", json).expect("save impl should work");
+    save_schema_cache_snapshot_impl(
+        &state,
+        &sqllumen_lib::commands::schema_cache::SaveSchemaCacheSnapshotRequest {
+            connection_id: "profile-1".to_string(),
+            snapshot_json: json.to_string(),
+        },
+    )
+    .expect("save impl should work");
 
     let loaded =
         load_schema_cache_snapshot_impl(&state, "profile-1").expect("load impl should work");
@@ -78,10 +85,22 @@ fn save_and_load_schema_cache_snapshot_impl_round_trip() {
 fn save_schema_cache_snapshot_impl_upserts_existing_profile() {
     let state = test_app_state();
 
-    save_schema_cache_snapshot_impl(&state, "profile-1", r#"{"databases":["old"]}"#)
-        .expect("initial save impl should work");
-    save_schema_cache_snapshot_impl(&state, "profile-1", r#"{"databases":["new"]}"#)
-        .expect("upsert save impl should work");
+    save_schema_cache_snapshot_impl(
+        &state,
+        &sqllumen_lib::commands::schema_cache::SaveSchemaCacheSnapshotRequest {
+            connection_id: "profile-1".to_string(),
+            snapshot_json: r#"{"databases":["old"]}"#.to_string(),
+        },
+    )
+    .expect("initial save impl should work");
+    save_schema_cache_snapshot_impl(
+        &state,
+        &sqllumen_lib::commands::schema_cache::SaveSchemaCacheSnapshotRequest {
+            connection_id: "profile-1".to_string(),
+            snapshot_json: r#"{"databases":["new"]}"#.to_string(),
+        },
+    )
+    .expect("upsert save impl should work");
 
     let loaded =
         load_schema_cache_snapshot_impl(&state, "profile-1").expect("load impl should work");
@@ -98,8 +117,14 @@ fn save_schema_cache_snapshot_impl_surfaces_repository_errors() {
             .expect("drop table should succeed");
     }
 
-    let error = save_schema_cache_snapshot_impl(&state, "profile-1", r#"{"databases":[]}"#)
-        .expect_err("save impl should propagate db errors");
+    let error = save_schema_cache_snapshot_impl(
+        &state,
+        &sqllumen_lib::commands::schema_cache::SaveSchemaCacheSnapshotRequest {
+            connection_id: "profile-1".to_string(),
+            snapshot_json: r#"{"databases":[]}"#.to_string(),
+        },
+    )
+    .expect_err("save impl should propagate db errors");
 
     assert!(
         error.contains("no such table") || error.contains("no such table: schema_cache"),
@@ -177,8 +202,14 @@ fn schema_cache_impls_surface_poisoned_db_lock_errors() {
         "unexpected poisoned lock error: {load_error}"
     );
 
-    let save_error = save_schema_cache_snapshot_impl(&state, "profile-1", r#"{"databases":[]}"#)
-        .expect_err("save impl should fail on poisoned mutex");
+    let save_error = save_schema_cache_snapshot_impl(
+        &state,
+        &sqllumen_lib::commands::schema_cache::SaveSchemaCacheSnapshotRequest {
+            connection_id: "profile-1".to_string(),
+            snapshot_json: r#"{"databases":[]}"#.to_string(),
+        },
+    )
+    .expect_err("save impl should fail on poisoned mutex");
     assert!(
         save_error.contains("poison"),
         "unexpected poisoned lock error: {save_error}"

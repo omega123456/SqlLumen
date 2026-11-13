@@ -10,13 +10,12 @@
 use crate::db::history::{self, NewHistoryEntry};
 use crate::mysql::ddl_detector::{detect_ddl_tables, DdlDetectionResult};
 use crate::mysql::metadata_cache::{
-    evict_metadata_cache_for_connection, evict_metadata_cache_for_tables,
+    evict_metadata_cache_for_connection, evict_metadata_cache_for_tables, TableEviction,
 };
 use crate::mysql::query_executor::{
-    execute_call_query_impl, execute_multi_query_impl, execute_query_impl, ExecuteQueryResult,
-    MultiQueryResult,
+    execute_call_query_impl, execute_multi_query_impl, execute_query_impl, ExecuteCallQueryRequest,
+    ExecuteMultiQueryRequest, ExecuteQueryRequest, ExecuteQueryResult, MultiQueryResult,
 };
-use crate::mysql::result_view::ResultViewSpec;
 use crate::state::AppState;
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
@@ -52,30 +51,6 @@ pub(crate) fn log_single_entry(db: &Arc<Mutex<Connection>>, entry: NewHistoryEnt
     });
 }
 
-/// Fire-and-forget: log a single history entry only when a saved connection id
-/// was resolved. When `conn_id` is `None`, the session has no saved profile, so
-/// we skip logging (writing the ephemeral session id would violate the
-/// `connections` foreign key on `query_history`) and emit a warn instead.
-///
-/// `build_entry` receives the resolved saved-connection id and the optional
-/// database name and returns the entry to insert. `session_id` is used only for
-/// the skip warning context.
-pub(crate) fn log_single_entry_if_resolved(
-    db: &Arc<Mutex<Connection>>,
-    conn_id: Option<String>,
-    database_name: Option<String>,
-    session_id: &str,
-    build_entry: impl FnOnce(String, Option<String>) -> NewHistoryEntry,
-) {
-    match conn_id {
-        Some(conn_id) => log_single_entry(db, build_entry(conn_id, database_name)),
-        None => tracing::warn!(
-            session_id = %session_id,
-            "skipping query history logging: no saved connection id resolved for session"
-        ),
-    }
-}
-
 /// Fire-and-forget: insert a batch of history entries.
 pub(crate) fn log_batch_entries(db: &Arc<Mutex<Connection>>, entries: Vec<NewHistoryEntry>) {
     if entries.is_empty() {
@@ -103,38 +78,38 @@ pub(crate) fn log_batch_entries(db: &Arc<Mutex<Connection>>, entries: Vec<NewHis
     });
 }
 
-/// Resolve the saved-connection id (profile_id) and active database name from the registry.
-///
-/// Returns `None` for the connection id when the registry does not resolve a saved
-/// profile for the session. Callers must skip history logging in that case rather than
-/// fall back to the (ephemeral) session id — writing a non-existent id would violate the
-/// `connections` foreign key on `query_history`.
+#[derive(Clone)]
+pub(crate) struct ConnectionHistoryContext {
+    pub(crate) session_id: String,
+    pub(crate) connection_id: Option<String>,
+    pub(crate) database_name: Option<String>,
+}
+
+impl ConnectionHistoryContext {
+    pub(crate) fn log_single_entry_if_resolved(
+        self,
+        db: &Arc<Mutex<Connection>>,
+        build_entry: impl FnOnce(String, Option<String>) -> NewHistoryEntry,
+    ) {
+        let Some(connection_id) = self.connection_id else {
+            tracing::warn!(
+                session_id = %self.session_id,
+                "skipping query history logging: no saved connection id resolved for session"
+            );
+            return;
+        };
+        log_single_entry(db, build_entry(connection_id, self.database_name));
+    }
+}
+
 pub(crate) fn resolve_connection_context(
     state: &AppState,
     session_id: &str,
-) -> (Option<String>, Option<String>) {
-    let connection_id = state.registry.get_profile_id(session_id);
-    let database_name = state
-        .registry
-        .get_connection_params(session_id)
-        .and_then(|params| params.default_database);
-    (connection_id, database_name)
-}
-
-fn handle_metadata_cache_invalidation(
-    state: &AppState,
-    session_id: &str,
-    sql: &str,
-    default_database: Option<&str>,
-) {
-    match detect_ddl_tables(sql) {
-        DdlDetectionResult::NoDdl => {}
-        DdlDetectionResult::DdlDetected(affected_tables) => {
-            evict_metadata_cache_for_tables(state, session_id, &affected_tables, default_database);
-        }
-        DdlDetectionResult::ParseFailed => {
-            evict_metadata_cache_for_connection(state, session_id);
-        }
+) -> ConnectionHistoryContext {
+    ConnectionHistoryContext {
+        session_id: session_id.to_string(),
+        connection_id: state.registry.get_profile_id(session_id),
+        database_name: default_database_for_session(state, session_id),
     }
 }
 
@@ -147,24 +122,37 @@ fn default_database_for_session(state: &AppState, session_id: &str) -> Option<St
 
 pub fn invalidate_metadata_cache_for_executed_sql(state: &AppState, session_id: &str, sql: &str) {
     let default_database = default_database_for_session(state, session_id);
-    handle_metadata_cache_invalidation(state, session_id, sql, default_database.as_deref());
+    match detect_ddl_tables(sql) {
+        DdlDetectionResult::NoDdl => {}
+        DdlDetectionResult::DdlDetected(affected_tables) => {
+            let eviction = TableEviction {
+                connection_id: session_id,
+                affected_tables: &affected_tables,
+                default_database: default_database.as_deref(),
+            };
+            evict_metadata_cache_for_tables(state, &eviction);
+        }
+        DdlDetectionResult::ParseFailed => {
+            evict_metadata_cache_for_connection(state, session_id);
+        }
+    }
 }
 
 // ── execute_query bridge ──────────────────────────────────────────────────────
 
-/// Execute a single query and log history. `view_spec` (sort plus filters) is
-/// passed through so a re-run keeps the user's view in one round trip.
 pub async fn execute_query_bridge(
     state: &AppState,
-    session_id: &str,
-    tab_id: &str,
-    sql: &str,
-    row_limit: usize,
-    view_spec: Option<ResultViewSpec>,
+    request: &ExecuteQueryRequest,
 ) -> Result<ExecuteQueryResult, String> {
-    let result = execute_query_impl(state, session_id, tab_id, sql, row_limit, view_spec).await;
+    let session_id = request.connection_id.as_str();
+    let sql = request.sql.as_str();
+    let result = execute_query_impl(state, request).await;
 
-    let (connection_id, database_name) = resolve_connection_context(state, session_id);
+    let ConnectionHistoryContext {
+        connection_id,
+        database_name,
+        ..
+    } = resolve_connection_context(state, session_id);
 
     // Still invalidate the metadata cache on success regardless of history logging.
     if result.is_ok() {
@@ -217,17 +205,18 @@ pub async fn execute_query_bridge(
 
 // ── execute_multi_query bridge ────────────────────────────────────────────────
 
-/// Execute multiple statements and log history (one entry per statement).
 pub async fn execute_multi_query_bridge(
     state: &AppState,
-    session_id: &str,
-    tab_id: &str,
-    statements: Vec<String>,
-    row_limit: usize,
+    request: &ExecuteMultiQueryRequest,
 ) -> Result<MultiQueryResult, String> {
-    let result = execute_multi_query_impl(state, session_id, tab_id, statements, row_limit).await;
+    let session_id = request.connection_id.as_str();
+    let result = execute_multi_query_impl(state, request).await;
 
-    let (connection_id, database_name) = resolve_connection_context(state, session_id);
+    let ConnectionHistoryContext {
+        connection_id,
+        database_name,
+        ..
+    } = resolve_connection_context(state, session_id);
 
     // Still invalidate the metadata cache for successful statements regardless of history logging.
     if let Ok(multi) = &result {
@@ -288,17 +277,19 @@ pub async fn execute_multi_query_bridge(
 
 // ── execute_call_query bridge ─────────────────────────────────────────────────
 
-/// Execute a CALL statement and log a single history entry.
 pub async fn execute_call_query_bridge(
     state: &AppState,
-    session_id: &str,
-    tab_id: &str,
-    sql: &str,
-    row_limit: usize,
+    request: &ExecuteCallQueryRequest,
 ) -> Result<MultiQueryResult, String> {
-    let result = execute_call_query_impl(state, session_id, tab_id, sql, row_limit).await;
+    let session_id = request.connection_id.as_str();
+    let sql = request.sql.as_str();
+    let result = execute_call_query_impl(state, request).await;
 
-    let (connection_id, database_name) = resolve_connection_context(state, session_id);
+    let ConnectionHistoryContext {
+        connection_id,
+        database_name,
+        ..
+    } = resolve_connection_context(state, session_id);
 
     let Some(connection_id) = connection_id else {
         tracing::warn!(

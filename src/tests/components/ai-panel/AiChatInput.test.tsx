@@ -137,12 +137,11 @@ describe('AiChatInput', () => {
     // Now press Enter — should send
     await user.keyboard('{Enter}')
 
-    expect(sendMessageSpy).toHaveBeenCalledWith(
-      'tab-1',
-      'conn-1',
-      expect.stringContaining('line 1'),
-      {}
-    )
+    expect(sendMessageSpy).toHaveBeenCalledWith('tab-1', {
+      connectionId: 'conn-1',
+      message: expect.stringContaining('line 1'),
+      settings: {},
+    })
 
     // Restore
     useAiStore.setState({ sendMessage: originalSendMessage })
@@ -177,7 +176,11 @@ describe('AiChatInput', () => {
     await user.type(textarea, 'SELECT * FROM users')
     await user.click(screen.getByTestId('ai-send-button'))
 
-    expect(sendMessageSpy).toHaveBeenCalledWith('tab-1', 'conn-1', 'SELECT * FROM users', {})
+    expect(sendMessageSpy).toHaveBeenCalledWith('tab-1', {
+      connectionId: 'conn-1',
+      message: 'SELECT * FROM users',
+      settings: {},
+    })
 
     useAiStore.setState({ sendMessage: originalSendMessage })
   })
@@ -507,7 +510,11 @@ describe('AiChatInput', () => {
     await user.type(textarea, 'SELECT * FROM users')
     await user.keyboard('{Enter}')
 
-    expect(sendMessageSpy).toHaveBeenCalledWith('tab-1', 'conn-1', 'SELECT * FROM users', {})
+    expect(sendMessageSpy).toHaveBeenCalledWith('tab-1', {
+      connectionId: 'conn-1',
+      message: 'SELECT * FROM users',
+      settings: {},
+    })
 
     useAiStore.setState({ sendMessage: originalSendMessage })
   })
@@ -581,7 +588,7 @@ describe('AiChatInput', () => {
         createdAt: 0,
         source: 'manual',
       })
-      ipc.override('save_memory', saveSpy)
+      ipc.overridePayload('save_memory', saveSpy)
 
       render(<AiChatInput tabId="tab-1" connectionId="conn-1" />)
 
@@ -643,7 +650,7 @@ describe('AiChatInput', () => {
         createdAt: 0,
         source: 'manual',
       })
-      ipc.override('save_memory', saveSpy)
+      ipc.overridePayload('save_memory', saveSpy)
 
       render(<AiChatInput tabId="tab-1" connectionId="conn-1" />)
 
@@ -705,7 +712,7 @@ describe('AiChatInput', () => {
         createdAt: 0,
         source: 'manual',
       })
-      ipc.override('save_memory', saveSpy)
+      ipc.overridePayload('save_memory', saveSpy)
 
       render(<AiChatInput tabId="tab-1" connectionId="conn-1" />)
 

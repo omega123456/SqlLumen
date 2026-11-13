@@ -758,7 +758,7 @@ describe('useSessionRestoreStore — restoreSession', () => {
           return []
         case 'open_connection':
           return {
-            sessionId: `session-${(a?.payload as { profileId?: string } | undefined)?.profileId}`,
+            sessionId: `session-${String(a?.profileId)}`,
             serverVersion: '8.0.0',
           }
         default:
@@ -838,7 +838,7 @@ describe('useSessionRestoreStore — restoreSession', () => {
           return []
         case 'open_connection':
           return {
-            sessionId: `session-${(a?.payload as { profileId?: string } | undefined)?.profileId}`,
+            sessionId: `session-${String(a?.profileId)}`,
             serverVersion: '8.0.0',
           }
         default:
@@ -923,7 +923,7 @@ describe('useSessionRestoreStore — restoreSession', () => {
           return []
         case 'open_connection':
           return {
-            sessionId: `session-${(a?.payload as { profileId?: string } | undefined)?.profileId}`,
+            sessionId: `session-${String(a?.profileId)}`,
             serverVersion: '8.0.0',
           }
         default:
@@ -2030,7 +2030,7 @@ describe('useSessionRestoreStore — native session reconciliation', () => {
           : []
       }
       if (cmd === 'open_connection') {
-        const profileId = (a?.payload as { profileId: string }).profileId
+        const profileId = String(a?.profileId)
         if (profileId === 'profile-2' && !retry) throw new Error('VPN unavailable')
         return { sessionId: `session-${profileId}`, serverVersion: '8.0.36' }
       }

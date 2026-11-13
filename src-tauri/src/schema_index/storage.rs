@@ -108,14 +108,19 @@ pub fn update_chunk_embedding(
     Ok(())
 }
 
-/// Delete all chunks where `(connection_id, db_name, table_name)` matches either the
-/// source table or the referenced table. Also deletes corresponding vectors.
-pub fn delete_chunks_by_table(
-    conn: &Connection,
-    connection_id: &str,
-    db_name: &str,
-    table_name: &str,
-) -> Result<()> {
+#[derive(Debug, Clone, Copy)]
+pub struct IndexedTableRef<'a> {
+    pub connection_id: &'a str,
+    pub db_name: &'a str,
+    pub table_name: &'a str,
+}
+
+pub fn delete_chunks_by_table(conn: &Connection, table: &IndexedTableRef<'_>) -> Result<()> {
+    let IndexedTableRef {
+        connection_id,
+        db_name,
+        table_name,
+    } = *table;
     let vec_table = vec_table_name(connection_id);
 
     // First collect the IDs to delete from the vector table
@@ -393,16 +398,11 @@ pub fn upsert_signatures(
 
 /// Delete a single signature row for `(connection_id, db_name, table_name)`.
 /// No-op if the row doesn't exist.
-pub fn delete_signature(
-    conn: &Connection,
-    connection_id: &str,
-    db_name: &str,
-    table_name: &str,
-) -> Result<()> {
+pub fn delete_signature(conn: &Connection, table: &IndexedTableRef<'_>) -> Result<()> {
     conn.execute(
         "DELETE FROM schema_index_table_signatures
          WHERE connection_id = ?1 AND db_name = ?2 AND table_name = ?3",
-        params![connection_id, db_name, table_name],
+        params![table.connection_id, table.db_name, table.table_name],
     )?;
     Ok(())
 }
@@ -453,11 +453,12 @@ pub fn replace_fk_edges_for_connection(
 /// inserts the new edges.
 pub fn replace_fk_edges_for_table(
     conn: &Connection,
-    connection_id: &str,
-    src_db: &str,
-    src_tbl: &str,
+    source_table: &IndexedTableRef<'_>,
     edges: &[FkEdge],
 ) -> Result<()> {
+    let connection_id = source_table.connection_id;
+    let src_db = source_table.db_name;
+    let src_tbl = source_table.table_name;
     conn.execute(
         "DELETE FROM schema_index_fk_edges WHERE connection_id = ?1 AND src_db = ?2 AND src_tbl = ?3",
         params![connection_id, src_db, src_tbl],

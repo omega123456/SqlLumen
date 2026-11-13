@@ -59,11 +59,21 @@ export function offsetToColumn(text: string, offset: number): number {
  * Execute a specific SQL statement via the query store.
  * Exported for testing.
  */
-export function handleRunStatement(
-  connectionId: string,
-  tabId: string,
+export interface CodeLensStatementTarget {
+  connectionId: string
+  tabId: string
   statement: StatementRange
-): void {
+}
+
+export interface CodeLensAskAiTarget extends CodeLensStatementTarget {
+  fullText: string
+}
+
+export function handleRunStatement({
+  connectionId,
+  tabId,
+  statement,
+}: CodeLensStatementTarget): void {
   const queryState = useQueryStore.getState()
   const tabState = queryState.tabs[tabId]
   if (isExecutionLocked(tabState)) {
@@ -93,12 +103,7 @@ export function handleRunStatement(
  * range.  This ensures that `getValueInRange(range)` returns exactly
  * `stmt.sql`, which is what `applyDiff` expects for its staleness check.
  */
-export function handleAskAi(
-  _connectionId: string,
-  tabId: string,
-  statement: StatementRange,
-  fullText: string
-): void {
+export function handleAskAi({ tabId, statement, fullText }: CodeLensAskAiTarget): void {
   const aiStore = useAiStore.getState()
 
   // Open the AI panel if not already open
@@ -165,6 +170,11 @@ export function provideCodeLenses(
   for (const statement of statements) {
     const { lineNumber } = model.getPositionAt(statement.start)
     const lensRange = new monaco.Range(lineNumber, 1, lineNumber, 1)
+    const statementTarget: CodeLensStatementTarget = {
+      connectionId: context.connectionId,
+      tabId: context.tabId,
+      statement: statement,
+    }
 
     // "Run" CodeLens — always present
     lenses.push({
@@ -172,7 +182,7 @@ export function provideCodeLenses(
       command: {
         id: RUN_COMMAND_ID,
         title: '\u25B6 Run',
-        arguments: [context.connectionId, context.tabId, statement],
+        arguments: [statementTarget],
       },
     })
 
@@ -183,7 +193,7 @@ export function provideCodeLenses(
         command: {
           id: ASK_AI_COMMAND_ID,
           title: '\u2726 Ask AI',
-          arguments: [context.connectionId, context.tabId, statement, text],
+          arguments: [{ ...statementTarget, fullText: text }],
         },
       })
     }
@@ -233,28 +243,17 @@ useSettingsStore.subscribe((state) => {
 
 monaco.editor.registerCommand(
   RUN_COMMAND_ID,
-  (_accessor: unknown, connectionId?: string, tabId?: string, statement?: StatementRange) => {
-    if (!connectionId) return
-    if (!tabId) return
-    if (!statement) return
-    handleRunStatement(connectionId, tabId, statement)
+  (_accessor: unknown, target?: CodeLensStatementTarget) => {
+    if (!target) return
+    handleRunStatement(target)
   }
 )
 
 monaco.editor.registerCommand(
   ASK_AI_COMMAND_ID,
-  (
-    _accessor: unknown,
-    connectionId?: string,
-    tabId?: string,
-    statement?: StatementRange,
-    text?: string
-  ) => {
-    if (!connectionId) return
-    if (!tabId) return
-    if (!statement) return
-    if (!text) return
-    handleAskAi(connectionId, tabId, statement, text)
+  (_accessor: unknown, target?: CodeLensAskAiTarget) => {
+    if (!target) return
+    handleAskAi(target)
   }
 )
 

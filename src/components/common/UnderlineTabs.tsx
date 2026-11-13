@@ -393,7 +393,7 @@ function SplitUnderlineTab({ props, elementRef }: ResolvedTabViewProps) {
   ])
 
   const onLabelKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    props.onKeyDown?.(event as KeyboardEvent<HTMLElement>)
+    props.onKeyDown?.(event)
     if (!isActivationKey(event.key)) {
       return
     }

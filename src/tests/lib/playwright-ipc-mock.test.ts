@@ -60,8 +60,10 @@ describe('playwrightIpcMockHandler', () => {
 
   it('returns table edit info for analyze_query_for_edit', () => {
     const result = playwrightIpcMockHandler('analyze_query_for_edit', {
-      connectionId: 'conn-1',
-      sql: 'SELECT * FROM users',
+      payload: {
+        connectionId: 'conn-1',
+        sql: 'SELECT * FROM users',
+      },
     })
     expect(Array.isArray(result)).toBe(true)
     const arr = result as Array<Record<string, unknown>>
@@ -74,29 +76,37 @@ describe('playwrightIpcMockHandler', () => {
 
   it('returns null for update_result_cell', () => {
     const result = playwrightIpcMockHandler('update_result_cell', {
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      rowIndex: 0,
-      updates: { 1: 'new value' },
+      payload: {
+        connectionId: 'conn-1',
+        tabId: 'tab-1',
+        rowIndex: 0,
+        updates: { 1: 'new value' },
+      },
     })
     expect(result).toBeNull()
   })
 
   it('returns available status for touch_results', () => {
     expect(
-      playwrightIpcMockHandler('touch_results', { connectionId: 'conn-1', tabId: 'tab-1' })
+      playwrightIpcMockHandler('touch_results', {
+        payload: { connectionId: 'conn-1', tabId: 'tab-1' },
+      })
     ).toEqual({ status: 'available' })
   })
 
   it('returns available status for touch_table_data', () => {
     expect(
-      playwrightIpcMockHandler('touch_table_data', { connectionId: 'conn-1', tabId: 'tab-1' })
+      playwrightIpcMockHandler('touch_table_data', {
+        payload: { connectionId: 'conn-1', tabId: 'tab-1' },
+      })
     ).toEqual({ status: 'available' })
   })
 
   it('returns null for evict_table_data', () => {
     expect(
-      playwrightIpcMockHandler('evict_table_data', { connectionId: 'conn-1', tabId: 'tab-1' })
+      playwrightIpcMockHandler('evict_table_data', {
+        payload: { connectionId: 'conn-1', tabId: 'tab-1' },
+      })
     ).toBeNull()
   })
 
@@ -126,11 +136,13 @@ describe('playwrightIpcMockHandler', () => {
 
   it('serves fetch_blob_value from the blob fixture', () => {
     const result = playwrightIpcMockHandler('fetch_blob_value', {
-      connectionId: 'conn-1',
-      database: 'db',
-      table: 'photos',
-      column: 'photo',
-      pkPairs: [['id', 1]],
+      payload: {
+        connectionId: 'conn-1',
+        database: 'db',
+        table: 'photos',
+        column: 'photo',
+        primaryKeyPairs: [['id', 1]],
+      },
     }) as Record<string, unknown>
 
     expect(result.tooLarge).toBe(false)
@@ -141,41 +153,45 @@ describe('playwrightIpcMockHandler', () => {
   it('serves an overridden fetch_blob_value fixture keyed by column', () => {
     overrideFixture('blobValue', 'photo', { base64: null, byteLength: 0, tooLarge: false })
     const result = playwrightIpcMockHandler('fetch_blob_value', {
-      column: 'photo',
+      payload: {
+        column: 'photo',
+      },
     }) as Record<string, unknown>
 
     expect(result.base64).toBeNull()
   })
 
   it('serves list_schema_objects from the fixture registry by object type', () => {
-    expect(playwrightIpcMockHandler('list_schema_objects', { objectType: 'table' })).toEqual([
-      'users',
-      'orders',
-      'products',
-      'bit_test',
-    ])
-    expect(playwrightIpcMockHandler('list_schema_objects', { objectType: 'event' })).toEqual([])
-    expect(playwrightIpcMockHandler('list_schema_objects', { objectType: 'unknown' })).toEqual([])
-    expect(playwrightIpcMockHandler('list_schema_objects', {})).toEqual([])
+    expect(
+      playwrightIpcMockHandler('list_schema_objects', { payload: { objectType: 'table' } })
+    ).toEqual(['users', 'orders', 'products', 'bit_test'])
+    expect(
+      playwrightIpcMockHandler('list_schema_objects', { payload: { objectType: 'event' } })
+    ).toEqual([])
+    expect(
+      playwrightIpcMockHandler('list_schema_objects', { payload: { objectType: 'unknown' } })
+    ).toEqual([])
+    expect(playwrightIpcMockHandler('list_schema_objects', { payload: {} })).toEqual([])
 
     overrideFixture('schemaObjects', 'table', ['t1', 't2'])
-    expect(playwrightIpcMockHandler('list_schema_objects', { objectType: 'table' })).toEqual([
-      't1',
-      't2',
-    ])
+    expect(
+      playwrightIpcMockHandler('list_schema_objects', { payload: { objectType: 'table' } })
+    ).toEqual(['t1', 't2'])
   })
 
   it('serves read_file_bytes as base64 and write_file_bytes as null', () => {
     expect(typeof playwrightIpcMockHandler('read_file_bytes', { path: '/tmp/x' })).toBe('string')
     expect(
-      playwrightIpcMockHandler('write_file_bytes', { path: '/tmp/x', base64: 'aGk=' })
+      playwrightIpcMockHandler('write_file_bytes', { payload: { path: '/tmp/x', base64: 'aGk=' } })
     ).toBeNull()
   })
 
   it('returns copy-to-host object fixtures for list_copyable_objects', () => {
     const result = playwrightIpcMockHandler('list_copyable_objects', {
-      connectionId: 'conn-1',
-      database: 'ecommerce_db',
+      payload: {
+        connectionId: 'conn-1',
+        database: 'ecommerce_db',
+      },
     }) as Record<string, unknown>
 
     expect(result.tables).toEqual([
@@ -220,7 +236,9 @@ describe('playwrightIpcMockHandler', () => {
   })
 
   it('serves the result export job from the fixture registry', () => {
-    expect(playwrightIpcMockHandler('start_result_export', {})).toBe('result-export-job-1')
+    expect(playwrightIpcMockHandler('start_result_export', { payload: {} })).toBe(
+      'result-export-job-1'
+    )
     expect(
       playwrightIpcMockHandler('get_result_export_progress', { jobId: 'result-export-job-1' })
     ).toMatchObject({ status: 'completed', rowsWritten: 250_000, error: null })
@@ -249,7 +267,7 @@ describe('playwrightIpcMockHandler', () => {
     })
     overrideFixture('resultExportCancel', 'default', null)
 
-    expect(playwrightIpcMockHandler('start_result_export', {})).toBe('job-custom')
+    expect(playwrightIpcMockHandler('start_result_export', { payload: {} })).toBe('job-custom')
     expect(
       playwrightIpcMockHandler('get_result_export_progress', { jobId: 'job-custom' })
     ).toMatchObject({ status: 'running', rowsWritten: 7 })
@@ -270,9 +288,11 @@ describe('playwrightIpcMockHandler', () => {
 
   it('returns a realistic table designer schema mock', () => {
     const result = playwrightIpcMockHandler('load_table_for_designer', {
-      connectionId: 'conn-1',
-      database: 'mock_db',
-      tableName: 'users',
+      payload: {
+        connectionId: 'conn-1',
+        database: 'mock_db',
+        tableName: 'users',
+      },
     }) as Record<string, unknown>
 
     expect(result.tableName).toBe('users')
@@ -330,9 +350,11 @@ describe('playwrightIpcMockHandler', () => {
 
   it('returns undefined for apply_table_ddl', () => {
     const result = playwrightIpcMockHandler('apply_table_ddl', {
-      connectionId: 'conn-1',
-      database: 'mock_db',
-      ddl: 'ALTER TABLE `users` MODIFY COLUMN `email` VARCHAR(320) NOT NULL;',
+      payload: {
+        connectionId: 'conn-1',
+        database: 'mock_db',
+        ddl: 'ALTER TABLE `users` MODIFY COLUMN `email` VARCHAR(320) NOT NULL;',
+      },
     })
 
     expect(result).toBeUndefined()
@@ -403,14 +425,16 @@ describe('playwrightIpcMockHandler', () => {
 
   it('returns a MultiQueryResult with 3 results for execute_multi_query', () => {
     const result = playwrightIpcMockHandler('execute_multi_query', {
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      statements: [
-        'SELECT id, name FROM users',
-        'SELECT product_id, price FROM products',
-        "UPDATE users SET status = 'active' WHERE id = 1",
-      ],
-      rowLimit: 1000,
+      payload: {
+        connectionId: 'conn-1',
+        tabId: 'tab-1',
+        statements: [
+          'SELECT id, name FROM users',
+          'SELECT product_id, price FROM products',
+          "UPDATE users SET status = 'active' WHERE id = 1",
+        ],
+        rowLimit: 1000,
+      },
     }) as MultiQueryResult
 
     expect(result.results).toHaveLength(3)
@@ -455,10 +479,12 @@ describe('playwrightIpcMockHandler', () => {
 
   it('returns a MultiQueryResult with 2 results for execute_call_query', () => {
     const result = playwrightIpcMockHandler('execute_call_query', {
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      sql: 'CALL sp_get_orders()',
-      rowLimit: 1000,
+      payload: {
+        connectionId: 'conn-1',
+        tabId: 'tab-1',
+        sql: 'CALL sp_get_orders()',
+        rowLimit: 1000,
+      },
     }) as MultiQueryResult
 
     expect(result.results).toHaveLength(2)
@@ -487,11 +513,13 @@ describe('playwrightIpcMockHandler', () => {
 
   it('returns a single MultiQueryResultItem for reexecute_single_result', () => {
     const result = playwrightIpcMockHandler('reexecute_single_result', {
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      resultIndex: 0,
-      sql: 'SELECT id, name FROM users',
-      rowLimit: 1000,
+      payload: {
+        connectionId: 'conn-1',
+        tabId: 'tab-1',
+        resultIndex: 0,
+        sql: 'SELECT id, name FROM users',
+        rowLimit: 1000,
+      },
     }) as MultiQueryResultItem
 
     expect(result.queryId).toBe('mock-reexec-q1')
@@ -508,11 +536,13 @@ describe('playwrightIpcMockHandler', () => {
 
   it('reexecute_single_result uses the provided sql in sourceSql', () => {
     const result = playwrightIpcMockHandler('reexecute_single_result', {
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      resultIndex: 1,
-      sql: 'SELECT product_id FROM products',
-      rowLimit: 500,
+      payload: {
+        connectionId: 'conn-1',
+        tabId: 'tab-1',
+        resultIndex: 1,
+        sql: 'SELECT product_id FROM products',
+        rowLimit: 500,
+      },
     }) as MultiQueryResultItem
 
     expect(result.sourceSql).toBe('SELECT product_id FROM products')
@@ -520,10 +550,12 @@ describe('playwrightIpcMockHandler', () => {
 
   it('execute_query returns a windowed response (first window, never the full result)', () => {
     const result = playwrightIpcMockHandler('execute_query', {
-      connectionId: 'conn-1',
-      tabId: 'tab-w',
-      sql: 'SELECT * FROM large_result',
-      rowLimit: 1000,
+      payload: {
+        connectionId: 'conn-1',
+        tabId: 'tab-w',
+        sql: 'SELECT * FROM large_result',
+        rowLimit: 1000,
+      },
     }) as Record<string, unknown> & { firstWindow: { rows: unknown[][]; baseIndices: number[] } }
 
     expect('rows' in result).toBe(false)
@@ -538,26 +570,32 @@ describe('playwrightIpcMockHandler', () => {
   it('serves windows, applies view specs with compare-and-swap and refuses stale windows', () => {
     const slot = { connectionId: 'conn-1', tabId: 'tab-v', resultIndex: 0 }
     const executed = playwrightIpcMockHandler('execute_query', {
-      ...slot,
-      sql: 'SELECT * FROM users',
+      payload: {
+        ...slot,
+        sql: 'SELECT * FROM users',
+      },
     }) as { queryId: string }
     const queryId = executed.queryId
 
     const window = playwrightIpcMockHandler('fetch_result_window', {
-      ...slot,
-      queryId,
-      viewVersion: 1,
-      offset: 3,
-      limit: 5000,
+      payload: {
+        ...slot,
+        queryId,
+        viewVersion: 1,
+        offset: 3,
+        limit: 5000,
+      },
     }) as { offset: number; rows: unknown[][]; baseIndices: number[] }
     expect(window.offset).toBe(3)
     expect(window.baseIndices).toEqual([3, 4])
 
     const sorted = playwrightIpcMockHandler('set_result_view', {
-      ...slot,
-      queryId,
-      baseViewVersion: 1,
-      viewSpec: { sort: { column: 'name', direction: 'asc' }, filters: [] },
+      payload: {
+        ...slot,
+        queryId,
+        baseViewVersion: 1,
+        viewSpec: { sort: { column: 'name', direction: 'asc' }, filters: [] },
+      },
     }) as { viewVersion: number; firstWindow: { rows: unknown[][] } }
     expect(sorted.viewVersion).toBe(2)
     expect(sorted.firstWindow.rows.map((row) => row[1])).toEqual([
@@ -570,40 +608,48 @@ describe('playwrightIpcMockHandler', () => {
 
     expect(() =>
       playwrightIpcMockHandler('set_result_view', {
-        ...slot,
-        queryId,
-        baseViewVersion: 1,
-        viewSpec: { sort: null, filters: [] },
+        payload: {
+          ...slot,
+          queryId,
+          baseViewVersion: 1,
+          viewSpec: { sort: null, filters: [] },
+        },
       })
     ).toThrow('view_superseded: current=2')
     expect(() =>
       playwrightIpcMockHandler('fetch_result_window', {
-        ...slot,
-        queryId,
-        viewVersion: 1,
-        offset: 0,
-        limit: 10,
+        payload: {
+          ...slot,
+          queryId,
+          viewVersion: 1,
+          offset: 0,
+          limit: 10,
+        },
       })
     ).toThrow(/^view_stale:/)
     expect(() =>
       playwrightIpcMockHandler('set_result_view', {
-        ...slot,
-        queryId,
-        baseViewVersion: 2,
-        viewSpec: { sort: { column: 'missing', direction: 'asc' }, filters: [] },
+        payload: {
+          ...slot,
+          queryId,
+          baseViewVersion: 2,
+          viewSpec: { sort: { column: 'missing', direction: 'asc' }, filters: [] },
+        },
       })
     ).toThrow(/missing/)
 
     const filtered = playwrightIpcMockHandler('set_result_view', {
-      ...slot,
-      queryId,
-      baseViewVersion: 2,
-      viewSpec: {
-        sort: null,
-        filters: [
-          { column: 'status', operator: '==', value: 'active' },
-          { column: 'gone', operator: '==', value: 'x' },
-        ],
+      payload: {
+        ...slot,
+        queryId,
+        baseViewVersion: 2,
+        viewSpec: {
+          sort: null,
+          filters: [
+            { column: 'status', operator: '==', value: 'active' },
+            { column: 'gone', operator: '==', value: 'x' },
+          ],
+        },
       },
     }) as { viewRowCount: number; totalRows: number }
     expect(filtered).toMatchObject({ viewRowCount: 3, totalRows: 5 })
@@ -612,44 +658,54 @@ describe('playwrightIpcMockHandler', () => {
   it('tombstones removed rows and serves rows by base index', () => {
     const slot = { connectionId: 'conn-1', tabId: 'tab-d', resultIndex: 0 }
     const { queryId } = playwrightIpcMockHandler('execute_query', {
-      ...slot,
-      sql: 'SELECT * FROM users',
+      payload: {
+        ...slot,
+        sql: 'SELECT * FROM users',
+      },
     }) as { queryId: string }
 
     const removed = playwrightIpcMockHandler('remove_result_rows', {
-      ...slot,
-      queryId,
-      baseViewVersion: 1,
-      baseIndices: [1, 3],
+      payload: {
+        ...slot,
+        queryId,
+        baseViewVersion: 1,
+        baseIndices: [1, 3],
+      },
     })
     expect(removed).toEqual({ viewVersion: 2, viewRowCount: 3, totalRows: 3 })
 
     expect(() =>
       playwrightIpcMockHandler('fetch_result_window', {
-        ...slot,
-        queryId: 'other-query',
-        viewVersion: 2,
-        offset: 0,
-        limit: 10,
+        payload: {
+          ...slot,
+          queryId: 'other-query',
+          viewVersion: 2,
+          offset: 0,
+          limit: 10,
+        },
       })
     ).toThrow(/Results were refreshed/)
     expect(() =>
       playwrightIpcMockHandler('fetch_result_window', {
-        ...slot,
-        tabId: 'no-such-tab',
-        queryId,
-        viewVersion: 1,
-        offset: 0,
-        limit: 1,
+        payload: {
+          ...slot,
+          tabId: 'no-such-tab',
+          queryId,
+          viewVersion: 1,
+          offset: 0,
+          limit: 1,
+        },
       })
     ).toThrow(/^results_expired/)
   })
 
   it('serves a truncated CALL fixture with the call blocked reason', () => {
     const result = playwrightIpcMockHandler('execute_call_query', {
-      connectionId: 'conn-1',
-      tabId: 'tab-c',
-      sql: 'CALL sp_truncated_call()',
+      payload: {
+        connectionId: 'conn-1',
+        tabId: 'tab-c',
+        sql: 'CALL sp_truncated_call()',
+      },
     }) as { results: Array<Record<string, unknown>> }
     expect(result.results[0]).toMatchObject({
       truncated: true,
@@ -926,7 +982,9 @@ describe('playwrightIpcMockHandler', () => {
 
     it('returns session-playwright-1 for the first open_connection call', () => {
       const result = playwrightIpcMockHandler('open_connection', {
-        connectionId: 'conn-playwright-1',
+        payload: {
+          connectionId: 'conn-playwright-1',
+        },
       }) as { sessionId: string; serverVersion: string }
 
       expect(result.sessionId).toBe('session-playwright-1')
@@ -934,9 +992,15 @@ describe('playwrightIpcMockHandler', () => {
     })
 
     it('allocates distinct sequential session IDs for repeated open_connection calls', () => {
-      const first = playwrightIpcMockHandler('open_connection', {}) as { sessionId: string }
-      const second = playwrightIpcMockHandler('open_connection', {}) as { sessionId: string }
-      const third = playwrightIpcMockHandler('open_connection', {}) as { sessionId: string }
+      const first = playwrightIpcMockHandler('open_connection', { payload: {} }) as {
+        sessionId: string
+      }
+      const second = playwrightIpcMockHandler('open_connection', { payload: {} }) as {
+        sessionId: string
+      }
+      const third = playwrightIpcMockHandler('open_connection', { payload: {} }) as {
+        sessionId: string
+      }
 
       expect(first.sessionId).toBe('session-playwright-1')
       expect(second.sessionId).toBe('session-playwright-2')
@@ -944,17 +1008,22 @@ describe('playwrightIpcMockHandler', () => {
     })
 
     it('preserves the unchanged response shape across allocations', () => {
-      const result = playwrightIpcMockHandler('open_connection', {}) as Record<string, unknown>
+      const result = playwrightIpcMockHandler('open_connection', { payload: {} }) as Record<
+        string,
+        unknown
+      >
       expect(Object.keys(result).sort()).toEqual(['serverVersion', 'sessionId'])
     })
 
     it('resets the allocator so a fresh page load starts at session-playwright-1', () => {
-      playwrightIpcMockHandler('open_connection', {})
-      playwrightIpcMockHandler('open_connection', {})
+      playwrightIpcMockHandler('open_connection', { payload: {} })
+      playwrightIpcMockHandler('open_connection', { payload: {} })
 
       resetPlaywrightSessionAllocator()
 
-      const afterReset = playwrightIpcMockHandler('open_connection', {}) as { sessionId: string }
+      const afterReset = playwrightIpcMockHandler('open_connection', { payload: {} }) as {
+        sessionId: string
+      }
       expect(afterReset.sessionId).toBe('session-playwright-1')
     })
   })

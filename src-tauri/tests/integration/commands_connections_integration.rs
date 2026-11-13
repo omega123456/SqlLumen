@@ -73,7 +73,14 @@ fn test_update_connection_impl_modifies_fields() {
         connect_timeout_secs: Some(30),
         keepalive_interval_secs: Some(120),
     };
-    update_connection_impl(&state, &id, update).expect("should update");
+    update_connection_impl(
+        &state,
+        sqllumen_lib::commands::connections::UpdateConnectionRequest {
+            id: id.to_string(),
+            data: update,
+        },
+    )
+    .expect("should update");
 
     let record = get_connection_impl(&state, &id)
         .expect("should not error")
@@ -186,7 +193,14 @@ fn test_update_with_password_sets_has_password_true() {
         connect_timeout_secs: None,
         keepalive_interval_secs: None,
     };
-    update_connection_impl(&state, &id, update).expect("should update");
+    update_connection_impl(
+        &state,
+        sqllumen_lib::commands::connections::UpdateConnectionRequest {
+            id: id.to_string(),
+            data: update,
+        },
+    )
+    .expect("should update");
 
     let record = get_connection_impl(&state, &id)
         .expect("should not error")
@@ -222,7 +236,14 @@ fn test_update_rejects_setting_and_clearing_password_together() {
         keepalive_interval_secs: None,
     };
 
-    let error = update_connection_impl(&state, &id, update).expect_err("should reject conflict");
+    let error = update_connection_impl(
+        &state,
+        sqllumen_lib::commands::connections::UpdateConnectionRequest {
+            id: id.to_string(),
+            data: update,
+        },
+    )
+    .expect_err("should reject conflict");
     assert_eq!(error, "Cannot set and clear password at the same time");
 }
 
@@ -371,7 +392,14 @@ fn test_update_clear_password_on_connection_with_password() {
         connect_timeout_secs: None,
         keepalive_interval_secs: None,
     };
-    update_connection_impl(&state, &id, update).expect("should update");
+    update_connection_impl(
+        &state,
+        sqllumen_lib::commands::connections::UpdateConnectionRequest {
+            id: id.to_string(),
+            data: update,
+        },
+    )
+    .expect("should update");
 
     let record = get_connection_impl(&state, &id)
         .expect("should not error")
@@ -415,7 +443,14 @@ fn test_update_password_on_connection_that_already_has_password() {
         connect_timeout_secs: None,
         keepalive_interval_secs: None,
     };
-    update_connection_impl(&state, &id, update).expect("should update");
+    update_connection_impl(
+        &state,
+        sqllumen_lib::commands::connections::UpdateConnectionRequest {
+            id: id.to_string(),
+            data: update,
+        },
+    )
+    .expect("should update");
 
     let record = get_connection_impl(&state, &id)
         .expect("should not error")
@@ -476,8 +511,14 @@ fn test_clear_password_delete_failure_returns_error_and_preserves_sqlite_marker(
         keepalive_interval_secs: None,
     };
 
-    let error =
-        update_connection_impl(&state, &id, update).expect_err("should surface delete failure");
+    let error = update_connection_impl(
+        &state,
+        sqllumen_lib::commands::connections::UpdateConnectionRequest {
+            id: id.to_string(),
+            data: update,
+        },
+    )
+    .expect_err("should surface delete failure");
     assert!(error.starts_with(&delete_password_prefix()));
 
     let record = get_connection_impl(&state, &id)

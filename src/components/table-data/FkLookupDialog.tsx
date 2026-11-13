@@ -203,6 +203,13 @@ function LookupBody({ isLoading, error, onRetry, grid }: LookupBodyProps) {
 // Component
 // ---------------------------------------------------------------------------
 
+export interface LookupPageRequest {
+  page: number
+  size: number
+  filters: FilterCondition[]
+  sortInfo: LookupSort | null
+}
+
 export function FkLookupDialog({
   isOpen,
   onClose,
@@ -251,7 +258,7 @@ export function FkLookupDialog({
   // ---------------------------------------------------------------------------
 
   const loadData = useCallback(
-    async (page: number, size: number, filters: FilterCondition[], sortInfo: LookupSort | null) => {
+    async ({ page, size, filters, sortInfo }: LookupPageRequest) => {
       const thisToken = ++loadRequestTokenRef.current
       const isCurrentRequest = () => mountedRef.current && loadRequestTokenRef.current === thisToken
       setIsLoading(true)
@@ -354,7 +361,12 @@ export function FkLookupDialog({
     // Suppress reload effect for this render cycle — it sees stale state
     suppressReloadRef.current = true
 
-    void loadData(initialPage, initialPageSize, initialFilter, initialSort)
+    void loadData({
+      page: initialPage,
+      size: initialPageSize,
+      filters: initialFilter,
+      sortInfo: initialSort,
+    })
   }, [isOpen, currentValue, referencedColumn, loadData])
 
   // ---------------------------------------------------------------------------
@@ -375,14 +387,17 @@ export function FkLookupDialog({
     if (paramsKey === previousParamsRef.current) return
     previousParamsRef.current = paramsKey
 
-    void loadData(currentPage, pageSize, filterModel, sort)
+    void loadData({ page: currentPage, size: pageSize, filters: filterModel, sortInfo: sort })
   }, [isOpen, filterModel, sort, currentPage, pageSize, loadData])
 
   // ---------------------------------------------------------------------------
   // Column descriptors for BaseGridView
   // ---------------------------------------------------------------------------
 
-  const descriptorColumns = useMemo(() => buildColumnDescriptors(columns, true, false), [columns])
+  const descriptorColumns = useMemo(
+    () => buildColumnDescriptors({ columns: columns, isReadOnly: true, hasPrimaryKey: false }),
+    [columns]
+  )
 
   // Auto-size columns to fit header/data, mirroring TableDataGrid. Rows here are
   // keyed by column name, so the single-column proxy extracts row[col.key].
@@ -402,7 +417,13 @@ export function FkLookupDialog({
         }
         const showsHeaderIcon = Boolean(column.foreignKey) || !column.editable
         const headerIconWidthPx = showsHeaderIcon ? HEADER_ICON_WIDTH_PX : 0
-        return getAutoSizedColumnWidth(meta, 0, columnRows, column.key, headerIconWidthPx)
+        return getAutoSizedColumnWidth({
+          column: meta,
+          columnIndex: 0,
+          rows: columnRows,
+          displayName: column.key,
+          headerIconWidthPx: headerIconWidthPx,
+        })
       },
     }
   }, [columns, rows])
@@ -462,7 +483,7 @@ export function FkLookupDialog({
   // ---------------------------------------------------------------------------
 
   const handleRetry = useCallback(() => {
-    void loadData(currentPage, pageSize, filterModel, sort)
+    void loadData({ page: currentPage, size: pageSize, filters: filterModel, sortInfo: sort })
   }, [loadData, currentPage, pageSize, filterModel, sort])
 
   // ---------------------------------------------------------------------------

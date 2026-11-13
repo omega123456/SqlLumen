@@ -48,21 +48,22 @@ fn spec(value: Value) -> ResultViewSpec {
 }
 
 fn stored(columns: Vec<ColumnMeta>, rows: Vec<Vec<Value>>) -> StoredResult {
-    StoredResult::new(
-        QID.to_string(),
+    StoredResult::new(sqllumen_lib::mysql::query_executor::StoredResultParts {
+        query_id: QID.to_string(),
         columns,
-        common::shared_rows(rows),
-        1,
-        1,
-        0,
-        false,
-    )
+        rows: common::shared_rows(rows),
+        execution_time_ms: 1,
+        total_time_ms: 1,
+        affected_rows: 0,
+        auto_limit_applied: false,
+    })
 }
 
 fn insert(state: &AppState, columns: Vec<ColumnMeta>, rows: Vec<Vec<Value>>) {
-    state
-        .result_cache
-        .insert(CONN, TAB, vec![stored(columns, rows)]);
+    state.result_cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new(CONN, TAB),
+        vec![stored(columns, rows)],
+    );
 }
 
 /// id / name / score rows used by most view tests.
@@ -86,8 +87,20 @@ fn people_state() -> AppState {
 }
 
 fn set_view(state: &AppState, base: u64, value: Value) -> Result<Vec<u32>, String> {
-    set_result_view_impl(state, CONN, TAB, 0, QID, base, &spec(value))
-        .map(|r| r.first_window.base_indices)
+    set_result_view_impl(
+        state,
+        &sqllumen_lib::mysql::result_view::SetResultViewRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                result_index: 0,
+                query_id: QID.to_string(),
+            },
+            base_view_version: base,
+            view_spec: spec(value),
+        },
+    )
+    .map(|r| r.first_window.base_indices)
 }
 
 fn slot(state: &AppState) -> StoredResult {
@@ -222,11 +235,35 @@ fn sort_unknown_column_is_an_error_and_missing_results_error() {
     .expect_err("unknown sort column");
     assert_eq!(err, "Column 'nope' not found in result set");
 
-    let err = set_result_view_impl(&state, CONN, "other-tab", 0, QID, 1, &spec(json!({})))
-        .expect_err("no results for tab");
+    let err = set_result_view_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::SetResultViewRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: CONN.to_string(),
+                tab_id: "other-tab".to_string(),
+                result_index: 0,
+                query_id: QID.to_string(),
+            },
+            base_view_version: 1,
+            view_spec: spec(json!({})),
+        },
+    )
+    .expect_err("no results for tab");
     assert!(err.contains("No results found"));
-    let err = set_result_view_impl(&state, CONN, TAB, 3, QID, 1, &spec(json!({})))
-        .expect_err("bad result index");
+    let err = set_result_view_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::SetResultViewRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                result_index: 3,
+                query_id: QID.to_string(),
+            },
+            base_view_version: 1,
+            view_spec: spec(json!({})),
+        },
+    )
+    .expect_err("bad result index");
     assert!(err.contains("Result index 3 out of range"));
 }
 
@@ -236,12 +273,16 @@ fn sort_keeps_base_rows_and_shares_row_pointers() {
     let before = slot(&state);
     let result = set_result_view_impl(
         &state,
-        CONN,
-        TAB,
-        0,
-        QID,
-        1,
-        &spec(json!({ "sort": { "column": "id", "direction": "desc" } })),
+        &sqllumen_lib::mysql::result_view::SetResultViewRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                result_index: 0,
+                query_id: QID.to_string(),
+            },
+            base_view_version: 1,
+            view_spec: spec(json!({ "sort": { "column": "id", "direction": "desc" } })),
+        },
     )
     .expect("sort");
     let after = slot(&state);
@@ -335,17 +376,9 @@ fn filter_like_is_case_insensitive_escapes_literals_and_crosses_newlines() {
         ],
     );
     let ids = |pattern: &str| {
-        set_result_view_impl(
-            &state,
-            CONN,
-            TAB,
-            0,
-            QID,
-            slot(&state).view_version,
-            &spec(
+        set_result_view_impl(&state, &sqllumen_lib::mysql::result_view::SetResultViewRequest { slot: sqllumen_lib::mysql::result_view::ResultSlotKey { connection_id: CONN.to_string(), tab_id: TAB.to_string(), result_index: 0, query_id: QID.to_string() }, base_view_version: slot(&state).view_version, view_spec: spec(
                 json!({ "filters": [{ "column": "note", "operator": "LIKE", "value": pattern }] }),
-            ),
-        )
+            ) })
         .expect("like")
         .first_window
         .base_indices
@@ -494,12 +527,18 @@ fn comparison_filters_follow_js_coercion_for_cells_and_conditions() {
     let ids = |op: &str, value: &str, base: u64| {
         set_result_view_impl(
             &state,
-            CONN,
-            TAB,
-            0,
-            QID,
-            base,
-            &spec(json!({ "filters": [{ "column": "v", "operator": op, "value": value }] })),
+            &sqllumen_lib::mysql::result_view::SetResultViewRequest {
+                slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                    connection_id: CONN.to_string(),
+                    tab_id: TAB.to_string(),
+                    result_index: 0,
+                    query_id: QID.to_string(),
+                },
+                base_view_version: base,
+                view_spec: spec(
+                    json!({ "filters": [{ "column": "v", "operator": op, "value": value }] }),
+                ),
+            },
         )
         .expect("filter")
         .first_window
@@ -547,18 +586,59 @@ fn numbered(count: usize) -> AppState {
 #[test]
 fn window_slicing_clamps_limit_and_offset_and_reports_the_view() {
     let state = numbered(2_500);
-    let window =
-        fetch_result_window_impl(&state, CONN, TAB, 0, QID, 1, 100, 5_000).expect("window");
+    let window = fetch_result_window_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::FetchResultWindowRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                result_index: 0,
+                query_id: QID.to_string(),
+            },
+            view_version: 1,
+            offset: 100,
+            limit: 5_000,
+        },
+    )
+    .expect("window");
     assert_eq!(window.offset, 100);
     assert_eq!(window.rows.len(), MAX_WINDOW_ROWS);
     assert_eq!(window.base_indices.first(), Some(&100));
     assert_eq!(window.view_row_count, 2_500);
     assert_eq!(window.view_version, 1);
 
-    let tail = fetch_result_window_impl(&state, CONN, TAB, 0, QID, 1, 2_400, 500).expect("tail");
+    let tail = fetch_result_window_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::FetchResultWindowRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                result_index: 0,
+                query_id: QID.to_string(),
+            },
+            view_version: 1,
+            offset: 2_400,
+            limit: 500,
+        },
+    )
+    .expect("tail");
     assert_eq!(tail.rows.len(), 100);
 
-    let past = fetch_result_window_impl(&state, CONN, TAB, 0, QID, 1, 9_999, 10).expect("past");
+    let past = fetch_result_window_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::FetchResultWindowRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                result_index: 0,
+                query_id: QID.to_string(),
+            },
+            view_version: 1,
+            offset: 9_999,
+            limit: 10,
+        },
+    )
+    .expect("past");
     assert_eq!(past.offset, 2_500);
     assert!(past.rows.is_empty());
 
@@ -575,23 +655,77 @@ fn window_for_an_old_view_version_is_refused_as_stale() {
         json!({ "sort": { "column": "n", "direction": "desc" } }),
     )
     .expect("sort");
-    let err = fetch_result_window_impl(&state, CONN, TAB, 0, QID, 1, 0, 10)
-        .expect_err("stale view version");
+    let err = fetch_result_window_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::FetchResultWindowRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                result_index: 0,
+                query_id: QID.to_string(),
+            },
+            view_version: 1,
+            offset: 0,
+            limit: 10,
+        },
+    )
+    .expect_err("stale view version");
     assert_eq!(err, "view_stale: requested=1 current=2");
 
-    let window = fetch_result_window_impl(&state, CONN, TAB, 0, QID, 2, 0, 3).expect("current");
+    let window = fetch_result_window_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::FetchResultWindowRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                result_index: 0,
+                query_id: QID.to_string(),
+            },
+            view_version: 2,
+            offset: 0,
+            limit: 3,
+        },
+    )
+    .expect("current");
     assert_eq!(window.base_indices, vec![9, 8, 7]);
 }
 
 #[test]
 fn requests_for_a_replaced_or_expired_result_are_refused() {
     let state = numbered(5);
-    let err = fetch_result_window_impl(&state, CONN, TAB, 0, "old-query", 1, 0, 10)
-        .expect_err("stale query id");
+    let err = fetch_result_window_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::FetchResultWindowRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                result_index: 0,
+                query_id: "old-query".to_string(),
+            },
+            view_version: 1,
+            offset: 0,
+            limit: 10,
+        },
+    )
+    .expect_err("stale query id");
     assert_eq!(err, STALE_QUERY_MESSAGE);
 
     state.result_cache.remove(CONN, TAB);
-    let err = fetch_result_window_impl(&state, CONN, TAB, 0, QID, 1, 0, 10).expect_err("expired");
+    let err = fetch_result_window_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::FetchResultWindowRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                result_index: 0,
+                query_id: QID.to_string(),
+            },
+            view_version: 1,
+            offset: 0,
+            limit: 10,
+        },
+    )
+    .expect_err("expired");
     assert!(err.starts_with("results_expired:"), "{err}");
     let err = set_view(&state, 1, json!({})).expect_err("expired view write");
     assert!(err.starts_with("results_expired:"), "{err}");
@@ -602,17 +736,56 @@ fn requests_for_a_replaced_or_expired_result_are_refused() {
 #[test]
 fn tombstones_remove_rows_from_counts_windows_and_later_views() {
     let state = people_state();
-    let removed =
-        remove_result_rows_impl(&state, CONN, TAB, 0, QID, 1, &[1, 3, 99]).expect("remove");
+    let removed = remove_result_rows_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::RemoveResultRowsRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                result_index: 0,
+                query_id: QID.to_string(),
+            },
+            base_view_version: 1,
+            base_indices: vec![1, 3, 99],
+        },
+    )
+    .expect("remove");
     assert_eq!(removed.view_version, 2);
     assert_eq!(removed.view_row_count, 2);
     assert_eq!(removed.total_rows, 2);
 
-    let window = fetch_result_window_impl(&state, CONN, TAB, 0, QID, 2, 0, 10).expect("window");
+    let window = fetch_result_window_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::FetchResultWindowRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                result_index: 0,
+                query_id: QID.to_string(),
+            },
+            view_version: 2,
+            offset: 0,
+            limit: 10,
+        },
+    )
+    .expect("window");
     assert_eq!(window.base_indices, vec![0, 2]);
 
     // Removing again is idempotent; a later view still excludes them.
-    remove_result_rows_impl(&state, CONN, TAB, 0, QID, 2, &[1]).expect("idempotent");
+    remove_result_rows_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::RemoveResultRowsRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                result_index: 0,
+                query_id: QID.to_string(),
+            },
+            base_view_version: 2,
+            base_indices: vec![1],
+        },
+    )
+    .expect("idempotent");
     let cleared = set_view(&state, 3, json!({})).expect("clear view");
     assert_eq!(cleared, vec![0, 2], "tombstoned rows never come back");
     assert!(
@@ -645,8 +818,35 @@ fn remove_rows_on_a_sorted_view_keeps_the_sort_order() {
         json!({ "sort": { "column": "id", "direction": "desc" } }),
     )
     .expect("sort");
-    remove_result_rows_impl(&state, CONN, TAB, 0, QID, 2, &[2]).expect("remove");
-    let window = fetch_result_window_impl(&state, CONN, TAB, 0, QID, 3, 0, 10).expect("window");
+    remove_result_rows_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::RemoveResultRowsRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                result_index: 0,
+                query_id: QID.to_string(),
+            },
+            base_view_version: 2,
+            base_indices: vec![2],
+        },
+    )
+    .expect("remove");
+    let window = fetch_result_window_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::FetchResultWindowRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                result_index: 0,
+                query_id: QID.to_string(),
+            },
+            view_version: 3,
+            offset: 0,
+            limit: 10,
+        },
+    )
+    .expect("window");
     assert_eq!(window.base_indices, vec![3, 1, 0]);
 }
 
@@ -665,7 +865,18 @@ fn update_result_cell_targets_base_indices_under_a_view_and_refuses_tombstones()
     // View is [3, 2, 1]: edit base row 2 ("Bob"), which sits at view position 1.
     let mut updates = HashMap::new();
     updates.insert(1, json!("Bobby"));
-    update_result_cell_impl(&state, CONN, TAB, 2, updates, None, QID).expect("edit base row 2");
+    update_result_cell_impl(
+        &state,
+        sqllumen_lib::mysql::query_executor::UpdateResultCellRequest {
+            connection_id: CONN.to_string(),
+            tab_id: TAB.to_string(),
+            row_index: 2,
+            updates,
+            result_index: None,
+            query_id: QID.to_string(),
+        },
+    )
+    .expect("edit base row 2");
 
     let current = slot(&state);
     assert_eq!(current.rows[2][1], json!("Bobby"));
@@ -674,14 +885,51 @@ fn update_result_cell_targets_base_indices_under_a_view_and_refuses_tombstones()
         current.view_version, 2,
         "edits don't change the view version"
     );
-    let window = fetch_result_window_impl(&state, CONN, TAB, 0, QID, 2, 1, 1).expect("window");
+    let window = fetch_result_window_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::FetchResultWindowRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                result_index: 0,
+                query_id: QID.to_string(),
+            },
+            view_version: 2,
+            offset: 1,
+            limit: 1,
+        },
+    )
+    .expect("window");
     assert_eq!(window.rows[0][1], json!("Bobby"));
 
-    remove_result_rows_impl(&state, CONN, TAB, 0, QID, 2, &[2]).expect("delete");
+    remove_result_rows_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::RemoveResultRowsRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                result_index: 0,
+                query_id: QID.to_string(),
+            },
+            base_view_version: 2,
+            base_indices: vec![2],
+        },
+    )
+    .expect("delete");
     let mut updates = HashMap::new();
     updates.insert(1, json!("ghost"));
-    let err = update_result_cell_impl(&state, CONN, TAB, 2, updates, None, QID)
-        .expect_err("tombstoned row");
+    let err = update_result_cell_impl(
+        &state,
+        sqllumen_lib::mysql::query_executor::UpdateResultCellRequest {
+            connection_id: CONN.to_string(),
+            tab_id: TAB.to_string(),
+            row_index: 2,
+            updates,
+            result_index: None,
+            query_id: QID.to_string(),
+        },
+    )
+    .expect_err("tombstoned row");
     assert!(err.contains("was deleted"), "{err}");
     assert_eq!(
         slot(&state).rows[2][1],
@@ -709,8 +957,20 @@ fn view_write_against_an_old_base_version_is_superseded() {
     .expect_err("old base version");
     assert_eq!(err, "view_superseded: current=2");
 
-    let err = remove_result_rows_impl(&state, CONN, TAB, 0, QID, 1, &[0])
-        .expect_err("old base version for remove");
+    let err = remove_result_rows_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::RemoveResultRowsRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                result_index: 0,
+                query_id: QID.to_string(),
+            },
+            base_view_version: 1,
+            base_indices: vec![0],
+        },
+    )
+    .expect_err("old base version for remove");
     assert_eq!(err, "view_superseded: current=2");
 }
 
@@ -719,16 +979,33 @@ fn a_delete_landing_during_a_view_build_wins_and_its_tombstones_survive() {
     let state = people_state();
     let prepared = prepare_result_view(
         &state,
-        CONN,
-        TAB,
-        0,
-        QID,
-        1,
-        &spec(json!({ "sort": { "column": "name", "direction": "asc" } })),
+        &sqllumen_lib::mysql::result_view::SetResultViewRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                result_index: 0,
+                query_id: QID.to_string(),
+            },
+            base_view_version: 1,
+            view_spec: spec(json!({ "sort": { "column": "name", "direction": "asc" } })),
+        },
     )
     .expect("prepare");
 
-    remove_result_rows_impl(&state, CONN, TAB, 0, QID, 1, &[0]).expect("delete lands first");
+    remove_result_rows_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::RemoveResultRowsRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                result_index: 0,
+                query_id: QID.to_string(),
+            },
+            base_view_version: 1,
+            base_indices: vec![0],
+        },
+    )
+    .expect("delete lands first");
 
     let err = commit_result_view(&state, prepared).expect_err("view write refused");
     assert_eq!(err, "view_superseded: current=2");
@@ -749,18 +1026,43 @@ fn a_delete_landing_during_a_view_build_wins_and_its_tombstones_survive() {
 #[test]
 fn a_view_write_after_a_rerun_or_invalidation_is_refused() {
     let state = people_state();
-    let prepared =
-        prepare_result_view(&state, CONN, TAB, 0, QID, 1, &spec(json!({}))).expect("prepare");
+    let prepared = prepare_result_view(
+        &state,
+        &sqllumen_lib::mysql::result_view::SetResultViewRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                result_index: 0,
+                query_id: QID.to_string(),
+            },
+            base_view_version: 1,
+            view_spec: spec(json!({})),
+        },
+    )
+    .expect("prepare");
     // A re-run replaces the slot with a new query id.
-    state
-        .result_cache
-        .insert(CONN, TAB, vec![StoredResult::empty("q2".to_string())]);
+    state.result_cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new(CONN, TAB),
+        vec![StoredResult::empty("q2".to_string())],
+    );
     let err = commit_result_view(&state, prepared).expect_err("query id changed");
     assert_eq!(err, STALE_QUERY_MESSAGE);
 
     let state = people_state();
-    let prepared =
-        prepare_result_view(&state, CONN, TAB, 0, QID, 1, &spec(json!({}))).expect("prepare");
+    let prepared = prepare_result_view(
+        &state,
+        &sqllumen_lib::mysql::result_view::SetResultViewRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                result_index: 0,
+                query_id: QID.to_string(),
+            },
+            base_view_version: 1,
+            view_spec: spec(json!({})),
+        },
+    )
+    .expect("prepare");
     // Tab close bumps the invalidation version.
     state.result_cache.remove_with_spill_cleanup(CONN, TAB);
     let err = commit_result_view(&state, prepared).expect_err("invalidated");
@@ -774,31 +1076,91 @@ fn slot_modifier_reports_every_refusal_and_leaves_the_cache_unchanged_on_error()
     let version = cache.current_invalidation_version(CONN, TAB);
 
     let outcome = cache
-        .modify_slot_in_place_if_current(CONN, TAB, version + 1, 0, None, None, |_| Ok(()))
+        .modify_slot_in_place_if_current(
+            &sqllumen_lib::mysql::result_cache::SlotWriteTarget {
+                connection_id: CONN,
+                tab_id: TAB,
+                expected_invalidation_version: version + 1,
+                index: 0,
+                expected_query_id: None,
+                base_view_version: None,
+            },
+            |_| Ok(()),
+        )
         .expect("modifier");
     assert_eq!(outcome, SlotWrite::Invalidated);
     let outcome = cache
-        .modify_slot_in_place_if_current(CONN, TAB, version, 5, None, None, |_| Ok(()))
+        .modify_slot_in_place_if_current(
+            &sqllumen_lib::mysql::result_cache::SlotWriteTarget {
+                connection_id: CONN,
+                tab_id: TAB,
+                expected_invalidation_version: version,
+                index: 5,
+                expected_query_id: None,
+                base_view_version: None,
+            },
+            |_| Ok(()),
+        )
         .expect("modifier");
     assert_eq!(outcome, SlotWrite::Invalidated);
     let outcome = cache
-        .modify_slot_in_place_if_current(CONN, "missing", 0, 0, None, None, |_| Ok(()))
+        .modify_slot_in_place_if_current(
+            &sqllumen_lib::mysql::result_cache::SlotWriteTarget {
+                connection_id: CONN,
+                tab_id: "missing",
+                expected_invalidation_version: 0,
+                index: 0,
+                expected_query_id: None,
+                base_view_version: None,
+            },
+            |_| Ok(()),
+        )
         .expect("modifier");
     assert_eq!(outcome, SlotWrite::Invalidated);
     let outcome = cache
-        .modify_slot_in_place_if_current(CONN, TAB, version, 0, Some("other"), None, |_| Ok(()))
+        .modify_slot_in_place_if_current(
+            &sqllumen_lib::mysql::result_cache::SlotWriteTarget {
+                connection_id: CONN,
+                tab_id: TAB,
+                expected_invalidation_version: version,
+                index: 0,
+                expected_query_id: Some("other"),
+                base_view_version: None,
+            },
+            |_| Ok(()),
+        )
         .expect("modifier");
     assert_eq!(outcome, SlotWrite::QueryIdMismatch);
     let outcome = cache
-        .modify_slot_in_place_if_current(CONN, TAB, version, 0, Some(QID), Some(7), |_| Ok(()))
+        .modify_slot_in_place_if_current(
+            &sqllumen_lib::mysql::result_cache::SlotWriteTarget {
+                connection_id: CONN,
+                tab_id: TAB,
+                expected_invalidation_version: version,
+                index: 0,
+                expected_query_id: Some(QID),
+                base_view_version: Some(7),
+            },
+            |_| Ok(()),
+        )
         .expect("modifier");
     assert_eq!(outcome, SlotWrite::ViewSuperseded { current: 1 });
 
     let err = cache
-        .modify_slot_in_place_if_current(CONN, TAB, version, 0, None, None, |slot| {
-            slot.view_version = 99;
-            Err::<(), _>("boom".to_string())
-        })
+        .modify_slot_in_place_if_current(
+            &sqllumen_lib::mysql::result_cache::SlotWriteTarget {
+                connection_id: CONN,
+                tab_id: TAB,
+                expected_invalidation_version: version,
+                index: 0,
+                expected_query_id: None,
+                base_view_version: None,
+            },
+            |slot| {
+                slot.view_version = 99;
+                Err::<(), _>("boom".to_string())
+            },
+        )
         .expect_err("closure error");
     assert_eq!(err, "boom");
     assert_eq!(
@@ -937,7 +1299,15 @@ fn first_window_payload_for_100k_by_10_is_under_200_kb() {
     ]);
     let rows: Vec<SharedRow> = (0..100_000).map(|_| Arc::clone(&row)).collect();
     let columns = (0..10).map(|i| col(&format!("c{i}"), "VARCHAR")).collect();
-    let result = StoredResult::new(QID.to_string(), columns, Arc::new(rows), 1, 1, 0, true);
+    let result = StoredResult::new(sqllumen_lib::mysql::query_executor::StoredResultParts {
+        query_id: QID.to_string(),
+        columns,
+        rows: Arc::new(rows),
+        execution_time_ms: 1,
+        total_time_ms: 1,
+        affected_rows: 0,
+        auto_limit_applied: true,
+    });
 
     let item = ExecuteQueryResult::from(MultiQueryResultItem::from_stored(&result, None, true));
     let bytes = serde_json::to_vec(&item).expect("serialize");
@@ -1149,13 +1519,15 @@ mod coverage_stubs {
 
         let single = execute_query_impl(
             &state,
-            CONN,
-            TAB,
-            "SELECT * FROM t FOR UPDATE",
-            5_000,
-            Some(spec(
-                json!({ "sort": { "column": "x", "direction": "asc" } }),
-            )),
+            &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                sql: "SELECT * FROM t FOR UPDATE".to_string(),
+                row_limit: Some(5_000),
+                view_spec: Some(spec(
+                    json!({ "sort": { "column": "x", "direction": "asc" } }),
+                )),
+            },
         )
         .await
         .expect("stub");
@@ -1168,10 +1540,12 @@ mod coverage_stubs {
 
         let multi = execute_multi_query_impl(
             &state,
-            CONN,
-            TAB,
-            vec!["SELECT 1".to_string(), "CALL p()".to_string()],
-            0,
+            &sqllumen_lib::mysql::query_executor::ExecuteMultiQueryRequest {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                statements: vec!["SELECT 1".to_string(), "CALL p()".to_string()],
+                row_limit: Some(0),
+            },
         )
         .await
         .expect("multi stub");
@@ -1181,9 +1555,17 @@ mod coverage_stubs {
             Some(FullExportBlockedReason::Call)
         );
 
-        let call = execute_call_query_impl(&state, CONN, TAB, "CALL p()", 10)
-            .await
-            .expect("call stub");
+        let call = execute_call_query_impl(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteCallQueryRequest {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                sql: "CALL p()".to_string(),
+                row_limit: Some(10),
+            },
+        )
+        .await
+        .expect("call stub");
         assert_eq!(
             call.results[0].full_export_blocked_reason,
             Some(FullExportBlockedReason::Call)
@@ -1202,18 +1584,20 @@ mod coverage_stubs {
 
         let item = reexecute_single_result_impl(
             &state,
-            CONN,
-            TAB,
-            0,
-            "SELECT id FROM t",
-            500,
-            Some(spec(json!({
-                "sort": { "column": "id", "direction": "desc" },
-                "filters": [
-                    { "column": "id", "operator": ">", "value": "1" },
-                    { "column": "gone", "operator": "==", "value": "1" }
-                ]
-            }))),
+            &sqllumen_lib::mysql::query_executor::ReexecuteSingleResultRequest {
+                connection_id: CONN.to_string(),
+                tab_id: TAB.to_string(),
+                result_index: 0,
+                sql: "SELECT id FROM t".to_string(),
+                row_limit: Some(500),
+                view_spec: Some(spec(json!({
+                    "sort": { "column": "id", "direction": "desc" },
+                    "filters": [
+                        { "column": "id", "operator": ">", "value": "1" },
+                        { "column": "gone", "operator": "==", "value": "1" }
+                    ]
+                }))),
+            },
         )
         .await
         .expect("re-execute stub");

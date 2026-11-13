@@ -63,12 +63,19 @@ interface ModelContext {
 
 const modelConnections = new Map<string, ModelContext>()
 
-export function registerModelConnection(
-  uri: string,
-  connectionId: string,
-  tabId?: string,
+export interface ModelConnectionRegistration {
+  uri: string
+  connectionId: string
+  tabId?: string
   tabType?: TabType
-): void {
+}
+
+export function registerModelConnection({
+  uri,
+  connectionId,
+  tabId,
+  tabType,
+}: ModelConnectionRegistration): void {
   modelConnections.set(uri, {
     connectionId: connectionId,
     tabId: tabId ?? '',
@@ -396,14 +403,23 @@ function pushFallbackKeywordsAndFunctions(
   }
 }
 
-function pushStoredProgramBodyKeywords(
-  items: ICompletionItem[],
-  statementPrefix: string,
-  suggestions: Suggestions,
-  currentWordPrefix: string,
-  existingKeywords: readonly string[],
-  sortPrefix = SORT_PREFIX_NEUTRAL
-): void {
+interface StoredProgramKeywordPush {
+  items: ICompletionItem[]
+  statementPrefix: string
+  suggestions: Suggestions
+  currentWordPrefix: string
+  existingKeywords: readonly string[]
+  sortPrefix?: string
+}
+
+function pushStoredProgramBodyKeywords({
+  items,
+  statementPrefix,
+  suggestions,
+  currentWordPrefix,
+  existingKeywords,
+  sortPrefix = SORT_PREFIX_NEUTRAL,
+}: StoredProgramKeywordPush): void {
   if (!isStoredProgramBodyContext(statementPrefix)) return
   if (!canSupplementStoredProgramBodyKeywords(suggestions, currentWordPrefix)) return
 
@@ -419,13 +435,28 @@ function pushStoredProgramBodyKeywords(
   }
 }
 
-function pushDatabases(
-  databases: readonly string[],
-  items: ICompletionItem[],
-  seenLabels: Set<string>,
+interface CompletionSink {
+  items: ICompletionItem[]
+  seenLabels: Set<string>
+  sortPrefix?: string
+  quoteIdentifiers?: boolean
+}
+
+interface DatabasePush extends CompletionSink {
+  databases: readonly string[]
+}
+
+interface ScopedSchemaPush extends DatabasePush {
+  cache: ReturnType<typeof getCache>
+}
+
+function pushDatabases({
+  databases,
+  items,
+  seenLabels,
   sortPrefix = SORT_PREFIX_NEUTRAL,
-  quoteIdentifiers = false
-): void {
+  quoteIdentifiers = false,
+}: DatabasePush): void {
   for (const db of databases) {
     if (seenLabels.has(`db:${db}`)) {
       continue
@@ -436,14 +467,14 @@ function pushDatabases(
   }
 }
 
-function pushScopedTables(
-  cache: ReturnType<typeof getCache>,
-  databases: readonly string[],
-  items: ICompletionItem[],
-  seenLabels: Set<string>,
+function pushScopedTables({
+  cache,
+  databases,
+  items,
+  seenLabels,
   sortPrefix = SORT_PREFIX_NEUTRAL,
-  quoteIdentifiers = false
-): void {
+  quoteIdentifiers = false,
+}: ScopedSchemaPush): void {
   for (const db of databases) {
     const tables = cache.tables[db] ?? []
     for (const table of tables) {
@@ -457,14 +488,14 @@ function pushScopedTables(
   }
 }
 
-function pushScopedColumns(
-  cache: ReturnType<typeof getCache>,
-  databases: readonly string[],
-  items: ICompletionItem[],
-  seenLabels: Set<string>,
+function pushScopedColumns({
+  cache,
+  databases,
+  items,
+  seenLabels,
   sortPrefix = SORT_PREFIX_NEUTRAL,
-  quoteIdentifiers = false
-): void {
+  quoteIdentifiers = false,
+}: ScopedSchemaPush): void {
   for (const db of databases) {
     const tables = cache.tables[db] ?? []
     for (const table of tables) {
@@ -492,15 +523,19 @@ function routineCompletionKey(routine: { name: string; routineType: string }): s
   return routine.routineType === 'FUNCTION' ? `fn:${routine.name}` : `proc:${routine.name}`
 }
 
-function pushScopedRoutines(
-  cache: ReturnType<typeof getCache>,
-  databases: readonly string[],
-  items: ICompletionItem[],
-  seenLabels: Set<string>,
+interface ScopedRoutinePush extends ScopedSchemaPush {
+  routineType?: 'FUNCTION' | 'PROCEDURE' | null
+}
+
+function pushScopedRoutines({
+  cache,
+  databases,
+  items,
+  seenLabels,
   sortPrefix = SORT_PREFIX_NEUTRAL,
-  routineType: 'FUNCTION' | 'PROCEDURE' | null = null,
-  quoteIdentifiers = false
-): void {
+  routineType = null,
+  quoteIdentifiers = false,
+}: ScopedRoutinePush): void {
   for (const db of databases) {
     const routines = cache.routines[db] ?? []
     for (const routine of routines) {
@@ -516,12 +551,12 @@ function pushScopedRoutines(
 
       seenLabels.add(routineKey)
       items.push(
-        routineItem(
-          routine.name,
-          routine.routineType as 'FUNCTION' | 'PROCEDURE',
-          sortPrefix,
-          quoteIdentifiers
-        )
+        routineItem({
+          name: routine.name,
+          type: routine.routineType as 'FUNCTION' | 'PROCEDURE',
+          sortPrefix: sortPrefix,
+          quoteIdentifiers: quoteIdentifiers,
+        })
       )
     }
   }
@@ -575,12 +610,19 @@ function columnItem(
   )
 }
 
-function routineItem(
-  name: string,
-  type: 'FUNCTION' | 'PROCEDURE',
+interface RoutineItemInputs {
+  name: string
+  type: 'FUNCTION' | 'PROCEDURE'
+  sortPrefix?: string
+  quoteIdentifiers?: boolean
+}
+
+function routineItem({
+  name,
+  type,
   sortPrefix = SORT_PREFIX_NEUTRAL,
-  quoteIdentifiers = false
-): QuotedItem {
+  quoteIdentifiers = false,
+}: RoutineItemInputs): QuotedItem {
   return applyQuoting(
     {
       label: name,
@@ -699,13 +741,13 @@ function buildConnectionlessCompletions(
     return items
   }
   items.push(...suggestions.keywords.map((keyword) => keywordItem(keyword)))
-  pushStoredProgramBodyKeywords(
-    items,
-    caret.cursorPrefix,
-    suggestions,
-    caret.currentWordPrefix,
-    suggestions.keywords
-  )
+  pushStoredProgramBodyKeywords({
+    items: items,
+    statementPrefix: caret.cursorPrefix,
+    suggestions: suggestions,
+    currentWordPrefix: caret.currentWordPrefix,
+    existingKeywords: suggestions.keywords,
+  })
   if (hasFunctionContext(suggestions)) {
     pushBuiltinFunctions(items, null)
   }
@@ -713,14 +755,35 @@ function buildConnectionlessCompletions(
   return items
 }
 
-export const completionService: CompletionService = async (
-  model: editor.IReadOnlyModel,
-  position: Position,
-  completionContext: languages.CompletionContext,
-  suggestions: Suggestions | null,
-  entities: EntityContext[] | null,
+interface CompletionServiceRequest {
+  model: editor.IReadOnlyModel
+  position: Position
+  completionContext: languages.CompletionContext
+  suggestions: Suggestions | null
+  entities: EntityContext[] | null
   snippets?: CompletionSnippet[]
-): Promise<ICompletionItem[]> => {
+}
+
+export const completionService: CompletionService = (...monacoArguments) => {
+  const [model, position, completionContext, suggestions, entities, snippets] = monacoArguments
+  return provideCompletions({
+    model: model,
+    position: position,
+    completionContext: completionContext,
+    suggestions: suggestions,
+    entities: entities,
+    snippets: snippets,
+  })
+}
+
+async function provideCompletions({
+  model,
+  position,
+  completionContext,
+  suggestions,
+  entities,
+  snippets,
+}: CompletionServiceRequest): Promise<ICompletionItem[]> {
   const quoteIdentifiers =
     useSettingsStore.getState().getSetting('editor.autocompleteBackticks') === 'true'
   const connectionId = modelConnections.get(model.uri.toString())?.connectionId
@@ -839,27 +902,33 @@ function scopedSchemaDatabases(context: SyntaxCompletionContext): readonly strin
 }
 
 function pushDatabaseContextItems(context: SyntaxCompletionContext): void {
-  pushDatabases(
-    context.cache.databases,
-    context.items,
-    context.seenLabels,
-    context.sortPrefixes.callSchema,
-    context.quoteIdentifiers
-  )
+  pushDatabases({
+    databases: context.cache.databases,
+    items: context.items,
+    seenLabels: context.seenLabels,
+    sortPrefix: context.sortPrefixes.callSchema,
+    quoteIdentifiers: context.quoteIdentifiers,
+  })
 }
 
 function pushTableContextItems(context: SyntaxCompletionContext): void {
   const { cache, items, seenLabels, sortPrefixes, quoteIdentifiers } = context
-  pushDatabases(cache.databases, items, seenLabels, sortPrefixes.schema, quoteIdentifiers)
+  pushDatabases({
+    databases: cache.databases,
+    items: items,
+    seenLabels: seenLabels,
+    sortPrefix: sortPrefixes.schema,
+    quoteIdentifiers: quoteIdentifiers,
+  })
   if (!context.selectedDatabase) return
-  pushScopedTables(
-    cache,
-    [context.selectedDatabase],
-    items,
-    seenLabels,
-    sortPrefixes.schema,
-    quoteIdentifiers
-  )
+  pushScopedTables({
+    cache: cache,
+    databases: [context.selectedDatabase],
+    items: items,
+    seenLabels: seenLabels,
+    sortPrefix: sortPrefixes.schema,
+    quoteIdentifiers: quoteIdentifiers,
+  })
 }
 
 function pushSelectListSchemaItems(
@@ -867,24 +936,30 @@ function pushSelectListSchemaItems(
   fallbackDatabases: readonly string[]
 ): void {
   const { cache, items, seenLabels, sortPrefixes, quoteIdentifiers } = context
-  pushDatabases(cache.databases, items, seenLabels, sortPrefixes.schema, quoteIdentifiers)
-  pushScopedTables(
-    cache,
-    fallbackDatabases,
-    items,
-    seenLabels,
-    sortPrefixes.schema,
-    quoteIdentifiers
-  )
-  pushScopedRoutines(
-    cache,
-    fallbackDatabases,
-    items,
-    seenLabels,
-    sortPrefixes.schema,
-    'FUNCTION',
-    quoteIdentifiers
-  )
+  pushDatabases({
+    databases: cache.databases,
+    items: items,
+    seenLabels: seenLabels,
+    sortPrefix: sortPrefixes.schema,
+    quoteIdentifiers: quoteIdentifiers,
+  })
+  pushScopedTables({
+    cache: cache,
+    databases: fallbackDatabases,
+    items: items,
+    seenLabels: seenLabels,
+    sortPrefix: sortPrefixes.schema,
+    quoteIdentifiers: quoteIdentifiers,
+  })
+  pushScopedRoutines({
+    cache: cache,
+    databases: fallbackDatabases,
+    items: items,
+    seenLabels: seenLabels,
+    sortPrefix: sortPrefixes.schema,
+    routineType: 'FUNCTION',
+    quoteIdentifiers: quoteIdentifiers,
+  })
 }
 
 function pushColumnContextItems(context: SyntaxCompletionContext): void {
@@ -901,14 +976,14 @@ function pushColumnContextItems(context: SyntaxCompletionContext): void {
   }
 
   const fallbackDatabases = scopedSchemaDatabases(context)
-  pushScopedColumns(
-    context.cache,
-    fallbackDatabases,
-    context.items,
-    context.seenLabels,
-    context.sortPrefixes.column,
-    context.quoteIdentifiers
-  )
+  pushScopedColumns({
+    cache: context.cache,
+    databases: fallbackDatabases,
+    items: context.items,
+    seenLabels: context.seenLabels,
+    sortPrefix: context.sortPrefixes.column,
+    quoteIdentifiers: context.quoteIdentifiers,
+  })
   if (context.inSelectListContext) {
     pushSelectListSchemaItems(context, fallbackDatabases)
   }
@@ -916,28 +991,28 @@ function pushColumnContextItems(context: SyntaxCompletionContext): void {
 
 function pushFunctionContextItems(context: SyntaxCompletionContext): void {
   pushBuiltinFunctions(context.items, context.seenLabels, context.sortPrefixes.schema)
-  pushScopedRoutines(
-    context.cache,
-    context.cache.databases,
-    context.items,
-    context.seenLabels,
-    context.sortPrefixes.schema,
-    'FUNCTION',
-    context.quoteIdentifiers
-  )
+  pushScopedRoutines({
+    cache: context.cache,
+    databases: context.cache.databases,
+    items: context.items,
+    seenLabels: context.seenLabels,
+    sortPrefix: context.sortPrefixes.schema,
+    routineType: 'FUNCTION',
+    quoteIdentifiers: context.quoteIdentifiers,
+  })
 }
 
 function pushProcedureContextItems(context: SyntaxCompletionContext): void {
   if (context.inCallStatementContext) return
-  pushScopedRoutines(
-    context.cache,
-    scopedSchemaDatabases(context),
-    context.items,
-    context.seenLabels,
-    context.sortPrefixes.schema,
-    'PROCEDURE',
-    context.quoteIdentifiers
-  )
+  pushScopedRoutines({
+    cache: context.cache,
+    databases: scopedSchemaDatabases(context),
+    items: context.items,
+    seenLabels: context.seenLabels,
+    sortPrefix: context.sortPrefixes.schema,
+    routineType: 'PROCEDURE',
+    quoteIdentifiers: context.quoteIdentifiers,
+  })
 }
 
 const SYNTAX_CONTEXT_COMPLETIONS: Partial<
@@ -952,16 +1027,22 @@ const SYNTAX_CONTEXT_COMPLETIONS: Partial<
 
 function pushCallStatementItems(context: SyntaxCompletionContext): void {
   const { cache, items, seenLabels, sortPrefixes, quoteIdentifiers } = context
-  pushDatabases(cache.databases, items, seenLabels, sortPrefixes.callSchema, quoteIdentifiers)
-  pushScopedRoutines(
-    cache,
-    scopedSchemaDatabases(context),
-    items,
-    seenLabels,
-    sortPrefixes.callSchema,
-    'PROCEDURE',
-    quoteIdentifiers
-  )
+  pushDatabases({
+    databases: cache.databases,
+    items: items,
+    seenLabels: seenLabels,
+    sortPrefix: sortPrefixes.callSchema,
+    quoteIdentifiers: quoteIdentifiers,
+  })
+  pushScopedRoutines({
+    cache: cache,
+    databases: scopedSchemaDatabases(context),
+    items: items,
+    seenLabels: seenLabels,
+    sortPrefix: sortPrefixes.callSchema,
+    routineType: 'PROCEDURE',
+    quoteIdentifiers: quoteIdentifiers,
+  })
 }
 
 function pushRankedKeywordsAndSnippets(context: SyntaxCompletionContext): void {
@@ -969,14 +1050,14 @@ function pushRankedKeywordsAndSnippets(context: SyntaxCompletionContext): void {
   for (const keyword of suggestions.keywords) {
     items.push(keywordItem(keyword, sortPrefixes.keyword))
   }
-  pushStoredProgramBodyKeywords(
-    items,
-    caret.cursorPrefix,
-    suggestions,
-    caret.currentWordPrefix,
-    suggestions.keywords,
-    sortPrefixes.keyword
-  )
+  pushStoredProgramBodyKeywords({
+    items: items,
+    statementPrefix: caret.cursorPrefix,
+    suggestions: suggestions,
+    currentWordPrefix: caret.currentWordPrefix,
+    existingKeywords: suggestions.keywords,
+    sortPrefix: sortPrefixes.keyword,
+  })
   items.push(...mapSnippetsToItems(context.snippets, sortPrefixes.keyword))
 }
 
@@ -1114,14 +1195,24 @@ function databaseDotCompletions(request: DotNotationRequest, database: string): 
   const statementPrefix = request.caret.statementPrefix
   if (isCallStatementContext(statementPrefix)) {
     return routinesOfType(cache, database, 'PROCEDURE').map((routine) =>
-      routineItem(routine.name, 'PROCEDURE', SORT_PREFIX_NEUTRAL, quoteIdentifiers)
+      routineItem({
+        name: routine.name,
+        type: 'PROCEDURE',
+        sortPrefix: SORT_PREFIX_NEUTRAL,
+        quoteIdentifiers: quoteIdentifiers,
+      })
     )
   }
   const tables = cache.tables[database] ?? []
   const items = tables.map((table) => tableItem(table.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
   if (isInTableReferenceClause(statementPrefix)) return items
   const functions = routinesOfType(cache, database, 'FUNCTION').map((routine) =>
-    routineItem(routine.name, 'FUNCTION', SORT_PREFIX_NEUTRAL, quoteIdentifiers)
+    routineItem({
+      name: routine.name,
+      type: 'FUNCTION',
+      sortPrefix: SORT_PREFIX_NEUTRAL,
+      quoteIdentifiers: quoteIdentifiers,
+    })
   )
   return [...items, ...functions]
 }
@@ -1336,47 +1427,53 @@ function pushTablesOfDatabase(
 function pushAllFallbackSchemaItems(context: ParseFallbackContext): void {
   const { cache, items, seenLabels, fallbackDatabases, quoteIdentifiers } = context
   const databaseSortPrefix = context.inCallStatementContext ? SORT_PREFIX_HIGH : SORT_PREFIX_NEUTRAL
-  pushDatabases(cache.databases, items, seenLabels, databaseSortPrefix, quoteIdentifiers)
+  pushDatabases({
+    databases: cache.databases,
+    items: items,
+    seenLabels: seenLabels,
+    sortPrefix: databaseSortPrefix,
+    quoteIdentifiers: quoteIdentifiers,
+  })
 
   if (context.inCallStatementContext) {
-    pushScopedRoutines(
-      cache,
-      fallbackDatabases,
-      items,
-      seenLabels,
-      SORT_PREFIX_HIGH,
-      'PROCEDURE',
-      quoteIdentifiers
-    )
+    pushScopedRoutines({
+      cache: cache,
+      databases: fallbackDatabases,
+      items: items,
+      seenLabels: seenLabels,
+      sortPrefix: SORT_PREFIX_HIGH,
+      routineType: 'PROCEDURE',
+      quoteIdentifiers: quoteIdentifiers,
+    })
     return
   }
 
-  pushScopedTables(
-    cache,
-    fallbackDatabases,
-    items,
-    seenLabels,
-    SORT_PREFIX_NEUTRAL,
-    quoteIdentifiers
-  )
-  pushScopedColumns(
-    cache,
-    fallbackDatabases,
-    items,
-    seenLabels,
-    SORT_PREFIX_NEUTRAL,
-    quoteIdentifiers
-  )
+  pushScopedTables({
+    cache: cache,
+    databases: fallbackDatabases,
+    items: items,
+    seenLabels: seenLabels,
+    sortPrefix: SORT_PREFIX_NEUTRAL,
+    quoteIdentifiers: quoteIdentifiers,
+  })
+  pushScopedColumns({
+    cache: cache,
+    databases: fallbackDatabases,
+    items: items,
+    seenLabels: seenLabels,
+    sortPrefix: SORT_PREFIX_NEUTRAL,
+    quoteIdentifiers: quoteIdentifiers,
+  })
   const routineType = context.inSelectListContext ? 'FUNCTION' : null
-  pushScopedRoutines(
-    cache,
-    fallbackDatabases,
-    items,
-    seenLabels,
-    SORT_PREFIX_NEUTRAL,
-    routineType,
-    quoteIdentifiers
-  )
+  pushScopedRoutines({
+    cache: cache,
+    databases: fallbackDatabases,
+    items: items,
+    seenLabels: seenLabels,
+    sortPrefix: SORT_PREFIX_NEUTRAL,
+    routineType: routineType,
+    quoteIdentifiers: quoteIdentifiers,
+  })
 }
 
 function pushParseFallbackSchemaItems(

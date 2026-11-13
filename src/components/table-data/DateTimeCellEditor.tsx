@@ -32,20 +32,22 @@ import { CalendarBlank, Clock } from '@phosphor-icons/react'
 import { getTemporalColumnType } from '../../lib/date-utils'
 import type { TemporalColumnType } from '../../lib/date-utils'
 import { useCellEditor } from './useCellEditor'
-import type { CellEditorParams, CellEditorCallbacks } from './useCellEditor'
+import type { CellEditorParams } from './useCellEditor'
+import type { EditorCallbacksContextType } from '../shared/editor-callbacks-context'
 import { Button } from '../common/Button'
 import sharedStyles from '../shared/grid-cell-editors.module.css'
 import { DateTimePicker } from './DateTimePicker'
 import styles from '../shared/BaseGridView.module.css'
-import { isTargetInside } from '../../lib/input-events'
+import { isTargetInside, isTargetWithin } from '../../lib/input-events'
 
+const FOCUSABLE_SELECTOR = 'input, button, select, textarea, [tabindex]:not([tabindex="-1"])'
 const COMMIT_KEYS: ReadonlySet<string> = new Set(['Tab', 'Enter'])
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export default function DateTimeCellEditor(props: CellEditorParams & CellEditorCallbacks) {
+export default function DateTimeCellEditor(props: CellEditorParams & EditorCallbacksContextType) {
   const { onClose } = props
   const column = props.columnMeta
   const temporalType: TemporalColumnType = getTemporalColumnType(column.dataType)
@@ -61,7 +63,7 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
     initialInputValue: props.initialInputValue,
     selectAllOnFocus: props.selectAllOnFocus,
   }
-  const callbacks: CellEditorCallbacks = {
+  const callbacks: EditorCallbacksContextType = {
     tabId: props.tabId,
     updateCellValue: props.updateCellValue,
     syncCellValue: props.syncCellValue,
@@ -95,9 +97,7 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
     if (!pickerOpen) return
 
     const handleMouseDown = (event: MouseEvent) => {
-      const target = event.target as HTMLElement
-      const focusableSelector = 'input, button, select, textarea, [tabindex]:not([tabindex="-1"])'
-      const isFocusable = target.matches(focusableSelector) || !!target.closest(focusableSelector)
+      const isFocusable = isTargetWithin(event.target, FOCUSABLE_SELECTOR)
       if (!isFocusable) {
         event.preventDefault() // Keep focus on cell editor input
       }

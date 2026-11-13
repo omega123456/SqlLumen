@@ -494,7 +494,12 @@ export function ResultGridView({
     const getRow = (position: number): ResultRow | undefined => {
       const isDraftPosition = position === viewRowCount
       if (draftRow && isDraftPosition) {
-        const draft = materializeRow(position, -1, draftRow, columnCount)
+        const draft = materializeRow({
+          position: position,
+          baseIndex: -1,
+          row: draftRow,
+          columnCount: columnCount,
+        })
         return isEditingRow(position, -1) ? overlay(draft) : draft
       }
       const cached = getLoadedRow(tabId, resultIndex, position)
@@ -512,10 +517,22 @@ export function ResultGridView({
       readRange: async ([start, end], options) => {
         const viewEnd = Math.min(end, viewRowCount)
         const fetched =
-          viewEnd > start ? await readViewRange(tabId, resultIndex, [start, viewEnd], options) : []
+          viewEnd > start
+            ? await readViewRange({
+                tabId: tabId,
+                resultIndex: resultIndex,
+                range: [start, viewEnd],
+                options: options,
+              })
+            : []
         const rows = fetched.map((cached, offset) => {
           const position = start + offset
-          const row = materializeRow(position, cached.baseIndex, cached.row, columnCount)
+          const row = materializeRow({
+            position: position,
+            baseIndex: cached.baseIndex,
+            row: cached.row,
+            columnCount: columnCount,
+          })
           return isEditingRow(position, cached.baseIndex) ? overlay(row) : row
         })
         const reachesDraftRow = end > viewRowCount
@@ -831,13 +848,13 @@ export function ResultGridView({
           editColumnBindings.has(index)
         const showsLockIcon = !isEditable && !blobViewerEditable
         const headerIconWidthPx = showsLockIcon ? HEADER_ICON_WIDTH_PX : 0
-        return getAutoSizedColumnWidth(
-          tableMeta,
-          0, // column is at index 0 in our single-column proxy array
-          columnRows,
-          column.displayName,
-          headerIconWidthPx
-        )
+        return getAutoSizedColumnWidth({
+          column: tableMeta,
+          columnIndex: 0,
+          rows: columnRows,
+          displayName: column.displayName,
+          headerIconWidthPx: headerIconWidthPx,
+        })
       },
     }
   }, [editColumnBindings, editMode, editableColumnMap, resolvedColumns])

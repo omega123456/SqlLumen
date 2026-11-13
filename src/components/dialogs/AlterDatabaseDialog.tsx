@@ -113,12 +113,12 @@ export function AlterDatabaseDialog({
     }
   }, [isOpen, connectionId, databaseName, patchDialogState])
 
-  const encoding = useDatabaseEncoding(
-    connectionId,
-    isOpen,
-    initialEncoding.charset,
-    initialEncoding.collation
-  )
+  const encoding = useDatabaseEncoding({
+    connectionId: connectionId,
+    isOpen: isOpen,
+    initialCharset: initialEncoding.charset,
+    initialCollation: initialEncoding.collation,
+  })
 
   // Combine loading states
   const isLoading = detailsLoading || encoding.isLoading
@@ -132,12 +132,12 @@ export function AlterDatabaseDialog({
     patchDialogState({ isSubmitting: true, submitError: null })
 
     try {
-      await alterDatabase(
-        connectionId,
-        databaseName,
-        encoding.charset || undefined,
-        encoding.collation || undefined
-      )
+      await alterDatabase({
+        connectionId: connectionId,
+        name: databaseName,
+        charset: encoding.charset || null,
+        collation: encoding.collation || null,
+      })
       onSuccess()
     } catch (error) {
       const message = toErrorMessage(error)

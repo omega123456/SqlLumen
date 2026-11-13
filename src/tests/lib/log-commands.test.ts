@@ -26,7 +26,7 @@ describe('log-commands', () => {
 
     const result = await listLogs(2, 'warn')
 
-    expect(ipc.calls('list_logs')[0]).toEqual({
+    expect(ipc.payloads('list_logs')[0]).toEqual({
       page: 2,
       level: 'warn',
     })
@@ -38,7 +38,7 @@ describe('log-commands', () => {
 
     const result = await exportLogs('2026-06-01', '2026-06-07', '/tmp/logs.csv')
 
-    expect(ipc.calls('export_logs')[0]).toEqual({
+    expect(ipc.payloads('export_logs')[0]).toEqual({
       startTimestamp: '2026-06-01',
       endTimestamp: '2026-06-07',
       filePath: '/tmp/logs.csv',

@@ -10,7 +10,7 @@ use sqllumen_lib::mysql::pool::SslSettings;
 use sqllumen_lib::commands::object_editor::{
     drop_object_impl, get_object_body_impl, get_routine_parameters_impl,
     get_routine_parameters_with_return_type_impl, parse_ddl_name, save_object_impl,
-    validate_view_ddl_prefix, SaveObjectRequest,
+    validate_view_ddl_prefix, ParsedDdlName, SaveObjectRequest,
 };
 use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
 use sqllumen_lib::state::AppState;
@@ -60,14 +60,24 @@ fn register_lazy_pool(state: &AppState, connection_id: &str, read_only: bool) {
     state.registry.insert(connection_id.to_string(), entry);
 }
 
-fn make_request(
-    connection_id: &str,
-    database: &str,
-    object_name: &str,
-    object_type: &str,
-    body: &str,
-    mode: &str,
-) -> SaveObjectRequest {
+struct RequestFields<'a> {
+    connection_id: &'a str,
+    database: &'a str,
+    object_name: &'a str,
+    object_type: &'a str,
+    body: &'a str,
+    mode: &'a str,
+}
+
+fn make_request(fields: RequestFields<'_>) -> SaveObjectRequest {
+    let RequestFields {
+        connection_id,
+        database,
+        object_name,
+        object_type,
+        body,
+        mode,
+    } = fields;
     SaveObjectRequest {
         connection_id: connection_id.to_string(),
         database: database.to_string(),
@@ -84,7 +94,11 @@ fn make_request(
 
 #[test]
 fn test_parse_ddl_name_simple_procedure() {
-    let (db, name, type_kw) = parse_ddl_name("CREATE PROCEDURE `my_proc`() BEGIN END").unwrap();
+    let ParsedDdlName {
+        database: db,
+        name,
+        type_keyword: type_kw,
+    } = parse_ddl_name("CREATE PROCEDURE `my_proc`() BEGIN END").unwrap();
     assert!(db.is_none());
     assert_eq!(name, "my_proc");
     assert_eq!(type_kw, "PROCEDURE");
@@ -92,8 +106,11 @@ fn test_parse_ddl_name_simple_procedure() {
 
 #[test]
 fn test_parse_ddl_name_function() {
-    let (db, name, type_kw) =
-        parse_ddl_name("CREATE FUNCTION `calc`(x INT) RETURNS INT BEGIN RETURN x; END").unwrap();
+    let ParsedDdlName {
+        database: db,
+        name,
+        type_keyword: type_kw,
+    } = parse_ddl_name("CREATE FUNCTION `calc`(x INT) RETURNS INT BEGIN RETURN x; END").unwrap();
     assert!(db.is_none());
     assert_eq!(name, "calc");
     assert_eq!(type_kw, "FUNCTION");
@@ -101,8 +118,11 @@ fn test_parse_ddl_name_function() {
 
 #[test]
 fn test_parse_ddl_name_view_or_replace() {
-    let (db, name, type_kw) =
-        parse_ddl_name("CREATE OR REPLACE VIEW `my_view` AS SELECT 1").unwrap();
+    let ParsedDdlName {
+        database: db,
+        name,
+        type_keyword: type_kw,
+    } = parse_ddl_name("CREATE OR REPLACE VIEW `my_view` AS SELECT 1").unwrap();
     assert!(db.is_none());
     assert_eq!(name, "my_view");
     assert_eq!(type_kw, "VIEW");
@@ -110,7 +130,11 @@ fn test_parse_ddl_name_view_or_replace() {
 
 #[test]
 fn test_parse_ddl_name_view_simple() {
-    let (db, name, type_kw) = parse_ddl_name("CREATE VIEW `v1` AS SELECT 1").unwrap();
+    let ParsedDdlName {
+        database: db,
+        name,
+        type_keyword: type_kw,
+    } = parse_ddl_name("CREATE VIEW `v1` AS SELECT 1").unwrap();
     assert!(db.is_none());
     assert_eq!(name, "v1");
     assert_eq!(type_kw, "VIEW");
@@ -118,8 +142,11 @@ fn test_parse_ddl_name_view_simple() {
 
 #[test]
 fn test_parse_ddl_name_with_database_qualifier() {
-    let (db, name, type_kw) =
-        parse_ddl_name("CREATE PROCEDURE `mydb`.`my_proc`() BEGIN END").unwrap();
+    let ParsedDdlName {
+        database: db,
+        name,
+        type_keyword: type_kw,
+    } = parse_ddl_name("CREATE PROCEDURE `mydb`.`my_proc`() BEGIN END").unwrap();
     assert_eq!(db, Some("mydb".to_string()));
     assert_eq!(name, "my_proc");
     assert_eq!(type_kw, "PROCEDURE");
@@ -128,7 +155,11 @@ fn test_parse_ddl_name_with_database_qualifier() {
 #[test]
 fn test_parse_ddl_name_with_definer() {
     let ddl = "CREATE DEFINER=`root`@`localhost` PROCEDURE `my_proc`() BEGIN END";
-    let (db, name, type_kw) = parse_ddl_name(ddl).unwrap();
+    let ParsedDdlName {
+        database: db,
+        name,
+        type_keyword: type_kw,
+    } = parse_ddl_name(ddl).unwrap();
     assert!(db.is_none());
     assert_eq!(name, "my_proc");
     assert_eq!(type_kw, "PROCEDURE");
@@ -137,7 +168,11 @@ fn test_parse_ddl_name_with_definer() {
 #[test]
 fn test_parse_ddl_name_with_definer_and_sql_security() {
     let ddl = "CREATE DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `mydb`.`v1` AS SELECT 1";
-    let (db, name, type_kw) = parse_ddl_name(ddl).unwrap();
+    let ParsedDdlName {
+        database: db,
+        name,
+        type_keyword: type_kw,
+    } = parse_ddl_name(ddl).unwrap();
     assert_eq!(db, Some("mydb".to_string()));
     assert_eq!(name, "v1");
     assert_eq!(type_kw, "VIEW");
@@ -146,7 +181,11 @@ fn test_parse_ddl_name_with_definer_and_sql_security() {
 #[test]
 fn test_parse_ddl_name_with_algorithm_definer_sql_security() {
     let ddl = "CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v1` AS SELECT 1";
-    let (_db, name, type_kw) = parse_ddl_name(ddl).unwrap();
+    let sqllumen_lib::commands::object_editor::ParsedDdlName {
+        database: _db,
+        name,
+        type_keyword: type_kw,
+    } = parse_ddl_name(ddl).unwrap();
     assert_eq!(name, "v1");
     assert_eq!(type_kw, "VIEW");
 }
@@ -154,7 +193,11 @@ fn test_parse_ddl_name_with_algorithm_definer_sql_security() {
 #[test]
 fn test_parse_ddl_name_trigger() {
     let ddl = "CREATE TRIGGER `my_trigger` BEFORE INSERT ON `t1` FOR EACH ROW BEGIN END";
-    let (db, name, type_kw) = parse_ddl_name(ddl).unwrap();
+    let ParsedDdlName {
+        database: db,
+        name,
+        type_keyword: type_kw,
+    } = parse_ddl_name(ddl).unwrap();
     assert!(db.is_none());
     assert_eq!(name, "my_trigger");
     assert_eq!(type_kw, "TRIGGER");
@@ -163,7 +206,11 @@ fn test_parse_ddl_name_trigger() {
 #[test]
 fn test_parse_ddl_name_event() {
     let ddl = "CREATE EVENT `my_event` ON SCHEDULE EVERY 1 DAY DO SELECT 1";
-    let (db, name, type_kw) = parse_ddl_name(ddl).unwrap();
+    let ParsedDdlName {
+        database: db,
+        name,
+        type_keyword: type_kw,
+    } = parse_ddl_name(ddl).unwrap();
     assert!(db.is_none());
     assert_eq!(name, "my_event");
     assert_eq!(type_kw, "EVENT");
@@ -184,7 +231,11 @@ fn test_parse_ddl_name_rejects_empty() {
 
 #[test]
 fn test_parse_ddl_name_case_insensitive() {
-    let (db, name, type_kw) = parse_ddl_name("create procedure `p`() BEGIN END").unwrap();
+    let ParsedDdlName {
+        database: db,
+        name,
+        type_keyword: type_kw,
+    } = parse_ddl_name("create procedure `p`() BEGIN END").unwrap();
     assert!(db.is_none());
     assert_eq!(name, "p");
     assert_eq!(type_kw, "PROCEDURE");
@@ -196,7 +247,11 @@ fn test_parse_ddl_name_case_insensitive() {
 
 #[test]
 fn test_parse_ddl_name_unquoted_procedure() {
-    let (db, name, type_kw) = parse_ddl_name("CREATE PROCEDURE my_proc() BEGIN END").unwrap();
+    let ParsedDdlName {
+        database: db,
+        name,
+        type_keyword: type_kw,
+    } = parse_ddl_name("CREATE PROCEDURE my_proc() BEGIN END").unwrap();
     assert!(db.is_none());
     assert_eq!(name, "my_proc");
     assert_eq!(type_kw, "PROCEDURE");
@@ -204,7 +259,11 @@ fn test_parse_ddl_name_unquoted_procedure() {
 
 #[test]
 fn test_parse_ddl_name_unquoted_with_db() {
-    let (db, name, type_kw) = parse_ddl_name("CREATE PROCEDURE mydb.my_proc() BEGIN END").unwrap();
+    let ParsedDdlName {
+        database: db,
+        name,
+        type_keyword: type_kw,
+    } = parse_ddl_name("CREATE PROCEDURE mydb.my_proc() BEGIN END").unwrap();
     assert_eq!(db, Some("mydb".to_string()));
     assert_eq!(name, "my_proc");
     assert_eq!(type_kw, "PROCEDURE");
@@ -212,7 +271,11 @@ fn test_parse_ddl_name_unquoted_with_db() {
 
 #[test]
 fn test_parse_ddl_name_unquoted_view() {
-    let (db, name, type_kw) = parse_ddl_name("CREATE VIEW my_view AS SELECT 1").unwrap();
+    let ParsedDdlName {
+        database: db,
+        name,
+        type_keyword: type_kw,
+    } = parse_ddl_name("CREATE VIEW my_view AS SELECT 1").unwrap();
     assert!(db.is_none());
     assert_eq!(name, "my_view");
     assert_eq!(type_kw, "VIEW");
@@ -220,8 +283,11 @@ fn test_parse_ddl_name_unquoted_view() {
 
 #[test]
 fn test_parse_ddl_name_mixed_quoted_db_unquoted_name() {
-    let (db, name, type_kw) =
-        parse_ddl_name("CREATE PROCEDURE `mydb`.my_proc() BEGIN END").unwrap();
+    let ParsedDdlName {
+        database: db,
+        name,
+        type_keyword: type_kw,
+    } = parse_ddl_name("CREATE PROCEDURE `mydb`.my_proc() BEGIN END").unwrap();
     assert_eq!(db, Some("mydb".to_string()));
     assert_eq!(name, "my_proc");
     assert_eq!(type_kw, "PROCEDURE");
@@ -229,8 +295,11 @@ fn test_parse_ddl_name_mixed_quoted_db_unquoted_name() {
 
 #[test]
 fn test_parse_ddl_name_unquoted_db_quoted_name() {
-    let (db, name, type_kw) =
-        parse_ddl_name("CREATE PROCEDURE mydb.`my_proc`() BEGIN END").unwrap();
+    let ParsedDdlName {
+        database: db,
+        name,
+        type_keyword: type_kw,
+    } = parse_ddl_name("CREATE PROCEDURE mydb.`my_proc`() BEGIN END").unwrap();
     assert_eq!(db, Some("mydb".to_string()));
     assert_eq!(name, "my_proc");
     assert_eq!(type_kw, "PROCEDURE");
@@ -238,7 +307,11 @@ fn test_parse_ddl_name_unquoted_db_quoted_name() {
 
 #[test]
 fn test_parse_ddl_name_quoted_name_with_escaped_backtick() {
-    let (db, name, type_kw) = parse_ddl_name("CREATE VIEW `my``view` AS SELECT 1").unwrap();
+    let ParsedDdlName {
+        database: db,
+        name,
+        type_keyword: type_kw,
+    } = parse_ddl_name("CREATE VIEW `my``view` AS SELECT 1").unwrap();
     assert_eq!(db, None);
     assert_eq!(name, "my`view");
     assert_eq!(type_kw, "VIEW");
@@ -246,8 +319,11 @@ fn test_parse_ddl_name_quoted_name_with_escaped_backtick() {
 
 #[test]
 fn test_parse_ddl_name_quoted_db_with_escaped_backtick() {
-    let (db, name, type_kw) =
-        parse_ddl_name("CREATE PROCEDURE `my``db`.`my_proc`() BEGIN END").unwrap();
+    let ParsedDdlName {
+        database: db,
+        name,
+        type_keyword: type_kw,
+    } = parse_ddl_name("CREATE PROCEDURE `my``db`.`my_proc`() BEGIN END").unwrap();
     assert_eq!(db, Some("my`db".to_string()));
     assert_eq!(name, "my_proc");
     assert_eq!(type_kw, "PROCEDURE");
@@ -370,7 +446,16 @@ fn test_view_prefix_create_rejects_or_replace_with_clauses() {
 #[tokio::test]
 async fn test_get_object_body_errors_when_connection_not_open() {
     let state = common::test_app_state();
-    let result = get_object_body_impl(&state, "missing", "db", "obj", "view").await;
+    let result = get_object_body_impl(
+        &state,
+        &sqllumen_lib::commands::requests::SchemaObjectRequest {
+            connection_id: "missing".to_string(),
+            database: "db".to_string(),
+            object_name: "obj".to_string(),
+            object_type: "view".to_string(),
+        },
+    )
+    .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -388,14 +473,14 @@ async fn test_save_object_rejects_read_only() {
     let state = common::test_app_state();
     register_lazy_pool(&state, "ro-conn", true);
 
-    let request = make_request(
-        "ro-conn",
-        "mydb",
-        "my_proc",
-        "procedure",
-        "CREATE PROCEDURE `my_proc`() BEGIN END",
-        "alter",
-    );
+    let request = make_request(RequestFields {
+        connection_id: "ro-conn",
+        database: "mydb",
+        object_name: "my_proc",
+        object_type: "procedure",
+        body: "CREATE PROCEDURE `my_proc`() BEGIN END",
+        mode: "alter",
+    });
     let result = save_object_impl(request, &state).await;
     assert!(result.is_err());
     assert!(
@@ -409,14 +494,14 @@ async fn test_save_object_rejects_empty_database_identifier() {
     let state = common::test_app_state();
     register_lazy_pool(&state, "c1", false);
 
-    let request = make_request(
-        "c1",
-        "",
-        "my_proc",
-        "procedure",
-        "CREATE PROCEDURE `my_proc`() BEGIN END",
-        "alter",
-    );
+    let request = make_request(RequestFields {
+        connection_id: "c1",
+        database: "",
+        object_name: "my_proc",
+        object_type: "procedure",
+        body: "CREATE PROCEDURE `my_proc`() BEGIN END",
+        mode: "alter",
+    });
     let result = save_object_impl(request, &state).await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("empty"));
@@ -428,14 +513,14 @@ async fn test_save_object_rejects_too_long_identifier() {
     register_lazy_pool(&state, "c1", false);
 
     let long_name = "a".repeat(65);
-    let request = make_request(
-        "c1",
-        "mydb",
-        &long_name,
-        "procedure",
-        "CREATE PROCEDURE `my_proc`() BEGIN END",
-        "alter",
-    );
+    let request = make_request(RequestFields {
+        connection_id: "c1",
+        database: "mydb",
+        object_name: &long_name,
+        object_type: "procedure",
+        body: "CREATE PROCEDURE `my_proc`() BEGIN END",
+        mode: "alter",
+    });
     let result = save_object_impl(request, &state).await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("64 characters"));
@@ -446,14 +531,14 @@ async fn test_save_object_rejects_name_mismatch_alter_mode() {
     let state = common::test_app_state();
     register_lazy_pool(&state, "c1", false);
 
-    let request = make_request(
-        "c1",
-        "mydb",
-        "old_proc",
-        "procedure",
-        "CREATE PROCEDURE `new_proc`() BEGIN END",
-        "alter",
-    );
+    let request = make_request(RequestFields {
+        connection_id: "c1",
+        database: "mydb",
+        object_name: "old_proc",
+        object_type: "procedure",
+        body: "CREATE PROCEDURE `new_proc`() BEGIN END",
+        mode: "alter",
+    });
     let result = save_object_impl(request, &state).await;
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -468,14 +553,14 @@ async fn test_save_object_rejects_database_qualifier_mismatch() {
     let state = common::test_app_state();
     register_lazy_pool(&state, "c1", false);
 
-    let request = make_request(
-        "c1",
-        "mydb",
-        "my_proc",
-        "procedure",
-        "CREATE PROCEDURE `other_db`.`my_proc`() BEGIN END",
-        "alter",
-    );
+    let request = make_request(RequestFields {
+        connection_id: "c1",
+        database: "mydb",
+        object_name: "my_proc",
+        object_type: "procedure",
+        body: "CREATE PROCEDURE `other_db`.`my_proc`() BEGIN END",
+        mode: "alter",
+    });
     let result = save_object_impl(request, &state).await;
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -490,14 +575,14 @@ async fn test_save_object_rejects_view_alter_without_or_replace() {
     let state = common::test_app_state();
     register_lazy_pool(&state, "c1", false);
 
-    let request = make_request(
-        "c1",
-        "mydb",
-        "v1",
-        "view",
-        "CREATE VIEW `v1` AS SELECT 1",
-        "alter",
-    );
+    let request = make_request(RequestFields {
+        connection_id: "c1",
+        database: "mydb",
+        object_name: "v1",
+        object_type: "view",
+        body: "CREATE VIEW `v1` AS SELECT 1",
+        mode: "alter",
+    });
     let result = save_object_impl(request, &state).await;
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -512,14 +597,14 @@ async fn test_save_object_rejects_view_create_with_or_replace() {
     let state = common::test_app_state();
     register_lazy_pool(&state, "c1", false);
 
-    let request = make_request(
-        "c1",
-        "mydb",
-        "v1",
-        "view",
-        "CREATE OR REPLACE VIEW `v1` AS SELECT 1",
-        "create",
-    );
+    let request = make_request(RequestFields {
+        connection_id: "c1",
+        database: "mydb",
+        object_name: "v1",
+        object_type: "view",
+        body: "CREATE OR REPLACE VIEW `v1` AS SELECT 1",
+        mode: "create",
+    });
     let result = save_object_impl(request, &state).await;
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -534,7 +619,14 @@ async fn test_save_object_rejects_unparseable_ddl() {
     let state = common::test_app_state();
     register_lazy_pool(&state, "c1", false);
 
-    let request = make_request("c1", "mydb", "obj", "procedure", "SELECT 1", "alter");
+    let request = make_request(RequestFields {
+        connection_id: "c1",
+        database: "mydb",
+        object_name: "obj",
+        object_type: "procedure",
+        body: "SELECT 1",
+        mode: "alter",
+    });
     let result = save_object_impl(request, &state).await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Could not parse"));
@@ -545,14 +637,14 @@ async fn test_save_object_rejects_type_mismatch() {
     let state = common::test_app_state();
     register_lazy_pool(&state, "c1", false);
 
-    let request = make_request(
-        "c1",
-        "mydb",
-        "my_proc",
-        "procedure",
-        "CREATE FUNCTION `my_proc`() RETURNS INT BEGIN RETURN 1; END",
-        "alter",
-    );
+    let request = make_request(RequestFields {
+        connection_id: "c1",
+        database: "mydb",
+        object_name: "my_proc",
+        object_type: "procedure",
+        body: "CREATE FUNCTION `my_proc`() RETURNS INT BEGIN RETURN 1; END",
+        mode: "alter",
+    });
     let result = save_object_impl(request, &state).await;
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -567,14 +659,14 @@ async fn test_save_object_rejects_function_as_procedure() {
     let state = common::test_app_state();
     register_lazy_pool(&state, "c1", false);
 
-    let request = make_request(
-        "c1",
-        "mydb",
-        "my_func",
-        "function",
-        "CREATE PROCEDURE `my_func`() BEGIN SELECT 1; END",
-        "create",
-    );
+    let request = make_request(RequestFields {
+        connection_id: "c1",
+        database: "mydb",
+        object_name: "my_func",
+        object_type: "function",
+        body: "CREATE PROCEDURE `my_func`() BEGIN SELECT 1; END",
+        mode: "create",
+    });
     let result = save_object_impl(request, &state).await;
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -593,7 +685,16 @@ async fn test_drop_object_rejects_read_only() {
     let state = common::test_app_state();
     register_lazy_pool(&state, "ro-conn", true);
 
-    let result = drop_object_impl(&state, "ro-conn", "mydb", "obj", "procedure").await;
+    let result = drop_object_impl(
+        &state,
+        &sqllumen_lib::commands::requests::SchemaObjectRequest {
+            connection_id: "ro-conn".to_string(),
+            database: "mydb".to_string(),
+            object_name: "obj".to_string(),
+            object_type: "procedure".to_string(),
+        },
+    )
+    .await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("read-only"));
 }
@@ -603,7 +704,16 @@ async fn test_drop_object_rejects_empty_identifier() {
     let state = common::test_app_state();
     register_lazy_pool(&state, "c1", false);
 
-    let result = drop_object_impl(&state, "c1", "", "obj", "procedure").await;
+    let result = drop_object_impl(
+        &state,
+        &sqllumen_lib::commands::requests::SchemaObjectRequest {
+            connection_id: "c1".to_string(),
+            database: "".to_string(),
+            object_name: "obj".to_string(),
+            object_type: "procedure".to_string(),
+        },
+    )
+    .await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("empty"));
 }
@@ -613,7 +723,16 @@ async fn test_drop_object_rejects_unknown_object_type() {
     let state = common::test_app_state();
     register_lazy_pool(&state, "c1", false);
 
-    let result = drop_object_impl(&state, "c1", "mydb", "obj", "unknown").await;
+    let result = drop_object_impl(
+        &state,
+        &sqllumen_lib::commands::requests::SchemaObjectRequest {
+            connection_id: "c1".to_string(),
+            database: "mydb".to_string(),
+            object_name: "obj".to_string(),
+            object_type: "unknown".to_string(),
+        },
+    )
+    .await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Unknown object type"));
 }
@@ -626,7 +745,16 @@ async fn test_drop_object_rejects_unknown_object_type() {
 #[tokio::test]
 async fn test_get_routine_parameters_errors_when_connection_not_open() {
     let state = common::test_app_state();
-    let result = get_routine_parameters_impl(&state, "missing", "db", "proc", "PROCEDURE").await;
+    let result = get_routine_parameters_impl(
+        &state,
+        &sqllumen_lib::commands::requests::RoutineRequest {
+            connection_id: "missing".to_string(),
+            database: "db".to_string(),
+            routine_name: "proc".to_string(),
+            routine_type: "PROCEDURE".to_string(),
+        },
+    )
+    .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -639,9 +767,16 @@ async fn test_get_routine_parameters_errors_when_connection_not_open() {
 #[tokio::test]
 async fn test_get_routine_parameters_with_return_type_errors_when_connection_not_open() {
     let state = common::test_app_state();
-    let result =
-        get_routine_parameters_with_return_type_impl(&state, "missing", "db", "func", "FUNCTION")
-            .await;
+    let result = get_routine_parameters_with_return_type_impl(
+        &state,
+        &sqllumen_lib::commands::requests::RoutineRequest {
+            connection_id: "missing".to_string(),
+            database: "db".to_string(),
+            routine_name: "func".to_string(),
+            routine_type: "FUNCTION".to_string(),
+        },
+    )
+    .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -705,14 +840,14 @@ mod mock_success_paths {
         let state = common::test_app_state();
         let _server = setup_mock_pool(&state, "mock-conn").await;
 
-        let request = make_request(
-            "mock-conn",
-            "mydb",
-            "my_proc",
-            "procedure",
-            "CREATE PROCEDURE `my_proc`() BEGIN SELECT 1; END",
-            "alter",
-        );
+        let request = make_request(RequestFields {
+            connection_id: "mock-conn",
+            database: "mydb",
+            object_name: "my_proc",
+            object_type: "procedure",
+            body: "CREATE PROCEDURE `my_proc`() BEGIN SELECT 1; END",
+            mode: "alter",
+        });
 
         let result = save_object_impl(request, &state).await;
         assert!(result.is_ok(), "expected Ok, got: {:?}", result);
@@ -731,14 +866,14 @@ mod mock_success_paths {
         let state = common::test_app_state();
         let _server = setup_mock_pool(&state, "mock-conn").await;
 
-        let request = make_request(
-            "mock-conn",
-            "mydb",
-            "new_proc",
-            "procedure",
-            "CREATE PROCEDURE `new_proc`() BEGIN SELECT 1; END",
-            "create",
-        );
+        let request = make_request(RequestFields {
+            connection_id: "mock-conn",
+            database: "mydb",
+            object_name: "new_proc",
+            object_type: "procedure",
+            body: "CREATE PROCEDURE `new_proc`() BEGIN SELECT 1; END",
+            mode: "create",
+        });
 
         let result = save_object_impl(request, &state).await;
         assert!(result.is_ok(), "expected Ok, got: {:?}", result);
@@ -756,14 +891,14 @@ mod mock_success_paths {
         let state = common::test_app_state();
         let _server = setup_mock_pool(&state, "mock-conn").await;
 
-        let request = make_request(
-            "mock-conn",
-            "mydb",
-            "v1",
-            "view",
-            "CREATE OR REPLACE VIEW `v1` AS SELECT 1",
-            "alter",
-        );
+        let request = make_request(RequestFields {
+            connection_id: "mock-conn",
+            database: "mydb",
+            object_name: "v1",
+            object_type: "view",
+            body: "CREATE OR REPLACE VIEW `v1` AS SELECT 1",
+            mode: "alter",
+        });
 
         let result = save_object_impl(request, &state).await;
         assert!(result.is_ok(), "expected Ok, got: {:?}", result);
@@ -777,14 +912,14 @@ mod mock_success_paths {
         let state = common::test_app_state();
         let _server = setup_mock_pool(&state, "mock-conn").await;
 
-        let request = make_request(
-            "mock-conn",
-            "mydb",
-            "v2",
-            "view",
-            "CREATE VIEW `v2` AS SELECT 1",
-            "create",
-        );
+        let request = make_request(RequestFields {
+            connection_id: "mock-conn",
+            database: "mydb",
+            object_name: "v2",
+            object_type: "view",
+            body: "CREATE VIEW `v2` AS SELECT 1",
+            mode: "create",
+        });
 
         let result = save_object_impl(request, &state).await;
         assert!(result.is_ok(), "expected Ok, got: {:?}", result);
@@ -798,14 +933,14 @@ mod mock_success_paths {
         let state = common::test_app_state();
         let _server = setup_mock_pool(&state, "mock-conn").await;
 
-        let request = make_request(
-            "mock-conn",
-            "mydb",
-            "my_func",
-            "function",
-            "CREATE FUNCTION `my_func`() RETURNS INT BEGIN RETURN 1; END",
-            "create",
-        );
+        let request = make_request(RequestFields {
+            connection_id: "mock-conn",
+            database: "mydb",
+            object_name: "my_func",
+            object_type: "function",
+            body: "CREATE FUNCTION `my_func`() RETURNS INT BEGIN RETURN 1; END",
+            mode: "create",
+        });
 
         let result = save_object_impl(request, &state).await;
         assert!(result.is_ok(), "expected Ok, got: {:?}", result);
@@ -819,14 +954,14 @@ mod mock_success_paths {
         let state = common::test_app_state();
         let _server = setup_mock_pool(&state, "mock-conn").await;
 
-        let request = make_request(
-            "mock-conn",
-            "mydb",
-            "my_trigger",
-            "trigger",
-            "CREATE TRIGGER `my_trigger` BEFORE INSERT ON `t1` FOR EACH ROW BEGIN END",
-            "alter",
-        );
+        let request = make_request(RequestFields {
+            connection_id: "mock-conn",
+            database: "mydb",
+            object_name: "my_trigger",
+            object_type: "trigger",
+            body: "CREATE TRIGGER `my_trigger` BEFORE INSERT ON `t1` FOR EACH ROW BEGIN END",
+            mode: "alter",
+        });
 
         let result = save_object_impl(request, &state).await;
         assert!(result.is_ok(), "expected Ok, got: {:?}", result);
@@ -844,14 +979,14 @@ mod mock_success_paths {
         let state = common::test_app_state();
         let _server = setup_mock_pool(&state, "mock-conn").await;
 
-        let request = make_request(
-            "mock-conn",
-            "mydb",
-            "my_event",
-            "event",
-            "CREATE EVENT `my_event` ON SCHEDULE EVERY 1 DAY DO SELECT 1",
-            "create",
-        );
+        let request = make_request(RequestFields {
+            connection_id: "mock-conn",
+            database: "mydb",
+            object_name: "my_event",
+            object_type: "event",
+            body: "CREATE EVENT `my_event` ON SCHEDULE EVERY 1 DAY DO SELECT 1",
+            mode: "create",
+        });
 
         let result = save_object_impl(request, &state).await;
         assert!(result.is_ok(), "expected Ok, got: {:?}", result);
@@ -865,14 +1000,14 @@ mod mock_success_paths {
         let state = common::test_app_state();
         let _server = setup_mock_pool(&state, "mock-conn").await;
 
-        let request = make_request(
-            "mock-conn",
-            "mydb",
-            "my_proc",
-            "procedure",
-            "CREATE PROCEDURE `mydb`.`my_proc`() BEGIN SELECT 1; END",
-            "alter",
-        );
+        let request = make_request(RequestFields {
+            connection_id: "mock-conn",
+            database: "mydb",
+            object_name: "my_proc",
+            object_type: "procedure",
+            body: "CREATE PROCEDURE `mydb`.`my_proc`() BEGIN SELECT 1; END",
+            mode: "alter",
+        });
 
         let result = save_object_impl(request, &state).await;
         assert!(result.is_ok(), "expected Ok, got: {:?}", result);
@@ -885,7 +1020,16 @@ mod mock_success_paths {
         let state = common::test_app_state();
         let _server = setup_mock_pool(&state, "mock-conn").await;
 
-        let result = drop_object_impl(&state, "mock-conn", "mydb", "my_proc", "procedure").await;
+        let result = drop_object_impl(
+            &state,
+            &sqllumen_lib::commands::requests::SchemaObjectRequest {
+                connection_id: "mock-conn".to_string(),
+                database: "mydb".to_string(),
+                object_name: "my_proc".to_string(),
+                object_type: "procedure".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok(), "expected Ok, got: {:?}", result);
     }
 
@@ -894,7 +1038,16 @@ mod mock_success_paths {
         let state = common::test_app_state();
         let _server = setup_mock_pool(&state, "mock-conn").await;
 
-        let result = drop_object_impl(&state, "mock-conn", "mydb", "v1", "view").await;
+        let result = drop_object_impl(
+            &state,
+            &sqllumen_lib::commands::requests::SchemaObjectRequest {
+                connection_id: "mock-conn".to_string(),
+                database: "mydb".to_string(),
+                object_name: "v1".to_string(),
+                object_type: "view".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok(), "expected Ok, got: {:?}", result);
     }
 
@@ -930,9 +1083,17 @@ mod mock_success_paths {
         )
         .await;
 
-        let ddl = get_object_body_impl(&state, "mock-conn", "mydb", "v1", "view")
-            .await
-            .expect("expected view DDL to load");
+        let ddl = get_object_body_impl(
+            &state,
+            &sqllumen_lib::commands::requests::SchemaObjectRequest {
+                connection_id: "mock-conn".to_string(),
+                database: "mydb".to_string(),
+                object_name: "v1".to_string(),
+                object_type: "view".to_string(),
+            },
+        )
+        .await
+        .expect("expected view DDL to load");
 
         assert_eq!(
             ddl,
@@ -1094,7 +1255,16 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_get_object_body_impl_view() {
         let state = common::test_app_state();
-        let result = get_object_body_impl(&state, "c", "db", "v", "view").await;
+        let result = get_object_body_impl(
+            &state,
+            &sqllumen_lib::commands::requests::SchemaObjectRequest {
+                connection_id: "c".to_string(),
+                database: "db".to_string(),
+                object_name: "v".to_string(),
+                object_type: "view".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok());
         let ddl = result.unwrap();
         assert!(ddl.contains("CREATE OR REPLACE VIEW"));
@@ -1103,7 +1273,16 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_get_object_body_impl_procedure() {
         let state = common::test_app_state();
-        let result = get_object_body_impl(&state, "c", "db", "p", "procedure").await;
+        let result = get_object_body_impl(
+            &state,
+            &sqllumen_lib::commands::requests::SchemaObjectRequest {
+                connection_id: "c".to_string(),
+                database: "db".to_string(),
+                object_name: "p".to_string(),
+                object_type: "procedure".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok());
         assert!(result.unwrap().contains("PROCEDURE"));
     }
@@ -1111,7 +1290,16 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_get_object_body_impl_function() {
         let state = common::test_app_state();
-        let result = get_object_body_impl(&state, "c", "db", "f", "function").await;
+        let result = get_object_body_impl(
+            &state,
+            &sqllumen_lib::commands::requests::SchemaObjectRequest {
+                connection_id: "c".to_string(),
+                database: "db".to_string(),
+                object_name: "f".to_string(),
+                object_type: "function".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok());
         assert!(result.unwrap().contains("FUNCTION"));
     }
@@ -1119,7 +1307,16 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_get_object_body_impl_trigger() {
         let state = common::test_app_state();
-        let result = get_object_body_impl(&state, "c", "db", "t", "trigger").await;
+        let result = get_object_body_impl(
+            &state,
+            &sqllumen_lib::commands::requests::SchemaObjectRequest {
+                connection_id: "c".to_string(),
+                database: "db".to_string(),
+                object_name: "t".to_string(),
+                object_type: "trigger".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok());
         assert!(result.unwrap().contains("TRIGGER"));
     }
@@ -1127,7 +1324,16 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_get_object_body_impl_event() {
         let state = common::test_app_state();
-        let result = get_object_body_impl(&state, "c", "db", "e", "event").await;
+        let result = get_object_body_impl(
+            &state,
+            &sqllumen_lib::commands::requests::SchemaObjectRequest {
+                connection_id: "c".to_string(),
+                database: "db".to_string(),
+                object_name: "e".to_string(),
+                object_type: "event".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok());
         assert!(result.unwrap().contains("EVENT"));
     }
@@ -1135,7 +1341,16 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_get_object_body_impl_table() {
         let state = common::test_app_state();
-        let result = get_object_body_impl(&state, "c", "db", "t", "table").await;
+        let result = get_object_body_impl(
+            &state,
+            &sqllumen_lib::commands::requests::SchemaObjectRequest {
+                connection_id: "c".to_string(),
+                database: "db".to_string(),
+                object_name: "t".to_string(),
+                object_type: "table".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok());
         assert!(result.unwrap().contains("TABLE"));
     }
@@ -1143,21 +1358,30 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_get_object_body_impl_unknown_type() {
         let state = common::test_app_state();
-        let result = get_object_body_impl(&state, "c", "db", "x", "unknown").await;
+        let result = get_object_body_impl(
+            &state,
+            &sqllumen_lib::commands::requests::SchemaObjectRequest {
+                connection_id: "c".to_string(),
+                database: "db".to_string(),
+                object_name: "x".to_string(),
+                object_type: "unknown".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_save_object_alter_mode_success() {
         let state = common::test_app_state();
-        let request = make_request(
-            "c1",
-            "mydb",
-            "my_proc",
-            "procedure",
-            "CREATE PROCEDURE `my_proc`() BEGIN SELECT 1; END",
-            "alter",
-        );
+        let request = make_request(RequestFields {
+            connection_id: "c1",
+            database: "mydb",
+            object_name: "my_proc",
+            object_type: "procedure",
+            body: "CREATE PROCEDURE `my_proc`() BEGIN SELECT 1; END",
+            mode: "alter",
+        });
         let result = save_object_impl(request, &state).await;
         assert!(result.is_ok());
         let resp = result.unwrap();
@@ -1169,14 +1393,14 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_save_object_create_mode_returns_parsed_name() {
         let state = common::test_app_state();
-        let request = make_request(
-            "c1",
-            "mydb",
-            "placeholder",
-            "procedure",
-            "CREATE PROCEDURE `new_proc`() BEGIN SELECT 1; END",
-            "create",
-        );
+        let request = make_request(RequestFields {
+            connection_id: "c1",
+            database: "mydb",
+            object_name: "placeholder",
+            object_type: "procedure",
+            body: "CREATE PROCEDURE `new_proc`() BEGIN SELECT 1; END",
+            mode: "create",
+        });
         let result = save_object_impl(request, &state).await;
         assert!(result.is_ok());
         let resp = result.unwrap();
@@ -1187,14 +1411,14 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_save_object_view_alter_success() {
         let state = common::test_app_state();
-        let request = make_request(
-            "c1",
-            "mydb",
-            "v1",
-            "view",
-            "CREATE OR REPLACE VIEW `v1` AS SELECT 1",
-            "alter",
-        );
+        let request = make_request(RequestFields {
+            connection_id: "c1",
+            database: "mydb",
+            object_name: "v1",
+            object_type: "view",
+            body: "CREATE OR REPLACE VIEW `v1` AS SELECT 1",
+            mode: "alter",
+        });
         let result = save_object_impl(request, &state).await;
         assert!(result.is_ok());
         let resp = result.unwrap();
@@ -1205,14 +1429,14 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_save_object_view_create_success() {
         let state = common::test_app_state();
-        let request = make_request(
-            "c1",
-            "mydb",
-            "v1",
-            "view",
-            "CREATE VIEW `v1` AS SELECT 1",
-            "create",
-        );
+        let request = make_request(RequestFields {
+            connection_id: "c1",
+            database: "mydb",
+            object_name: "v1",
+            object_type: "view",
+            body: "CREATE VIEW `v1` AS SELECT 1",
+            mode: "create",
+        });
         let result = save_object_impl(request, &state).await;
         assert!(result.is_ok());
         let resp = result.unwrap();
@@ -1223,14 +1447,14 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_save_object_view_alter_name_mismatch() {
         let state = common::test_app_state();
-        let request = make_request(
-            "c1",
-            "mydb",
-            "v1",
-            "view",
-            "CREATE OR REPLACE VIEW `v2` AS SELECT 1",
-            "alter",
-        );
+        let request = make_request(RequestFields {
+            connection_id: "c1",
+            database: "mydb",
+            object_name: "v1",
+            object_type: "view",
+            body: "CREATE OR REPLACE VIEW `v2` AS SELECT 1",
+            mode: "alter",
+        });
         let result = save_object_impl(request, &state).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("mismatch"));
@@ -1239,14 +1463,14 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_save_object_rejects_type_mismatch_coverage() {
         let state = common::test_app_state();
-        let request = make_request(
-            "c1",
-            "mydb",
-            "my_proc",
-            "procedure",
-            "CREATE FUNCTION `my_proc`() RETURNS INT BEGIN RETURN 1; END",
-            "alter",
-        );
+        let request = make_request(RequestFields {
+            connection_id: "c1",
+            database: "mydb",
+            object_name: "my_proc",
+            object_type: "procedure",
+            body: "CREATE FUNCTION `my_proc`() RETURNS INT BEGIN RETURN 1; END",
+            mode: "alter",
+        });
         let result = save_object_impl(request, &state).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -1259,14 +1483,14 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_save_object_db_qualifier_same_db_ok() {
         let state = common::test_app_state();
-        let request = make_request(
-            "c1",
-            "mydb",
-            "my_proc",
-            "procedure",
-            "CREATE PROCEDURE `mydb`.`my_proc`() BEGIN END",
-            "alter",
-        );
+        let request = make_request(RequestFields {
+            connection_id: "c1",
+            database: "mydb",
+            object_name: "my_proc",
+            object_type: "procedure",
+            body: "CREATE PROCEDURE `mydb`.`my_proc`() BEGIN END",
+            mode: "alter",
+        });
         let result = save_object_impl(request, &state).await;
         assert!(result.is_ok());
     }
@@ -1274,42 +1498,96 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_drop_object_coverage_procedure() {
         let state = common::test_app_state();
-        let result = drop_object_impl(&state, "c1", "mydb", "my_proc", "procedure").await;
+        let result = drop_object_impl(
+            &state,
+            &sqllumen_lib::commands::requests::SchemaObjectRequest {
+                connection_id: "c1".to_string(),
+                database: "mydb".to_string(),
+                object_name: "my_proc".to_string(),
+                object_type: "procedure".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_drop_object_coverage_view() {
         let state = common::test_app_state();
-        let result = drop_object_impl(&state, "c1", "mydb", "v1", "view").await;
+        let result = drop_object_impl(
+            &state,
+            &sqllumen_lib::commands::requests::SchemaObjectRequest {
+                connection_id: "c1".to_string(),
+                database: "mydb".to_string(),
+                object_name: "v1".to_string(),
+                object_type: "view".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_drop_object_coverage_function() {
         let state = common::test_app_state();
-        let result = drop_object_impl(&state, "c1", "mydb", "f1", "function").await;
+        let result = drop_object_impl(
+            &state,
+            &sqllumen_lib::commands::requests::SchemaObjectRequest {
+                connection_id: "c1".to_string(),
+                database: "mydb".to_string(),
+                object_name: "f1".to_string(),
+                object_type: "function".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_drop_object_coverage_trigger() {
         let state = common::test_app_state();
-        let result = drop_object_impl(&state, "c1", "mydb", "t1", "trigger").await;
+        let result = drop_object_impl(
+            &state,
+            &sqllumen_lib::commands::requests::SchemaObjectRequest {
+                connection_id: "c1".to_string(),
+                database: "mydb".to_string(),
+                object_name: "t1".to_string(),
+                object_type: "trigger".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_drop_object_coverage_event() {
         let state = common::test_app_state();
-        let result = drop_object_impl(&state, "c1", "mydb", "e1", "event").await;
+        let result = drop_object_impl(
+            &state,
+            &sqllumen_lib::commands::requests::SchemaObjectRequest {
+                connection_id: "c1".to_string(),
+                database: "mydb".to_string(),
+                object_name: "e1".to_string(),
+                object_type: "event".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_get_routine_parameters_coverage() {
         let state = common::test_app_state();
-        let result = get_routine_parameters_impl(&state, "c1", "mydb", "proc", "PROCEDURE").await;
+        let result = get_routine_parameters_impl(
+            &state,
+            &sqllumen_lib::commands::requests::RoutineRequest {
+                connection_id: "c1".to_string(),
+                database: "mydb".to_string(),
+                routine_name: "proc".to_string(),
+                routine_type: "PROCEDURE".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
     }
@@ -1317,9 +1595,16 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_get_routine_parameters_with_return_type_coverage() {
         let state = common::test_app_state();
-        let result =
-            get_routine_parameters_with_return_type_impl(&state, "c1", "mydb", "func", "FUNCTION")
-                .await;
+        let result = get_routine_parameters_with_return_type_impl(
+            &state,
+            &sqllumen_lib::commands::requests::RoutineRequest {
+                connection_id: "c1".to_string(),
+                database: "mydb".to_string(),
+                routine_name: "func".to_string(),
+                routine_type: "FUNCTION".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok());
         let resp = result.unwrap();
         assert!(resp.parameters.is_empty());
@@ -1331,10 +1616,12 @@ mod coverage_stubs {
         let state = common::test_app_state();
         let result = get_routine_parameters_with_return_type_impl(
             &state,
-            "c1",
-            "mydb",
-            "missing_proc",
-            "PROCEDURE",
+            &sqllumen_lib::commands::requests::RoutineRequest {
+                connection_id: "c1".to_string(),
+                database: "mydb".to_string(),
+                routine_name: "missing_proc".to_string(),
+                routine_type: "PROCEDURE".to_string(),
+            },
         )
         .await;
         assert!(result.is_ok());

@@ -1,52 +1,46 @@
-//! Tauri IPC command wrappers for query history.
-//!
-//! Under `cfg(coverage)`, all Tauri command wrappers are excluded — tests exercise
-//! the `*_impl` functions directly.
-
 use crate::commands::helpers::lock_db;
-use crate::db::history::{self, HistoryPage};
+use crate::db::history::{self, HistoryPage, HistoryQuery};
 use crate::state::AppState;
+use serde::Deserialize;
 
-// ── list_history ──────────────────────────────────────────────────────────────
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListHistoryRequest {
+    pub connection_id: String,
+    pub page: i64,
+    pub page_size: i64,
+    pub search: Option<String>,
+    pub since: Option<String>,
+}
 
 pub fn list_history_impl(
     state: &AppState,
-    connection_id: &str,
-    page: i64,
-    page_size: i64,
-    search: Option<&str>,
-    since: Option<&str>,
+    request: &ListHistoryRequest,
 ) -> Result<HistoryPage, String> {
+    let connection_id = request.connection_id.as_str();
     let resolved_id = state
         .registry
         .get_profile_id(connection_id)
         .unwrap_or_else(|| connection_id.to_string());
     let conn = lock_db(state)?;
-    history::list_history(&conn, &resolved_id, page, page_size, search, since)
-        .map_err(|error| error.to_string())
+    let query = HistoryQuery {
+        connection_id: &resolved_id,
+        page: request.page,
+        page_size: request.page_size,
+        search: request.search.as_deref(),
+        since: request.since.as_deref(),
+    };
+    history::list_history(&conn, &query).map_err(|error| error.to_string())
 }
 
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn list_history(
-    connection_id: String,
-    page: i64,
-    page_size: i64,
-    search: Option<String>,
-    since: Option<String>,
+    payload: ListHistoryRequest,
     app: tauri::AppHandle,
 ) -> Result<HistoryPage, String> {
-    crate::commands::run_blocking_with_state(app, move |state| {
-        list_history_impl(
-            state,
-            &connection_id,
-            page,
-            page_size,
-            search.as_deref(),
-            since.as_deref(),
-        )
-    })
-    .await?
+    crate::commands::run_blocking_with_state(app, move |state| list_history_impl(state, &payload))
+        .await?
 }
 
 // ── delete_history_entry ─────────────────────────────────────────────────────

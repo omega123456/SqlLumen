@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeArgumentCommand, invokeCommand } from './ipc/dispatch'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -53,11 +53,11 @@ export interface RetrievalHints {
 // ---------------------------------------------------------------------------
 
 export async function buildSchemaIndex(sessionId: string): Promise<void> {
-  return invoke('build_schema_index', { sessionId })
+  return invokeArgumentCommand({ command: 'build_schema_index', argument: { sessionId } })
 }
 
 export async function forceRebuildSchemaIndex(sessionId: string): Promise<void> {
-  return invoke('force_rebuild_schema_index', { sessionId })
+  return invokeArgumentCommand({ command: 'force_rebuild_schema_index', argument: { sessionId } })
 }
 
 export async function semanticSearch(
@@ -65,17 +65,20 @@ export async function semanticSearch(
   queries: string[],
   hints?: RetrievalHints
 ): Promise<SearchResult[]> {
-  return invoke('semantic_search', { sessionId: sessionId, queries: queries, hints: hints ?? null })
+  return invokeCommand({
+    command: 'semantic_search',
+    payload: { sessionId: sessionId, queries: queries, hints: hints ?? null },
+  })
 }
 
 export async function getIndexStatus(sessionId: string): Promise<SchemaIndexStatus> {
-  return invoke('get_index_status', { sessionId })
+  return invokeArgumentCommand({ command: 'get_index_status', argument: { sessionId } })
 }
 
 export async function invalidateSchemaIndex(sessionId: string, tables: string[]): Promise<void> {
-  return invoke('invalidate_schema_index', { sessionId, tables })
+  return invokeCommand({ command: 'invalidate_schema_index', payload: { sessionId, tables } })
 }
 
 export async function listIndexedTables(sessionId: string): Promise<IndexedTableInfo[]> {
-  return invoke('list_indexed_tables', { sessionId })
+  return invokeArgumentCommand({ command: 'list_indexed_tables', argument: { sessionId } })
 }

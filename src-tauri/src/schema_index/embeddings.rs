@@ -62,32 +62,60 @@ impl std::error::Error for EmbeddingError {}
 
 // ── Core functions ────────────────────────────────────────────────────────
 
-/// Embed a list of texts using the given model via the `/v1/embeddings` endpoint.
-///
-/// Automatically batches texts (max 32 per call) and retries with halved batch
-/// sizes on HTTP 400/413 errors (up to 3 retries).
-pub async fn embed_texts(
-    client: &reqwest::Client,
-    base_url: &str,
-    model: &str,
-    texts: Vec<String>,
-    dimensions: Option<u32>,
-) -> Result<Vec<Vec<f32>>, EmbeddingError> {
-    embed_texts_with_timeout(client, base_url, model, texts, dimensions, EMBED_TIMEOUT).await
+#[derive(Debug, Clone, Copy)]
+pub struct EmbeddingModel<'a> {
+    pub base_url: &'a str,
+    pub model: &'a str,
 }
 
-/// Same as [`embed_texts`] but with an explicit per-request timeout.
-///
-/// This keeps production behavior on the long default timeout while allowing
-/// focused tests to exercise timeout paths without waiting several minutes.
-pub async fn embed_texts_with_timeout(
-    client: &reqwest::Client,
-    base_url: &str,
-    model: &str,
-    texts: Vec<String>,
+#[derive(Debug, Clone)]
+pub struct EmbeddingInput {
+    pub texts: Vec<String>,
+    pub dimensions: Option<u32>,
+}
+
+impl EmbeddingInput {
+    pub fn texts(texts: Vec<String>) -> Self {
+        Self {
+            texts,
+            dimensions: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct EmbeddingCall<'a> {
+    pub model: EmbeddingModel<'a>,
+    pub request_timeout: Duration,
+}
+
+struct EmbeddingEndpoint<'a> {
+    url: &'a str,
+    model: &'a str,
     dimensions: Option<u32>,
     request_timeout: Duration,
+}
+
+pub async fn embed_texts(
+    client: &reqwest::Client,
+    model: EmbeddingModel<'_>,
+    input: EmbeddingInput,
 ) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+    let call = EmbeddingCall {
+        model,
+        request_timeout: EMBED_TIMEOUT,
+    };
+    embed_texts_with_timeout(client, call, input).await
+}
+
+pub async fn embed_texts_with_timeout(
+    client: &reqwest::Client,
+    call: EmbeddingCall<'_>,
+    input: EmbeddingInput,
+) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+    let base_url = call.model.base_url;
+    let model = call.model.model;
+    let EmbeddingInput { texts, dimensions } = input;
     if base_url.trim().is_empty() {
         return Err(EmbeddingError::HttpRequest(
             "endpoint not configured: base_url is empty".to_string(),
@@ -95,6 +123,12 @@ pub async fn embed_texts_with_timeout(
     }
 
     let url = crate::ai::url::normalise_openai_url(base_url, "embeddings");
+    let endpoint = EmbeddingEndpoint {
+        url: &url,
+        model,
+        dimensions,
+        request_timeout: call.request_timeout,
+    };
 
     if texts.is_empty() {
         tracing::debug!(model = %model, "embed_texts: empty input list — nothing to embed");
@@ -125,8 +159,7 @@ pub async fn embed_texts_with_timeout(
         );
         let batch_started = Instant::now();
 
-        match send_embedding_request(client, &url, model, batch, dimensions, request_timeout).await
-        {
+        match send_embedding_request(client, &endpoint, batch).await {
             Ok(response) => {
                 let dims = response
                     .data
@@ -175,16 +208,7 @@ pub async fn embed_texts_with_timeout(
                     let retry_batch: Vec<String> = texts[offset..retry_end].to_vec();
                     let retry_batch_len = retry_batch.len();
 
-                    match send_embedding_request(
-                        client,
-                        &url,
-                        model,
-                        retry_batch,
-                        dimensions,
-                        request_timeout,
-                    )
-                    .await
-                    {
+                    match send_embedding_request(client, &endpoint, retry_batch).await {
                         Ok(response) => {
                             tracing::debug!(
                                 model = %model,
@@ -258,7 +282,9 @@ pub async fn detect_embedding_dimension(
         model = %model,
         "detect_embedding_dimension: probing model with a single test string"
     );
-    let result = embed_texts(client, base_url, model, vec!["test".to_string()], None).await?;
+    let embedding_model = EmbeddingModel { base_url, model };
+    let probe = EmbeddingInput::texts(vec!["test".to_string()]);
+    let result = embed_texts(client, embedding_model, probe).await?;
 
     let first = result
         .into_iter()
@@ -271,26 +297,22 @@ pub async fn detect_embedding_dimension(
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-/// Send a single embedding request to the API.
 async fn send_embedding_request(
     client: &reqwest::Client,
-    url: &str,
-    model: &str,
+    endpoint: &EmbeddingEndpoint<'_>,
     input: Vec<String>,
-    dimensions: Option<u32>,
-    request_timeout: Duration,
 ) -> Result<EmbeddingApiResponse, EmbeddingError> {
     let body = EmbeddingApiRequest {
-        model: model.to_string(),
+        model: endpoint.model.to_string(),
         input,
         truncate: true,
         encoding_format: "float".to_string(),
-        dimensions,
+        dimensions: endpoint.dimensions,
     };
 
     let response = client
-        .post(url)
-        .timeout(request_timeout)
+        .post(endpoint.url)
+        .timeout(endpoint.request_timeout)
         .json(&body)
         .send()
         .await

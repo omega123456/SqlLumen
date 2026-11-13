@@ -371,7 +371,11 @@ export function AiChatInput({
       return
     }
 
-    useAiStore.getState().sendMessage(tabId, connectionId, trimmed, {})
+    useAiStore.getState().sendMessage(tabId, {
+      connectionId: connectionId,
+      message: trimmed,
+      settings: {},
+    })
     setValue('')
     resetHeight()
   }, [value, connectionId, canSend, tabId, resetHeight])

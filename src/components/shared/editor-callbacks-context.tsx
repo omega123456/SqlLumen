@@ -19,15 +19,19 @@
 
 import { createContext, useCallback, useContext } from 'react'
 
+export interface CellValueSync {
+  rowData: Record<string, unknown> | undefined
+  column: string
+  value: unknown
+}
+
+export type UpdateCellValue = (tabId: string, column: string, value: unknown) => void
+export type SyncCellValue = (tabId: string, sync: CellValueSync) => void
+
 export interface EditorCallbacksContextType {
   tabId: string
-  updateCellValue: (tabId: string, columnName: string, value: unknown) => void
-  syncCellValue: (
-    tabId: string,
-    rowData: Record<string, unknown> | undefined,
-    columnName: string,
-    value: unknown
-  ) => void
+  updateCellValue: UpdateCellValue
+  syncCellValue: SyncCellValue
 }
 
 export const EditorCallbacksContext = createContext<EditorCallbacksContextType | null>(null)
@@ -39,9 +43,6 @@ export const EditorCallbacksContext = createContext<EditorCallbacksContextType |
 export function useEditorCallbacks(): EditorCallbacksContextType | null {
   return useContext(EditorCallbacksContext)
 }
-
-type UpdateCellValue = EditorCallbacksContextType['updateCellValue']
-type SyncCellValue = EditorCallbacksContextType['syncCellValue']
 
 export interface CellStoreSyncSource {
   row: Record<string, unknown>
@@ -90,7 +91,7 @@ export function useCellStoreSync(source: CellStoreSyncSource): (nextValue: unkno
       if (!fieldName) return
       if (!updateCellValue) return
       updateCellValue(tabId, fieldName, nextValue)
-      syncCellValue?.(tabId, row, fieldName, nextValue)
+      syncCellValue?.(tabId, { rowData: row, column: fieldName, value: nextValue })
     },
     [fieldName, tabId, updateCellValue, syncCellValue, row]
   )

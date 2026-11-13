@@ -172,7 +172,7 @@ describe('listAiModels', () => {
 
     expect(result.models).toEqual([])
     expect(result.error).toBe('Connection refused')
-    expect(ipc.calls('log_frontend')).toContainEqual({
+    expect(ipc.payloads('log_frontend')).toContainEqual({
       level: 'error',
       message: '[ai-commands] Failed to list AI models: Connection refused',
     })

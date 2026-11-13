@@ -2,6 +2,7 @@ import { Plus, Trash } from '@phosphor-icons/react'
 import { useMemo, useState } from 'react'
 import {
   useTableDesignerStore,
+  type TableDesignerStore,
   type TableDesignerTabState,
 } from '../../stores/table-designer-store'
 import type { TableDesignerIndexDef } from '../../types/schema'
@@ -86,12 +87,7 @@ interface IndexRowContext {
   tabId: string
   columnNames: string[]
   validationErrors: Record<string, string>
-  updateIndex: (
-    tabId: string,
-    indexPosition: number,
-    field: keyof TableDesignerIndexDef,
-    value: unknown
-  ) => void
+  updateIndex: TableDesignerStore['updateIndex']
   onSelect: (storeIndex: number) => void
   onDelete: (storeIndex: number) => void
 }
@@ -192,12 +188,11 @@ function IndexColumnsSelector({
         onClick: selectRow,
       }}
       onChange={(nextColumns) => {
-        context.updateIndex(
-          tabId,
-          storeIndex,
-          'columns',
-          columnNames.filter((name) => nextColumns.includes(name))
-        )
+        context.updateIndex(tabId, {
+          index: storeIndex,
+          field: 'columns',
+          value: columnNames.filter((name) => nextColumns.includes(name)),
+        })
       }}
     />
   )
@@ -232,7 +227,13 @@ function IndexRow({ index, position, context }: IndexRowProps) {
           title={nameError}
           data-testid={`index-name-${visibleIndex}`}
           onClick={stopRowSelection}
-          onChange={(event) => context.updateIndex(tabId, storeIndex, 'name', event.target.value)}
+          onChange={(event) =>
+            context.updateIndex(tabId, {
+              index: storeIndex,
+              field: 'name',
+              value: event.target.value,
+            })
+          }
         />
         <FieldError error={nameError} testId={`index-name-error-${visibleIndex}`} />
       </td>
@@ -245,12 +246,7 @@ function IndexRow({ index, position, context }: IndexRowProps) {
             value={index.indexType}
             data-testid={`index-type-${visibleIndex}`}
             onChange={(value) =>
-              context.updateIndex(
-                tabId,
-                storeIndex,
-                'indexType',
-                value as TableDesignerIndexDef['indexType']
-              )
+              context.updateIndex(tabId, { index: storeIndex, field: 'indexType', value: value })
             }
             triggerClassName={`${styles.cellSelect} ${indexInputClassName(isSelected)}`}
           />

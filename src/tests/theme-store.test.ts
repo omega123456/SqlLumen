@@ -52,7 +52,7 @@ describe('useThemeStore — setTheme', () => {
   it('setTheme calls set_setting IPC with correct args', async () => {
     await useThemeStore.getState().setTheme('dark')
     await Promise.resolve()
-    expect(ipc.calls('set_setting')).toContainEqual({ key: 'theme', value: 'dark' })
+    expect(ipc.payloads('set_setting')).toContainEqual({ key: 'theme', value: 'dark' })
   })
 
   it('setTheme still works when IPC fails (silent error)', async () => {
@@ -98,7 +98,7 @@ describe('useThemeStore — native title bar sync', () => {
     await vi.waitFor(() => {
       expect(
         ipc
-          .calls('log_frontend')
+          .payloads('log_frontend')
           .some((c) => (c as { message: string }).message.includes('set_window_theme failed'))
       ).toBe(true)
     })

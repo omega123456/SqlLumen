@@ -211,8 +211,20 @@ describe('getAutoSizedColumnWidth', () => {
   it('returns a wider width when headerIconWidthPx is provided', () => {
     const col = makeColumnMeta('USER_ID', 'BIGINT')
     const rows: unknown[][] = [[42]]
-    const withoutIcon = getAutoSizedColumnWidth(col, 0, rows, 'USER_ID', 0)
-    const withIcon = getAutoSizedColumnWidth(col, 0, rows, 'USER_ID', 14)
+    const withoutIcon = getAutoSizedColumnWidth({
+      column: col,
+      columnIndex: 0,
+      rows: rows,
+      displayName: 'USER_ID',
+      headerIconWidthPx: 0,
+    })
+    const withIcon = getAutoSizedColumnWidth({
+      column: col,
+      columnIndex: 0,
+      rows: rows,
+      displayName: 'USER_ID',
+      headerIconWidthPx: 14,
+    })
     expect(withIcon).toBeGreaterThan(withoutIcon)
   })
 
@@ -221,8 +233,20 @@ describe('getAutoSizedColumnWidth', () => {
     // so the icon offset directly increases the result.
     const col = makeColumnMeta('USER_ID', 'BIGINT')
     const rows: unknown[][] = [[1]]
-    const base = getAutoSizedColumnWidth(col, 0, rows, 'USER_ID', 0)
-    const withFk = getAutoSizedColumnWidth(col, 0, rows, 'USER_ID', 14)
+    const base = getAutoSizedColumnWidth({
+      column: col,
+      columnIndex: 0,
+      rows: rows,
+      displayName: 'USER_ID',
+      headerIconWidthPx: 0,
+    })
+    const withFk = getAutoSizedColumnWidth({
+      column: col,
+      columnIndex: 0,
+      rows: rows,
+      displayName: 'USER_ID',
+      headerIconWidthPx: 14,
+    })
     // The difference should be exactly 14px (ceil applied to the sum)
     expect(withFk - base).toBe(14)
   })
@@ -230,8 +254,19 @@ describe('getAutoSizedColumnWidth', () => {
   it('headerIconWidthPx defaults to 0 when omitted', () => {
     const col = makeColumnMeta('USER_ID', 'BIGINT')
     const rows: unknown[][] = [[42]]
-    const explicit = getAutoSizedColumnWidth(col, 0, rows, 'USER_ID', 0)
-    const implicit = getAutoSizedColumnWidth(col, 0, rows, 'USER_ID')
+    const explicit = getAutoSizedColumnWidth({
+      column: col,
+      columnIndex: 0,
+      rows: rows,
+      displayName: 'USER_ID',
+      headerIconWidthPx: 0,
+    })
+    const implicit = getAutoSizedColumnWidth({
+      column: col,
+      columnIndex: 0,
+      rows: rows,
+      displayName: 'USER_ID',
+    })
     expect(implicit).toBe(explicit)
   })
 
@@ -242,8 +277,18 @@ describe('getAutoSizedColumnWidth', () => {
     // Same 100 rows plus one extra row with a very long value (row index 100)
     const rowsWithLongTail: unknown[][] = [...shortRows, ['a'.repeat(500)]]
 
-    const widthShortOnly = getAutoSizedColumnWidth(col, 0, shortRows, 'title')
-    const widthWithTail = getAutoSizedColumnWidth(col, 0, rowsWithLongTail, 'title')
+    const widthShortOnly = getAutoSizedColumnWidth({
+      column: col,
+      columnIndex: 0,
+      rows: shortRows,
+      displayName: 'title',
+    })
+    const widthWithTail = getAutoSizedColumnWidth({
+      column: col,
+      columnIndex: 0,
+      rows: rowsWithLongTail,
+      displayName: 'title',
+    })
 
     // Row 101 is beyond AUTO_SIZE_SAMPLE_LIMIT (100), so the widths must be equal
     expect(widthWithTail).toBe(widthShortOnly)

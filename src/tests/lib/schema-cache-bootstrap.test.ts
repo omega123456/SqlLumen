@@ -78,7 +78,7 @@ describe('bootstrapSchemaCache', () => {
       expect(getPendingBootstrap('session-1')).toBeNull()
     })
 
-    expect(ipc.calls('save_schema_cache_snapshot')).toHaveLength(0)
+    expect(ipc.payloads('save_schema_cache_snapshot')).toHaveLength(0)
 
     resolveRefresh()
     await bootstrapPromise
@@ -86,7 +86,7 @@ describe('bootstrapSchemaCache', () => {
     expect(ipc.calls('load_schema_cache_snapshot')).toContainEqual({ connectionId: 'saved-1' })
     expect(ipc.calls('fetch_schema_metadata_full')).toContainEqual({ connectionId: 'session-1' })
     expect(getCache('session-1').databases).toEqual(['fresh'])
-    expect(ipc.calls('save_schema_cache_snapshot')).toContainEqual({
+    expect(ipc.payloads('save_schema_cache_snapshot')).toContainEqual({
       connectionId: 'saved-1',
       snapshotJson: buildSnapshotJson(['fresh']),
     })
@@ -111,7 +111,7 @@ describe('bootstrapSchemaCache', () => {
       expect(getCache('session-1').status).toBe('loading')
     })
 
-    expect(ipc.calls('save_schema_cache_snapshot')).toHaveLength(0)
+    expect(ipc.payloads('save_schema_cache_snapshot')).toHaveLength(0)
 
     resolveRebuild()
     await bootstrapPromise
@@ -120,7 +120,7 @@ describe('bootstrapSchemaCache', () => {
     expect(ipc.calls('fetch_schema_metadata_full')).toContainEqual({ connectionId: 'session-1' })
     expect(getCache('session-1').databases).toEqual(['fresh'])
     expect(getPendingBootstrap('session-1')).toBeNull()
-    expect(ipc.calls('save_schema_cache_snapshot')).toContainEqual({
+    expect(ipc.payloads('save_schema_cache_snapshot')).toContainEqual({
       connectionId: 'saved-1',
       snapshotJson: buildSnapshotJson(['fresh']),
     })
@@ -134,7 +134,7 @@ describe('bootstrapSchemaCache', () => {
 
     await bootstrapSchemaCache('session-1', 'saved-1')
 
-    expect(ipc.calls('log_frontend')).toContainEqual(
+    expect(ipc.payloads('log_frontend')).toContainEqual(
       expect.objectContaining({
         level: 'warn',
         message: expect.stringContaining('Failed to load persisted schema cache'),
@@ -153,9 +153,9 @@ describe('bootstrapSchemaCache', () => {
     await expect(bootstrapSchemaCache('session-1', 'saved-1')).resolves.toBeUndefined()
 
     expect(getCache('session-1').databases).toEqual(['cached'])
-    expect(ipc.calls('save_schema_cache_snapshot')).toHaveLength(0)
+    expect(ipc.payloads('save_schema_cache_snapshot')).toHaveLength(0)
     await waitFor(() => {
-      expect(ipc.calls('log_frontend')).toContainEqual(
+      expect(ipc.payloads('log_frontend')).toContainEqual(
         expect.objectContaining({
           level: 'warn',
           message: expect.stringContaining('Failed to rebuild persisted schema cache'),
@@ -175,13 +175,13 @@ describe('bootstrapSchemaCache', () => {
 
     expect(ipc.calls('load_schema_cache_snapshot')).toContainEqual({ connectionId: 'saved-1' })
     expect(ipc.calls('fetch_schema_metadata_full')).toContainEqual({ connectionId: 'session-1' })
-    expect(ipc.calls('save_schema_cache_snapshot')).toHaveLength(0)
+    expect(ipc.payloads('save_schema_cache_snapshot')).toHaveLength(0)
     expect(getPendingBootstrap('session-1')).toBeNull()
     expect(getCache('session-1')).toMatchObject({
       status: 'error',
       error: 'rebuild failed',
       databases: [],
     })
-    expect(ipc.calls('log_frontend')).toHaveLength(0)
+    expect(ipc.payloads('log_frontend')).toHaveLength(0)
   })
 })

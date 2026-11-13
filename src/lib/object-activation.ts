@@ -20,13 +20,21 @@ function getDefaultTabTypeForObject(objectType: ObjectType): 'table-data' | 'sch
   return TABLE_DATA_OBJECT_TYPES.has(objectType) ? 'table-data' : 'schema-info'
 }
 
-export function openObjectDefaultTab(
-  connectionId: string,
-  database: string,
-  objectType: ObjectType,
-  name: string,
-  label: string = name
-): void {
+export interface ObjectTabTarget {
+  connectionId: string
+  database: string
+  objectType: ObjectType
+  name: string
+  label?: string
+}
+
+export function openObjectDefaultTab({
+  connectionId,
+  database,
+  objectType,
+  name,
+  label = name,
+}: ObjectTabTarget): void {
   const openTab = useWorkspaceStore.getState().openTab
   const tabType = getDefaultTabTypeForObject(objectType)
 
@@ -54,16 +62,23 @@ async function ensureDatabaseNodeLoaded(connectionId: string, database: string):
   }
 }
 
+export interface ObjectTreeTarget {
+  connectionId: string
+  database: string
+  objectType: ObjectType
+  name: string
+}
+
 /**
  * Load, expand and select an object's node in the object browser tree.
  * Resolves to true when the node exists and was selected.
  */
-export async function revealObjectInTree(
-  connectionId: string,
-  database: string,
-  objectType: ObjectType,
-  name: string
-): Promise<boolean> {
+export async function revealObjectInTree({
+  connectionId,
+  database,
+  objectType,
+  name,
+}: ObjectTreeTarget): Promise<boolean> {
   const categoryNodeId = makeNodeId('category', database, objectType)
   const objectNodeId = makeNodeId(objectType, database, name)
 
@@ -141,7 +156,12 @@ export async function revealTabInObjectBrowser(tab: WorkspaceTab): Promise<void>
   }
 
   const { database, objectType, name } = target
-  const found = await revealObjectInTree(tab.connectionId, database, objectType, name)
+  const found = await revealObjectInTree({
+    connectionId: tab.connectionId,
+    database: database,
+    objectType: objectType,
+    name: name,
+  })
   if (!found) {
     showWarningToast(
       `Couldn't find ${name} in the object browser`,
@@ -154,28 +174,60 @@ export async function revealTabInObjectBrowser(tab: WorkspaceTab): Promise<void>
   useSchemaStore.getState().requestReveal(tab.connectionId, makeNodeId(objectType, database, name))
 }
 
-export async function activateObjectFromPalette(
-  connectionId: string,
-  database: string,
-  objectType: NodeType,
-  name: string,
-  label: string = name
-): Promise<void> {
+export interface PaletteObjectTarget {
+  connectionId: string
+  database: string
+  objectType: NodeType
+  name: string
+  label?: string
+}
+
+export async function activateObjectFromPalette({
+  connectionId,
+  database,
+  objectType,
+  name,
+  label = name,
+}: PaletteObjectTarget): Promise<void> {
   if (!isObjectType(objectType)) {
     return
   }
 
-  openObjectDefaultTab(connectionId, database, objectType, name, label)
-  await revealObjectInTree(connectionId, database, objectType, name)
+  openObjectDefaultTab({
+    connectionId: connectionId,
+    database: database,
+    objectType: objectType,
+    name: name,
+    label: label,
+  })
+  await revealObjectInTree({
+    connectionId: connectionId,
+    database: database,
+    objectType: objectType,
+    name: name,
+  })
 }
 
-export function activateColumnFromPalette(
-  connectionId: string,
-  database: string,
-  table: string,
+export interface PaletteColumnTarget {
+  connectionId: string
+  database: string
+  table: string
   columnName: string
-): void {
-  openObjectDefaultTab(connectionId, database, 'table', table, table)
+}
+
+export function activateColumnFromPalette({
+  connectionId,
+  database,
+  table,
+  columnName,
+}: PaletteColumnTarget): void {
+  openObjectDefaultTab({
+    connectionId: connectionId,
+    database: database,
+    objectType: 'table',
+    name: table,
+    label: table,
+  })
 
   const workspace = useWorkspaceStore.getState()
   const tableIdentity = { databaseName: database, objectName: table }

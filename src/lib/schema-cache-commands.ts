@@ -1,12 +1,18 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeArgumentCommand, invokeCommand } from './ipc/dispatch'
 
 export async function loadSchemaCacheSnapshot(connectionId: string): Promise<string | null> {
-  return invoke<string | null>('load_schema_cache_snapshot', { connectionId })
+  return invokeArgumentCommand({
+    command: 'load_schema_cache_snapshot',
+    argument: { connectionId },
+  })
 }
 
 export async function saveSchemaCacheSnapshot(
   connectionId: string,
   snapshotJson: string
 ): Promise<void> {
-  return invoke<void>('save_schema_cache_snapshot', { connectionId, snapshotJson })
+  return invokeCommand({
+    command: 'save_schema_cache_snapshot',
+    payload: { connectionId, snapshotJson },
+  })
 }

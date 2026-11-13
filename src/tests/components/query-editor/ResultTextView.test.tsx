@@ -74,7 +74,7 @@ describe('ResultTextView', () => {
       expect(text).toContain('Charlie')
       expect(text).toContain('NULL')
     })
-    expect(ipc.calls('fetch_result_window')).toHaveLength(0)
+    expect(ipc.payloads('fetch_result_window')).toHaveLength(0)
   })
 
   it('shows "Copy all" without a strip when the view has at most 5,000 rows', async () => {
@@ -109,7 +109,7 @@ describe('ResultTextView', () => {
 
   it('caps at 5,000 rows with the strip and the relabelled shared Button', async () => {
     seedRows(12340, [])
-    ipc.override('fetch_result_window', (args) => {
+    ipc.overridePayload('fetch_result_window', (args) => {
       const offset = Number(args?.offset)
       const limit = Number(args?.limit)
       const windowRows = Array.from({ length: limit }, (_, i) => [offset + i, 'x', null])
@@ -135,14 +135,14 @@ describe('ResultTextView', () => {
       const text = screen.getByTestId('result-text-view').querySelector('pre')!.textContent!
       expect(text.split('\n')).toHaveLength(5002)
     })
-    const calls = ipc.calls('fetch_result_window') as Array<Record<string, number>>
+    const calls = ipc.payloads('fetch_result_window') as Array<Record<string, number>>
     expect(calls.reduce((sum, call) => sum + call.limit, 0)).toBe(5000)
     expect(Math.max(...calls.map((call) => call.limit))).toBeLessThanOrEqual(2000)
   })
 
   it('uses the truncated copy when the result hit the row ceiling', async () => {
     seedRows(100000, [])
-    ipc.override('fetch_result_window', (args) => ({
+    ipc.overridePayload('fetch_result_window', (args) => ({
       offset: Number(args?.offset),
       rows: [],
       baseIndices: [],

@@ -15,6 +15,13 @@ export interface UseDatabaseEncodingReturn {
   error: string | null
 }
 
+export interface DatabaseEncodingOptions {
+  connectionId: string
+  isOpen: boolean
+  initialCharset?: string
+  initialCollation?: string
+}
+
 /**
  * Shared hook for charset/collation selection used by CreateDatabaseDialog and AlterDatabaseDialog.
  *
@@ -22,12 +29,12 @@ export interface UseDatabaseEncodingReturn {
  * When charset changes: resets collation to the new charset's default.
  * Exports filtered collations (only those matching selected charset).
  */
-export function useDatabaseEncoding(
-  connectionId: string,
-  isOpen: boolean,
-  initialCharset?: string,
-  initialCollation?: string
-): UseDatabaseEncodingReturn {
+export function useDatabaseEncoding({
+  connectionId,
+  isOpen,
+  initialCharset,
+  initialCollation,
+}: DatabaseEncodingOptions): UseDatabaseEncodingReturn {
   const [charsets, setCharsets] = useState<CharsetInfo[]>([])
   const [collations, setCollations] = useState<CollationInfo[]>([])
   const [charset, setCharsetState] = useState(initialCharset ?? '')

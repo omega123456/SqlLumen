@@ -34,7 +34,7 @@ beforeEach(() => {
   mockSetSetting.mockClear()
 
   ipc.override('get_all_settings', () => mockGetAllSettings())
-  ipc.override('set_setting', (args) =>
+  ipc.overridePayload('set_setting', (args) =>
     mockSetSetting((args as Record<string, string>).key, (args as Record<string, string>).value)
   )
   ipc.override('log_frontend', () => undefined)

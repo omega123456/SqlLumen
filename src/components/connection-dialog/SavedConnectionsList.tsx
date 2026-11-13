@@ -122,10 +122,14 @@ interface GroupMutation {
   groupName: string
 }
 
-function isRenamingSection(section: ConnectionSection, editingGroup: EditingGroupState): boolean {
-  if (section.groupId === null) return false
-  if (editingGroup?.mode !== 'rename') return false
-  return editingGroup.groupId === section.groupId
+function sectionRenameValue(
+  section: ConnectionSection,
+  editingGroup: EditingGroupState
+): string | null {
+  if (section.groupId === null) return null
+  if (editingGroup?.mode !== 'rename') return null
+  if (editingGroup.groupId !== section.groupId) return null
+  return editingGroup.value
 }
 
 interface SectionVisibilityInputs {
@@ -251,8 +255,13 @@ export function SavedConnectionsList({
 
   // Simplification 7: outside-click / Escape dismissal for context menu
   const closeContextMenu = useCallback(() => setContextMenu(null), [])
-  useDismissOnOutsideClick(contextMenuRef, !!contextMenu, closeContextMenu, {
-    closeOnEscape: true,
+  useDismissOnOutsideClick({
+    ref: contextMenuRef,
+    active: !!contextMenu,
+    onDismiss: closeContextMenu,
+    options: {
+      closeOnEscape: true,
+    },
   })
 
   useLayoutEffect(() => {
@@ -260,13 +269,13 @@ export function SavedConnectionsList({
     if (!contextMenu) return
     if (!element) return
     const rect = element.getBoundingClientRect()
-    const position = positionContextMenuInPortal(
-      contextMenu.portalRoot,
-      contextMenu.x,
-      contextMenu.y,
-      rect.width,
-      rect.height
-    )
+    const position = positionContextMenuInPortal({
+      portalRoot: contextMenu.portalRoot,
+      clientX: contextMenu.x,
+      clientY: contextMenu.y,
+      menuWidth: rect.width,
+      menuHeight: rect.height,
+    })
     element.style.left = `${position.x}px`
     element.style.top = `${position.y}px`
   }, [contextMenu])
@@ -280,7 +289,7 @@ export function SavedConnectionsList({
 
   const handleGroupContextMenu = useCallback((event: React.MouseEvent, groupId: string) => {
     event.preventDefault()
-    const anchor = event.currentTarget as Element
+    const anchor = event.currentTarget
     setContextMenu({
       x: event.clientX,
       y: event.clientY,
@@ -304,7 +313,7 @@ export function SavedConnectionsList({
   const handleConnectionContextMenu = useCallback(
     (event: React.MouseEvent, connection: SavedConnection) => {
       event.preventDefault()
-      const anchor = event.currentTarget as Element
+      const anchor = event.currentTarget
       setContextMenu({
         x: event.clientX,
         y: event.clientY,
@@ -500,7 +509,8 @@ export function SavedConnectionsList({
           <div className={styles.emptyState}>No connections match “{filterText.trim()}”</div>
         )}
         {sections.map((section) => {
-          const isRenaming = isRenamingSection(section, editingGroup)
+          const renameValue = sectionRenameValue(section, editingGroup)
+          const isRenaming = renameValue !== null
           if (
             shouldHideSection({
               section: section,
@@ -513,9 +523,9 @@ export function SavedConnectionsList({
           return (
             <div key={sectionKey(section)} className={styles.group}>
               <div className={styles.groupHeader} onContextMenu={groupHeaderContextMenu(section)}>
-                {isRenaming ? (
+                {renameValue !== null ? (
                   <GroupInlineInput
-                    value={editingGroup!.value}
+                    value={renameValue}
                     onChange={(value) =>
                       setEditingGroup((previous) =>
                         previous ? { ...previous, value: value } : null

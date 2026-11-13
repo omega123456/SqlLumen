@@ -803,15 +803,17 @@ mod binary_projection_integration {
 
         let inserted = insert_table_row_impl(
             &pool,
-            "binary-projection-connection",
             &metadata_cache,
-            "app_db",
-            "assets",
-            &values,
-            &PrimaryKeyInfo {
-                key_columns: vec!["uuid".to_string()],
-                has_auto_increment: false,
-                is_unique_key_fallback: false,
+            &sqllumen_lib::mysql::table_data::InsertTableRowRequest {
+                connection_id: "binary-projection-connection".to_string(),
+                database: "app_db".to_string(),
+                table: "assets".to_string(),
+                values: values.clone(),
+                primary_key_info: PrimaryKeyInfo {
+                    key_columns: vec!["uuid".to_string()],
+                    has_auto_increment: false,
+                    is_unique_key_fallback: false,
+                },
             },
         )
         .await
@@ -905,15 +907,17 @@ mod binary_projection_integration {
 
         let inserted = insert_table_row_impl(
             &pool,
-            "binary-projection-connection",
             &metadata_cache,
-            "app_db",
-            "assets",
-            &values,
-            &PrimaryKeyInfo {
-                key_columns: vec!["id".to_string()],
-                has_auto_increment: false,
-                is_unique_key_fallback: false,
+            &sqllumen_lib::mysql::table_data::InsertTableRowRequest {
+                connection_id: "binary-projection-connection".to_string(),
+                database: "app_db".to_string(),
+                table: "assets".to_string(),
+                values: values.clone(),
+                primary_key_info: PrimaryKeyInfo {
+                    key_columns: vec!["id".to_string()],
+                    has_auto_increment: false,
+                    is_unique_key_fallback: false,
+                },
             },
         )
         .await

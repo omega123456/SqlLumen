@@ -2,14 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import type { TableDataColumnMeta } from '../../../types/schema'
-import type {
-  CellEditorCallbacks,
-  CellEditorParams,
-} from '../../../components/table-data/useCellEditor'
+import type { CellEditorParams } from '../../../components/table-data/useCellEditor'
+import type { EditorCallbacksContextType } from '../../../components/shared/editor-callbacks-context'
 
 import DateTimeCellEditor from '../../../components/table-data/DateTimeCellEditor'
 
-type DateTimeCellEditorProps = CellEditorParams & CellEditorCallbacks
+type DateTimeCellEditorProps = CellEditorParams & EditorCallbacksContextType
 
 // ---------------------------------------------------------------------------
 // Helpers

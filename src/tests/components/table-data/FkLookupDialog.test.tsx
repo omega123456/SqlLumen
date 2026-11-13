@@ -181,7 +181,7 @@ describe('FkLookupDialog', () => {
     rerender(<FkLookupDialog {...props} isOpen={false} />)
 
     await waitFor(() => {
-      expect(ipc.calls('evict_table_data')).toContainEqual({
+      expect(ipc.payloads('evict_table_data')).toContainEqual({
         connectionId: 'c1',
         tabId: 'fk-lookup-c1-app-customers',
       })

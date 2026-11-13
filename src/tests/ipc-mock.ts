@@ -33,6 +33,22 @@ const _overrides = new Map<string, IpcHandler>()
 /** Recorded call payloads per command, captured at call time. */
 const _calls = new Map<string, unknown[]>()
 
+function payloadOfCall(call: unknown): unknown {
+  return (call as { payload?: unknown } | undefined)?.payload
+}
+
+export type IpcPayloadHandler = (payload: Record<string, unknown>, commandName?: string) => unknown
+
+/** Adapts a handler that reads the `payload` request struct into a raw-args handler. */
+export function onPayload(handler: IpcPayloadHandler): IpcHandler {
+  return (args, commandName) => handler(payloadOfArgs(args), commandName)
+}
+
+/** Reads the `payload` request struct out of the raw args a handler receives. */
+export function payloadOfArgs(args: Record<string, unknown> | undefined): Record<string, unknown> {
+  return (args?.payload ?? {}) as Record<string, unknown>
+}
+
 // ---------------------------------------------------------------------------
 // IPC singleton
 // ---------------------------------------------------------------------------
@@ -52,11 +68,27 @@ export const ipc = {
   },
 
   /**
+   * Register a per-test override for a command that takes a single `payload`
+   * argument. The handler receives that payload request struct.
+   */
+  overridePayload(commandName: string, handlerFn: IpcPayloadHandler): void {
+    ipc.override(commandName, onPayload(handlerFn))
+  },
+
+  /**
    * Returns the array of recorded call payloads for the given command.
    * Each entry is a deep-cloned snapshot of the args at call time.
    */
   calls(commandName: string): unknown[] {
     return _calls.get(commandName) ?? []
+  },
+
+  /**
+   * Returns the `payload` request struct of each recorded call for a command
+   * that takes a single `payload` argument.
+   */
+  payloads(commandName: string): unknown[] {
+    return ipc.calls(commandName).map(payloadOfCall)
   },
 
   /**
@@ -126,6 +158,9 @@ export function overrideIpcCommands(overrides: Record<string, IpcHandler>): void
  * Register the same handler for multiple command names — useful when a test
  * needs to intercept a fixed set of commands with shared dispatch logic.
  *
+ * The handler receives the command's request: the `payload` struct for commands
+ * that take a single `payload` argument, the raw args for every other command.
+ *
  * @example
  * overrideNamedIpcCommands(COMMANDS, (cmd, args) => { switch (cmd) { ... } })
  */
@@ -133,7 +168,14 @@ export function overrideNamedIpcCommands(
   commandNames: readonly string[],
   handler: (cmd: string, args?: Record<string, unknown>) => unknown
 ): void {
-  commandNames.forEach((cmd) => ipc.override(cmd, (args) => handler(cmd, args)))
+  commandNames.forEach((cmd) => ipc.override(cmd, (args) => handler(cmd, requestOfArgs(args))))
+}
+
+function requestOfArgs(
+  args: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
+  if (args && 'payload' in args) return payloadOfArgs(args)
+  return args
 }
 
 // ---------------------------------------------------------------------------

@@ -331,7 +331,80 @@ pub struct DecodeContext<'a> {
 #[cfg(not(coverage))]
 const CEILING_KILL_ACQUIRE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 
-/// Rows decoded from one result set, bounded by the ceiling.
+pub struct StatementOutcome {
+    pub stored: crate::mysql::query_executor::StoredResult,
+    pub item: crate::mysql::query_executor::MultiQueryResultItem,
+}
+
+impl StatementOutcome {
+    pub fn from_stored(
+        stored: crate::mysql::query_executor::StoredResult,
+        re_executable: bool,
+    ) -> Self {
+        let item = crate::mysql::query_executor::MultiQueryResultItem::from_stored(
+            &stored,
+            None,
+            re_executable,
+        );
+        Self { stored, item }
+    }
+}
+
+#[derive(Default)]
+pub struct BatchResults {
+    pub stored_results: Vec<crate::mysql::query_executor::StoredResult>,
+    pub result_items: Vec<crate::mysql::query_executor::MultiQueryResultItem>,
+}
+
+impl BatchResults {
+    #[cfg(not(coverage))]
+    fn push(&mut self, outcome: StatementOutcome) {
+        self.stored_results.push(outcome.stored);
+        self.result_items.push(outcome.item);
+    }
+
+    #[cfg(not(coverage))]
+    fn push_error(&mut self, sql: &str, error_message: String) {
+        use crate::mysql::query_executor::{MultiQueryResultItem, StoredResult};
+
+        let mut result = StoredResult::empty(uuid::Uuid::new_v4().to_string());
+        result.source_sql = sql.to_string();
+        self.result_items.push(MultiQueryResultItem::from_stored(
+            &result,
+            Some(error_message),
+            false,
+        ));
+        self.stored_results.push(result);
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SessionStatement<'a> {
+    pub sql: &'a str,
+    pub row_limit: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct StatementBatch<'a> {
+    pub statements: &'a [String],
+    pub row_limit: usize,
+    pub is_read_only: bool,
+}
+
+#[cfg(not(coverage))]
+struct SelectStatement<'a> {
+    sql: &'a str,
+    auto_limit_applied: bool,
+    row_limit_used: usize,
+}
+
+#[cfg(not(coverage))]
+#[derive(Clone, Copy)]
+struct RowBufferLimits {
+    capacity_hint: usize,
+    ceiling: usize,
+}
+
 #[cfg(not(coverage))]
 struct DecodedRows {
     rows: Vec<crate::mysql::query_executor::SharedRow>,
@@ -507,32 +580,23 @@ async fn capture_session_database(
 
 // ── Per-statement helpers ──────────────────────────────────────────────────────
 
-/// Execute a SELECT-like statement on the given connection.
-///
-/// Returns a `(StoredResult, MultiQueryResultItem)` pair on success.
-/// Handles auto-LIMIT internally and stores at most `ctx.ceiling` rows. When
-/// the ceiling is exceeded, the rest of the stream is stopped with `KILL QUERY`
-/// (or drained when the KILL can't be sent) and the result is a truncated
-/// success. Row collection errors otherwise propagate via `?`.
 #[cfg(not(coverage))]
 async fn execute_single_select_statement(
     conn: &mut mysql_async::Conn,
-    sql: &str,
-    auto_limit_applied: bool,
-    row_limit_used: usize,
+    statement: &SelectStatement<'_>,
     context: &DecodeContext<'_>,
-) -> Result<
-    (
-        crate::mysql::query_executor::StoredResult,
-        crate::mysql::query_executor::MultiQueryResultItem,
-    ),
-    String,
-> {
+) -> Result<StatementOutcome, String> {
     use crate::mysql::query_executor::{
         sql_with_auto_limit, statement_blocked_reason, ColumnMeta, FullExportBlockedReason,
-        MultiQueryResultItem, StoredResult,
+        StoredResult, StoredResultParts,
     };
     use mysql_async::prelude::Queryable;
+
+    let SelectStatement {
+        sql,
+        auto_limit_applied,
+        row_limit_used,
+    } = *statement;
 
     let sql_to_execute = sql_with_auto_limit(sql, auto_limit_applied, row_limit_used);
 
@@ -563,9 +627,11 @@ async fn execute_single_select_statement(
         .map(|column: &mysql_async::Column| (column.column_type(), column.flags()))
         .collect();
 
-    let capacity_hint = row_capacity_hint(auto_limit_applied, row_limit_used);
-    let decoded =
-        stream_serialized_rows(&mut result, &col_types, capacity_hint, context.ceiling).await?;
+    let limits = RowBufferLimits {
+        capacity_hint: row_capacity_hint(auto_limit_applied, row_limit_used),
+        ceiling: context.ceiling,
+    };
+    let decoded = stream_serialized_rows(&mut result, &col_types, limits).await?;
     let mut late_kill_possible = false;
     if decoded.overflowed {
         // Rows remain unread: stop the server sending them. If the KILL can't
@@ -587,15 +653,15 @@ async fn execute_single_select_statement(
     let total_time_ms = start.elapsed().as_millis() as u64;
     let query_id = uuid::Uuid::new_v4().to_string();
 
-    let mut stored = StoredResult::new(
+    let mut stored = StoredResult::new(StoredResultParts {
         query_id,
         columns,
-        Arc::new(decoded.rows),
+        rows: Arc::new(decoded.rows),
         execution_time_ms,
         total_time_ms,
-        0,
+        affected_rows: 0,
         auto_limit_applied,
-    );
+    });
     stored.truncated = decoded.overflowed;
     stored.row_ceiling = context.ceiling;
     stored.applied_row_limit = auto_limit_applied.then_some(row_limit_used);
@@ -611,27 +677,16 @@ async fn execute_single_select_statement(
         }
     }
 
-    let item = MultiQueryResultItem::from_stored(&stored, None, true);
-    Ok((stored, item))
+    Ok(StatementOutcome::from_stored(stored, true))
 }
 
-/// Execute a DML/DDL statement on the given connection.
-///
-/// Returns a `(StoredResult, MultiQueryResultItem)` pair on success.
-/// The result drains the response and captures affected rows.
 #[cfg(not(coverage))]
 async fn execute_single_dml_statement(
     conn: &mut mysql_async::Conn,
     sql: &str,
     context: &DecodeContext<'_>,
-) -> Result<
-    (
-        crate::mysql::query_executor::StoredResult,
-        crate::mysql::query_executor::MultiQueryResultItem,
-    ),
-    String,
-> {
-    use crate::mysql::query_executor::{MultiQueryResultItem, StoredResult};
+) -> Result<StatementOutcome, String> {
+    use crate::mysql::query_executor::{StoredResult, StoredResultParts};
     use mysql_async::prelude::Queryable;
 
     let start = std::time::Instant::now();
@@ -653,19 +708,18 @@ async fn execute_single_dml_statement(
     let total_time_ms = start.elapsed().as_millis() as u64;
     let query_id = uuid::Uuid::new_v4().to_string();
 
-    let mut stored = StoredResult::new(
+    let mut stored = StoredResult::new(StoredResultParts {
         query_id,
-        vec![],
-        Arc::new(vec![]),
+        columns: vec![],
+        rows: Arc::new(vec![]),
         execution_time_ms,
         total_time_ms,
-        affected,
-        false,
-    );
+        affected_rows: affected,
+        auto_limit_applied: false,
+    });
     stored.row_ceiling = context.ceiling;
     stored.source_sql = sql.to_string();
-    let item = MultiQueryResultItem::from_stored(&stored, None, true);
-    Ok((stored, item))
+    Ok(StatementOutcome::from_stored(stored, true))
 }
 
 /// Execute a CALL statement and collect all returned result sets.
@@ -681,15 +735,9 @@ async fn execute_call_statement(
     conn: &mut mysql_async::Conn,
     sql: &str,
     context: &DecodeContext<'_>,
-) -> Result<
-    Vec<(
-        crate::mysql::query_executor::StoredResult,
-        crate::mysql::query_executor::MultiQueryResultItem,
-    )>,
-    String,
-> {
+) -> Result<Vec<StatementOutcome>, String> {
     use crate::mysql::query_executor::{
-        ColumnMeta, FullExportBlockedReason, MultiQueryResultItem, StoredResult,
+        ColumnMeta, FullExportBlockedReason, StoredResult, StoredResultParts,
     };
     use mysql_async::prelude::Queryable;
 
@@ -705,7 +753,7 @@ async fn execute_call_statement(
     // set's total time is recorded at its own collection point.
     let execution_time_ms = start.elapsed().as_millis() as u64;
 
-    let mut pairs: Vec<(StoredResult, MultiQueryResultItem)> = Vec::new();
+    let mut outcomes: Vec<StatementOutcome> = Vec::new();
     let mut call_has_results = false;
     let mut call_last_affected: u64 = 0;
 
@@ -745,7 +793,11 @@ async fn execute_call_statement(
             .map(|column: &mysql_async::Column| (column.column_type(), column.flags()))
             .collect();
 
-        let decoded = stream_serialized_rows(&mut result, &col_types, 0, context.ceiling).await?;
+        let limits = RowBufferLimits {
+            capacity_hint: 0,
+            ceiling: context.ceiling,
+        };
+        let decoded = stream_serialized_rows(&mut result, &col_types, limits).await?;
         if decoded.overflowed {
             tracing::debug!(
                 connection_id = context.connection_id,
@@ -765,19 +817,18 @@ async fn execute_call_statement(
         let total_time_ms = start.elapsed().as_millis() as u64;
         let query_id = uuid::Uuid::new_v4().to_string();
 
-        let mut stored = StoredResult::new(
+        let mut stored = StoredResult::new(StoredResultParts {
             query_id,
             columns,
-            Arc::new(decoded.rows),
+            rows: Arc::new(decoded.rows),
             execution_time_ms,
             total_time_ms,
-            0,
-            false,
-        );
+            affected_rows: 0,
+            auto_limit_applied: false,
+        });
         finish(&mut stored);
         stored.truncated = decoded.overflowed;
-        let item = MultiQueryResultItem::from_stored(&stored, None, false);
-        pairs.push((stored, item));
+        outcomes.push(StatementOutcome::from_stored(stored, false));
 
         if result.is_empty() {
             break;
@@ -790,47 +841,20 @@ async fn execute_call_statement(
         let total_time_ms = start.elapsed().as_millis() as u64;
         let query_id = uuid::Uuid::new_v4().to_string();
 
-        let mut stored = StoredResult::new(
+        let mut stored = StoredResult::new(StoredResultParts {
             query_id,
-            vec![],
-            Arc::new(vec![]),
+            columns: vec![],
+            rows: Arc::new(vec![]),
             execution_time_ms,
             total_time_ms,
-            call_last_affected,
-            false,
-        );
+            affected_rows: call_last_affected,
+            auto_limit_applied: false,
+        });
         finish(&mut stored);
-        let item = MultiQueryResultItem::from_stored(&stored, None, false);
-        pairs.push((stored, item));
+        outcomes.push(StatementOutcome::from_stored(stored, false));
     }
 
-    Ok(pairs)
-}
-
-// ── Error result helper ────────────────────────────────────────────────────────
-
-/// Push a matching `(StoredResult, MultiQueryResultItem)` pair representing a
-/// failed statement onto the running result vectors.
-///
-/// Generates a fresh query id internally and fills both structs with empty rows,
-/// zeroed numerics, `re_executable: false`, and the given error message.
-#[cfg(not(coverage))]
-fn push_error_result(
-    stored: &mut Vec<crate::mysql::query_executor::StoredResult>,
-    items: &mut Vec<crate::mysql::query_executor::MultiQueryResultItem>,
-    sql: &str,
-    error_msg: String,
-) {
-    use crate::mysql::query_executor::{MultiQueryResultItem, StoredResult};
-
-    let mut result = StoredResult::empty(uuid::Uuid::new_v4().to_string());
-    result.source_sql = sql.to_string();
-    items.push(MultiQueryResultItem::from_stored(
-        &result,
-        Some(error_msg),
-        false,
-    ));
-    stored.push(result);
+    Ok(outcomes)
 }
 
 // ── Batch executor ─────────────────────────────────────────────────────────────
@@ -846,24 +870,13 @@ fn push_error_result(
 #[cfg(not(coverage))]
 pub async fn execute_multi_query_internal(
     state: &crate::state::AppState,
-    connection_id: &str,
-    tab_id: &str,
-    statements: &[String],
-    row_limit: usize,
-    is_read_only: bool,
-) -> Result<
-    (
-        Vec<crate::mysql::query_executor::StoredResult>,
-        Vec<crate::mysql::query_executor::MultiQueryResultItem>,
-    ),
-    String,
-> {
-    use crate::mysql::query_executor::{
-        is_read_only_allowed, MultiQueryResultItem, StoredResult, READ_ONLY_VIOLATION_MESSAGE,
-    };
+    run: &crate::mysql::session::TabRun,
+    batch: StatementBatch<'_>,
+) -> Result<BatchResults, String> {
+    use crate::mysql::query_executor::{is_read_only_allowed, READ_ONLY_VIOLATION_MESSAGE};
 
-    let run = crate::mysql::session::TabRun::new(connection_id, tab_id);
-    let mut guard = crate::mysql::session::acquire_for_run(state, &run).await?;
+    let connection_id = run.connection_id.as_str();
+    let mut guard = crate::mysql::session::acquire_for_run(state, run).await?;
     let session = guard.as_mut().expect("acquire always yields a session");
     let key = run.running_query_key();
 
@@ -873,43 +886,43 @@ pub async fn execute_multi_query_internal(
         thread_id: session.thread_id,
         pool: state.registry.get_pool(connection_id),
     };
-    let row_limit_used = crate::mysql::query_executor::requested_row_limit(row_limit);
-    let mut stored_results: Vec<StoredResult> = Vec::new();
-    let mut result_items: Vec<MultiQueryResultItem> = Vec::new();
+    let row_limit_used = crate::mysql::query_executor::requested_row_limit(batch.row_limit);
+    let mut results = BatchResults::default();
 
-    for sql in statements {
+    for sql in batch.statements {
         let sql = sql.trim();
         if sql.is_empty() {
             continue;
         }
 
-        let is_statement_blocked = is_read_only && !is_read_only_allowed(sql);
+        let is_statement_blocked = batch.is_read_only && !is_read_only_allowed(sql);
         if is_statement_blocked {
-            let error_msg = READ_ONLY_VIOLATION_MESSAGE.to_string();
-            push_error_result(&mut stored_results, &mut result_items, sql, error_msg);
-            break; // Stop on read-only violation
+            results.push_error(sql, READ_ONLY_VIOLATION_MESSAGE.to_string());
+            break;
         }
 
-        let stmt_result =
-            execute_batch_statement(&mut session.conn, sql, row_limit_used, &context).await;
+        let statement = SessionStatement {
+            sql,
+            row_limit: row_limit_used,
+        };
+        let stmt_result = execute_batch_statement(&mut session.conn, statement, &context).await;
 
         match stmt_result {
-            Ok(pairs) => {
-                for (sr, ri) in pairs {
-                    stored_results.push(sr);
-                    result_items.push(ri);
+            Ok(outcomes) => {
+                for outcome in outcomes {
+                    results.push(outcome);
                 }
             }
             Err(error_msg) => {
-                push_error_result(&mut stored_results, &mut result_items, sql, error_msg);
-                break; // Stop on error
+                results.push_error(sql, error_msg);
+                break;
             }
         }
     }
 
     state.running_queries.write().await.remove(&key);
 
-    Ok((stored_results, result_items))
+    Ok(results)
 }
 
 /// Execute one non-CALL statement on the connection's shared editor session,
@@ -918,19 +931,11 @@ pub async fn execute_multi_query_internal(
 #[cfg(not(coverage))]
 pub async fn execute_single_on_session(
     state: &crate::state::AppState,
-    connection_id: &str,
-    tab_id: &str,
-    sql: &str,
-    row_limit: usize,
-) -> Result<
-    (
-        crate::mysql::query_executor::StoredResult,
-        crate::mysql::query_executor::MultiQueryResultItem,
-    ),
-    String,
-> {
-    let run = crate::mysql::session::TabRun::new(connection_id, tab_id);
-    let mut guard = crate::mysql::session::acquire_for_run(state, &run).await?;
+    run: &crate::mysql::session::TabRun,
+    statement: SessionStatement<'_>,
+) -> Result<StatementOutcome, String> {
+    let connection_id = run.connection_id.as_str();
+    let mut guard = crate::mysql::session::acquire_for_run(state, run).await?;
     let session = guard.as_mut().expect("acquire always yields a session");
     let key = run.running_query_key();
 
@@ -940,7 +945,7 @@ pub async fn execute_single_on_session(
         thread_id: session.thread_id,
         pool: state.registry.get_pool(connection_id),
     };
-    let result = execute_statement(&mut session.conn, sql, row_limit, &context).await;
+    let result = execute_statement(&mut session.conn, statement, &context).await;
 
     state.running_queries.write().await.remove(&key);
 
@@ -951,46 +956,38 @@ pub async fn execute_single_on_session(
 #[cfg(not(coverage))]
 async fn execute_batch_statement(
     conn: &mut mysql_async::Conn,
-    sql: &str,
-    row_limit: usize,
+    statement: SessionStatement<'_>,
     context: &DecodeContext<'_>,
-) -> Result<
-    Vec<(
-        crate::mysql::query_executor::StoredResult,
-        crate::mysql::query_executor::MultiQueryResultItem,
-    )>,
-    String,
-> {
-    if is_call_statement(sql) {
-        return execute_call_statement(conn, sql, context).await;
+) -> Result<Vec<StatementOutcome>, String> {
+    if is_call_statement(statement.sql) {
+        return execute_call_statement(conn, statement.sql, context).await;
     }
-    execute_statement(conn, sql, row_limit, context)
+    execute_statement(conn, statement, context)
         .await
-        .map(|pair| vec![pair])
+        .map(|outcome| vec![outcome])
 }
 
 #[cfg(not(coverage))]
 async fn execute_statement(
     conn: &mut mysql_async::Conn,
-    sql: &str,
-    row_limit: usize,
+    statement: SessionStatement<'_>,
     context: &DecodeContext<'_>,
-) -> Result<
-    (
-        crate::mysql::query_executor::StoredResult,
-        crate::mysql::query_executor::MultiQueryResultItem,
-    ),
-    String,
-> {
+) -> Result<StatementOutcome, String> {
     use crate::mysql::query_executor::{
         needs_auto_limit, returns_result_set, strip_non_executable_comments,
     };
 
+    let sql = statement.sql;
     let is_result_set = returns_result_set(&strip_non_executable_comments(sql));
     if !is_result_set {
         return execute_single_dml_statement(conn, sql, context).await;
     }
-    execute_single_select_statement(conn, sql, needs_auto_limit(sql), row_limit, context).await
+    let select = SelectStatement {
+        sql,
+        auto_limit_applied: needs_auto_limit(sql),
+        row_limit_used: statement.row_limit,
+    };
+    execute_single_select_statement(conn, &select, context).await
 }
 
 /// Upper bound for the up-front row `Vec` reservation when an auto-LIMIT tells
@@ -1021,12 +1018,15 @@ async fn stream_serialized_rows<P>(
         mysql_async::consts::ColumnType,
         mysql_async::consts::ColumnFlags,
     )],
-    capacity_hint: usize,
-    ceiling: usize,
+    limits: RowBufferLimits,
 ) -> Result<DecodedRows, String>
 where
     P: mysql_async::prelude::Protocol,
 {
+    let RowBufferLimits {
+        capacity_hint,
+        ceiling,
+    } = limits;
     let mut serialized_rows = Vec::with_capacity(capacity_hint.min(ceiling));
     let mut overflowed = false;
     while let Some(row) = result

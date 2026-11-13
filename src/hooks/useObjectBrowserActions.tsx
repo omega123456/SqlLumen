@@ -215,13 +215,18 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
   const onExecuteRoutine = useCallback(
     async (databaseName: string, routineName: string, routineType: 'procedure' | 'function') => {
       try {
-        const parameters = await getRoutineParameters(
-          connectionId,
-          databaseName,
-          routineName,
-          routineType
-        )
-        const template = buildExecuteTemplate(databaseName, routineName, routineType, parameters)
+        const parameters = await getRoutineParameters({
+          connectionId: connectionId,
+          database: databaseName,
+          routineName: routineName,
+          routineType: routineType,
+        })
+        const template = buildExecuteTemplate({
+          databaseName: databaseName,
+          routineName: routineName,
+          routineType: routineType,
+          parameters: parameters,
+        })
         const tabId = openQueryTab(connectionId, `Execute: ${routineName}`)
         useQueryStore.getState().setContent(tabId, template)
       } catch {
@@ -334,7 +339,10 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
     setConfirmError(null)
     try {
       await dropTable(connectionId, dropTableConfirm.db, dropTableConfirm.table)
-      closeTabsByObject(connectionId, dropTableConfirm.db, dropTableConfirm.table)
+      closeTabsByObject(connectionId, {
+        databaseName: dropTableConfirm.db,
+        objectName: dropTableConfirm.table,
+      })
       const { db, table } = dropTableConfirm
       setDropTableConfirm(null)
       void refreshCategory(connectionId, db, 'table')
@@ -382,8 +390,17 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
       setRenameLoading(true)
       setRenameError(null)
       try {
-        await renameTable(connectionId, renameTableOpen.db, renameTableOpen.table, newName)
-        updateTabObject(connectionId, renameTableOpen.db, renameTableOpen.table, newName)
+        await renameTable({
+          connectionId: connectionId,
+          database: renameTableOpen.db,
+          oldName: renameTableOpen.table,
+          newName: newName,
+        })
+        updateTabObject(connectionId, {
+          databaseName: renameTableOpen.db,
+          oldObjectName: renameTableOpen.table,
+          newObjectName: newName,
+        })
         const db = renameTableOpen.db
         const previous = renameTableOpen.table
         setRenameTableOpen(null)
@@ -418,8 +435,17 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
     setConfirmError(null)
     try {
       const { databaseName, objectName, objectType } = dropObjectConfirm
-      await dropObject(connectionId, databaseName, objectName, objectType)
-      closeTabsByObject(connectionId, databaseName, objectName, objectType)
+      await dropObject({
+        connectionId: connectionId,
+        database: databaseName,
+        objectName: objectName,
+        objectType: objectType,
+      })
+      closeTabsByObject(connectionId, {
+        databaseName: databaseName,
+        objectName: objectName,
+        objectType: objectType,
+      })
       setDropObjectConfirm(null)
       // Invalidate routine parameter cache and schema metadata cache after dropping
       // a procedure or function so signature help picks up the removal.

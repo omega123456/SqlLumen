@@ -10,15 +10,15 @@ use std::time::Duration;
 
 /// Helper: build a minimal `StoredResult` for testing.
 fn stub_result(query_id: &str) -> StoredResult {
-    StoredResult::new(
-        query_id.to_string(),
-        vec![],
-        std::sync::Arc::new(vec![]),
-        0,
-        0,
-        0,
-        false,
-    )
+    StoredResult::new(sqllumen_lib::mysql::query_executor::StoredResultParts {
+        query_id: query_id.to_string(),
+        columns: vec![],
+        rows: std::sync::Arc::new(vec![]),
+        execution_time_ms: 0,
+        total_time_ms: 0,
+        affected_rows: 0,
+        auto_limit_applied: false,
+    })
 }
 
 #[test]
@@ -26,7 +26,10 @@ fn insert_and_get() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
 
-    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q1")],
+    );
 
     let entry = cache
         .get("conn1", "tab1")
@@ -53,7 +56,10 @@ fn remove_invalidates_entry() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
 
-    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q1")],
+    );
     cache.remove("conn1", "tab1");
     cache.run_pending_tasks();
 
@@ -75,7 +81,10 @@ fn short_ttl_evicts_entry() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = ResultCache::new_for_test(1, tmp.path().to_path_buf());
 
-    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q1")],
+    );
     assert!(cache.get("conn1", "tab1").is_available());
 
     // Wait for TTL to expire and run maintenance.
@@ -95,9 +104,18 @@ fn lru_ordering_reflects_access() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
 
-    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
-    cache.insert("conn1", "tab2", vec![stub_result("q2")]);
-    cache.insert("conn1", "tab3", vec![stub_result("q3")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q1")],
+    );
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab2"),
+        vec![stub_result("q2")],
+    );
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab3"),
+        vec![stub_result("q3")],
+    );
 
     // LRU order: tab1 (least recent), tab2, tab3 (most recent)
     let lru = cache.lru_snapshot();
@@ -117,8 +135,14 @@ fn lru_remove_cleans_up() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
 
-    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
-    cache.insert("conn1", "tab2", vec![stub_result("q2")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q1")],
+    );
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab2"),
+        vec![stub_result("q2")],
+    );
 
     cache.remove("conn1", "tab1");
 
@@ -132,8 +156,14 @@ fn multiple_entries_tracked_independently() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
 
-    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
-    cache.insert("conn2", "tab1", vec![stub_result("q2")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q1")],
+    );
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn2", "tab1"),
+        vec![stub_result("q2")],
+    );
 
     let e1 = cache.get("conn1", "tab1").into_entry().expect("entry 1");
     let e2 = cache.get("conn2", "tab1").into_entry().expect("entry 2");
@@ -171,8 +201,14 @@ fn insert_replaces_existing_entry() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
 
-    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
-    cache.insert("conn1", "tab1", vec![stub_result("q2")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q1")],
+    );
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q2")],
+    );
 
     let entry = cache
         .get("conn1", "tab1")
@@ -214,10 +250,16 @@ fn generation_increments_on_insert() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
 
-    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q1")],
+    );
     let g1 = cache.get("conn1", "tab1").into_entry().unwrap().generation;
 
-    cache.insert("conn1", "tab1", vec![stub_result("q2")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q2")],
+    );
     let g2 = cache.get("conn1", "tab1").into_entry().unwrap().generation;
 
     assert!(g2 > g1);
@@ -233,17 +275,35 @@ fn stub_result_with_rows(query_id: &str, rows: Vec<Vec<serde_json::Value>>) -> S
 }
 
 /// Swap the rows of one slot through the slot-level, version-checked modifier.
+struct SlotPosition {
+    version: u64,
+    index: usize,
+}
+
 fn swap_rows(
     cache: &ResultCache,
-    version: u64,
-    idx: usize,
+    position: SlotPosition,
     rows: sqllumen_lib::mysql::query_executor::SharedRows,
 ) -> SlotWrite<()> {
+    let SlotPosition {
+        version,
+        index: idx,
+    } = position;
     cache
-        .modify_slot_in_place_if_current("conn1", "tab1", version, idx, None, None, |slot| {
-            slot.rows = rows;
-            Ok(())
-        })
+        .modify_slot_in_place_if_current(
+            &sqllumen_lib::mysql::result_cache::SlotWriteTarget {
+                connection_id: "conn1",
+                tab_id: "tab1",
+                expected_invalidation_version: version,
+                index: idx,
+                expected_query_id: None,
+                base_view_version: None,
+            },
+            |slot| {
+                slot.rows = rows;
+                Ok(())
+            },
+        )
         .expect("closure succeeds")
 }
 
@@ -253,8 +313,7 @@ fn slot_write_matching_version_swaps_rows_in_place() {
     let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
 
     cache.insert(
-        "conn1",
-        "tab1",
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
         vec![
             stub_result_with_rows("q1", vec![vec![serde_json::json!(2)]]),
             stub_result_with_rows("q-sibling", vec![vec![serde_json::json!("sib")]]),
@@ -265,7 +324,11 @@ fn slot_write_matching_version_swaps_rows_in_place() {
     let new_rows =
         crate::common::shared_rows(vec![vec![serde_json::json!(1)], vec![serde_json::json!(2)]]);
 
-    let outcome = swap_rows(&cache, version, 0, std::sync::Arc::clone(&new_rows));
+    let outcome = swap_rows(
+        &cache,
+        SlotPosition { version, index: 0 },
+        std::sync::Arc::clone(&new_rows),
+    );
     assert_eq!(outcome, SlotWrite::Applied(()), "matching version applies");
 
     let entry = cache.get("conn1", "tab1").into_entry().expect("entry");
@@ -283,8 +346,7 @@ fn slot_write_on_a_stale_version_is_refused_and_keeps_the_new_result() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
     cache.insert(
-        "conn1",
-        "tab1",
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
         vec![stub_result_with_rows(
             "q1",
             vec![vec![serde_json::json!(1)]],
@@ -295,8 +357,7 @@ fn slot_write_on_a_stale_version_is_refused_and_keeps_the_new_result() {
     // A re-run lands between the edit's version read and its write-back.
     cache.remove_with_spill_cleanup("conn1", "tab1");
     cache.insert(
-        "conn1",
-        "tab1",
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
         vec![stub_result_with_rows(
             "q2",
             vec![vec![serde_json::json!(2)]],
@@ -305,12 +366,14 @@ fn slot_write_on_a_stale_version_is_refused_and_keeps_the_new_result() {
 
     let mut called = false;
     let outcome = cache.modify_slot_in_place_if_current(
-        "conn1",
-        "tab1",
-        stale_version,
-        0,
-        None,
-        None,
+        &sqllumen_lib::mysql::result_cache::SlotWriteTarget {
+            connection_id: "conn1",
+            tab_id: "tab1",
+            expected_invalidation_version: stale_version,
+            index: 0,
+            expected_query_id: None,
+            base_view_version: None,
+        },
         |_| {
             called = true;
             Ok(())
@@ -329,8 +392,7 @@ fn slot_write_closure_error_leaves_cache_unchanged() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
     cache.insert(
-        "conn1",
-        "tab1",
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
         vec![stub_result_with_rows(
             "q1",
             vec![vec![serde_json::json!(1)]],
@@ -340,18 +402,18 @@ fn slot_write_closure_error_leaves_cache_unchanged() {
     let before =
         std::sync::Arc::clone(&cache.get("conn1", "tab1").into_entry().unwrap().value[0].rows);
 
-    let outcome = cache.modify_slot_in_place_if_current(
-        "conn1",
-        "tab1",
-        version,
-        0,
-        None,
-        None,
-        |slot| -> Result<(), String> {
-            slot.rows = std::sync::Arc::new(vec![]);
-            Err("closure failed".to_string())
-        },
-    );
+    let target = sqllumen_lib::mysql::result_cache::SlotWriteTarget {
+        connection_id: "conn1",
+        tab_id: "tab1",
+        expected_invalidation_version: version,
+        index: 0,
+        expected_query_id: None,
+        base_view_version: None,
+    };
+    let outcome = cache.modify_slot_in_place_if_current(&target, |slot| -> Result<(), String> {
+        slot.rows = std::sync::Arc::new(vec![]);
+        Err("closure failed".to_string())
+    });
     assert_eq!(outcome, Err("closure failed".to_string()));
 
     let after = cache.get("conn1", "tab1").into_entry().unwrap();
@@ -364,15 +426,29 @@ fn slot_write_missing_entry_or_slot_is_refused() {
     let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
 
     assert_eq!(
-        swap_rows(&cache, 0, 0, std::sync::Arc::new(vec![])),
+        swap_rows(
+            &cache,
+            SlotPosition {
+                version: 0,
+                index: 0
+            },
+            std::sync::Arc::new(vec![])
+        ),
         SlotWrite::Invalidated,
         "missing entry"
     );
 
-    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q1")],
+    );
     let version = cache.current_invalidation_version("conn1", "tab1");
     assert_eq!(
-        swap_rows(&cache, version, 5, std::sync::Arc::new(vec![])),
+        swap_rows(
+            &cache,
+            SlotPosition { version, index: 5 },
+            std::sync::Arc::new(vec![])
+        ),
         SlotWrite::Invalidated,
         "missing slot"
     );
@@ -384,8 +460,7 @@ fn slot_write_concurrent_edits_do_not_lose_updates() {
     let cache = std::sync::Arc::new(ResultCache::new_for_test(1800, tmp.path().to_path_buf()));
     let row_count = 8;
     cache.insert(
-        "conn1",
-        "tab1",
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
         vec![stub_result_with_rows(
             "q1",
             (0..row_count).map(|_| vec![serde_json::json!(0)]).collect(),
@@ -399,12 +474,14 @@ fn slot_write_concurrent_edits_do_not_lose_updates() {
             thread::spawn(move || {
                 cache
                     .modify_slot_in_place_if_current(
-                        "conn1",
-                        "tab1",
-                        version,
-                        0,
-                        None,
-                        None,
+                        &sqllumen_lib::mysql::result_cache::SlotWriteTarget {
+                            connection_id: "conn1",
+                            tab_id: "tab1",
+                            expected_invalidation_version: version,
+                            index: 0,
+                            expected_query_id: None,
+                            base_view_version: None,
+                        },
                         |slot| {
                             let mut next = (*slot.rows).clone();
                             next[row] = vec![serde_json::json!(row + 1)].into();

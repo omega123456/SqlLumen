@@ -107,7 +107,11 @@ describe('buildEditableColumnMap', () => {
     const tableCols = [tableCol('id'), tableCol('name'), tableCol('email')]
     const ambiguous = new Set<string>()
 
-    const map = buildEditableColumnMap(resultCols, tableCols, ambiguous)
+    const map = buildEditableColumnMap({
+      resultColumns: resultCols,
+      tableColumns: tableCols,
+      ambiguousNames: ambiguous,
+    })
     expect(map.get(0)).toBe(true)
     expect(map.get(1)).toBe(true)
     expect(map.get(2)).toBe(true)
@@ -118,7 +122,11 @@ describe('buildEditableColumnMap', () => {
     const tableCols = [tableCol('id')]
     const ambiguous = new Set<string>()
 
-    const map = buildEditableColumnMap(resultCols, tableCols, ambiguous)
+    const map = buildEditableColumnMap({
+      resultColumns: resultCols,
+      tableColumns: tableCols,
+      ambiguousNames: ambiguous,
+    })
     expect(map.get(0)).toBe(true)
     expect(map.get(1)).toBe(false)
   })
@@ -128,7 +136,11 @@ describe('buildEditableColumnMap', () => {
     const tableCols = [tableCol('id'), tableCol('name')]
     const ambiguous = new Set(['id'])
 
-    const map = buildEditableColumnMap(resultCols, tableCols, ambiguous)
+    const map = buildEditableColumnMap({
+      resultColumns: resultCols,
+      tableColumns: tableCols,
+      ambiguousNames: ambiguous,
+    })
     expect(map.get(0)).toBe(false) // ambiguous
     expect(map.get(1)).toBe(true) // not ambiguous, matches
     expect(map.get(2)).toBe(false) // ambiguous
@@ -139,7 +151,11 @@ describe('buildEditableColumnMap', () => {
     const tableCols = [tableCol('id'), tableCol('avatar', { isBinary: true }), tableCol('name')]
     const ambiguous = new Set<string>()
 
-    const map = buildEditableColumnMap(resultCols, tableCols, ambiguous)
+    const map = buildEditableColumnMap({
+      resultColumns: resultCols,
+      tableColumns: tableCols,
+      ambiguousNames: ambiguous,
+    })
     expect(map.get(0)).toBe(true)
     expect(map.get(1)).toBe(false) // binary
     expect(map.get(2)).toBe(true)
@@ -150,7 +166,11 @@ describe('buildEditableColumnMap', () => {
     const tableCols = [tableCol('id'), tableCol('name')]
     const ambiguous = new Set<string>()
 
-    const map = buildEditableColumnMap(resultCols, tableCols, ambiguous)
+    const map = buildEditableColumnMap({
+      resultColumns: resultCols,
+      tableColumns: tableCols,
+      ambiguousNames: ambiguous,
+    })
     expect(map.get(0)).toBe(true)
     expect(map.get(1)).toBe(true)
   })
@@ -160,7 +180,11 @@ describe('buildEditableColumnMap', () => {
     const tableCols = [tableCol('id'), tableCol('name')]
     const ambiguous = new Set<string>()
 
-    const map = buildEditableColumnMap(resultCols, tableCols, ambiguous)
+    const map = buildEditableColumnMap({
+      resultColumns: resultCols,
+      tableColumns: tableCols,
+      ambiguousNames: ambiguous,
+    })
     expect(map.size).toBe(3)
   })
 
@@ -176,14 +200,19 @@ describe('buildEditableColumnMap', () => {
     const ambiguous = new Set(['id'])
     const usersTable = queryTable('users', userTableColumns)
     const ordersTable = queryTable('orders', orderTableColumns)
-    const bindings = buildQueryEditColumnBindings(
-      'SELECT users.*, orders.* FROM users JOIN orders ON users.id = orders.user_id',
-      resultCols,
-      usersTable,
-      [usersTable, ordersTable]
-    )
+    const bindings = buildQueryEditColumnBindings({
+      sql: 'SELECT users.*, orders.* FROM users JOIN orders ON users.id = orders.user_id',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable, ordersTable],
+    })
 
-    const map = buildEditableColumnMap(resultCols, userTableColumns, ambiguous, bindings)
+    const map = buildEditableColumnMap({
+      resultColumns: resultCols,
+      tableColumns: userTableColumns,
+      ambiguousNames: ambiguous,
+      columnBindings: bindings,
+    })
     expect(map.get(0)).toBe(true)
     expect(map.get(1)).toBe(true)
     expect(map.get(2)).toBe(true)
@@ -198,21 +227,33 @@ describe('buildEditableColumnMap', () => {
 describe('validateKeyColumnsPresent', () => {
   it('returns valid when all keys are present', () => {
     const resultCols = [col('id'), col('name')]
-    const result = validateKeyColumnsPresent(['id'], resultCols, new Set())
+    const result = validateKeyColumnsPresent({
+      primaryKeyColumns: ['id'],
+      resultColumns: resultCols,
+      ambiguousNames: new Set(),
+    })
     expect(result.valid).toBe(true)
     expect(result.missingColumns).toEqual([])
   })
 
   it('returns invalid when a key column is missing', () => {
     const resultCols = [col('name'), col('email')]
-    const result = validateKeyColumnsPresent(['id'], resultCols, new Set())
+    const result = validateKeyColumnsPresent({
+      primaryKeyColumns: ['id'],
+      resultColumns: resultCols,
+      ambiguousNames: new Set(),
+    })
     expect(result.valid).toBe(false)
     expect(result.missingColumns).toEqual(['id'])
   })
 
   it('reports multiple missing key columns', () => {
     const resultCols = [col('email')]
-    const result = validateKeyColumnsPresent(['id', 'tenant_id'], resultCols, new Set())
+    const result = validateKeyColumnsPresent({
+      primaryKeyColumns: ['id', 'tenant_id'],
+      resultColumns: resultCols,
+      ambiguousNames: new Set(),
+    })
     expect(result.valid).toBe(false)
     expect(result.missingColumns).toEqual(['id', 'tenant_id'])
   })
@@ -220,32 +261,44 @@ describe('validateKeyColumnsPresent', () => {
   it('returns invalid when a key column is present but ambiguous', () => {
     const resultCols = [col('id'), col('name'), col('id')]
     const ambiguous = new Set(['id'])
-    const result = validateKeyColumnsPresent(['id'], resultCols, ambiguous)
+    const result = validateKeyColumnsPresent({
+      primaryKeyColumns: ['id'],
+      resultColumns: resultCols,
+      ambiguousNames: ambiguous,
+    })
     expect(result.valid).toBe(false)
     expect(result.missingColumns).toEqual(['id'])
   })
 
   it('is case-insensitive for column name matching', () => {
     const resultCols = [col('ID'), col('name')]
-    const result = validateKeyColumnsPresent(['id'], resultCols, new Set())
+    const result = validateKeyColumnsPresent({
+      primaryKeyColumns: ['id'],
+      resultColumns: resultCols,
+      ambiguousNames: new Set(),
+    })
     expect(result.valid).toBe(true)
   })
 
   it('handles compound key where some columns are missing', () => {
     const resultCols = [col('id'), col('name')]
-    const result = validateKeyColumnsPresent(['id', 'tenant_id'], resultCols, new Set())
+    const result = validateKeyColumnsPresent({
+      primaryKeyColumns: ['id', 'tenant_id'],
+      resultColumns: resultCols,
+      ambiguousNames: new Set(),
+    })
     expect(result.valid).toBe(false)
     expect(result.missingColumns).toEqual(['tenant_id'])
   })
 
   it('accepts duplicate joined key columns when an explicit binding resolves them', () => {
     const resultCols = [col('id'), col('name'), col('id')]
-    const result = validateKeyColumnsPresent(
-      ['id'],
-      resultCols,
-      new Set(['id']),
-      new Map([['id', 0]])
-    )
+    const result = validateKeyColumnsPresent({
+      primaryKeyColumns: ['id'],
+      resultColumns: resultCols,
+      ambiguousNames: new Set(['id']),
+      boundColumnIndexMap: new Map([['id', 0]]),
+    })
 
     expect(result.valid).toBe(true)
     expect(result.missingColumns).toEqual([])
@@ -257,12 +310,12 @@ describe('buildQueryEditColumnBindings', () => {
     const resultCols = [col('id'), col('name')]
     const usersTable = queryTable('users', userTableColumns)
 
-    const bindings = buildQueryEditColumnBindings(
-      '/* lead */\n-- second\n# third\nSELECT id, name FROM users',
-      resultCols,
-      usersTable,
-      [usersTable]
-    )
+    const bindings = buildQueryEditColumnBindings({
+      sql: '/* lead */\n-- second\n# third\nSELECT id, name FROM users',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable],
+    })
 
     expect(bindings).toEqual(
       new Map([
@@ -276,7 +329,12 @@ describe('buildQueryEditColumnBindings', () => {
     const resultCols = [col('id'), col('name')]
     const usersTable = queryTable('users', userTableColumns)
 
-    const bindings = buildQueryEditColumnBindings(null, resultCols, usersTable, [usersTable])
+    const bindings = buildQueryEditColumnBindings({
+      sql: null,
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable],
+    })
 
     expect(bindings).toEqual(
       new Map([
@@ -290,9 +348,12 @@ describe('buildQueryEditColumnBindings', () => {
     const resultCols = [col('id')]
     const usersTable = queryTable('users', userTableColumns)
 
-    const bindings = buildQueryEditColumnBindings('SELECT 1 AS id', resultCols, usersTable, [
-      usersTable,
-    ])
+    const bindings = buildQueryEditColumnBindings({
+      sql: 'SELECT 1 AS id',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable],
+    })
 
     expect(bindings).toEqual(new Map())
   })
@@ -302,12 +363,12 @@ describe('buildQueryEditColumnBindings', () => {
     const usersTable = queryTable('users', userTableColumns)
     const ordersTable = queryTable('orders', orderTableColumns)
 
-    const bindings = buildQueryEditColumnBindings(
-      'SELECT orders.id FROM users JOIN orders ON users.id = orders.user_id',
-      resultCols,
-      usersTable,
-      [usersTable, ordersTable]
-    )
+    const bindings = buildQueryEditColumnBindings({
+      sql: 'SELECT orders.id FROM users JOIN orders ON users.id = orders.user_id',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable, ordersTable],
+    })
 
     expect(bindings).toEqual(new Map())
   })
@@ -316,12 +377,12 @@ describe('buildQueryEditColumnBindings', () => {
     const resultCols = [col('id'), col('name')]
     const usersTable = queryTable('users', userTableColumns)
 
-    const bindings = buildQueryEditColumnBindings(
-      'SELECT COUNT(*) AS id, users.name FROM users',
-      resultCols,
-      usersTable,
-      [usersTable]
-    )
+    const bindings = buildQueryEditColumnBindings({
+      sql: 'SELECT COUNT(*) AS id, users.name FROM users',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable],
+    })
 
     expect(bindings).toEqual(new Map([[1, 'name']]))
   })
@@ -330,12 +391,12 @@ describe('buildQueryEditColumnBindings', () => {
     const resultCols = [col('id')]
     const usersTable = queryTable('users', userTableColumns)
 
-    const bindings = buildQueryEditColumnBindings(
-      'SELECT COUNT(*) AS id FROM users',
-      resultCols,
-      usersTable,
-      [usersTable]
-    )
+    const bindings = buildQueryEditColumnBindings({
+      sql: 'SELECT COUNT(*) AS id FROM users',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable],
+    })
 
     expect(bindings).toEqual(new Map())
   })
@@ -344,12 +405,12 @@ describe('buildQueryEditColumnBindings', () => {
     const resultCols = [col('id')]
     const usersTable = queryTable('users', userTableColumns)
 
-    const bindings = buildQueryEditColumnBindings(
-      'SELECT id + 1 id FROM users',
-      resultCols,
-      usersTable,
-      [usersTable]
-    )
+    const bindings = buildQueryEditColumnBindings({
+      sql: 'SELECT id + 1 id FROM users',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable],
+    })
 
     expect(bindings).toEqual(new Map())
   })
@@ -358,12 +419,12 @@ describe('buildQueryEditColumnBindings', () => {
     const resultCols = [col('id'), col('name')]
     const usersTable = queryTable('users', userTableColumns)
 
-    const bindings = buildQueryEditColumnBindings(
-      'SELECT x.* FROM (SELECT COUNT(*) AS id, MAX(name) AS name FROM users) x',
-      resultCols,
-      usersTable,
-      [usersTable]
-    )
+    const bindings = buildQueryEditColumnBindings({
+      sql: 'SELECT x.* FROM (SELECT COUNT(*) AS id, MAX(name) AS name FROM users) x',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable],
+    })
 
     expect(bindings).toEqual(new Map())
   })
@@ -372,9 +433,12 @@ describe('buildQueryEditColumnBindings', () => {
     const resultCols = [col('id')]
     const usersTable = queryTable('users', userTableColumns)
 
-    const bindings = buildQueryEditColumnBindings('/* unfinished comment', resultCols, usersTable, [
-      usersTable,
-    ])
+    const bindings = buildQueryEditColumnBindings({
+      sql: '/* unfinished comment',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable],
+    })
 
     expect(bindings).toEqual(new Map())
   })
@@ -383,9 +447,12 @@ describe('buildQueryEditColumnBindings', () => {
     const resultCols = [col('id')]
     const usersTable = queryTable('users', userTableColumns)
 
-    const bindings = buildQueryEditColumnBindings('-- comment only', resultCols, usersTable, [
-      usersTable,
-    ])
+    const bindings = buildQueryEditColumnBindings({
+      sql: '-- comment only',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable],
+    })
 
     expect(bindings).toEqual(new Map())
   })
@@ -394,9 +461,12 @@ describe('buildQueryEditColumnBindings', () => {
     const resultCols = [col('id')]
     const usersTable = queryTable('users', userTableColumns)
 
-    const bindings = buildQueryEditColumnBindings('# comment only', resultCols, usersTable, [
-      usersTable,
-    ])
+    const bindings = buildQueryEditColumnBindings({
+      sql: '# comment only',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable],
+    })
 
     expect(bindings).toEqual(new Map())
   })
@@ -413,12 +483,12 @@ describe('buildQueryEditColumnBindings', () => {
     const usersTable = queryTable('users', userTableColumns)
     const ordersTable = queryTable('orders', orderTableColumns)
 
-    const bindings = buildQueryEditColumnBindings(
-      'SELECT users.*, orders.* FROM users JOIN orders ON users.id = orders.user_id',
-      resultCols,
-      usersTable,
-      [usersTable, ordersTable]
-    )
+    const bindings = buildQueryEditColumnBindings({
+      sql: 'SELECT users.*, orders.* FROM users JOIN orders ON users.id = orders.user_id',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable, ordersTable],
+    })
 
     expect(bindings).toEqual(
       new Map([
@@ -441,12 +511,12 @@ describe('buildQueryEditColumnBindings', () => {
     const usersTable = queryTable('users', userTableColumns)
     const ordersTable = queryTable('orders', orderTableColumns)
 
-    const bindings = buildQueryEditColumnBindings(
-      'SELECT u.*, o.* FROM users AS u JOIN orders o ON u.id = o.user_id',
-      resultCols,
-      usersTable,
-      [usersTable, ordersTable]
-    )
+    const bindings = buildQueryEditColumnBindings({
+      sql: 'SELECT u.*, o.* FROM users AS u JOIN orders o ON u.id = o.user_id',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable, ordersTable],
+    })
 
     expect(bindings).toEqual(
       new Map([
@@ -462,12 +532,12 @@ describe('buildQueryEditColumnBindings', () => {
     const usersTable = queryTable('users', userTableColumns)
     const ordersTable = queryTable('orders', orderTableColumns)
 
-    const bindings = buildQueryEditColumnBindings(
-      'SELECT users.id AS user_id, users.name, users.email, orders.id AS order_id, orders.total FROM users JOIN orders ON users.id = orders.user_id',
-      resultCols,
-      usersTable,
-      [usersTable, ordersTable]
-    )
+    const bindings = buildQueryEditColumnBindings({
+      sql: 'SELECT users.id AS user_id, users.name, users.email, orders.id AS order_id, orders.total FROM users JOIN orders ON users.id = orders.user_id',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable, ordersTable],
+    })
 
     expect(bindings).toEqual(
       new Map([
@@ -482,12 +552,12 @@ describe('buildQueryEditColumnBindings', () => {
     const resultCols = [col('literal_text'), col('user_id')]
     const usersTable = queryTable('users', userTableColumns)
 
-    const bindings = buildQueryEditColumnBindings(
-      "SELECT /* inline */ 'FROM, literal' AS literal_text, `testdb`.`users`.`id` AS user_id FROM `testdb`.`users`",
-      resultCols,
-      usersTable,
-      [usersTable]
-    )
+    const bindings = buildQueryEditColumnBindings({
+      sql: "SELECT /* inline */ 'FROM, literal' AS literal_text, `testdb`.`users`.`id` AS user_id FROM `testdb`.`users`",
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable],
+    })
 
     expect(bindings).toEqual(new Map([[1, 'id']]))
   })
@@ -496,12 +566,12 @@ describe('buildQueryEditColumnBindings', () => {
     const resultCols = [col('label'), col('user_id')]
     const usersTable = queryTable('users', userTableColumns)
 
-    const bindings = buildQueryEditColumnBindings(
-      `SELECT CONCAT("a, b", 'O\\'Brien', users.name) AS label, users.id AS user_id FROM users`,
-      resultCols,
-      usersTable,
-      [usersTable]
-    )
+    const bindings = buildQueryEditColumnBindings({
+      sql: `SELECT CONCAT("a, b", 'O\\'Brien', users.name) AS label, users.id AS user_id FROM users`,
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable],
+    })
 
     expect(bindings).toEqual(new Map([[1, 'id']]))
   })
@@ -510,12 +580,12 @@ describe('buildQueryEditColumnBindings', () => {
     const resultCols = [col('user_id')]
     const usersTable = queryTable('users', userTableColumns)
 
-    const bindings = buildQueryEditColumnBindings(
-      'SELECT -- comment\n users.id AS user_id FROM users',
-      resultCols,
-      usersTable,
-      [usersTable]
-    )
+    const bindings = buildQueryEditColumnBindings({
+      sql: 'SELECT -- comment\n users.id AS user_id FROM users',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable],
+    })
 
     expect(bindings).toEqual(new Map([[0, 'id']]))
   })
@@ -524,12 +594,12 @@ describe('buildQueryEditColumnBindings', () => {
     const resultCols = [col('user_id')]
     const usersTable = queryTable('users', userTableColumns)
 
-    const bindings = buildQueryEditColumnBindings(
-      'SELECT # comment\n users.id AS user_id FROM users',
-      resultCols,
-      usersTable,
-      [usersTable]
-    )
+    const bindings = buildQueryEditColumnBindings({
+      sql: 'SELECT # comment\n users.id AS user_id FROM users',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable],
+    })
 
     expect(bindings).toEqual(new Map([[0, 'id']]))
   })
@@ -538,12 +608,12 @@ describe('buildQueryEditColumnBindings', () => {
     const resultCols = [col('id'), col('extra')]
     const usersTable = queryTable('users', userTableColumns)
 
-    const bindings = buildQueryEditColumnBindings(
-      'SELECT users.id FROM users',
-      resultCols,
-      usersTable,
-      [usersTable]
-    )
+    const bindings = buildQueryEditColumnBindings({
+      sql: 'SELECT users.id FROM users',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable],
+    })
 
     expect(bindings).toEqual(new Map([[0, 'id']]))
   })
@@ -560,12 +630,12 @@ describe('buildQueryEditColumnBindings', () => {
     const usersTable = queryTable('users', userTableColumns)
     const ordersTable = queryTable('orders', orderTableColumns)
 
-    const bindings = buildQueryEditColumnBindings(
-      'SELECT users.*, orders.* FROM users JOIN orders ON users.id = orders.user_id',
-      resultCols,
-      usersTable,
-      [usersTable, ordersTable]
-    )
+    const bindings = buildQueryEditColumnBindings({
+      sql: 'SELECT users.*, orders.* FROM users JOIN orders ON users.id = orders.user_id',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable, ordersTable],
+    })
 
     expect(bindings).toEqual(new Map())
   })
@@ -574,9 +644,12 @@ describe('buildQueryEditColumnBindings', () => {
     const resultCols = [col('id'), col('name')]
     const usersTable = queryTable('users', userTableColumns)
 
-    const bindings = buildQueryEditColumnBindings('SELECT x.* FROM users', resultCols, usersTable, [
-      usersTable,
-    ])
+    const bindings = buildQueryEditColumnBindings({
+      sql: 'SELECT x.* FROM users',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable],
+    })
 
     expect(bindings).toEqual(new Map())
   })
@@ -585,12 +658,12 @@ describe('buildQueryEditColumnBindings', () => {
     const resultCols = [col('id'), col('name'), col('email')]
     const usersTable = queryTable('users', userTableColumns)
 
-    const bindings = buildQueryEditColumnBindings(
-      'SELECT testdb.users.* FROM testdb.users',
-      resultCols,
-      usersTable,
-      [usersTable]
-    )
+    const bindings = buildQueryEditColumnBindings({
+      sql: 'SELECT testdb.users.* FROM testdb.users',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable],
+    })
 
     expect(bindings).toEqual(
       new Map([
@@ -605,12 +678,12 @@ describe('buildQueryEditColumnBindings', () => {
     const resultCols = [col('user_id')]
     const usersTable = queryTable('users', userTableColumns)
 
-    const bindings = buildQueryEditColumnBindings(
-      'SELECT u.id AS user_id FROM testdb.users AS u',
-      resultCols,
-      usersTable,
-      [usersTable]
-    )
+    const bindings = buildQueryEditColumnBindings({
+      sql: 'SELECT u.id AS user_id FROM testdb.users AS u',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable],
+    })
 
     expect(bindings).toEqual(new Map([[0, 'id']]))
   })
@@ -619,12 +692,12 @@ describe('buildQueryEditColumnBindings', () => {
     const resultCols = [col('id'), col('id_alias')]
     const usersTable = queryTable('users', userTableColumns)
 
-    const bindings = buildQueryEditColumnBindings(
-      'SELECT users.id, users.id AS id_alias FROM users',
-      resultCols,
-      usersTable,
-      [usersTable]
-    )
+    const bindings = buildQueryEditColumnBindings({
+      sql: 'SELECT users.id, users.id AS id_alias FROM users',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable],
+    })
 
     expect(bindings).toEqual(new Map())
   })
@@ -633,12 +706,12 @@ describe('buildQueryEditColumnBindings', () => {
     const resultCols = [col('user_id')]
     const usersTable = queryTable('users', userTableColumns)
 
-    const bindings = buildQueryEditColumnBindings(
-      'SELECT DISTINCT users.id AS user_id FROM users',
-      resultCols,
-      usersTable,
-      [usersTable]
-    )
+    const bindings = buildQueryEditColumnBindings({
+      sql: 'SELECT DISTINCT users.id AS user_id FROM users',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable],
+    })
 
     expect(bindings).toEqual(new Map())
   })
@@ -658,7 +731,12 @@ describe('buildRowEditState', () => {
     ])
     const row = [42, 'Alice', 'alice@test.com']
 
-    const state = buildRowEditState(row, resultCols, editableMap, ['id'])
+    const state = buildRowEditState({
+      row: row,
+      resultColumns: resultCols,
+      editableMap: editableMap,
+      primaryKeyColumnNames: ['id'],
+    })
 
     expect(state.originalValues).toEqual({ id: 42, name: 'Alice' })
     expect(state.currentValues).toEqual({ id: 42, name: 'Alice' })
@@ -674,7 +752,12 @@ describe('buildRowEditState', () => {
     ])
     const row = [99, 'Bob']
 
-    const state = buildRowEditState(row, resultCols, editableMap, ['id'])
+    const state = buildRowEditState({
+      row: row,
+      resultColumns: resultCols,
+      editableMap: editableMap,
+      primaryKeyColumnNames: ['id'],
+    })
     expect(state.rowKey).toEqual({ id: 99 })
   })
 
@@ -687,7 +770,12 @@ describe('buildRowEditState', () => {
     ])
     const row = [1, 42, 'Charlie']
 
-    const state = buildRowEditState(row, resultCols, editableMap, ['tenant_id', 'user_id'])
+    const state = buildRowEditState({
+      row: row,
+      resultColumns: resultCols,
+      editableMap: editableMap,
+      primaryKeyColumnNames: ['tenant_id', 'user_id'],
+    })
     expect(state.rowKey).toEqual({ tenant_id: 1, user_id: 42 })
   })
 
@@ -699,7 +787,12 @@ describe('buildRowEditState', () => {
     ])
     const row = [1, null]
 
-    const state = buildRowEditState(row, resultCols, editableMap, ['id'])
+    const state = buildRowEditState({
+      row: row,
+      resultColumns: resultCols,
+      editableMap: editableMap,
+      primaryKeyColumnNames: ['id'],
+    })
     expect(state.originalValues).toEqual({ id: 1, name: null })
     expect(state.currentValues).toEqual({ id: 1, name: null })
   })
@@ -713,7 +806,12 @@ describe('buildRowEditState', () => {
     ])
     const row = [1, 'calc-value', 'Alice']
 
-    const state = buildRowEditState(row, resultCols, editableMap, ['id'])
+    const state = buildRowEditState({
+      row: row,
+      resultColumns: resultCols,
+      editableMap: editableMap,
+      primaryKeyColumnNames: ['id'],
+    })
     expect(state.originalValues).toEqual({ id: 1, name: 'Alice' })
     expect(state.originalValues).not.toHaveProperty('computed')
   })
@@ -726,7 +824,12 @@ describe('buildRowEditState', () => {
     ])
     const row = [7, 'Eve']
 
-    const state = buildRowEditState(row, resultCols, editableMap, ['id'])
+    const state = buildRowEditState({
+      row: row,
+      resultColumns: resultCols,
+      editableMap: editableMap,
+      primaryKeyColumnNames: ['id'],
+    })
     expect(state.rowKey).toEqual({ id: 7 })
   })
 
@@ -742,12 +845,12 @@ describe('buildRowEditState', () => {
     const row = [1, 'Alice', 'alice@test.com', 101, 1, '99.95']
     const usersTable = queryTable('users', userTableColumns)
     const ordersTable = queryTable('orders', orderTableColumns)
-    const bindings = buildQueryEditColumnBindings(
-      'SELECT users.*, orders.* FROM users JOIN orders ON users.id = orders.user_id',
-      resultCols,
-      usersTable,
-      [usersTable, ordersTable]
-    )
+    const bindings = buildQueryEditColumnBindings({
+      sql: 'SELECT users.*, orders.* FROM users JOIN orders ON users.id = orders.user_id',
+      resultColumns: resultCols,
+      targetTable: usersTable,
+      queryTablesInOrder: [usersTable, ordersTable],
+    })
     const boundIndexMap = buildBoundColumnIndexMap(bindings)
     const editableMap = new Map([
       [0, true],
@@ -758,7 +861,14 @@ describe('buildRowEditState', () => {
       [5, false],
     ])
 
-    const state = buildRowEditState(row, resultCols, editableMap, ['id'], bindings, boundIndexMap)
+    const state = buildRowEditState({
+      row: row,
+      resultColumns: resultCols,
+      editableMap: editableMap,
+      primaryKeyColumnNames: ['id'],
+      columnBindings: bindings,
+      boundColumnIndexMap: boundIndexMap,
+    })
 
     expect(state.rowKey).toEqual({ id: 1 })
     expect(state.originalValues).toEqual({ id: 1, name: 'Alice', email: 'alice@test.com' })

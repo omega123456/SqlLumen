@@ -34,12 +34,14 @@ export function buildHeaderMeta(
   }
 }
 
-export function drawCustomHeader(
-  context: CanvasRenderingContext2D,
-  args: HeaderDrawArgs,
-  meta: GridColumnHeaderMeta,
+export interface CustomHeaderDrawing {
+  context: CanvasRenderingContext2D
+  args: HeaderDrawArgs
+  meta: GridColumnHeaderMeta
   theme: Theme
-): void {
+}
+
+export function drawCustomHeader({ context, args, meta, theme }: CustomHeaderDrawing): void {
   if (meta.isHighlighted) {
     drawHighlightedColumnBackground(context, args.rect, theme.bgSearchResult)
   }

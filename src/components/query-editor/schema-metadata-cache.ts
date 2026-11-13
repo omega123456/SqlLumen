@@ -186,8 +186,9 @@ export async function loadCache(connectionId: string): Promise<void> {
   if (existing?.status === 'ready') return
 
   // If already loading, return the existing promise so callers await the same fetch
-  if (_pendingLoads.has(connectionId)) {
-    return _pendingLoads.get(connectionId)!
+  const pendingLoad = _pendingLoads.get(connectionId)
+  if (pendingLoad) {
+    return pendingLoad
   }
 
   const loadingCache: SchemaCache = {
@@ -363,15 +364,22 @@ export function filterTables(connectionId: string, database: string, prefix: str
   return tables.filter((table) => table.name.toLowerCase().startsWith(lowerPrefix))
 }
 
+export interface ColumnPrefixQuery {
+  connectionId: string
+  database: string
+  table: string
+  prefix: string
+}
+
 /**
  * Filter columns for a given database.table by case-insensitive prefix.
  */
-export function filterColumns(
-  connectionId: string,
-  database: string,
-  table: string,
-  prefix: string
-): ColumnMeta[] {
+export function filterColumns({
+  connectionId,
+  database,
+  table,
+  prefix,
+}: ColumnPrefixQuery): ColumnMeta[] {
   const cache = getReadyCache(connectionId)
   if (!cache) return []
   const key = `${database}.${table}`

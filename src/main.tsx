@@ -82,7 +82,7 @@ import('monaco-editor').then(configureMonaco).catch(logBootstrapFailure)
 async function init() {
   // Install Playwright mocks FIRST (before any invoke calls)
   if (isPlaywrightBuild()) {
-    mockIPC((command, args) => playwrightIpcMockHandler(command, args as Record<string, unknown>))
+    mockIPC(playwrightIpcMockHandler)
 
     // Expose stores for E2E tests to programmatically open tabs / toasts
     const { useWorkspaceStore } = await import('./stores/workspace-store')
@@ -100,24 +100,21 @@ async function init() {
     const { useUpdateStore } = await import('./stores/update-store')
     const { buildExecuteQueryPlanFromSql, runExecuteQueryPlan } =
       await import('./lib/query-execution-plan')
-    ;(window as unknown as Record<string, unknown>).__workspaceStore__ = useWorkspaceStore
-    ;(window as unknown as Record<string, unknown>).__toastStore__ = useToastStore
-    ;(window as unknown as Record<string, unknown>).__connectionStore__ = useConnectionStore
-    ;(window as unknown as Record<string, unknown>).__queryStore__ = useQueryStore
-    ;(window as unknown as Record<string, unknown>).__tableDataStore__ = useTableDataStore
-    ;(window as unknown as Record<string, unknown>).__tableDesignerStore__ = useTableDesignerStore
-    ;(window as unknown as Record<string, unknown>).__objectEditorStore__ = useObjectEditorStore
-    ;(window as unknown as Record<string, unknown>).__importDialogStore__ = useImportDialogStore
-    ;(window as unknown as Record<string, unknown>).__aiStore__ = useAiStore
-    ;(window as unknown as Record<string, unknown>).__schemaIndexStore__ = useSchemaIndexStore
-    ;(window as unknown as Record<string, unknown>).__processListStore__ = useProcessListStore
-    ;(window as unknown as Record<string, unknown>).__settingsStore__ = useSettingsStore
-    ;(window as unknown as Record<string, unknown>).__aiMemoryStore__ = useAiMemoryStore
-    ;(window as unknown as Record<string, unknown>).__updateStore__ = useUpdateStore
-    ;(window as unknown as Record<string, unknown>).__executeActiveQueryPlan__ = (
-      connectionId: string,
-      tabId: string
-    ) => {
+    window.__workspaceStore__ = useWorkspaceStore
+    window.__toastStore__ = useToastStore
+    window.__connectionStore__ = useConnectionStore
+    window.__queryStore__ = useQueryStore
+    window.__tableDataStore__ = useTableDataStore
+    window.__tableDesignerStore__ = useTableDesignerStore
+    window.__objectEditorStore__ = useObjectEditorStore
+    window.__importDialogStore__ = useImportDialogStore
+    window.__aiStore__ = useAiStore
+    window.__schemaIndexStore__ = useSchemaIndexStore
+    window.__processListStore__ = useProcessListStore
+    window.__settingsStore__ = useSettingsStore
+    window.__aiMemoryStore__ = useAiMemoryStore
+    window.__updateStore__ = useUpdateStore
+    window.__executeActiveQueryPlan__ = (connectionId: string, tabId: string) => {
       const queryState = useQueryStore.getState()
       const tab = queryState.tabs[tabId]
       const sqlText = tab?.content ?? ''
@@ -128,7 +125,7 @@ async function init() {
       if (!plan) {
         return
       }
-      runExecuteQueryPlan(queryState, connectionId, tabId, plan)
+      runExecuteQueryPlan(queryState, { connectionId: connectionId, tabId: tabId }, plan)
     }
   }
 
@@ -171,7 +168,13 @@ async function init() {
   // Bootstrap AI memory store (event listeners + model-change subscription)
   initAiMemoryStore()
 
-  ReactDOM.createRoot(document.getElementById('root')!).render(
+  const rootElement = document.getElementById('root')
+  if (!rootElement) {
+    logFrontend('error', '[main] The #root element is missing, so the app cannot render')
+    return
+  }
+
+  ReactDOM.createRoot(rootElement).render(
     <React.StrictMode>
       <App />
     </React.StrictMode>

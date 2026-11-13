@@ -100,11 +100,21 @@ function deferred<T>() {
 }
 
 function initCreateTab(tabId = 'tab-1') {
-  useTableDesignerStore.getState().initTab(tabId, 'create', 'conn-1', 'app_db', '__new_table__')
+  useTableDesignerStore.getState().initTab(tabId, {
+    mode: 'create',
+    connectionId: 'conn-1',
+    databaseName: 'app_db',
+    objectName: '__new_table__',
+  })
 }
 
 function initAlterTab(tabId = 'tab-1') {
-  useTableDesignerStore.getState().initTab(tabId, 'alter', 'conn-1', 'app_db', 'users')
+  useTableDesignerStore.getState().initTab(tabId, {
+    mode: 'alter',
+    connectionId: 'conn-1',
+    databaseName: 'app_db',
+    objectName: 'users',
+  })
 }
 
 function seedAlterTab(tabId = 'tab-1') {
@@ -181,7 +191,12 @@ describe('useTableDesignerStore — initTab', () => {
     initCreateTab()
     useTableDesignerStore.getState().addColumn('tab-1')
 
-    useTableDesignerStore.getState().initTab('tab-1', 'alter', 'conn-2', 'other_db', 'other_table')
+    useTableDesignerStore.getState().initTab('tab-1', {
+      mode: 'alter',
+      connectionId: 'conn-2',
+      databaseName: 'other_db',
+      objectName: 'other_table',
+    })
 
     const tab = useTableDesignerStore.getState().tabs['tab-1']
     expect(tab.connectionId).toBe('conn-1')
@@ -216,13 +231,17 @@ describe('useTableDesignerStore — isDirty', () => {
 
   it('isDirty is true in alter mode after updating a column field', () => {
     seedAlterTab()
-    useTableDesignerStore.getState().updateColumn('tab-1', 1, 'comment', 'changed')
+    useTableDesignerStore
+      .getState()
+      .updateColumn('tab-1', { index: 1, field: 'comment', value: 'changed' })
     expect(useTableDesignerStore.getState().tabs['tab-1'].isDirty).toBe(true)
   })
 
   it('isDirty is false after discardChanges in alter mode', () => {
     seedAlterTab()
-    useTableDesignerStore.getState().updateColumn('tab-1', 1, 'comment', 'changed')
+    useTableDesignerStore
+      .getState()
+      .updateColumn('tab-1', { index: 1, field: 'comment', value: 'changed' })
     useTableDesignerStore.getState().discardChanges('tab-1')
     expect(useTableDesignerStore.getState().tabs['tab-1'].isDirty).toBe(false)
   })
@@ -236,7 +255,9 @@ describe('useTableDesignerStore — isDirty', () => {
 
   it('markClean sets isDirty to false', () => {
     seedAlterTab()
-    useTableDesignerStore.getState().updateColumn('tab-1', 1, 'comment', 'changed')
+    useTableDesignerStore
+      .getState()
+      .updateColumn('tab-1', { index: 1, field: 'comment', value: 'changed' })
     useTableDesignerStore.getState().markClean('tab-1')
     expect(useTableDesignerStore.getState().tabs['tab-1'].isDirty).toBe(false)
   })
@@ -265,14 +286,20 @@ describe('useTableDesignerStore — column operations', () => {
   it('changing a column type applies the type-aware default length and clears unsupported modifiers', () => {
     seedAlterTab()
 
-    useTableDesignerStore.getState().updateColumn('tab-1', 0, 'typeModifier', 'UNSIGNED')
-    useTableDesignerStore.getState().updateColumn('tab-1', 0, 'type', 'TINYINT')
+    useTableDesignerStore
+      .getState()
+      .updateColumn('tab-1', { index: 0, field: 'typeModifier', value: 'UNSIGNED' })
+    useTableDesignerStore
+      .getState()
+      .updateColumn('tab-1', { index: 0, field: 'type', value: 'TINYINT' })
 
     const column = useTableDesignerStore.getState().tabs['tab-1'].currentSchema.columns[0]
     expect(column?.length).toBe('4')
     expect(column?.typeModifier).toBe('UNSIGNED')
 
-    useTableDesignerStore.getState().updateColumn('tab-1', 0, 'type', 'VARCHAR')
+    useTableDesignerStore
+      .getState()
+      .updateColumn('tab-1', { index: 0, field: 'type', value: 'VARCHAR' })
     const varcharColumn = useTableDesignerStore.getState().tabs['tab-1'].currentSchema.columns[0]
     expect(varcharColumn?.length).toBe('255')
     expect(varcharColumn?.typeModifier).toBe('')
@@ -281,15 +308,25 @@ describe('useTableDesignerStore — column operations', () => {
   it('type changes preserve compatible non-signed modifiers', () => {
     seedAlterTab()
 
-    useTableDesignerStore.getState().updateColumn('tab-1', 0, 'typeModifier', 'UNSIGNED ZEROFILL')
-    useTableDesignerStore.getState().updateColumn('tab-1', 0, 'type', 'INT')
+    useTableDesignerStore
+      .getState()
+      .updateColumn('tab-1', { index: 0, field: 'typeModifier', value: 'UNSIGNED ZEROFILL' })
+    useTableDesignerStore
+      .getState()
+      .updateColumn('tab-1', { index: 0, field: 'type', value: 'INT' })
     expect(
       useTableDesignerStore.getState().tabs['tab-1'].currentSchema.columns[0]?.typeModifier
     ).toBe('UNSIGNED ZEROFILL')
 
-    useTableDesignerStore.getState().updateColumn('tab-1', 1, 'type', 'CHAR')
-    useTableDesignerStore.getState().updateColumn('tab-1', 1, 'typeModifier', 'BINARY')
-    useTableDesignerStore.getState().updateColumn('tab-1', 1, 'type', 'CHAR')
+    useTableDesignerStore
+      .getState()
+      .updateColumn('tab-1', { index: 1, field: 'type', value: 'CHAR' })
+    useTableDesignerStore
+      .getState()
+      .updateColumn('tab-1', { index: 1, field: 'typeModifier', value: 'BINARY' })
+    useTableDesignerStore
+      .getState()
+      .updateColumn('tab-1', { index: 1, field: 'type', value: 'CHAR' })
     expect(
       useTableDesignerStore.getState().tabs['tab-1'].currentSchema.columns[1]?.typeModifier
     ).toBe('BINARY')
@@ -298,8 +335,12 @@ describe('useTableDesignerStore — column operations', () => {
   it('length updates are clamped to the selected type maximum', () => {
     seedAlterTab()
 
-    useTableDesignerStore.getState().updateColumn('tab-1', 0, 'type', 'TINYINT')
-    useTableDesignerStore.getState().updateColumn('tab-1', 0, 'length', '255')
+    useTableDesignerStore
+      .getState()
+      .updateColumn('tab-1', { index: 0, field: 'type', value: 'TINYINT' })
+    useTableDesignerStore
+      .getState()
+      .updateColumn('tab-1', { index: 0, field: 'length', value: '255' })
 
     expect(useTableDesignerStore.getState().tabs['tab-1'].currentSchema.columns[0]?.length).toBe(
       '4'
@@ -345,7 +386,9 @@ describe('useTableDesignerStore — column operations', () => {
 
   it('updateColumn with name field updates index columns and FK sourceColumn references', () => {
     seedAlterTab()
-    useTableDesignerStore.getState().updateColumn('tab-1', 2, 'name', 'account_role_id')
+    useTableDesignerStore
+      .getState()
+      .updateColumn('tab-1', { index: 2, field: 'name', value: 'account_role_id' })
 
     const tab = useTableDesignerStore.getState().tabs['tab-1']
     expect(
@@ -356,7 +399,7 @@ describe('useTableDesignerStore — column operations', () => {
 
   it('updateColumn sets validationErrors for empty name', () => {
     seedAlterTab()
-    useTableDesignerStore.getState().updateColumn('tab-1', 1, 'name', '')
+    useTableDesignerStore.getState().updateColumn('tab-1', { index: 1, field: 'name', value: '' })
     expect(useTableDesignerStore.getState().tabs['tab-1'].validationErrors['columns.1.name']).toBe(
       'Column name is required'
     )
@@ -364,7 +407,7 @@ describe('useTableDesignerStore — column operations', () => {
 
   it('updateColumn sets validationErrors for duplicate name', () => {
     seedAlterTab()
-    useTableDesignerStore.getState().updateColumn('tab-1', 1, 'name', 'id')
+    useTableDesignerStore.getState().updateColumn('tab-1', { index: 1, field: 'name', value: 'id' })
     expect(useTableDesignerStore.getState().tabs['tab-1'].validationErrors['columns.1.name']).toBe(
       'Duplicate column name'
     )
@@ -372,8 +415,10 @@ describe('useTableDesignerStore — column operations', () => {
 
   it('updateColumn clears validationErrors when name becomes valid', () => {
     seedAlterTab()
-    useTableDesignerStore.getState().updateColumn('tab-1', 1, 'name', '')
-    useTableDesignerStore.getState().updateColumn('tab-1', 1, 'name', 'email_address')
+    useTableDesignerStore.getState().updateColumn('tab-1', { index: 1, field: 'name', value: '' })
+    useTableDesignerStore
+      .getState()
+      .updateColumn('tab-1', { index: 1, field: 'name', value: 'email_address' })
     expect(
       useTableDesignerStore.getState().tabs['tab-1'].validationErrors['columns.1.name']
     ).toBeUndefined()
@@ -433,7 +478,9 @@ describe('useTableDesignerStore — index operations', () => {
 
   it('updateIndex updates a field on the index', () => {
     seedAlterTab()
-    useTableDesignerStore.getState().updateIndex('tab-1', 1, 'name', 'uniq_email')
+    useTableDesignerStore
+      .getState()
+      .updateIndex('tab-1', { index: 1, field: 'name', value: 'uniq_email' })
     expect(useTableDesignerStore.getState().tabs['tab-1'].currentSchema.indexes[1]?.name).toBe(
       'uniq_email'
     )
@@ -442,7 +489,9 @@ describe('useTableDesignerStore — index operations', () => {
   it('addIndex followed by updateIndex with duplicate name sets validationErrors', () => {
     seedAlterTab()
     useTableDesignerStore.getState().addIndex('tab-1')
-    useTableDesignerStore.getState().updateIndex('tab-1', 3, 'name', 'idx_email')
+    useTableDesignerStore
+      .getState()
+      .updateIndex('tab-1', { index: 3, field: 'name', value: 'idx_email' })
 
     expect(useTableDesignerStore.getState().tabs['tab-1'].validationErrors['indexes.1.name']).toBe(
       'Duplicate index name'
@@ -454,7 +503,7 @@ describe('useTableDesignerStore — index operations', () => {
 
   it('updateIndex with zero columns sets validationErrors', () => {
     seedAlterTab()
-    useTableDesignerStore.getState().updateIndex('tab-1', 1, 'columns', [])
+    useTableDesignerStore.getState().updateIndex('tab-1', { index: 1, field: 'columns', value: [] })
 
     expect(
       useTableDesignerStore.getState().tabs['tab-1'].validationErrors['indexes.1.columns']
@@ -502,7 +551,9 @@ describe('useTableDesignerStore — debounce', () => {
     registerTableDesignerIpc()
 
     for (let i = 0; i < 5; i += 1) {
-      useTableDesignerStore.getState().updateColumn('debounce-tab', 1, 'comment', `comment-${i}`)
+      useTableDesignerStore
+        .getState()
+        .updateColumn('debounce-tab', { index: 1, field: 'comment', value: `comment-${i}` })
     }
 
     expect(getGenerateDdlCalls()).toHaveLength(0)
@@ -601,7 +652,7 @@ describe('useTableDesignerStore — loadSchema', () => {
     initAlterTab('load-tab')
     await useTableDesignerStore.getState().loadSchema('load-tab')
 
-    expect(ipc.calls('load_table_for_designer')).toEqual([
+    expect(ipc.payloads('load_table_for_designer')).toEqual([
       {
         connectionId: 'conn-1',
         database: 'app_db',

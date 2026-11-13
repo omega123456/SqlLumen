@@ -58,7 +58,11 @@ pub fn spawn_health_monitor<R: Runtime>(
     let task_token = token.clone();
 
     tokio::spawn(async move {
-        health_loop(&connection_id, keepalive_secs, &app_handle, &task_token).await;
+        let monitor = HealthMonitor {
+            connection_id: &connection_id,
+            app_handle: &app_handle,
+        };
+        health_loop(&monitor, keepalive_secs, &task_token).await;
     });
 
     token
@@ -74,14 +78,46 @@ pub fn spawn_health_monitor<R: Runtime>(
     CancellationToken::new()
 }
 
-/// The main health check loop. Separated from `spawn_health_monitor` for clarity.
+#[cfg(not(coverage))]
+struct HealthMonitor<'a, R: Runtime> {
+    connection_id: &'a str,
+    app_handle: &'a AppHandle<R>,
+}
+
+#[cfg(not(coverage))]
+impl<R: Runtime> HealthMonitor<'_, R> {
+    fn emit_status(&self, status: &str, message: Option<&str>) {
+        let payload = ConnectionStatusChangedPayload {
+            connection_id: self.connection_id.to_string(),
+            status: status.to_string(),
+            message: message.map(|text| text.to_string()),
+        };
+
+        let _ = self.app_handle.emit("connection-status-changed", payload);
+    }
+
+    fn update_and_emit(&self, status: ConnectionStatus, message: Option<&str>) {
+        let status_str = match &status {
+            ConnectionStatus::Connected => "connected",
+            ConnectionStatus::Disconnected => "disconnected",
+            ConnectionStatus::Reconnecting => "reconnecting",
+        };
+        {
+            let state = self.app_handle.state::<AppState>();
+            state.registry.update_status(self.connection_id, status);
+        }
+        self.emit_status(status_str, message);
+    }
+}
+
 #[cfg(not(coverage))]
 async fn health_loop<R: Runtime>(
-    connection_id: &str,
+    monitor: &HealthMonitor<'_, R>,
     keepalive_secs: u64,
-    app_handle: &AppHandle<R>,
     token: &CancellationToken,
 ) {
+    let connection_id = monitor.connection_id;
+    let app_handle = monitor.app_handle;
     // keepalive_secs is guaranteed > 0 here — the caller skips spawning when it's 0.
     let interval = Duration::from_secs(keepalive_secs);
 
@@ -126,15 +162,10 @@ async fn health_loop<R: Runtime>(
         let ping_error = ping_result.unwrap_err().to_string();
 
         // Set status to Disconnected
-        update_and_emit(
-            app_handle,
-            connection_id,
-            ConnectionStatus::Disconnected,
-            Some(&ping_error),
-        );
+        monitor.update_and_emit(ConnectionStatus::Disconnected, Some(&ping_error));
 
         // Enter reconnection loop
-        let reconnected = reconnect_loop(connection_id, app_handle, token).await;
+        let reconnected = reconnect_loop(monitor, token).await;
 
         if !reconnected {
             // Cancelled during reconnection — exit the health loop
@@ -148,20 +179,12 @@ async fn health_loop<R: Runtime>(
 /// Reconnection loop with exponential backoff: 5 s → 15 s → 30 s (cap).
 /// Returns `true` if reconnection succeeded, `false` if cancelled.
 #[cfg(not(coverage))]
-async fn reconnect_loop(
-    connection_id: &str,
-    app_handle: &AppHandle<impl Runtime>,
+async fn reconnect_loop<R: Runtime>(
+    monitor: &HealthMonitor<'_, R>,
     token: &CancellationToken,
 ) -> bool {
-    reconnect_loop_impl(connection_id, app_handle, token).await
-}
-
-#[cfg(not(coverage))]
-async fn reconnect_loop_impl<R: Runtime>(
-    connection_id: &str,
-    app_handle: &AppHandle<R>,
-    token: &CancellationToken,
-) -> bool {
+    let connection_id = monitor.connection_id;
+    let app_handle = monitor.app_handle;
     let mut attempt: u32 = 0;
 
     loop {
@@ -171,9 +194,7 @@ async fn reconnect_loop_impl<R: Runtime>(
 
         // Set status to Reconnecting
         let delay = backoff_duration(attempt);
-        update_and_emit(
-            app_handle,
-            connection_id,
+        monitor.update_and_emit(
             ConnectionStatus::Reconnecting,
             Some(&format!(
                 "Reconnecting in {}s (attempt {})...",
@@ -213,12 +234,7 @@ async fn reconnect_loop_impl<R: Runtime>(
         ) {
             Ok(password) => password,
             Err(error) => {
-                update_and_emit(
-                    app_handle,
-                    connection_id,
-                    ConnectionStatus::Disconnected,
-                    Some(&error),
-                );
+                monitor.update_and_emit(ConnectionStatus::Disconnected, Some(&error));
                 return false;
             }
         };
@@ -233,14 +249,12 @@ async fn reconnect_loop_impl<R: Runtime>(
                     let state = app_handle.state::<AppState>();
                     state.registry.replace_pool(connection_id, new_pool);
                 }
-                update_and_emit(app_handle, connection_id, ConnectionStatus::Connected, None);
+                monitor.update_and_emit(ConnectionStatus::Connected, None);
                 return true;
             }
             Err(error) => {
                 // Reconnection failed — emit event and continue loop
-                emit_status(
-                    app_handle,
-                    connection_id,
+                monitor.emit_status(
                     "reconnecting",
                     Some(&format!("Reconnection failed: {error}")),
                 );
@@ -278,55 +292,4 @@ pub async fn attempt_reconnect_once_for_test(
         .update_status(connection_id, ConnectionStatus::Connected);
 
     Ok(())
-}
-
-/// Emit a `connection-status-changed` Tauri event.
-#[cfg(not(coverage))]
-fn emit_status<R: Runtime>(
-    app_handle: &AppHandle<R>,
-    connection_id: &str,
-    status: &str,
-    message: Option<&str>,
-) {
-    let payload = ConnectionStatusChangedPayload {
-        connection_id: connection_id.to_string(),
-        status: status.to_string(),
-        message: message.map(|text| text.to_string()),
-    };
-
-    // Fire-and-forget — don't block the health loop on event delivery failures.
-    let _ = app_handle.emit("connection-status-changed", payload);
-}
-
-/// Update the registry status and emit a Tauri event in one step.
-///
-/// Centralizes the recurring pattern of `update_status` + `emit_status` to
-/// avoid the two calls drifting apart or being done in inconsistent order.
-#[cfg(not(coverage))]
-fn update_and_emit(
-    app_handle: &AppHandle<impl Runtime>,
-    connection_id: &str,
-    status: ConnectionStatus,
-    message: Option<&str>,
-) {
-    update_and_emit_impl(app_handle, connection_id, status, message);
-}
-
-#[cfg(not(coverage))]
-fn update_and_emit_impl<R: Runtime>(
-    app_handle: &AppHandle<R>,
-    connection_id: &str,
-    status: ConnectionStatus,
-    message: Option<&str>,
-) {
-    let status_str = match &status {
-        ConnectionStatus::Connected => "connected",
-        ConnectionStatus::Disconnected => "disconnected",
-        ConnectionStatus::Reconnecting => "reconnecting",
-    };
-    {
-        let state = app_handle.state::<AppState>();
-        state.registry.update_status(connection_id, status);
-    }
-    emit_status(app_handle, connection_id, status_str, message);
 }

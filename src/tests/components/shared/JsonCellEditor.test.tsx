@@ -162,12 +162,11 @@ describe('JsonCellEditor', () => {
       expect(props.onRowChange).toHaveBeenCalledWith({ payload: '{\n  "alpha": 2\n}' })
     })
     expect(props.updateCellValue).toHaveBeenCalledWith('tab-1', 'payload', '{\n  "alpha": 2\n}')
-    expect(props.syncCellValue).toHaveBeenCalledWith(
-      'tab-1',
-      { payload: '{"alpha":1}' },
-      'payload',
-      '{\n  "alpha": 2\n}'
-    )
+    expect(props.syncCellValue).toHaveBeenCalledWith('tab-1', {
+      rowData: { payload: '{"alpha":1}' },
+      column: 'payload',
+      value: '{\n  "alpha": 2\n}',
+    })
   })
 
   it('commits the latest draft value after it has already synced during editing', async () => {

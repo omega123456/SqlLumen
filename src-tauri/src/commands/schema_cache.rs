@@ -1,6 +1,7 @@
 use crate::commands::helpers::lock_db;
 use crate::db::schema_cache;
 use crate::state::AppState;
+use serde::Deserialize;
 #[cfg(not(coverage))]
 use tauri::State;
 use tracing::{error, warn};
@@ -17,11 +18,19 @@ pub fn load_schema_cache_snapshot_impl(
     })
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveSchemaCacheSnapshotRequest {
+    pub connection_id: String,
+    pub snapshot_json: String,
+}
+
 pub fn save_schema_cache_snapshot_impl(
     state: &AppState,
-    connection_id: &str,
-    snapshot_json: &str,
+    request: &SaveSchemaCacheSnapshotRequest,
 ) -> Result<(), String> {
+    let connection_id = request.connection_id.as_str();
+    let snapshot_json = request.snapshot_json.as_str();
     let conn = lock_db(state)?;
     schema_cache::save_schema_cache_snapshot(&conn, connection_id, snapshot_json).map_err(|error| {
         let message = error.to_string();
@@ -42,9 +51,8 @@ pub fn load_schema_cache_snapshot(
 #[cfg(not(coverage))]
 #[tauri::command]
 pub fn save_schema_cache_snapshot(
-    connection_id: String,
-    snapshot_json: String,
+    payload: SaveSchemaCacheSnapshotRequest,
     state: State<AppState>,
 ) -> Result<(), String> {
-    save_schema_cache_snapshot_impl(&state, &connection_id, &snapshot_json)
+    save_schema_cache_snapshot_impl(&state, &payload)
 }

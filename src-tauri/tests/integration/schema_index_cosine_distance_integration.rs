@@ -9,9 +9,9 @@ use rusqlite::Connection;
 use sqllumen_lib::init_sqlite_vec;
 use sqllumen_lib::schema_index::search::multi_query_search;
 use sqllumen_lib::schema_index::storage;
-use sqllumen_lib::schema_index::types::{ChunkInsert, ChunkType};
 
 use crate::common;
+use crate::common::schema_index_chunks::{insert_table_chunk, TestTableChunk};
 
 const DIM: usize = 4;
 
@@ -30,30 +30,6 @@ fn unit_vec(axis: usize) -> Vec<f32> {
         v[axis] = 1.0;
     }
     v
-}
-
-fn insert_table_chunk(
-    conn: &Connection,
-    db_name: &str,
-    table_name: &str,
-    embedding: Vec<f32>,
-) -> i64 {
-    let chunk = ChunkInsert {
-        connection_id: "conn-1".to_string(),
-        chunk_key: format!("table:{db_name}.{table_name}"),
-        db_name: db_name.to_string(),
-        table_name: table_name.to_string(),
-        chunk_type: ChunkType::Table,
-        ddl_text: format!("CREATE TABLE {table_name} (id INT PRIMARY KEY)"),
-        ddl_hash: format!("hash_{table_name}"),
-        model_id: "test-model".to_string(),
-        ref_db_name: None,
-        ref_table_name: None,
-        embedding,
-        text_for_embedding: None,
-        row_count_approx: None,
-    };
-    storage::insert_chunk(conn, &chunk).expect("insert table chunk")
 }
 
 // ── Test 1: vec0 table SQL should include distance_metric=cosine ────────
@@ -104,12 +80,32 @@ fn test_orthogonal_vectors_score_zero_with_cosine_distance() {
     let conn = setup_db();
 
     // Insert a chunk with unit vector along axis 0
-    insert_table_chunk(&conn, "testdb", "users", unit_vec(0));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
 
     // Query with orthogonal unit vector along axis 1
     let query = vec![unit_vec(1)];
-    let results =
-        multi_query_search(&conn, "conn-1", &query, 5, 10, 20).expect("search should succeed");
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
+    )
+    .expect("search should succeed");
 
     assert_eq!(results.len(), 1, "should have exactly one result");
 
@@ -153,13 +149,41 @@ fn test_cosine_ranks_by_direction_not_magnitude() {
     // vec_b: same direction as query but small magnitude (not normalized)
     let vec_b = vec![0.1_f32, 0.0, 0.0, 0.0];
 
-    insert_table_chunk(&conn, "testdb", "table_a", vec_a.clone());
-    insert_table_chunk(&conn, "testdb", "table_b", vec_b.clone());
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "table_a",
+            embedding: vec_a.clone(),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "table_b",
+            embedding: vec_b.clone(),
+        },
+    );
 
     // Query along axis 0
     let query = vec![unit_vec(0)];
-    let results =
-        multi_query_search(&conn, "conn-1", &query, 5, 10, 20).expect("search should succeed");
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
+    )
+    .expect("search should succeed");
 
     assert_eq!(results.len(), 2, "should have 2 results");
 

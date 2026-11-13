@@ -130,16 +130,50 @@ pub async fn list_exportable_objects_impl(
     Ok(result)
 }
 
-/// Start a SQL dump export job. Returns the job ID for progress tracking.
-///
-/// The actual dump runs on a background task. The caller polls `get_dump_progress_impl`
-/// to check status.
+pub type DumpJobMap = std::sync::Arc<std::sync::RwLock<HashMap<String, DumpJobProgress>>>;
+
+#[derive(Clone, Copy)]
+pub struct DumpJob<'a> {
+    pub jobs: &'a DumpJobMap,
+    pub job_id: &'a str,
+}
+
+impl DumpJob<'_> {
+    fn is_cancel_requested(&self) -> bool {
+        is_cancel_requested(self.jobs, self.job_id)
+    }
+
+    fn update_progress(&self, update: impl FnOnce(&mut DumpJobProgress)) {
+        let mut jobs = self
+            .jobs
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(progress) = jobs.get_mut(self.job_id) {
+            update(progress);
+        }
+    }
+}
+
+pub struct DumpTarget<'a, W> {
+    pub file: &'a mut W,
+    pub table_name: &'a str,
+    pub columns: &'a [String],
+    pub job: DumpJob<'a>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CancelDumpRequest {
+    pub job_id: String,
+    pub connection_id: String,
+}
+
 pub async fn start_sql_dump_impl(
-    _state: &AppState,
+    state: &AppState,
     input: StartDumpInput,
-    dump_jobs: &std::sync::Arc<std::sync::RwLock<HashMap<String, DumpJobProgress>>>,
     pool: sqlx::MySqlPool,
 ) -> Result<String, String> {
+    let dump_jobs = &state.dump_jobs;
     // Validate all selected object types before creating any job or side effects.
     for (db_name, entries) in &input.tables {
         for entry in entries {
@@ -188,7 +222,11 @@ pub async fn start_sql_dump_impl(
     let dump_jobs_arc = std::sync::Arc::clone(dump_jobs);
 
     tokio::task::spawn_blocking(move || {
-        let result = execute_dump(&pool, &input, &job_id_clone, &dump_jobs_arc);
+        let job = DumpJob {
+            jobs: &dump_jobs_arc,
+            job_id: &job_id_clone,
+        };
+        let result = execute_dump(&pool, &input, job);
 
         let mut jobs = dump_jobs_arc
             .write()
@@ -227,13 +265,13 @@ fn finish_dump_job(progress: &mut DumpJobProgress, result: Result<u64, String>) 
     }
 }
 
-/// Execute the actual SQL dump (blocking). Returns total bytes written.
 fn execute_dump(
     pool: &sqlx::MySqlPool,
     input: &StartDumpInput,
-    job_id: &str,
-    dump_jobs: &std::sync::Arc<std::sync::RwLock<HashMap<String, DumpJobProgress>>>,
+    job: DumpJob<'_>,
 ) -> Result<u64, String> {
+    let dump_jobs = job.jobs;
+    let job_id = job.job_id;
     let rt = tokio::runtime::Handle::try_current()
         .map_err(|error| format!("No tokio runtime: {error}"))?;
 
@@ -313,14 +351,13 @@ fn execute_dump(
                         decode_mysql_text_cell(&row, 1)
                     })?;
 
-                    sql_dump::write_structure(
-                        &mut file,
+                    let structure = sql_dump::DumpStructure {
                         table_name,
-                        &create_sql,
-                        input.options.include_drop,
+                        create_sql: &create_sql,
+                        include_drop: input.options.include_drop,
                         is_view,
-                    )
-                    .map_err(|error| {
+                    };
+                    sql_dump::write_structure(&mut file, &structure).map_err(|error| {
                         format!("Failed to write structure for '{table_name}': {error}")
                     })?;
                 }
@@ -393,20 +430,19 @@ fn execute_dump(
                         let first_row_stream = futures::stream::once(async { Ok(first_row) });
                         let full_stream = Box::pin(first_row_stream.chain(stream));
 
-                        let result = stream_to_dump(
-                            full_stream,
-                            &mut file,
+                        let target = DumpTarget {
+                            file: &mut file,
                             table_name,
-                            &columns,
-                            |row: &sqlx::mysql::MySqlRow| {
+                            columns: &columns,
+                            job,
+                        };
+                        let result =
+                            stream_to_dump(full_stream, target, |row: &sqlx::mysql::MySqlRow| {
                                 (0..row.columns().len())
                                     .map(|column_index| serialize_dump_value(row, column_index))
                                     .collect()
-                            },
-                            dump_jobs,
-                            job_id,
-                        )
-                        .await;
+                            })
+                            .await;
 
                         // Clear thread ID — query is done
                         {
@@ -492,19 +528,13 @@ struct TableInsertWriter<'a> {
     table_name: &'a str,
     escaped_table: String,
     col_list: String,
-    dump_jobs: &'a std::sync::Arc<std::sync::RwLock<HashMap<String, DumpJobProgress>>>,
-    job_id: &'a str,
+    job: DumpJob<'a>,
     header_written: bool,
     total_rows: u64,
 }
 
 impl<'a> TableInsertWriter<'a> {
-    fn new(
-        table_name: &'a str,
-        columns: &[String],
-        dump_jobs: &'a std::sync::Arc<std::sync::RwLock<HashMap<String, DumpJobProgress>>>,
-        job_id: &'a str,
-    ) -> Self {
+    fn new(table_name: &'a str, columns: &[String], job: DumpJob<'a>) -> Self {
         let col_list = columns
             .iter()
             .map(|column| format!("`{}`", sql_dump::escape_identifier(column)))
@@ -514,8 +544,7 @@ impl<'a> TableInsertWriter<'a> {
             table_name,
             escaped_table: sql_dump::escape_identifier(table_name),
             col_list,
-            dump_jobs,
-            job_id,
+            job,
             header_written: false,
             total_rows: 0,
         }
@@ -531,20 +560,21 @@ impl<'a> TableInsertWriter<'a> {
             self.write_header(file)?;
         }
 
-        sql_dump::write_insert_batch(file, &self.escaped_table, &self.col_list, batch)
+        let insert_target = sql_dump::InsertTarget {
+            escaped_table: &self.escaped_table,
+            col_list: &self.col_list,
+        };
+        sql_dump::write_insert_batch(file, &insert_target, batch)
             .map_err(|error| format!("Write error: {error}"))?;
 
         let pos = file
             .stream_position()
             .map_err(|error| format!("Seek error: {error}"))?;
-        let mut jobs = self
-            .dump_jobs
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if let Some(progress) = jobs.get_mut(self.job_id) {
+        let total_rows = self.total_rows;
+        self.job.update_progress(|progress| {
             progress.bytes_written = pos;
-            progress.rows_exported = self.total_rows;
-        }
+            progress.rows_exported = total_rows;
+        });
         Ok(())
     }
 
@@ -576,24 +606,26 @@ impl<'a> TableInsertWriter<'a> {
 /// without constructing `MySqlRow`.
 pub async fn stream_to_dump<R, S, F, W>(
     mut stream: S,
-    file: &mut W,
-    table_name: &str,
-    columns: &[String],
+    target: DumpTarget<'_, W>,
     serialize: F,
-    dump_jobs: &std::sync::Arc<std::sync::RwLock<HashMap<String, DumpJobProgress>>>,
-    job_id: &str,
 ) -> Result<(), String>
 where
     S: futures::TryStream<Ok = R, Error = sqlx::Error> + Unpin,
     F: Fn(&R) -> Vec<SqlDumpValue>,
     W: Write + Seek,
 {
+    let DumpTarget {
+        file,
+        table_name,
+        columns,
+        job,
+    } = target;
     if columns.is_empty() {
         return Ok(());
     }
 
     let mut batch: Vec<Vec<SqlDumpValue>> = Vec::with_capacity(INSERT_BATCH_SIZE);
-    let mut insert_writer = TableInsertWriter::new(table_name, columns, dump_jobs, job_id);
+    let mut insert_writer = TableInsertWriter::new(table_name, columns, job);
 
     let loop_result: Result<(), String> = async {
         loop {
@@ -611,7 +643,7 @@ where
                         insert_writer.flush_batch(file, &batch)?;
                         batch.clear();
 
-                        if is_cancel_requested(dump_jobs, job_id) {
+                        if job.is_cancel_requested() {
                             break;
                         }
                     }
@@ -652,11 +684,9 @@ pub fn get_dump_progress_impl(state: &AppState, job_id: &str) -> Result<DumpJobP
 
 /// Cancel a running dump job. Sets `cancel_requested` and issues `KILL QUERY`
 /// if a MySQL thread is actively fetching data.
-pub async fn cancel_dump_impl(
-    state: &AppState,
-    job_id: &str,
-    connection_id: &str,
-) -> Result<(), String> {
+pub async fn cancel_dump_impl(state: &AppState, request: &CancelDumpRequest) -> Result<(), String> {
+    let job_id = request.job_id.as_str();
+    let connection_id = request.connection_id.as_str();
     let thread_id = {
         let mut jobs = state.dump_jobs.write().map_err(|error| error.to_string())?;
         match jobs.get_mut(job_id) {
@@ -901,7 +931,7 @@ pub async fn start_sql_dump(
         .get_pool(&input.connection_id)
         .ok_or_else(|| format!("Connection '{}' not found", input.connection_id))?;
 
-    start_sql_dump_impl(&state, input, &state.dump_jobs, pool).await
+    start_sql_dump_impl(&state, input, pool).await
 }
 
 #[cfg(not(coverage))]
@@ -917,10 +947,9 @@ pub async fn get_dump_progress(
 #[tauri::command]
 pub async fn cancel_dump(
     state: tauri::State<'_, AppState>,
-    job_id: String,
-    connection_id: String,
+    payload: CancelDumpRequest,
 ) -> Result<(), String> {
-    cancel_dump_impl(&state, &job_id, &connection_id).await
+    cancel_dump_impl(&state, &payload).await
 }
 
 // Coverage stubs
@@ -955,8 +984,7 @@ pub async fn get_dump_progress(
 #[tauri::command]
 pub async fn cancel_dump(
     _state: tauri::State<'_, AppState>,
-    _job_id: String,
-    _connection_id: String,
+    _payload: CancelDumpRequest,
 ) -> Result<(), String> {
     Err("coverage stub".to_string())
 }
@@ -981,9 +1009,9 @@ pub struct StartImportInput {
 pub async fn start_sql_import_impl(
     state: &AppState,
     input: StartImportInput,
-    import_jobs: &std::sync::Arc<std::sync::RwLock<HashMap<String, ImportJobProgress>>>,
     pool: sqlx::MySqlPool,
 ) -> Result<String, String> {
+    let import_jobs = &state.import_jobs;
     let job_id = uuid::Uuid::new_v4().to_string();
 
     // Resolve the profile/connection id for history logging
@@ -1019,15 +1047,15 @@ pub async fn start_sql_import_impl(
     let import_jobs_arc = std::sync::Arc::clone(import_jobs);
 
     tokio::task::spawn_blocking(move || {
-        let result = sql_import::execute_sql_import(
-            &pool,
-            &file_path,
+        let import_job = sql_import::SqlImportJob {
+            file_path: &file_path,
             stop_on_error,
-            &job_id_clone,
-            &import_jobs_arc,
-            &db,
-            &connection_id,
-        );
+            job_id: &job_id_clone,
+            import_jobs: &import_jobs_arc,
+            history_db: &db,
+            connection_id: &connection_id,
+        };
+        let result = sql_import::execute_sql_import(&pool, &import_job);
 
         // If the execution function itself returned an error (e.g. file read failure),
         // mark the job as failed.
@@ -1103,7 +1131,7 @@ pub async fn start_sql_import(
         .get_pool(&input.connection_id)
         .ok_or_else(|| format!("Connection '{}' not found", input.connection_id))?;
 
-    start_sql_import_impl(&state, input, &state.import_jobs, pool).await
+    start_sql_import_impl(&state, input, pool).await
 }
 
 #[cfg(not(coverage))]

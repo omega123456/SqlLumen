@@ -1498,7 +1498,7 @@ describe('useQueryStore — saveCurrentRow', () => {
     expect(result).toBe(true)
     expect(updateTableRowSpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        originalPkValues: { id: 1 },
+        originalPrimaryKeyValues: { id: 1 },
         updatedValues: { id: 5 },
       })
     )
@@ -1587,7 +1587,7 @@ describe('useQueryStore — saveCurrentRow', () => {
     expect(result).toBe(true)
     expect(updateTableRowSpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        originalPkValues: { id: 1 },
+        originalPrimaryKeyValues: { id: 1 },
         updatedValues: { photo: mockBlobEnvelope },
       })
     )
@@ -1648,7 +1648,7 @@ describe('useQueryStore — saveCurrentRow', () => {
     await expect(useQueryStore.getState().saveCurrentRow('tab-1')).resolves.toBe(true)
 
     expect(flat('tab-1').rows[0][1]).toBe('Alice')
-    expect(ipc.calls('log_frontend')).toContainEqual({
+    expect(ipc.payloads('log_frontend')).toContainEqual({
       level: 'info',
       message: expect.stringContaining('saved row not synced into a replaced result'),
     })
@@ -2672,7 +2672,7 @@ describe('useQueryStore — sortResults sort-clear clears edit state', () => {
     expect(before.editMode).toBe('testdb.users')
     expect(before.editState).not.toBeNull()
 
-    await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', null)
+    await useQueryStore.getState().sortResults('tab-1', 'id', null)
     await flushMicrotasks()
 
     const after = flat('tab-1')
@@ -2682,7 +2682,7 @@ describe('useQueryStore — sortResults sort-clear clears edit state', () => {
     expect(after.editingRowIndex).toBeNull()
     expect(after.editingBaseIndex).toBeNull()
     expect(after.resultStatus).toBe('success')
-    expect(ipc.calls('execute_query')).toHaveLength(1)
+    expect(ipc.payloads('execute_query')).toHaveLength(1)
   })
 
   it('does not clear edit state for normal sort (asc/desc)', async () => {
@@ -2728,7 +2728,7 @@ describe('useQueryStore — sortResults sort-clear clears edit state', () => {
     await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
 
     // Normal sort (asc) should not clear edit mode
-    await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', 'asc')
+    await useQueryStore.getState().sortResults('tab-1', 'id', 'asc')
 
     const after = flat('tab-1')
     expect(after.editMode).toBe('testdb.users')

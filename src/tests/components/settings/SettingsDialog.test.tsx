@@ -132,7 +132,7 @@ describe('SettingsDialog', () => {
       expect(useSettingsStore.getState().validationErrors['results.maxRows']).toBeDefined()
     )
     expect(onClose).not.toHaveBeenCalled()
-    expect(ipc.calls('set_setting')).toHaveLength(0)
+    expect(ipc.payloads('set_setting')).toHaveLength(0)
   })
 
   it('Cancel calls onClose when not dirty', async () => {

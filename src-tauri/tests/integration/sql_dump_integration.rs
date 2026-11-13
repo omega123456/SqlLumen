@@ -39,8 +39,16 @@ fn test_write_footer_restores_settings() {
 fn test_write_structure_table_with_drop() {
     let mut buf = Vec::new();
     let create_sql = "CREATE TABLE `users` (\n  `id` int NOT NULL AUTO_INCREMENT,\n  `name` varchar(255) DEFAULT NULL,\n  PRIMARY KEY (`id`)\n) ENGINE=InnoDB";
-    sql_dump::write_structure(&mut buf, "users", create_sql, true, false)
-        .expect("write_structure should succeed");
+    sql_dump::write_structure(
+        &mut buf,
+        &sqllumen_lib::export::sql_dump::DumpStructure {
+            table_name: "users",
+            create_sql,
+            include_drop: true,
+            is_view: false,
+        },
+    )
+    .expect("write_structure should succeed");
     let output = String::from_utf8(buf).unwrap();
 
     assert!(output.contains("Table structure for `users`"));
@@ -53,8 +61,16 @@ fn test_write_structure_table_with_drop() {
 fn test_write_structure_view_with_drop() {
     let mut buf = Vec::new();
     let create_sql = "CREATE VIEW `user_stats` AS SELECT id, name FROM users";
-    sql_dump::write_structure(&mut buf, "user_stats", create_sql, true, true)
-        .expect("write_structure should succeed");
+    sql_dump::write_structure(
+        &mut buf,
+        &sqllumen_lib::export::sql_dump::DumpStructure {
+            table_name: "user_stats",
+            create_sql,
+            include_drop: true,
+            is_view: true,
+        },
+    )
+    .expect("write_structure should succeed");
     let output = String::from_utf8(buf).unwrap();
 
     assert!(output.contains("View for `user_stats`"));
@@ -66,8 +82,16 @@ fn test_write_structure_view_with_drop() {
 fn test_write_structure_without_drop() {
     let mut buf = Vec::new();
     let create_sql = "CREATE TABLE `orders` (\n  `id` int NOT NULL\n)";
-    sql_dump::write_structure(&mut buf, "orders", create_sql, false, false)
-        .expect("write_structure should succeed");
+    sql_dump::write_structure(
+        &mut buf,
+        &sqllumen_lib::export::sql_dump::DumpStructure {
+            table_name: "orders",
+            create_sql,
+            include_drop: false,
+            is_view: false,
+        },
+    )
+    .expect("write_structure should succeed");
     let output = String::from_utf8(buf).unwrap();
 
     assert!(!output.contains("DROP TABLE IF EXISTS"));
@@ -78,8 +102,16 @@ fn test_write_structure_without_drop() {
 fn test_write_structure_strips_trailing_semicolon() {
     let mut buf = Vec::new();
     let create_sql = "CREATE TABLE `t` (`id` int);";
-    sql_dump::write_structure(&mut buf, "t", create_sql, false, false)
-        .expect("write_structure should succeed");
+    sql_dump::write_structure(
+        &mut buf,
+        &sqllumen_lib::export::sql_dump::DumpStructure {
+            table_name: "t",
+            create_sql,
+            include_drop: false,
+            is_view: false,
+        },
+    )
+    .expect("write_structure should succeed");
     let output = String::from_utf8(buf).unwrap();
 
     // Should have exactly one semicolon at the end, not double
@@ -104,8 +136,15 @@ fn test_write_data_inserts_basic() {
         ],
     ];
 
-    let count = sql_dump::write_data_inserts(&mut buf, "users", &columns, &rows)
-        .expect("write_data_inserts should succeed");
+    let count = sql_dump::write_data_inserts(
+        &mut buf,
+        &sqllumen_lib::export::sql_dump::DumpTableRows {
+            table_name: "users",
+            columns: &columns,
+            rows: &rows,
+        },
+    )
+    .expect("write_data_inserts should succeed");
     let output = String::from_utf8(buf).unwrap();
 
     assert_eq!(count, 2);
@@ -127,8 +166,15 @@ fn test_write_data_inserts_multi_row_values() {
         vec![SqlDumpValue::Int(3)],
     ];
 
-    sql_dump::write_data_inserts(&mut buf, "t", &columns, &rows)
-        .expect("write_data_inserts should succeed");
+    sql_dump::write_data_inserts(
+        &mut buf,
+        &sqllumen_lib::export::sql_dump::DumpTableRows {
+            table_name: "t",
+            columns: &columns,
+            rows: &rows,
+        },
+    )
+    .expect("write_data_inserts should succeed");
     let output = String::from_utf8(buf).unwrap();
 
     // Should use multi-row VALUES: VALUES\n(...),\n(...),\n(...);
@@ -141,8 +187,15 @@ fn test_write_data_inserts_empty_rows() {
     let columns = vec!["id".to_string()];
     let rows: Vec<Vec<SqlDumpValue>> = vec![];
 
-    let count = sql_dump::write_data_inserts(&mut buf, "t", &columns, &rows)
-        .expect("write_data_inserts should succeed");
+    let count = sql_dump::write_data_inserts(
+        &mut buf,
+        &sqllumen_lib::export::sql_dump::DumpTableRows {
+            table_name: "t",
+            columns: &columns,
+            rows: &rows,
+        },
+    )
+    .expect("write_data_inserts should succeed");
     let output = String::from_utf8(buf).unwrap();
 
     assert_eq!(count, 0);
@@ -155,8 +208,15 @@ fn test_write_data_inserts_empty_columns() {
     let columns: Vec<String> = vec![];
     let rows = vec![vec![SqlDumpValue::Int(1)]];
 
-    let count = sql_dump::write_data_inserts(&mut buf, "t", &columns, &rows)
-        .expect("write_data_inserts should succeed");
+    let count = sql_dump::write_data_inserts(
+        &mut buf,
+        &sqllumen_lib::export::sql_dump::DumpTableRows {
+            table_name: "t",
+            columns: &columns,
+            rows: &rows,
+        },
+    )
+    .expect("write_data_inserts should succeed");
 
     assert_eq!(count, 0);
 }
@@ -172,8 +232,15 @@ fn test_write_data_inserts_batching() {
         .map(|i| vec![SqlDumpValue::Int(i as i64)])
         .collect();
 
-    let count = sql_dump::write_data_inserts(&mut buf, "t", &columns, &rows)
-        .expect("write_data_inserts should succeed");
+    let count = sql_dump::write_data_inserts(
+        &mut buf,
+        &sqllumen_lib::export::sql_dump::DumpTableRows {
+            table_name: "t",
+            columns: &columns,
+            rows: &rows,
+        },
+    )
+    .expect("write_data_inserts should succeed");
     let output = String::from_utf8(buf).unwrap();
 
     assert_eq!(count, row_count as u64);
@@ -190,7 +257,15 @@ fn test_write_data_inserts_null_values() {
     let columns = vec!["id".to_string(), "name".to_string()];
     let rows = vec![vec![SqlDumpValue::Int(1), SqlDumpValue::Null]];
 
-    sql_dump::write_data_inserts(&mut buf, "t", &columns, &rows).expect("should succeed");
+    sql_dump::write_data_inserts(
+        &mut buf,
+        &sqllumen_lib::export::sql_dump::DumpTableRows {
+            table_name: "t",
+            columns: &columns,
+            rows: &rows,
+        },
+    )
+    .expect("should succeed");
     let output = String::from_utf8(buf).unwrap();
 
     assert!(output.contains("(1, NULL)"));
@@ -205,7 +280,15 @@ fn test_write_data_inserts_boolean_values() {
         vec![SqlDumpValue::Bool(false)],
     ];
 
-    sql_dump::write_data_inserts(&mut buf, "t", &columns, &rows).expect("should succeed");
+    sql_dump::write_data_inserts(
+        &mut buf,
+        &sqllumen_lib::export::sql_dump::DumpTableRows {
+            table_name: "t",
+            columns: &columns,
+            rows: &rows,
+        },
+    )
+    .expect("should succeed");
     let output = String::from_utf8(buf).unwrap();
 
     assert!(output.contains("(1)"));
@@ -221,7 +304,15 @@ fn test_write_data_inserts_string_escaping() {
         vec![SqlDumpValue::QuotedString("C:\\Users\\test".to_string())],
     ];
 
-    sql_dump::write_data_inserts(&mut buf, "t", &columns, &rows).expect("should succeed");
+    sql_dump::write_data_inserts(
+        &mut buf,
+        &sqllumen_lib::export::sql_dump::DumpTableRows {
+            table_name: "t",
+            columns: &columns,
+            rows: &rows,
+        },
+    )
+    .expect("should succeed");
     let output = String::from_utf8(buf).unwrap();
 
     assert!(output.contains("'it''s a test'"));
@@ -234,7 +325,15 @@ fn test_write_data_inserts_backtick_in_names() {
     let columns = vec!["col`name".to_string()];
     let rows = vec![vec![SqlDumpValue::Int(42)]];
 
-    sql_dump::write_data_inserts(&mut buf, "table`name", &columns, &rows).expect("should succeed");
+    sql_dump::write_data_inserts(
+        &mut buf,
+        &sqllumen_lib::export::sql_dump::DumpTableRows {
+            table_name: "table`name",
+            columns: &columns,
+            rows: &rows,
+        },
+    )
+    .expect("should succeed");
     let output = String::from_utf8(buf).unwrap();
 
     assert!(output.contains("`table``name`"));
@@ -537,7 +636,16 @@ fn test_full_dump_output_structure() {
 
     let create_sql =
         "CREATE TABLE `users` (\n  `id` int NOT NULL,\n  `name` varchar(255)\n) ENGINE=InnoDB";
-    sql_dump::write_structure(&mut buf, "users", create_sql, true, false).unwrap();
+    sql_dump::write_structure(
+        &mut buf,
+        &sqllumen_lib::export::sql_dump::DumpStructure {
+            table_name: "users",
+            create_sql,
+            include_drop: true,
+            is_view: false,
+        },
+    )
+    .unwrap();
 
     let columns = vec!["id".to_string(), "name".to_string()];
     let rows = vec![
@@ -550,7 +658,15 @@ fn test_full_dump_output_structure() {
             SqlDumpValue::QuotedString("Bob".to_string()),
         ],
     ];
-    sql_dump::write_data_inserts(&mut buf, "users", &columns, &rows).unwrap();
+    sql_dump::write_data_inserts(
+        &mut buf,
+        &sqllumen_lib::export::sql_dump::DumpTableRows {
+            table_name: "users",
+            columns: &columns,
+            rows: &rows,
+        },
+    )
+    .unwrap();
 
     sql_dump::write_transaction_end(&mut buf).unwrap();
     sql_dump::write_footer(&mut buf).unwrap();
@@ -586,7 +702,15 @@ fn test_sql_dump_value_uint() {
     let columns = vec!["id".to_string()];
     let rows = vec![vec![SqlDumpValue::UInt(18446744073709551615)]];
 
-    sql_dump::write_data_inserts(&mut buf, "t", &columns, &rows).unwrap();
+    sql_dump::write_data_inserts(
+        &mut buf,
+        &sqllumen_lib::export::sql_dump::DumpTableRows {
+            table_name: "t",
+            columns: &columns,
+            rows: &rows,
+        },
+    )
+    .unwrap();
     let output = String::from_utf8(buf).unwrap();
 
     assert!(output.contains("(18446744073709551615)"));
@@ -598,7 +722,15 @@ fn test_sql_dump_value_float() {
     let columns = vec!["price".to_string()];
     let rows = vec![vec![SqlDumpValue::Float(1.25)]];
 
-    sql_dump::write_data_inserts(&mut buf, "t", &columns, &rows).unwrap();
+    sql_dump::write_data_inserts(
+        &mut buf,
+        &sqllumen_lib::export::sql_dump::DumpTableRows {
+            table_name: "t",
+            columns: &columns,
+            rows: &rows,
+        },
+    )
+    .unwrap();
     let output = String::from_utf8(buf).unwrap();
 
     assert!(output.contains("(1.25)"));
@@ -610,7 +742,15 @@ fn test_sql_dump_value_float_nan_becomes_null() {
     let columns = vec!["val".to_string()];
     let rows = vec![vec![SqlDumpValue::Float(f64::NAN)]];
 
-    sql_dump::write_data_inserts(&mut buf, "t", &columns, &rows).unwrap();
+    sql_dump::write_data_inserts(
+        &mut buf,
+        &sqllumen_lib::export::sql_dump::DumpTableRows {
+            table_name: "t",
+            columns: &columns,
+            rows: &rows,
+        },
+    )
+    .unwrap();
     let output = String::from_utf8(buf).unwrap();
 
     assert!(output.contains("(NULL)"));
@@ -625,7 +765,15 @@ fn test_sql_dump_value_decimal_preserves_exact_string() {
         vec![SqlDumpValue::Decimal("99999999999999999.99".to_string())],
     ];
 
-    sql_dump::write_data_inserts(&mut buf, "t", &columns, &rows).unwrap();
+    sql_dump::write_data_inserts(
+        &mut buf,
+        &sqllumen_lib::export::sql_dump::DumpTableRows {
+            table_name: "t",
+            columns: &columns,
+            rows: &rows,
+        },
+    )
+    .unwrap();
     let output = String::from_utf8(buf).unwrap();
 
     // Decimals are emitted unquoted, preserving the exact string
@@ -642,7 +790,15 @@ fn test_sql_dump_value_hex_bytes() {
         vec![SqlDumpValue::HexBytes(vec![])],
     ];
 
-    sql_dump::write_data_inserts(&mut buf, "t", &columns, &rows).unwrap();
+    sql_dump::write_data_inserts(
+        &mut buf,
+        &sqllumen_lib::export::sql_dump::DumpTableRows {
+            table_name: "t",
+            columns: &columns,
+            rows: &rows,
+        },
+    )
+    .unwrap();
     let output = String::from_utf8(buf).unwrap();
 
     assert!(output.contains("(0xDEADBEEF)"));
@@ -664,7 +820,15 @@ fn test_sql_dump_value_quoted_string_with_special_chars() {
         )],
     ];
 
-    sql_dump::write_data_inserts(&mut buf, "t", &columns, &rows).unwrap();
+    sql_dump::write_data_inserts(
+        &mut buf,
+        &sqllumen_lib::export::sql_dump::DumpTableRows {
+            table_name: "t",
+            columns: &columns,
+            rows: &rows,
+        },
+    )
+    .unwrap();
     let output = String::from_utf8(buf).unwrap();
 
     assert!(output.contains("('00123')"));
@@ -692,7 +856,15 @@ fn test_sql_dump_value_mixed_types_in_row() {
         SqlDumpValue::Null,
     ]];
 
-    sql_dump::write_data_inserts(&mut buf, "t", &columns, &rows).unwrap();
+    sql_dump::write_data_inserts(
+        &mut buf,
+        &sqllumen_lib::export::sql_dump::DumpTableRows {
+            table_name: "t",
+            columns: &columns,
+            rows: &rows,
+        },
+    )
+    .unwrap();
     let output = String::from_utf8(buf).unwrap();
 
     assert!(output.contains("(42, 'Alice', 1234.56, 0xFF00, 1, NULL)"));
@@ -920,7 +1092,15 @@ fn test_sql_dump_value_float_infinity_becomes_null() {
         vec![SqlDumpValue::Float(f64::NEG_INFINITY)],
     ];
 
-    sql_dump::write_data_inserts(&mut buf, "t", &columns, &rows).unwrap();
+    sql_dump::write_data_inserts(
+        &mut buf,
+        &sqllumen_lib::export::sql_dump::DumpTableRows {
+            table_name: "t",
+            columns: &columns,
+            rows: &rows,
+        },
+    )
+    .unwrap();
     let output = String::from_utf8(buf).unwrap();
 
     // Both infinity values should become NULL

@@ -196,8 +196,7 @@ pub struct MockStreamStep {
     pub query: &'static str,
     pub leading_ok_affected: Vec<u64>,
     pub columns: Vec<MockColumnDef>,
-    pub row_count: usize,
-    pub make_row: fn(usize) -> Vec<MockCell>,
+    pub rows: MockStreamRows,
     /// `(rows per tick, pause)`; `None` streams without pauses.
     pub throttle: Option<(usize, Duration)>,
     /// Error sent instead of the end-of-rows packet after every row was written.
@@ -205,20 +204,20 @@ pub struct MockStreamStep {
     pub stops_on_kill: bool,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct MockStreamRows {
+    pub count: usize,
+    pub make_row: fn(usize) -> Vec<MockCell>,
+}
+
 impl MockStreamStep {
-    /// A plain stream of `row_count` rows with no pauses, error or kill hook.
-    pub fn new(
-        query: &'static str,
-        columns: Vec<MockColumnDef>,
-        row_count: usize,
-        make_row: fn(usize) -> Vec<MockCell>,
-    ) -> Self {
+    /// A plain stream of `rows.count` rows with no pauses, error or kill hook.
+    pub fn new(query: &'static str, columns: Vec<MockColumnDef>, rows: MockStreamRows) -> Self {
         Self {
             query,
             leading_ok_affected: Vec::new(),
             columns,
-            row_count,
-            make_row,
+            rows,
             throttle: None,
             end_error: None,
             stops_on_kill: false,
@@ -310,11 +309,11 @@ impl MockMySqlBackend {
     }
 
     async fn write_stream_step<'a>(
-        step: &'a MockStreamStep,
-        columns: &'a [Column],
+        prepared: &'a (MockStreamStep, Vec<Column>),
         kill: &MockKillState,
         mut results: QueryResultWriter<'a, BufWriter<OwnedWriteHalf>>,
     ) -> io::Result<()> {
+        let (step, columns) = prepared;
         for &affected_rows in &step.leading_ok_affected {
             results = results
                 .complete_one(OkResponse {
@@ -329,13 +328,13 @@ impl MockMySqlBackend {
             kill.pending.store(false, Ordering::SeqCst);
         }
         let mut writer = results.start(columns).await?;
-        for index in 0..step.row_count {
+        for index in 0..step.rows.count {
             if step.stops_on_kill && kill.pending.swap(false, Ordering::SeqCst) {
                 return writer
                     .finish_error(ErrorKind::ER_QUERY_INTERRUPTED, &QUERY_INTERRUPTED_MESSAGE)
                     .await;
             }
-            Self::write_rows(&mut writer, &[(step.make_row)(index)]).await?;
+            Self::write_rows(&mut writer, &[(step.rows.make_row)(index)]).await?;
             if let Some((rows_per_tick, pause)) = step.throttle {
                 if (index + 1) % rows_per_tick.max(1) == 0 {
                     tokio::time::sleep(pause).await;
@@ -622,8 +621,8 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
             return Self::write_multi_result_step(step, columns, results).await;
         }
 
-        if let Some((step, columns)) = self.find_stream_step(query) {
-            return Self::write_stream_step(step, columns, &self.kill, results).await;
+        if let Some(prepared) = self.find_stream_step(query) {
+            return Self::write_stream_step(prepared, &self.kill, results).await;
         }
 
         if let Some(step) = self.find_step(query) {

@@ -84,9 +84,12 @@ where
     }
 }
 
-pub fn init_sqlite_layer(
-    log_db_path: &Path,
-) -> Result<(SqliteLogLayer, SqliteLogWriterGuard), String> {
+pub struct SqliteLogging {
+    pub layer: SqliteLogLayer,
+    pub guard: SqliteLogWriterGuard,
+}
+
+pub fn init_sqlite_layer(log_db_path: &Path) -> Result<SqliteLogging, String> {
     let mut write_conn =
         open_log_database(log_db_path).map_err(|error| format!("open log database: {error}"))?;
     prune_logs(&write_conn, Utc::now()).map_err(|error| format!("prune log database: {error}"))?;
@@ -97,12 +100,12 @@ pub fn init_sqlite_layer(
         .spawn(move || run_writer_loop(&mut write_conn, receiver))
         .map_err(|error| format!("spawn log writer thread: {error}"))?;
 
-    Ok((
-        SqliteLogLayer::new(sender),
-        SqliteLogWriterGuard {
+    Ok(SqliteLogging {
+        layer: SqliteLogLayer::new(sender),
+        guard: SqliteLogWriterGuard {
             join_handle: Some(join_handle),
         },
-    ))
+    })
 }
 
 fn run_writer_loop(write_conn: &mut rusqlite::Connection, receiver: Receiver<NewLogEntry>) {

@@ -254,7 +254,7 @@ export function DateTimePicker({
   }, [anchorEl, onCancel])
 
   // --- Click outside (delegated to shared hook) ---
-  useDismissOnOutsideClick(internalPopupRef, !disabled, onCancel)
+  useDismissOnOutsideClick({ ref: internalPopupRef, active: !disabled, onDismiss: onCancel })
 
   useEffect(() => {
     if (!workspaceTabId) {

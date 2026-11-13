@@ -30,23 +30,25 @@ describe('listHistory', () => {
 
     ipc.override('list_history', () => mockResponse)
 
-    const result = await listHistory('conn-1', 1, 50)
-    expect(ipc.calls('list_history')).toEqual([{ connectionId: 'conn-1', page: 1, pageSize: 50 }])
+    const result = await listHistory({ connectionId: 'conn-1', page: 1, pageSize: 50 })
+    expect(ipc.payloads('list_history')).toEqual([
+      { connectionId: 'conn-1', page: 1, pageSize: 50 },
+    ])
     expect(result).toEqual(mockResponse)
   })
 
   it('passes search parameter when provided', async () => {
     ipc.override('list_history', () => ({ entries: [], total: 0, page: 1, pageSize: 50 }))
 
-    await listHistory('conn-1', 1, 50, 'SELECT')
-    expect((ipc.calls('list_history')[0] as Record<string, unknown>).search).toBe('SELECT')
+    await listHistory({ connectionId: 'conn-1', page: 1, pageSize: 50, search: 'SELECT' })
+    expect((ipc.payloads('list_history')[0] as Record<string, unknown>).search).toBe('SELECT')
   })
 
   it('omits search parameter when null', async () => {
     ipc.override('list_history', () => ({ entries: [], total: 0, page: 1, pageSize: 50 }))
 
-    await listHistory('conn-1', 1, 50, null)
-    const args = ipc.calls('list_history')[0] as Record<string, unknown>
+    await listHistory({ connectionId: 'conn-1', page: 1, pageSize: 50, search: null })
+    const args = ipc.payloads('list_history')[0] as Record<string, unknown>
     expect('search' in args).toBe(false)
   })
 })

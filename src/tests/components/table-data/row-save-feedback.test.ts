@@ -98,7 +98,7 @@ describe('saveCurrentRowWithFeedback', () => {
     )
 
     expect(validationError?.columnName).toBe('created_at')
-    expect(ipc.calls('update_table_row')).toHaveLength(0)
+    expect(ipc.payloads('update_table_row')).toHaveLength(0)
   })
 
   it('saves the row and shows a success toast', async () => {
@@ -111,7 +111,7 @@ describe('saveCurrentRowWithFeedback', () => {
     )
 
     expect(validationError).toBeNull()
-    expect(ipc.calls('update_table_row')).toHaveLength(1)
+    expect(ipc.payloads('update_table_row')).toHaveLength(1)
     expectToast('success', 'Row saved')
   })
 

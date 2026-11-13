@@ -17,12 +17,19 @@ function resolveEditorType(
   return 'text'
 }
 
-export function buildColumnDescriptors(
-  columns: TableDataColumnMeta[],
-  isReadOnly: boolean,
-  hasPrimaryKey: boolean,
-  foreignKeys: ForeignKeyColumnInfo[] = []
-): GridColumnDescriptor[] {
+export interface ColumnDescriptorInputs {
+  columns: TableDataColumnMeta[]
+  isReadOnly: boolean
+  hasPrimaryKey: boolean
+  foreignKeys?: ForeignKeyColumnInfo[]
+}
+
+export function buildColumnDescriptors({
+  columns,
+  isReadOnly,
+  hasPrimaryKey,
+  foreignKeys = [],
+}: ColumnDescriptorInputs): GridColumnDescriptor[] {
   return columns.map((column) => {
     const foreignKey = foreignKeys.find((candidate) => candidate.columnName === column.name)
     const editorType = resolveEditorType(column, foreignKey)

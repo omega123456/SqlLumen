@@ -1,18 +1,16 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand } from './ipc/dispatch'
 
 export type FrontendLogLevel = 'error' | 'warn' | 'info' | 'debug' | 'trace'
 
 const LOG_DELIVERY_FAILURE_PREFIX = '[app-log]'
 const BOOTSTRAP_FAILURE_PREFIX = '[bootstrap]'
 
-/**
- * Emit a line to the application logger (Rust tracing). Fire-and-forget.
- * Use for operational / user-visible failures — not console alone.
- */
 export function logFrontend(level: FrontendLogLevel, message: string): void {
-  invoke('log_frontend', { level, message }).catch((error: unknown) => {
-    console.error(LOG_DELIVERY_FAILURE_PREFIX, error)
-  })
+  invokeCommand({ command: 'log_frontend', payload: { level, message } }).catch(
+    (error: unknown) => {
+      console.error(LOG_DELIVERY_FAILURE_PREFIX, error)
+    }
+  )
 }
 
 function describeFailure(message: string, error: unknown): string {

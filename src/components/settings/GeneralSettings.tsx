@@ -5,7 +5,7 @@ import { SettingsToggle } from './SettingsToggle'
 import { useSettingsStore, useSettingValue } from '../../stores/settings-store'
 import { useThemeStore } from '../../stores/theme-store'
 import { useZoomStore, ZOOM_LEVELS, DEFAULT_ZOOM_LEVEL } from '../../stores/zoom-store'
-import type { Theme } from '../../stores/theme-store'
+import { isTheme } from '../../lib/tauri-commands'
 
 const THEME_OPTIONS = [
   { value: 'system', label: 'System' },
@@ -46,7 +46,7 @@ export function GeneralSettings() {
 
   const handleThemeChange = (value: string) => {
     setPendingChange('theme', value)
-    previewTheme(value as Theme)
+    if (isTheme(value)) previewTheme(value)
   }
 
   const handleZoomChange = (value: string) => {

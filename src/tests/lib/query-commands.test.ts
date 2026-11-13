@@ -18,6 +18,8 @@ import {
   touchResults,
 } from '../../lib/query-commands'
 
+const QUERY_TAB = { connectionId: 'conn-1', tabId: 'tab-1' }
+
 const mockExecuteQueryFn = vi.fn(() => ({
   queryId: 'q1',
   columns: [{ name: 'id', dataType: 'INT' }],
@@ -144,7 +146,7 @@ beforeEach(() => {
 
 describe('query-commands', () => {
   it('executeQuery invokes execute_query command', async () => {
-    const result = await executeQuery('conn-1', 'tab-1', 'SELECT 1')
+    const result = await executeQuery({ ...QUERY_TAB, sql: 'SELECT 1', rowLimit: 1000 })
     expect(result.queryId).toBe('q1')
     expect(result.columns).toHaveLength(1)
     expect(result.firstWindow.rows).toEqual([[1]])
@@ -153,12 +155,12 @@ describe('query-commands', () => {
   })
 
   it('executeQuery omits viewSpec by default and sends it when given', async () => {
-    await executeQuery('conn-1', 'tab-1', 'SELECT 1')
-    expect('viewSpec' in (ipc.calls('execute_query')[0] as Record<string, unknown>)).toBe(false)
+    await executeQuery({ ...QUERY_TAB, sql: 'SELECT 1', rowLimit: 1000 })
+    expect('viewSpec' in (ipc.payloads('execute_query')[0] as Record<string, unknown>)).toBe(false)
 
     const spec = { sort: { column: 'id', direction: 'desc' as const }, filters: [] }
-    await executeQuery('conn-1', 'tab-1', 'SELECT 1', 500, spec)
-    expect(ipc.calls('execute_query')[1]).toMatchObject({ rowLimit: 500, viewSpec: spec })
+    await executeQuery({ ...QUERY_TAB, sql: 'SELECT 1', rowLimit: 500, viewSpec: spec })
+    expect(ipc.payloads('execute_query')[1]).toMatchObject({ rowLimit: 500, viewSpec: spec })
   })
 
   it('evictResults invokes evict_results command', async () => {
@@ -193,13 +195,19 @@ describe('query-commands', () => {
     }
     ipc.override('set_result_view', () => response)
     const spec = { sort: { column: 'id', direction: 'desc' as const }, filters: [] }
-    await expect(setResultView(slot, 3, spec)).resolves.toEqual(response)
-    expect(ipc.calls('set_result_view')[0]).toEqual({ ...slot, baseViewVersion: 3, viewSpec: spec })
+    await expect(setResultView({ ...slot, baseViewVersion: 3, viewSpec: spec })).resolves.toEqual(
+      response
+    )
+    expect(ipc.payloads('set_result_view')[0]).toEqual({
+      ...slot,
+      baseViewVersion: 3,
+      viewSpec: spec,
+    })
   })
 
   it('fetchResultWindow sends the slot, view version, offset and limit', async () => {
-    await fetchResultWindow(slot, 2, 500, 500)
-    expect(ipc.calls('fetch_result_window')[0]).toEqual({
+    await fetchResultWindow({ ...slot, viewVersion: 2, offset: 500, limit: 500 })
+    expect(ipc.payloads('fetch_result_window')[0]).toEqual({
       ...slot,
       viewVersion: 2,
       offset: 500,
@@ -208,8 +216,8 @@ describe('query-commands', () => {
   })
 
   it('removeResultRows sends the base view version and base indices', async () => {
-    await removeResultRows(slot, 5, [1, 2])
-    expect(ipc.calls('remove_result_rows')[0]).toEqual({
+    await removeResultRows({ ...slot, baseViewVersion: 5, baseIndices: [1, 2] })
+    expect(ipc.payloads('remove_result_rows')[0]).toEqual({
       ...slot,
       baseViewVersion: 5,
       baseIndices: [1, 2],
@@ -231,21 +239,30 @@ describe('query-commands', () => {
   })
 
   it('updateResultCell invokes update_result_cell command', async () => {
-    await updateResultCell('conn-1', 'tab-1', 0, { 1: 'updated value' }, 'q-1')
+    await updateResultCell({
+      ...QUERY_TAB,
+      rowIndex: 0,
+      updates: { 1: 'updated value' },
+      queryId: 'q-1',
+    })
     expect(mockUpdateResultCellFn).toHaveBeenCalled()
-    expect(ipc.calls('update_result_cell')[0]).toMatchObject({ rowIndex: 0, queryId: 'q-1' })
+    expect(ipc.payloads('update_result_cell')[0]).toMatchObject({ rowIndex: 0, queryId: 'q-1' })
   })
 
   // --- New multi-query wrappers ---
 
   it('executeMultiQuery invokes execute_multi_query command', async () => {
-    const result = await executeMultiQuery('conn-1', 'tab-1', ['SELECT 1', 'SELECT 2'], 1000)
+    const result = await executeMultiQuery({
+      ...QUERY_TAB,
+      statements: ['SELECT 1', 'SELECT 2'],
+      rowLimit: 1000,
+    })
     expect(result.results).toHaveLength(1)
     expect(result.results[0].queryId).toBe('mq1')
     expect(result.results[0].sourceSql).toBe('SELECT 1')
     expect(result.results[0].reExecutable).toBe(true)
     expect(mockExecuteMultiQueryFn).toHaveBeenCalled()
-    expect(ipc.calls('execute_multi_query')[0]).toMatchObject({
+    expect(ipc.payloads('execute_multi_query')[0]).toMatchObject({
       connectionId: 'conn-1',
       tabId: 'tab-1',
       statements: ['SELECT 1', 'SELECT 2'],
@@ -254,9 +271,9 @@ describe('query-commands', () => {
   })
 
   it('passes rowLimit to executeQuery IPC', async () => {
-    await executeQuery('conn-1', 'tab-1', 'SELECT 1', 250)
+    await executeQuery({ ...QUERY_TAB, sql: 'SELECT 1', rowLimit: 250 })
     expect(mockExecuteQueryFn).toHaveBeenCalled()
-    expect(ipc.calls('execute_query')[0]).toMatchObject({
+    expect(ipc.payloads('execute_query')[0]).toMatchObject({
       connectionId: 'conn-1',
       tabId: 'tab-1',
       sql: 'SELECT 1',
@@ -265,13 +282,13 @@ describe('query-commands', () => {
   })
 
   it('executeCallQuery invokes execute_call_query command', async () => {
-    const result = await executeCallQuery('conn-1', 'tab-1', 'CALL sp_test()', 1000)
+    const result = await executeCallQuery({ ...QUERY_TAB, sql: 'CALL sp_test()', rowLimit: 1000 })
     expect(result.results).toHaveLength(1)
     expect(result.results[0].queryId).toBe('cq1')
     expect(result.results[0].sourceSql).toBe('CALL sp_test()')
     expect(result.results[0].reExecutable).toBe(false)
     expect(mockExecuteCallQueryFn).toHaveBeenCalled()
-    expect(ipc.calls('execute_call_query')[0]).toMatchObject({
+    expect(ipc.payloads('execute_call_query')[0]).toMatchObject({
       connectionId: 'conn-1',
       tabId: 'tab-1',
       sql: 'CALL sp_test()',
@@ -280,12 +297,17 @@ describe('query-commands', () => {
   })
 
   it('reexecuteSingleResult invokes reexecute_single_result command', async () => {
-    const result = await reexecuteSingleResult('conn-1', 'tab-1', 0, 'SELECT 1', 1000)
+    const result = await reexecuteSingleResult({
+      ...QUERY_TAB,
+      resultIndex: 0,
+      sql: 'SELECT 1',
+      rowLimit: 1000,
+    })
     expect(result.queryId).toBe('rq1')
     expect(result.sourceSql).toBe('SELECT 1')
     expect(result.reExecutable).toBe(true)
     expect(mockReexecuteSingleResultFn).toHaveBeenCalled()
-    expect(ipc.calls('reexecute_single_result')[0]).toMatchObject({
+    expect(ipc.payloads('reexecute_single_result')[0]).toMatchObject({
       connectionId: 'conn-1',
       tabId: 'tab-1',
       resultIndex: 0,
@@ -304,18 +326,30 @@ describe('query-commands', () => {
 
   it('reexecuteSingleResult sends a view spec when given', async () => {
     const spec = { sort: null, filters: [{ column: 'id', operator: '==' as const, value: '1' }] }
-    await reexecuteSingleResult('conn-1', 'tab-1', 0, 'SELECT 1', 1000, spec)
-    expect(ipc.calls('reexecute_single_result')[0]).toMatchObject({ viewSpec: spec })
+    await reexecuteSingleResult({
+      ...QUERY_TAB,
+      resultIndex: 0,
+      sql: 'SELECT 1',
+      rowLimit: 1000,
+      viewSpec: spec,
+    })
+    expect(ipc.payloads('reexecute_single_result')[0]).toMatchObject({ viewSpec: spec })
   })
 
   it('updateResultCell does not include resultIndex when omitted', async () => {
-    await updateResultCell('conn-1', 'tab-1', 0, { 1: 'val' }, 'q-1')
-    const args = ipc.calls('update_result_cell')[0] as Record<string, unknown>
+    await updateResultCell({ ...QUERY_TAB, rowIndex: 0, updates: { 1: 'val' }, queryId: 'q-1' })
+    const args = ipc.payloads('update_result_cell')[0] as Record<string, unknown>
     expect('resultIndex' in args).toBe(false)
   })
 
   it('updateResultCell includes resultIndex when provided', async () => {
-    await updateResultCell('conn-1', 'tab-1', 0, { 1: 'val' }, 'q-1', 3)
-    expect((ipc.calls('update_result_cell')[0] as Record<string, unknown>).resultIndex).toBe(3)
+    await updateResultCell({
+      ...QUERY_TAB,
+      rowIndex: 0,
+      updates: { 1: 'val' },
+      queryId: 'q-1',
+      resultIndex: 3,
+    })
+    expect((ipc.payloads('update_result_cell')[0] as Record<string, unknown>).resultIndex).toBe(3)
   })
 })

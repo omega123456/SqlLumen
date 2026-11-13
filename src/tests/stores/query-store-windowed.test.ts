@@ -104,9 +104,12 @@ describe('re-runs keep the view spec (D18)', () => {
       await useQueryStore.getState().changeRowLimit(CONN, TAB, 50)
     })
 
-    expect(ipc.calls('execute_query')).toHaveLength(1)
-    expect(ipc.calls('execute_query')[0]).toMatchObject({ rowLimit: 50, viewSpec: EXPECTED_SPEC })
-    expect(ipc.calls('set_result_view')).toHaveLength(0)
+    expect(ipc.payloads('execute_query')).toHaveLength(1)
+    expect(ipc.payloads('execute_query')[0]).toMatchObject({
+      rowLimit: 50,
+      viewSpec: EXPECTED_SPEC,
+    })
+    expect(ipc.payloads('set_result_view')).toHaveLength(0)
     const result = useQueryStore.getState().tabs[TAB]!.results[0]
     expect(result.queryId).toBe('q-new')
     expect(result.sortColumn).toBe('name')
@@ -135,12 +138,12 @@ describe('re-runs keep the view spec (D18)', () => {
       await useQueryStore.getState().changeRowLimit(CONN, TAB, 25)
     })
 
-    expect(ipc.calls('reexecute_single_result')[0]).toMatchObject({
+    expect(ipc.payloads('reexecute_single_result')[0]).toMatchObject({
       resultIndex: 0,
       rowLimit: 25,
       viewSpec: EXPECTED_SPEC,
     })
-    expect(ipc.calls('set_result_view')).toHaveLength(0)
+    expect(ipc.payloads('set_result_view')).toHaveLength(0)
     expect(rowsOf(TAB, 0)).toEqual(RERUN_WINDOW_ROWS)
   })
 
@@ -152,7 +155,7 @@ describe('re-runs keep the view spec (D18)', () => {
       await useQueryStore.getState().changeRowLimit(CONN, TAB, 10)
     })
 
-    expect('viewSpec' in (ipc.calls('execute_query')[0] as Record<string, unknown>)).toBe(false)
+    expect('viewSpec' in (ipc.payloads('execute_query')[0] as Record<string, unknown>)).toBe(false)
   })
 
   it('restoring an expired single result re-runs once with the view spec', async () => {
@@ -171,8 +174,8 @@ describe('re-runs keep the view spec (D18)', () => {
       await useQueryStore.getState().retryExpiredResult(TAB)
     })
 
-    expect(ipc.calls('execute_query')).toHaveLength(1)
-    expect(ipc.calls('execute_query')[0]).toMatchObject({ viewSpec: EXPECTED_SPEC })
+    expect(ipc.payloads('execute_query')).toHaveLength(1)
+    expect(ipc.payloads('execute_query')[0]).toMatchObject({ viewSpec: EXPECTED_SPEC })
     const result = useQueryStore.getState().tabs[TAB]!.results[0]
     expect(result.isExpired).toBe(false)
     expect(result.sortColumn).toBe('name')
@@ -245,8 +248,8 @@ describe('re-runs keep the view spec (D18)', () => {
       await useQueryStore.getState().saveCurrentRow(TAB)
     })
 
-    expect(ipc.calls('insert_table_row')).toHaveLength(1)
-    expect(ipc.calls('execute_query')[0]).toMatchObject({ viewSpec: EXPECTED_SPEC })
+    expect(ipc.payloads('insert_table_row')).toHaveLength(1)
+    expect(ipc.payloads('execute_query')[0]).toMatchObject({ viewSpec: EXPECTED_SPEC })
     expect(useQueryStore.getState().tabs[TAB]!.results[0].queryId).toBe('q-after-insert')
   })
 })
@@ -308,8 +311,10 @@ describe('edits under a sort and filter', () => {
       expect(await useQueryStore.getState().saveCurrentRow(TAB)).toBe(true)
     })
 
-    expect(ipc.calls('update_table_row')[0]).toMatchObject({ originalPkValues: { id: 1 } })
-    expect(ipc.calls('update_result_cell')[0]).toMatchObject({
+    expect(ipc.payloads('update_table_row')[0]).toMatchObject({
+      originalPrimaryKeyValues: { id: 1 },
+    })
+    expect(ipc.payloads('update_result_cell')[0]).toMatchObject({
       tabId: TAB,
       rowIndex: 0,
       resultIndex: 0,

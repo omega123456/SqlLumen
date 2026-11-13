@@ -1,24 +1,14 @@
+use crate::export::ExportRows;
 use std::io::{self, Write};
 
-/// Write query results as a JSON array of objects to the given writer.
-///
-/// Output format: `[{"col1": val1, "col2": val2}, ...]`
-///
-/// - `columns`: column names used as object keys
-/// - `rows`: data rows (each row is a slice of `serde_json::Value`)
-/// - `_include_headers`: ignored for JSON (keys always included)
-///
-/// NULL values are written as JSON `null`.
 pub fn write_json<W: Write, R: AsRef<[serde_json::Value]>>(
     writer: &mut W,
-    columns: &[String],
-    rows: &[R],
-    _include_headers: bool,
+    table: &ExportRows<'_, R>,
 ) -> io::Result<()> {
-    let mut array = Vec::with_capacity(rows.len());
+    let mut array = Vec::with_capacity(table.rows.len());
 
-    for row in rows.iter().map(AsRef::as_ref) {
-        array.push(json_row_object(columns, row));
+    for row in table.rows.iter().map(AsRef::as_ref) {
+        array.push(json_row_object(table.columns, row));
     }
 
     serde_json::to_writer_pretty(writer, &array).map_err(io::Error::other)

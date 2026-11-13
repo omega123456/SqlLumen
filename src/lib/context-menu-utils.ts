@@ -19,18 +19,28 @@ const EDITABLE_INPUT_TYPES = new Set([
   'url',
 ])
 
+export interface MenuPlacement {
+  requestedX: number
+  requestedY: number
+  menuWidth: number
+  menuHeight: number
+  viewportWidth: number
+  viewportHeight: number
+  margin?: number
+}
+
 /**
  * Keeps a fixed-position context menu inside the viewport.
  */
-export function clampContextMenuPosition(
-  requestedX: number,
-  requestedY: number,
-  menuWidth: number,
-  menuHeight: number,
-  viewportWidth: number,
-  viewportHeight: number,
-  margin = 4
-): { x: number; y: number } {
+export function clampContextMenuPosition({
+  requestedX,
+  requestedY,
+  menuWidth,
+  menuHeight,
+  viewportWidth,
+  viewportHeight,
+  margin = 4,
+}: MenuPlacement): { x: number; y: number } {
   let clampedX = requestedX
   let clampedY = requestedY
 
@@ -45,6 +55,12 @@ export function clampContextMenuPosition(
   clampedY = Math.max(margin, clampedY)
 
   return { x: clampedX, y: clampedY }
+}
+
+export interface ContextMenuOpenPoint {
+  x: number
+  y: number
+  anchor: Element | null
 }
 
 /**
@@ -71,41 +87,50 @@ function isDocumentBody(element: HTMLElement): boolean {
   return element === element.ownerDocument.body
 }
 
+export interface PortalMenuPlacement {
+  portalRoot: HTMLElement
+  clientX: number
+  clientY: number
+  menuWidth: number
+  menuHeight: number
+  margin?: number
+}
+
 /**
  * Computes `left` / `top` for a fixed menu inside `portalRoot` so it aligns with a viewport pointer.
  */
-export function positionContextMenuInPortal(
-  portalRoot: HTMLElement,
-  clientX: number,
-  clientY: number,
-  menuWidth: number,
-  menuHeight: number,
-  margin = 4
-): { x: number; y: number } {
+export function positionContextMenuInPortal({
+  portalRoot,
+  clientX,
+  clientY,
+  menuWidth,
+  menuHeight,
+  margin = 4,
+}: PortalMenuPlacement): { x: number; y: number } {
   if (isDocumentBody(portalRoot)) {
-    return clampContextMenuPosition(
-      clientX,
-      clientY,
-      menuWidth,
-      menuHeight,
-      window.innerWidth,
-      window.innerHeight,
-      margin
-    )
+    return clampContextMenuPosition({
+      requestedX: clientX,
+      requestedY: clientY,
+      menuWidth: menuWidth,
+      menuHeight: menuHeight,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      margin: margin,
+    })
   }
 
   const dr = portalRoot.getBoundingClientRect()
   const localX = clientX - dr.left
   const localY = clientY - dr.top
-  return clampContextMenuPosition(
-    localX,
-    localY,
-    menuWidth,
-    menuHeight,
-    dr.width,
-    dr.height,
-    margin
-  )
+  return clampContextMenuPosition({
+    requestedX: localX,
+    requestedY: localY,
+    menuWidth: menuWidth,
+    menuHeight: menuHeight,
+    viewportWidth: dr.width,
+    viewportHeight: dr.height,
+    margin: margin,
+  })
 }
 
 /**
@@ -179,7 +204,7 @@ function startElementForTarget(target: EventTarget | null): Element | null {
     return null
   }
   if (target.nodeType === Node.TEXT_NODE) {
-    return target.parentElement as Element | null
+    return target.parentElement
   }
   return target as Element
 }

@@ -142,25 +142,38 @@ function createDefaultTabAiState(): TabAiState {
 // Store interface
 // ---------------------------------------------------------------------------
 
+export interface AiRequestSettings {
+  temperature?: number
+  maxTokens?: number
+  model?: string
+}
+
+export interface AiMessageSend {
+  connectionId: string
+  message: string
+  settings: AiRequestSettings
+}
+
+export interface AiStreamChunk {
+  content: string
+  kind: AiChunkKind
+}
+
+interface AiEndpointModel {
+  endpoint: string
+  model: string
+}
+
 interface AiState {
   tabs: Record<string, TabAiState>
 
   // Message actions
-  sendMessage: (
-    tabId: string,
-    connectionId: string,
-    message: string,
-    settings: { temperature?: number; maxTokens?: number; model?: string }
-  ) => void
+  sendMessage: (tabId: string, send: AiMessageSend) => void
   cancelStream: (tabId: string) => void
-  retryLastMessage: (
-    tabId: string,
-    connectionId: string,
-    settings: { temperature?: number; maxTokens?: number; model?: string }
-  ) => void
+  retryLastMessage: (tabId: string, connectionId: string, settings: AiRequestSettings) => void
 
   // Stream lifecycle
-  onStreamChunk: (tabId: string, streamId: string, content: string, kind: AiChunkKind) => void
+  onStreamChunk: (tabId: string, streamId: string, chunk: AiStreamChunk) => void
   onStreamDone: (
     tabId: string,
     streamId: string,
@@ -251,8 +264,7 @@ function buildAttachedContextMessage(sql: string): string {
 function shouldReuseResponseChain(
   tab: TabAiState | undefined,
   systemPrompt: string | undefined,
-  endpoint: string,
-  model: string
+  { endpoint, model }: AiEndpointModel
 ): boolean {
   if (!tab?.previousResponseId) return false
   if (!systemPrompt) return false
@@ -352,20 +364,16 @@ const EXPANSION_CACHE_SIZE = 16
 const MEMORY_TOKEN_BUDGET = 500 // reserved tokens for memories in prompt
 
 function getExpansionCacheKey(
-  sessionId: string,
-  endpoint: string,
-  model: string,
-  userMessage: string,
-  conversationContext: string,
-  attachedSql: string
+  request: QueryExpansionRequest,
+  { endpoint, model }: AiEndpointModel
 ): string {
   return JSON.stringify({
-    sessionId,
-    endpoint,
-    model,
-    userMessage,
-    conversationContext,
-    attachedSql,
+    sessionId: request.sessionId,
+    endpoint: endpoint,
+    model: model,
+    userMessage: request.userMessage,
+    conversationContext: request.conversationContext,
+    attachedSql: request.attachedSql,
   })
 }
 
@@ -614,7 +622,7 @@ async function retrieveMemories(sessionId: string, userMessage: string): Promise
     const memoryResults = await searchMemories({
       sessionId: sessionId,
       query: userMessage,
-      k: MEMORY_SEARCH_RESULT_LIMIT,
+      limit: MEMORY_SEARCH_RESULT_LIMIT,
     })
     const memories = sortMemoriesByScope(memoryResults)
     logFrontend(
@@ -685,9 +693,7 @@ interface QueryExpansionRequest {
   attachedSql: string
 }
 
-interface QueryExpansionTarget {
-  endpoint: string
-  model: string
+interface QueryExpansionTarget extends AiEndpointModel {
   cacheKey: string
   parseOptions: ExpansionParseOptions
 }
@@ -769,14 +775,7 @@ async function expandSearchQueriesWithModel(request: QueryExpansionRequest): Pro
   const target: QueryExpansionTarget = {
     endpoint: endpoint,
     model: model,
-    cacheKey: getExpansionCacheKey(
-      request.sessionId,
-      endpoint,
-      model,
-      request.userMessage,
-      request.conversationContext,
-      request.attachedSql
-    ),
+    cacheKey: getExpansionCacheKey(request, { endpoint: endpoint, model: model }),
     parseOptions: options,
   }
   const cached = lookupExpansionCache(request.tabId, target.cacheKey)
@@ -1494,7 +1493,7 @@ export const useAiStore = create<AiState>()((set, get) => {
   function buildSendAiChatPayload(
     tabId: string,
     streamId: string,
-    settings: { temperature?: number; maxTokens?: number; model?: string }
+    settings: AiRequestSettings
   ): Parameters<typeof sendAiChat>[0] {
     const endpoint = getAiSetting('ai.endpoint')
     const model = settings.model ?? getAiSetting('ai.model')
@@ -1512,7 +1511,10 @@ export const useAiStore = create<AiState>()((set, get) => {
       role: message.role,
       content: message.content,
     }))
-    const reusesResponseChain = shouldReuseResponseChain(tab, currentSystemPrompt, endpoint, model)
+    const reusesResponseChain = shouldReuseResponseChain(tab, currentSystemPrompt, {
+      endpoint: endpoint,
+      model: model,
+    })
 
     return {
       messages: ipcMessages,
@@ -1532,10 +1534,10 @@ export const useAiStore = create<AiState>()((set, get) => {
 
     // ------ sendMessage ------
 
-    sendMessage: (tabId, connectionId, message, settings) => {
+    sendMessage: (tabId, { connectionId, message, settings }) => {
       ensureTab(tabId)
 
-      const tab = get().tabs[tabId]!
+      const tab = get().tabs[tabId]
       const streamId = crypto.randomUUID()
       const trimmedMessage = message.trim()
       const lastMessage = tab.messages[tab.messages.length - 1]
@@ -1587,7 +1589,8 @@ export const useAiStore = create<AiState>()((set, get) => {
           if (!isActiveStream(tabId, streamId)) return
 
           const unlisten = await listenToAiStream(streamId, {
-            onChunk: (content, kind) => get().onStreamChunk(tabId, streamId, content, kind),
+            onChunk: (content, kind) =>
+              get().onStreamChunk(tabId, streamId, { content: content, kind: kind }),
             onDone: (info) => get().onStreamDone(tabId, streamId, info),
             onError: (error) => get().onStreamError(tabId, streamId, error),
           })
@@ -1620,7 +1623,7 @@ export const useAiStore = create<AiState>()((set, get) => {
 
     cancelStream: (tabId) => {
       ensureTab(tabId)
-      const tab = get().tabs[tabId]!
+      const tab = get().tabs[tabId]
       const streamId = tab.activeStreamId
       if (!streamId) return
 
@@ -1670,12 +1673,16 @@ export const useAiStore = create<AiState>()((set, get) => {
         cumulativeSchemaTokens: sumSchemaContextTokens(remainingMessages),
       })
 
-      get().sendMessage(tabId, connectionId, lastUserMessage.content, settings)
+      get().sendMessage(tabId, {
+        connectionId: connectionId,
+        message: lastUserMessage.content,
+        settings: settings,
+      })
     },
 
     // ------ onStreamChunk ------
 
-    onStreamChunk: (tabId, streamId, content, kind) => {
+    onStreamChunk: (tabId, streamId, { content, kind }) => {
       const tab = tabForActiveStream(tabId, streamId)
       if (!tab) return
 
@@ -1737,7 +1744,7 @@ export const useAiStore = create<AiState>()((set, get) => {
 
     togglePanel: (tabId) => {
       ensureTab(tabId)
-      const tab = get().tabs[tabId]!
+      const tab = get().tabs[tabId]
       patchTab(tabId, { isPanelOpen: !tab.isPanelOpen })
     },
 

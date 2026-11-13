@@ -52,31 +52,48 @@ pub fn should_use_responses_api(request: &AiChatRequest) -> bool {
     request.prefer_responses_api && request.enable_reasoning
 }
 
-/// Canonical reasoning-off fields. Returns the three values used to disable
-/// reasoning across both typed (`ApiChatRequest`) and JSON-body callers.
-fn reasoning_off_fields() -> (&'static str, bool, ChatTemplateKwargs) {
-    (
-        "none",
-        false,
-        ChatTemplateKwargs {
-            enable_thinking: false,
-        },
-    )
+struct ReasoningOffFields {
+    effort: &'static str,
+    enable_thinking: bool,
+    chat_template_kwargs: ChatTemplateKwargs,
 }
 
-fn chat_reasoning_compat_fields(
-    enable_reasoning: bool,
-) -> (Option<bool>, Option<ChatTemplateKwargs>) {
+struct ChatReasoningCompat {
+    enable_thinking: Option<bool>,
+    chat_template_kwargs: Option<ChatTemplateKwargs>,
+}
+
+fn reasoning_off_fields() -> ReasoningOffFields {
+    ReasoningOffFields {
+        effort: "none",
+        enable_thinking: false,
+        chat_template_kwargs: ChatTemplateKwargs {
+            enable_thinking: false,
+        },
+    }
+}
+
+fn chat_reasoning_compat_fields(enable_reasoning: bool) -> ChatReasoningCompat {
     if enable_reasoning {
-        return (None, None);
+        return ChatReasoningCompat {
+            enable_thinking: None,
+            chat_template_kwargs: None,
+        };
     }
 
-    let (_effort, enable_thinking, kwargs) = reasoning_off_fields();
-    (Some(enable_thinking), Some(kwargs))
+    let reasoning_off = reasoning_off_fields();
+    ChatReasoningCompat {
+        enable_thinking: Some(reasoning_off.enable_thinking),
+        chat_template_kwargs: Some(reasoning_off.chat_template_kwargs),
+    }
 }
 
 pub fn apply_reasoning_off_compatibility(body: &mut serde_json::Map<String, serde_json::Value>) {
-    let (effort, enable_thinking, _kwargs) = reasoning_off_fields();
+    let ReasoningOffFields {
+        effort,
+        enable_thinking,
+        ..
+    } = reasoning_off_fields();
     body.insert(
         "reasoning_effort".to_string(),
         serde_json::Value::String(effort.to_string()),
@@ -531,44 +548,38 @@ pub fn is_responses_completion_event(event_type: Option<&str>) -> bool {
     )
 }
 
-/// Emit a stream chunk event, reducing boilerplate at each call site.
-fn emit_chunk<R: Runtime>(
-    app_handle: &tauri::AppHandle<R>,
-    stream_id: &str,
-    content: String,
-    kind: ChunkKind,
-) {
-    let _ = app_handle.emit(
-        "ai-stream-chunk",
-        StreamChunkEvent {
-            stream_id: stream_id.to_string(),
-            content,
-            kind,
-        },
-    );
+struct StreamEmitter<'a, R: Runtime> {
+    app_handle: &'a tauri::AppHandle<R>,
+    stream_id: &'a str,
 }
 
-/// Flush a buffer if non-empty, emitting a chunk event and resetting it.
-fn flush_buffer<R: Runtime>(
-    app_handle: &tauri::AppHandle<R>,
-    stream_id: &str,
-    buffer: &mut String,
-    kind: ChunkKind,
-) {
-    if !buffer.is_empty() {
-        emit_chunk(app_handle, stream_id, std::mem::take(buffer), kind);
+impl<R: Runtime> StreamEmitter<'_, R> {
+    fn emit_chunk(&self, content: String, kind: ChunkKind) {
+        let _ = self.app_handle.emit(
+            "ai-stream-chunk",
+            StreamChunkEvent {
+                stream_id: self.stream_id.to_string(),
+                content,
+                kind,
+            },
+        );
+    }
+
+    fn flush_buffer(&self, buffer: &mut String, kind: ChunkKind) {
+        if !buffer.is_empty() {
+            self.emit_chunk(std::mem::take(buffer), kind);
+        }
+    }
+
+    fn flush_both_buffers(&self, thinking_buffer: &mut String, content_buffer: &mut String) {
+        self.flush_buffer(thinking_buffer, ChunkKind::Thinking);
+        self.flush_buffer(content_buffer, ChunkKind::Content);
     }
 }
 
-/// Flush both thinking and content buffers (thinking first).
-fn flush_both_buffers<R: Runtime>(
-    app_handle: &tauri::AppHandle<R>,
-    stream_id: &str,
-    thinking_buffer: &mut String,
-    content_buffer: &mut String,
-) {
-    flush_buffer(app_handle, stream_id, thinking_buffer, ChunkKind::Thinking);
-    flush_buffer(app_handle, stream_id, content_buffer, ChunkKind::Content);
+struct HttpTarget<'a> {
+    client: &'a reqwest::Client,
+    url: &'a str,
 }
 
 pub fn is_responses_failure_event(event_type: Option<&str>) -> bool {
@@ -730,8 +741,14 @@ async fn stream_chat_inner<R: Runtime>(
     cancellation_token: &CancellationToken,
 ) -> Result<(), String> {
     let stream_id = &request.stream_id;
-    let (enable_thinking, chat_template_kwargs) =
-        chat_reasoning_compat_fields(request.enable_reasoning);
+    let emitter = StreamEmitter {
+        app_handle,
+        stream_id,
+    };
+    let ChatReasoningCompat {
+        enable_thinking,
+        chat_template_kwargs,
+    } = chat_reasoning_compat_fields(request.enable_reasoning);
 
     // Build the API request body
     let mut api_request = ApiChatRequest {
@@ -760,10 +777,13 @@ async fn stream_chat_inner<R: Runtime>(
     };
 
     let chat_url = normalise_to_chat_completions_url(&request.endpoint);
+    let chat_target = HttpTarget {
+        client: &client,
+        url: &chat_url,
+    };
 
     async fn send_chat_request(
-        client: &reqwest::Client,
-        chat_url: &str,
+        target: &HttpTarget<'_>,
         api_request: &ApiChatRequest,
         cancellation_token: &CancellationToken,
     ) -> Result<reqwest::Response, String> {
@@ -772,15 +792,14 @@ async fn stream_chat_inner<R: Runtime>(
             _ = cancellation_token.cancelled() => {
                 Err("Stream cancelled".to_string())
             }
-            result = client.post(chat_url).json(api_request).send() => {
+            result = target.client.post(target.url).json(api_request).send() => {
                 result.map_err(|error| format!("HTTP request failed: {error}"))
             }
         }
     }
 
     // Send the request, racing against cancellation
-    let mut response =
-        send_chat_request(&client, &chat_url, &api_request, cancellation_token).await?;
+    let mut response = send_chat_request(&chat_target, &api_request, cancellation_token).await?;
 
     // Check HTTP status
     let status = response.status();
@@ -812,8 +831,7 @@ async fn stream_chat_inner<R: Runtime>(
             reasoning_effort: None,
             ..api_request.clone()
         };
-        response =
-            send_chat_request(&client, &chat_url, &retry_request, cancellation_token).await?;
+        response = send_chat_request(&chat_target, &retry_request, cancellation_token).await?;
 
         let retry_status = response.status();
         if !retry_status.is_success() {
@@ -856,7 +874,7 @@ async fn stream_chat_inner<R: Runtime>(
         let chunk_result = tokio::select! {
             biased;
             _ = cancellation_token.cancelled() => {
-                flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
+                emitter.flush_both_buffers(&mut thinking_buffer, &mut buffer);
                 return Err("Stream cancelled".to_string());
             }
             chunk = byte_stream.next() => chunk,
@@ -895,28 +913,13 @@ async fn stream_chat_inner<R: Runtime>(
                             }
 
                             if is_flush_due(last_flush) {
-                                flush_buffer(
-                                    app_handle,
-                                    stream_id,
-                                    &mut thinking_buffer,
-                                    ChunkKind::Thinking,
-                                );
-                                flush_buffer(
-                                    app_handle,
-                                    stream_id,
-                                    &mut buffer,
-                                    ChunkKind::Content,
-                                );
+                                emitter.flush_buffer(&mut thinking_buffer, ChunkKind::Thinking);
+                                emitter.flush_buffer(&mut buffer, ChunkKind::Content);
                                 last_flush = Instant::now();
                             }
                         }
                         Ok(SseParsed::Done) => {
-                            flush_both_buffers(
-                                app_handle,
-                                stream_id,
-                                &mut thinking_buffer,
-                                &mut buffer,
-                            );
+                            emitter.flush_both_buffers(&mut thinking_buffer, &mut buffer);
                             let _ = app_handle.emit(
                                 "ai-stream-done",
                                 StreamDoneEvent {
@@ -932,19 +935,14 @@ async fn stream_chat_inner<R: Runtime>(
                         }
                         Err(error) => {
                             tracing::error!(stream_id = %stream_id, error = %error, "SSE parse error");
-                            flush_both_buffers(
-                                app_handle,
-                                stream_id,
-                                &mut thinking_buffer,
-                                &mut buffer,
-                            );
+                            emitter.flush_both_buffers(&mut thinking_buffer, &mut buffer);
                             return Err(error);
                         }
                     }
                 }
             }
             Some(Err(error)) => {
-                flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
+                emitter.flush_both_buffers(&mut thinking_buffer, &mut buffer);
                 return Err(format!("Stream read error: {error}"));
             }
             None => {
@@ -974,12 +972,7 @@ async fn stream_chat_inner<R: Runtime>(
                             }
                         }
                         Ok(SseParsed::Done) => {
-                            flush_both_buffers(
-                                app_handle,
-                                stream_id,
-                                &mut thinking_buffer,
-                                &mut buffer,
-                            );
+                            emitter.flush_both_buffers(&mut thinking_buffer, &mut buffer);
                             let _ = app_handle.emit(
                                 "ai-stream-done",
                                 StreamDoneEvent {
@@ -995,19 +988,14 @@ async fn stream_chat_inner<R: Runtime>(
                         }
                         Err(error) => {
                             tracing::error!(stream_id = %stream_id, error = %error, "SSE parse error on residual buffer");
-                            flush_both_buffers(
-                                app_handle,
-                                stream_id,
-                                &mut thinking_buffer,
-                                &mut buffer,
-                            );
+                            emitter.flush_both_buffers(&mut thinking_buffer, &mut buffer);
                             return Err(error);
                         }
                     }
                 }
 
                 // Stream ended without [DONE] — flush and emit done anyway
-                flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
+                emitter.flush_both_buffers(&mut thinking_buffer, &mut buffer);
                 let _ = app_handle.emit(
                     "ai-stream-done",
                     StreamDoneEvent {
@@ -1077,8 +1065,10 @@ fn process_responses_payload<R: Runtime>(
 ) -> Result<ResponsesPayloadOutcome, ResponsesStreamError> {
     let json = event.json;
     let enable_reasoning = target.enable_reasoning;
-    let stream_id = target.stream_id;
-    let app_handle = target.app_handle;
+    let emitter = StreamEmitter {
+        app_handle: target.app_handle,
+        stream_id: target.stream_id,
+    };
     if is_chat_completions_style_payload(json) {
         return Err(ResponsesStreamError::new(
             "Responses endpoint returned chat-completions-style stream payload",
@@ -1122,12 +1112,7 @@ fn process_responses_payload<R: Runtime>(
             | Some("response.reasoning_text.done")
     ) {
         state.saw_valid_responses_payload = true;
-        flush_buffer(
-            app_handle,
-            stream_id,
-            &mut state.thinking_buffer,
-            ChunkKind::Thinking,
-        );
+        emitter.flush_buffer(&mut state.thinking_buffer, ChunkKind::Thinking);
     }
 
     let text_to_append =
@@ -1140,28 +1125,13 @@ fn process_responses_payload<R: Runtime>(
     state.content_buffer.push_str(&text_to_append);
 
     if is_flush_due(state.last_flush) {
-        flush_buffer(
-            app_handle,
-            stream_id,
-            &mut state.thinking_buffer,
-            ChunkKind::Thinking,
-        );
-        flush_buffer(
-            app_handle,
-            stream_id,
-            &mut state.content_buffer,
-            ChunkKind::Content,
-        );
+        emitter.flush_buffer(&mut state.thinking_buffer, ChunkKind::Thinking);
+        emitter.flush_buffer(&mut state.content_buffer, ChunkKind::Content);
         state.last_flush = Instant::now();
     }
 
     if event_type == Some("response.completed") {
-        flush_both_buffers(
-            app_handle,
-            stream_id,
-            &mut state.thinking_buffer,
-            &mut state.content_buffer,
-        );
+        emitter.flush_both_buffers(&mut state.thinking_buffer, &mut state.content_buffer);
         return Ok(ResponsesPayloadOutcome::Done);
     }
 
@@ -1174,6 +1144,10 @@ async fn stream_responses_completion<R: Runtime>(
     cancellation_token: &CancellationToken,
 ) -> Result<(), ResponsesStreamError> {
     let stream_id = &request.stream_id;
+    let emitter = StreamEmitter {
+        app_handle,
+        stream_id,
+    };
     let api_request = ApiResponsesRequest {
         model: request.model.clone(),
         input: responses_input_items(request),
@@ -1189,8 +1163,7 @@ async fn stream_responses_completion<R: Runtime>(
     };
 
     async fn send_responses_request(
-        client: &reqwest::Client,
-        responses_url: &str,
+        target: &HttpTarget<'_>,
         api_request: &ApiResponsesRequest,
         cancellation_token: &CancellationToken,
     ) -> Result<reqwest::Response, ResponsesStreamError> {
@@ -1199,7 +1172,7 @@ async fn stream_responses_completion<R: Runtime>(
             _ = cancellation_token.cancelled() => {
                 Err(ResponsesStreamError::new("Stream cancelled", false))
             }
-            result = client.post(responses_url).json(api_request).send() => {
+            result = target.client.post(target.url).json(api_request).send() => {
                 result.map_err(|error| ResponsesStreamError::new(format!("HTTP request failed: {error}"), true))
             }
         }
@@ -1220,9 +1193,13 @@ async fn stream_responses_completion<R: Runtime>(
     };
 
     let responses_url = crate::ai::url::normalise_to_responses_url(&request.endpoint);
+    let responses_target = HttpTarget {
+        client: &client,
+        url: &responses_url,
+    };
 
     let mut response =
-        send_responses_request(&client, &responses_url, &api_request, cancellation_token).await?;
+        send_responses_request(&responses_target, &api_request, cancellation_token).await?;
 
     let status = response.status();
     if !status.is_success() {
@@ -1250,8 +1227,7 @@ async fn stream_responses_completion<R: Runtime>(
         };
 
         response =
-            send_responses_request(&client, &responses_url, &retry_request, cancellation_token)
-                .await?;
+            send_responses_request(&responses_target, &retry_request, cancellation_token).await?;
         let retry_status = response.status();
         if !retry_status.is_success() {
             let retry_body = match response.text().await {
@@ -1282,10 +1258,7 @@ async fn stream_responses_completion<R: Runtime>(
         let chunk_result = tokio::select! {
             biased;
             _ = cancellation_token.cancelled() => {
-                flush_both_buffers(
-                    app_handle,
-                    stream_id,
-                    &mut stream_state.thinking_buffer,
+                emitter.flush_both_buffers(&mut stream_state.thinking_buffer,
                     &mut stream_state.content_buffer,
                 );
                 return Err(ResponsesStreamError::new("Stream cancelled", false));
@@ -1346,9 +1319,7 @@ async fn stream_responses_completion<R: Runtime>(
                 }
             }
             Some(Err(error)) => {
-                flush_both_buffers(
-                    app_handle,
-                    stream_id,
+                emitter.flush_both_buffers(
                     &mut stream_state.thinking_buffer,
                     &mut stream_state.content_buffer,
                 );
@@ -1390,9 +1361,7 @@ async fn stream_responses_completion<R: Runtime>(
                     ));
                 }
 
-                flush_both_buffers(
-                    app_handle,
-                    stream_id,
+                emitter.flush_both_buffers(
                     &mut stream_state.thinking_buffer,
                     &mut stream_state.content_buffer,
                 );

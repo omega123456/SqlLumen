@@ -72,7 +72,7 @@ describe('useSchemaIndexStore', () => {
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
 
       await vi.waitFor(() => {
-        const logCalls = ipc.calls('log_frontend')
+        const logCalls = ipc.payloads('log_frontend')
         const hasWarning = logCalls.some(
           (call) =>
             (call as Record<string, unknown>)?.level === 'warn' &&
@@ -122,7 +122,12 @@ describe('useSchemaIndexStore', () => {
   describe('_handleProgress', () => {
     it('updates status to building with correct counts and phase', () => {
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
-      useSchemaIndexStore.getState()._handleProgress('profile-1', 'embedding', 5, 10)
+      useSchemaIndexStore.getState()._handleProgress({
+        profileId: 'profile-1',
+        phase: 'embedding',
+        tablesDone: 5,
+        tablesTotal: 10,
+      })
 
       const state = useSchemaIndexStore.getState()
       expect(state.connections['session-1'].status).toBe('building')
@@ -133,7 +138,12 @@ describe('useSchemaIndexStore', () => {
 
     it('stores loading_schema phase with zero total', () => {
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
-      useSchemaIndexStore.getState()._handleProgress('profile-1', 'loading_schema', 7, 0)
+      useSchemaIndexStore.getState()._handleProgress({
+        profileId: 'profile-1',
+        phase: 'loading_schema',
+        tablesDone: 7,
+        tablesTotal: 0,
+      })
 
       const state = useSchemaIndexStore.getState()
       expect(state.connections['session-1'].phase).toBe('loading_schema')
@@ -143,7 +153,12 @@ describe('useSchemaIndexStore', () => {
 
     it('stores finalizing phase after table indexing reaches completion', () => {
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
-      useSchemaIndexStore.getState()._handleProgress('profile-1', 'finalizing', 10, 10)
+      useSchemaIndexStore.getState()._handleProgress({
+        profileId: 'profile-1',
+        phase: 'finalizing',
+        tablesDone: 10,
+        tablesTotal: 10,
+      })
 
       const state = useSchemaIndexStore.getState()
       expect(state.connections['session-1'].phase).toBe('finalizing')
@@ -154,7 +169,12 @@ describe('useSchemaIndexStore', () => {
     it('updates all sessions for the profile', () => {
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
       useSchemaIndexStore.getState().registerSession('session-2', 'profile-1')
-      useSchemaIndexStore.getState()._handleProgress('profile-1', 'embedding', 3, 8)
+      useSchemaIndexStore.getState()._handleProgress({
+        profileId: 'profile-1',
+        phase: 'embedding',
+        tablesDone: 3,
+        tablesTotal: 8,
+      })
 
       const state = useSchemaIndexStore.getState()
       expect(state.connections['session-1'].status).toBe('building')
@@ -169,7 +189,12 @@ describe('useSchemaIndexStore', () => {
   describe('_handleComplete', () => {
     it('updates status to ready with timestamp and clears phase', () => {
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
-      useSchemaIndexStore.getState()._handleProgress('profile-1', 'embedding', 5, 10)
+      useSchemaIndexStore.getState()._handleProgress({
+        profileId: 'profile-1',
+        phase: 'embedding',
+        tablesDone: 5,
+        tablesTotal: 10,
+      })
       const beforeTime = Date.now()
       useSchemaIndexStore.getState()._handleComplete('profile-1')
 
@@ -183,7 +208,12 @@ describe('useSchemaIndexStore', () => {
   describe('_handleError', () => {
     it('updates status to error with message and clears phase', () => {
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
-      useSchemaIndexStore.getState()._handleProgress('profile-1', 'loading_schema', 0, 0)
+      useSchemaIndexStore.getState()._handleProgress({
+        profileId: 'profile-1',
+        phase: 'loading_schema',
+        tablesDone: 0,
+        tablesTotal: 0,
+      })
       useSchemaIndexStore.getState()._handleError('profile-1', 'Something went wrong')
 
       const state = useSchemaIndexStore.getState()
@@ -288,7 +318,7 @@ describe('useSchemaIndexStore', () => {
   describe('triggerInvalidation', () => {
     it('calls invalidateSchemaIndex with correct args', async () => {
       await useSchemaIndexStore.getState().triggerInvalidation('session-1', ['db.users'])
-      const invalidateCalls = ipc.calls('invalidate_schema_index')
+      const invalidateCalls = ipc.payloads('invalidate_schema_index')
       expect(invalidateCalls.length).toBeGreaterThan(0)
       const lastCall = invalidateCalls[invalidateCalls.length - 1] as Record<string, unknown>
       expect(lastCall?.sessionId).toBe('session-1')
@@ -324,7 +354,12 @@ describe('useSchemaIndexStore', () => {
 
   describe('_handleProgress / _handleComplete / _handleError with no sessions', () => {
     it('_handleProgress does nothing for unknown profile', () => {
-      useSchemaIndexStore.getState()._handleProgress('unknown-profile', 'embedding', 1, 10)
+      useSchemaIndexStore.getState()._handleProgress({
+        profileId: 'unknown-profile',
+        phase: 'embedding',
+        tablesDone: 1,
+        tablesTotal: 10,
+      })
       expect(useSchemaIndexStore.getState().connections).toEqual({})
     })
 

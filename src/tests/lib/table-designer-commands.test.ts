@@ -28,7 +28,7 @@ describe('loadTableForDesigner', () => {
 
     const result = await loadTableForDesigner('conn-1', 'app_db', 'users')
 
-    expect(ipc.calls('load_table_for_designer')).toEqual([
+    expect(ipc.payloads('load_table_for_designer')).toEqual([
       { connectionId: 'conn-1', database: 'app_db', tableName: 'users' },
     ])
     expect(result).toEqual(response)
@@ -78,7 +78,7 @@ describe('applyTableDdl', () => {
       'ALTER TABLE `users` ADD COLUMN `x` INT;'
     )
 
-    expect(ipc.calls('apply_table_ddl')).toEqual([
+    expect(ipc.payloads('apply_table_ddl')).toEqual([
       {
         connectionId: 'conn-1',
         database: 'app_db',

@@ -3,10 +3,8 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import type { TableDataColumnMeta } from '../../../types/schema'
 import { useCellEditor } from '../../../components/table-data/useCellEditor'
-import type {
-  CellEditorParams,
-  CellEditorCallbacks,
-} from '../../../components/table-data/useCellEditor'
+import type { CellEditorParams } from '../../../components/table-data/useCellEditor'
+import type { EditorCallbacksContextType } from '../../../components/shared/editor-callbacks-context'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -54,7 +52,7 @@ function getEditorValue(): string | null {
 /** Test wrapper component that exposes hook state via the DOM. */
 function TestEditor(props: { params: CellEditorParams }) {
   const store = useTableDataStore.getState()
-  const callbacks: CellEditorCallbacks = {
+  const callbacks: EditorCallbacksContextType = {
     tabId: 'tab-1',
     updateCellValue: store.updateCellValue,
     syncCellValue: store.syncCellValue,

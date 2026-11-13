@@ -143,7 +143,7 @@ describe('createManualSnapshot', () => {
         connections: [],
       },
     ]
-    ipc.override('create_session_snapshot', (args) => {
+    ipc.overridePayload('create_session_snapshot', (args) => {
       createArgs = args as Record<string, unknown>
       return 1
     })
@@ -177,13 +177,13 @@ describe('automatic snapshot persistence guard', () => {
     await expect(useSnapshotStore.getState().createAutoSnapshot('daily')).resolves.toBeNull()
     await expect(useSnapshotStore.getState().createAutoSnapshot('weekly')).resolves.toBeNull()
     await expect(useSnapshotStore.getState().createAutoSnapshot('onClose')).resolves.toBeNull()
-    expect(ipc.calls('create_session_snapshot')).toEqual([])
+    expect(ipc.payloads('create_session_snapshot')).toEqual([])
 
     await expect(useSnapshotStore.getState().createAutoSnapshot('beforeRestore')).resolves.toBe(7)
     await useSnapshotStore.getState().createManualSnapshot()
     expect(
       ipc
-        .calls('create_session_snapshot')
+        .payloads('create_session_snapshot')
         .map((args) => (args as { triggerType: string }).triggerType)
     ).toEqual(['beforeRestore', 'manual'])
   })
@@ -468,7 +468,7 @@ describe('restoreSnapshot', () => {
 
     ipc.override('create_session_snapshot', createSnapshotSpy)
     ipc.override('get_session_snapshot', getSnapshotSpy)
-    ipc.override('log_frontend', (args) => {
+    ipc.overridePayload('log_frontend', (args) => {
       logFrontendSpy(args)
       return undefined
     })
@@ -672,7 +672,7 @@ describe('runPeriodicCheck — daily', () => {
     const yesterdayEpochSeconds = String(Math.floor((now.getTime() - 25 * 60 * 60 * 1000) / 1000))
     let setMarker: string | undefined
     ipc.override('get_setting', () => yesterdayEpochSeconds)
-    ipc.override('set_setting', (args) => {
+    ipc.overridePayload('set_setting', (args) => {
       const a = args as { key: string; value: string }
       if (a.key === 'snapshots.lastPeriodicAt') {
         setMarker = a.value
@@ -680,7 +680,7 @@ describe('runPeriodicCheck — daily', () => {
       return undefined
     })
     const createCalls = vi.fn()
-    ipc.override('create_session_snapshot', (args) => {
+    ipc.overridePayload('create_session_snapshot', (args) => {
       createCalls((args as { triggerType: string }).triggerType)
       return 1
     })
@@ -735,7 +735,7 @@ describe('runPeriodicCheck — weekly', () => {
     )
     let setMarker: string | undefined
     ipc.override('get_setting', () => lastWeekEpochSeconds)
-    ipc.override('set_setting', (args) => {
+    ipc.overridePayload('set_setting', (args) => {
       const a = args as { key: string; value: string }
       if (a.key === 'snapshots.lastPeriodicAt') {
         setMarker = a.value
@@ -743,7 +743,7 @@ describe('runPeriodicCheck — weekly', () => {
       return undefined
     })
     const createCalls = vi.fn()
-    ipc.override('create_session_snapshot', (args) => {
+    ipc.overridePayload('create_session_snapshot', (args) => {
       createCalls((args as { triggerType: string }).triggerType)
       return 1
     })
@@ -836,7 +836,7 @@ describe('handleAppClose', () => {
   it('creates an onClose snapshot when frequency is not off', async () => {
     seedSession()
     const createCalls = vi.fn()
-    ipc.override('create_session_snapshot', (args) => {
+    ipc.overridePayload('create_session_snapshot', (args) => {
       createCalls((args as { triggerType: string }).triggerType)
       return 1
     })

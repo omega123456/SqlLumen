@@ -588,7 +588,7 @@ describe('ResultFormView — Edit Mode', () => {
       columns,
       window: { offset: 0, rows, baseIndices: rows.map((_, index) => index) },
     })
-    ipc.override('fetch_result_window', (args) => ({
+    ipc.overridePayload('fetch_result_window', (args) => ({
       offset: args?.offset,
       rows: [[3500, 'Far', 'far@example.com']],
       baseIndices: [3499],
@@ -609,7 +609,7 @@ describe('ResultFormView — Edit Mode', () => {
       /^Record 3,?500 of 4,?000$/
     )
     await waitFor(() => expect(screen.getByTestId('form-input-name')).toHaveTextContent('Far'))
-    expect(ipc.calls('fetch_result_window')[0]).toMatchObject({ offset: 3499, limit: 1 })
+    expect(ipc.payloads('fetch_result_window')[0]).toMatchObject({ offset: 3499, limit: 1 })
   })
 
   it('shows a saved edit of a fetched row outside the loaded pages', async () => {
@@ -623,7 +623,7 @@ describe('ResultFormView — Edit Mode', () => {
       columns,
       window: { offset: 0, rows, baseIndices: rows.map((_, index) => index) },
     })
-    ipc.override('fetch_result_window', (args) => ({
+    ipc.overridePayload('fetch_result_window', (args) => ({
       offset: args?.offset,
       rows: [[3500, 'Far', 'far@example.com']],
       baseIndices: [3499],
@@ -644,15 +644,27 @@ describe('ResultFormView — Edit Mode', () => {
 
     // The store saved the row: base index 3499, column 1 changed.
     act(() => {
-      applySavedRowValues('tab-1', 0, 'q-form', 3499, { 1: 'Farther' })
+      applySavedRowValues({
+        tabId: 'tab-1',
+        resultIndex: 0,
+        queryId: 'q-form',
+        baseIndex: 3499,
+        updates: { 1: 'Farther' },
+      })
     })
     await waitFor(() => expect(screen.getByTestId('form-input-name')).toHaveTextContent('Farther'))
     // A save of another row leaves the shown row alone.
     act(() => {
-      applySavedRowValues('tab-1', 0, 'q-form', 12, { 1: 'Other' })
+      applySavedRowValues({
+        tabId: 'tab-1',
+        resultIndex: 0,
+        queryId: 'q-form',
+        baseIndex: 12,
+        updates: { 1: 'Other' },
+      })
     })
     expect(screen.getByTestId('form-input-name')).toHaveTextContent('Farther')
-    expect(ipc.calls('fetch_result_window')).toHaveLength(1)
+    expect(ipc.payloads('fetch_result_window')).toHaveLength(1)
   })
 
   it('routes results_expired while fetching the row to the expired block', async () => {
@@ -708,7 +720,7 @@ describe('ResultFormView — Edit Mode', () => {
         selectedRowIndex={3000}
       />
     )
-    await waitFor(() => expect(ipc.calls('log_frontend').length).toBeGreaterThan(0))
+    await waitFor(() => expect(ipc.payloads('log_frontend').length).toBeGreaterThan(0))
   })
 
   it('shows the clone draft as a virtual row after the last view row', () => {

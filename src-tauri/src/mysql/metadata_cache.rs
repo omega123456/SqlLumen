@@ -6,14 +6,39 @@ use std::collections::HashMap;
 use std::sync::RwLock;
 use tauri::Emitter;
 
-type MetadataCacheKey = (String, String, String);
-type MetadataCacheValue = (Option<PrimaryKeyInfo>, Vec<TableDataColumnMeta>);
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct MetadataTableKey {
+    pub connection_id: String,
+    pub database: String,
+    pub table: String,
+}
+
+impl MetadataTableKey {
+    pub fn new(connection_id: &str, database: &str, table: &str) -> Self {
+        Self {
+            connection_id: connection_id.to_string(),
+            database: database.to_string(),
+            table: table.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TableKeyMetadata {
+    pub primary_key: Option<PrimaryKeyInfo>,
+    pub columns: Vec<TableDataColumnMeta>,
+}
+
+pub struct TableEviction<'a> {
+    pub connection_id: &'a str,
+    pub affected_tables: &'a [AffectedTable],
+    pub default_database: Option<&'a str>,
+}
 
 pub const SCHEMA_METADATA_INVALIDATED_EVENT: &str = "schema-metadata-invalidated";
 
-/// In-memory cache for table primary-key and column metadata.
 pub struct MetadataCache {
-    entries: RwLock<HashMap<MetadataCacheKey, MetadataCacheValue>>,
+    entries: RwLock<HashMap<MetadataTableKey, TableKeyMetadata>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -31,74 +56,42 @@ impl MetadataCache {
         }
     }
 
-    pub fn get(
-        &self,
-        connection_id: &str,
-        database: &str,
-        table: &str,
-    ) -> Option<MetadataCacheValue> {
+    pub fn get(&self, key: &MetadataTableKey) -> Option<TableKeyMetadata> {
         let entries = self.entries.read().expect("metadata cache lock poisoned");
-        let value = entries
-            .get(&(
-                connection_id.to_string(),
-                database.to_string(),
-                table.to_string(),
-            ))
-            .cloned();
+        let value = entries.get(key).cloned();
 
         let lookup_outcome = cache_lookup_outcome(value.is_some());
         tracing::debug!(
-            connection_id,
-            database,
-            table,
+            connection_id = %key.connection_id,
+            database = %key.database,
+            table = %key.table,
             "metadata cache {lookup_outcome}"
         );
 
         value
     }
 
-    pub fn insert(
-        &self,
-        connection_id: &str,
-        database: &str,
-        table: &str,
-        primary_key: Option<PrimaryKeyInfo>,
-        columns: Vec<TableDataColumnMeta>,
-    ) {
-        let columns_len = columns.len();
-        let mut entries = self.entries.write().expect("metadata cache lock poisoned");
-        entries.insert(
-            (
-                connection_id.to_string(),
-                database.to_string(),
-                table.to_string(),
-            ),
-            (primary_key, columns),
-        );
-
+    pub fn insert(&self, key: MetadataTableKey, metadata: TableKeyMetadata) {
+        let columns_len = metadata.columns.len();
         tracing::debug!(
-            connection_id,
-            database,
-            table,
+            connection_id = %key.connection_id,
+            database = %key.database,
+            table = %key.table,
             columns_len,
             "metadata cache insert"
         );
+        let mut entries = self.entries.write().expect("metadata cache lock poisoned");
+        entries.insert(key, metadata);
     }
 
-    pub fn evict_table(&self, connection_id: &str, database: &str, table: &str) -> bool {
+    pub fn evict_table(&self, key: &MetadataTableKey) -> bool {
         let mut entries = self.entries.write().expect("metadata cache lock poisoned");
-        let removed = entries
-            .remove(&(
-                connection_id.to_string(),
-                database.to_string(),
-                table.to_string(),
-            ))
-            .is_some();
+        let removed = entries.remove(key).is_some();
 
         tracing::debug!(
-            connection_id,
-            database,
-            table,
+            connection_id = %key.connection_id,
+            database = %key.database,
+            table = %key.table,
             removed,
             "metadata cache evict table"
         );
@@ -109,7 +102,7 @@ impl MetadataCache {
     pub fn evict_connection(&self, connection_id: &str) -> usize {
         let mut entries = self.entries.write().expect("metadata cache lock poisoned");
         let before = entries.len();
-        entries.retain(|(cached_connection_id, _, _), _| cached_connection_id != connection_id);
+        entries.retain(|key, _| key.connection_id != connection_id);
         let removed = before.saturating_sub(entries.len());
 
         tracing::debug!(connection_id, removed, "metadata cache evict connection");
@@ -167,11 +160,10 @@ pub fn evict_metadata_cache_for_database(
             .entries
             .read()
             .expect("metadata cache lock poisoned");
-        for (cached_connection_id, cached_database, cached_table) in entries.keys() {
-            let is_in_database =
-                cached_connection_id == connection_id && cached_database == database;
+        for key in entries.keys() {
+            let is_in_database = key.connection_id == connection_id && key.database == database;
             if is_in_database {
-                removed_tables.push(cached_table.clone());
+                removed_tables.push(key.table.clone());
             }
         }
     }
@@ -179,7 +171,7 @@ pub fn evict_metadata_cache_for_database(
     for table in &removed_tables {
         state
             .metadata_cache
-            .evict_table(connection_id, database, table.as_str());
+            .evict_table(&MetadataTableKey::new(connection_id, database, table));
     }
 
     let payload = MetadataCacheInvalidatedPayload {
@@ -196,14 +188,13 @@ pub fn evict_metadata_cache_for_database(
 
 pub fn evict_metadata_cache_for_tables(
     state: &AppState,
-    connection_id: &str,
-    affected_tables: &[AffectedTable],
-    default_database: Option<&str>,
+    eviction: &TableEviction<'_>,
 ) -> MetadataCacheInvalidatedPayload {
+    let connection_id = eviction.connection_id;
     let mut emitted_tables = Vec::new();
 
-    for (database, table) in affected_tables {
-        let Some(database_name) = database.as_deref().or(default_database) else {
+    for (database, table) in eviction.affected_tables {
+        let Some(database_name) = database.as_deref().or(eviction.default_database) else {
             tracing::debug!(
                 connection_id,
                 table,
@@ -220,9 +211,11 @@ pub fn evict_metadata_cache_for_tables(
             continue;
         }
 
-        state
-            .metadata_cache
-            .evict_table(connection_id, database_name, table.as_str());
+        state.metadata_cache.evict_table(&MetadataTableKey::new(
+            connection_id,
+            database_name,
+            table,
+        ));
         emitted_tables.push(qualified_table);
     }
 

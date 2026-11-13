@@ -32,7 +32,8 @@ use sqllumen_lib::state::{AppState, ResultExportJobProgress, ResultExportStatus}
 use crate::common;
 use crate::common::log_capture::LogCaptureGuard;
 use crate::common::mock_mysql_server::{
-    MockCell, MockColumnDef, MockMySqlServer, MockQueryStep, MockScript, MockStreamStep,
+    MockCell, MockColumnDef, MockMySqlServer, MockQueryStep, MockScript, MockStreamRows,
+    MockStreamStep,
 };
 
 const TAB: &str = "tab-1";
@@ -84,7 +85,14 @@ fn killable_stream(query: &'static str, rows: usize, pause: Duration) -> MockStr
     MockStreamStep {
         throttle: Some((1, pause)),
         stops_on_kill: true,
-        ..MockStreamStep::new(query, n_column(), rows, n_row)
+        ..MockStreamStep::new(
+            query,
+            n_column(),
+            MockStreamRows {
+                count: rows,
+                make_row: n_row,
+            },
+        )
     }
 }
 
@@ -131,32 +139,43 @@ async fn open(script: MockScript, ceiling: usize) -> (MockMySqlServer, Arc<AppSt
 }
 
 /// Cache a truncated, re-runnable result (as a ceiling-truncated run leaves it).
-fn cache_truncated(state: &AppState, conn: &str, sql: &str, database: RunDatabase) {
-    let mut stored = StoredResult::new(
-        QID.to_string(),
-        vec![ColumnMeta {
+struct TruncatedRun<'a> {
+    sql: &'a str,
+    database: RunDatabase,
+}
+
+fn cache_truncated(state: &AppState, conn: &str, run: TruncatedRun<'_>) {
+    let TruncatedRun { sql, database } = run;
+    let mut stored = StoredResult::new(sqllumen_lib::mysql::query_executor::StoredResultParts {
+        query_id: QID.to_string(),
+        columns: vec![ColumnMeta {
             name: "n".to_string(),
             data_type: "BIGINT".to_string(),
         }],
-        common::shared_rows((0..5).map(|i| vec![json!(i)]).collect()),
-        1,
-        2,
-        0,
-        false,
-    );
+        rows: common::shared_rows((0..5).map(|i| vec![json!(i)]).collect()),
+        execution_time_ms: 1,
+        total_time_ms: 2,
+        affected_rows: 0,
+        auto_limit_applied: false,
+    });
     stored.truncated = true;
     stored.row_ceiling = 5;
     stored.source_sql = sql.to_string();
     stored.run_database = database;
-    state.result_cache.insert(conn, TAB, vec![stored]);
+    state.result_cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new(conn, TAB),
+        vec![stored],
+    );
 }
 
 fn input(conn: &str, query_id: &str, target: &Path) -> StartResultExportInput {
     StartResultExportInput {
-        connection_id: conn.to_string(),
-        tab_id: TAB.to_string(),
-        result_index: 0,
-        query_id: query_id.to_string(),
+        slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+            connection_id: conn.to_string(),
+            tab_id: TAB.to_string(),
+            result_index: 0,
+            query_id: query_id.to_string(),
+        },
         format: ExportFormat::Csv,
         file_path: target.to_string_lossy().into_owned(),
         include_headers: true,
@@ -167,11 +186,9 @@ fn input(conn: &str, query_id: &str, target: &Path) -> StartResultExportInput {
 /// Start the job in the background; returns its id and task.
 fn spawn_export(
     state: &Arc<AppState>,
-    conn: &str,
-    query_id: &str,
-    target: &Path,
+    export: StartResultExportInput,
 ) -> (String, tokio::task::JoinHandle<()>) {
-    let prepared = start_result_export_impl(state, input(conn, query_id, target)).expect("start");
+    let prepared = start_result_export_impl(state, export).expect("start");
     let job_id = prepared.job_id.clone();
     let task_state = Arc::clone(state);
     let handle = tokio::spawn(async move { run_result_export_job(&task_state, prepared).await });
@@ -231,15 +248,24 @@ async fn a_truncated_result_is_rerun_in_full_with_monotonic_progress() {
         5,
     )
     .await;
-    let run = execute_query_impl(&state, &conn, TAB, sql, 500, None)
-        .await
-        .expect("truncated run");
+    let run = execute_query_impl(
+        &state,
+        &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
+            connection_id: conn.to_string(),
+            tab_id: TAB.to_string(),
+            sql: sql.to_string(),
+            row_limit: Some(500),
+            view_spec: None,
+        },
+    )
+    .await
+    .expect("truncated run");
     assert!(run.truncated);
     assert_eq!(run.total_rows, 5);
 
     let dir = tempfile::tempdir().expect("dir");
     let target = target_in(&dir);
-    let (job_id, handle) = spawn_export(&state, &conn, &run.query_id, &target);
+    let (job_id, handle) = spawn_export(&state, input(&conn, &run.query_id, &target));
     let seen = poll_until(&state, &job_id, |p| p.status != ResultExportStatus::Running).await;
     let done = finish(&state, &job_id, handle).await;
 
@@ -280,8 +306,10 @@ async fn the_export_switches_to_the_run_database_and_restores_the_previous_one()
             vec![MockStreamStep::new(
                 "SELECT n FROM big",
                 n_column(),
-                12,
-                n_row,
+                MockStreamRows {
+                    count: 12,
+                    make_row: n_row,
+                },
             )],
         ),
         5,
@@ -290,12 +318,14 @@ async fn the_export_switches_to_the_run_database_and_restores_the_previous_one()
     cache_truncated(
         &state,
         &conn,
-        "SELECT n FROM big",
-        RunDatabase::Named("shop".into()),
+        TruncatedRun {
+            sql: "SELECT n FROM big",
+            database: RunDatabase::Named("shop".into()),
+        },
     );
 
     let dir = tempfile::tempdir().expect("dir");
-    let (job_id, handle) = spawn_export(&state, &conn, QID, &target_in(&dir));
+    let (job_id, handle) = spawn_export(&state, input(&conn, QID, &target_in(&dir)));
     let done = finish(&state, &job_id, handle).await;
 
     assert_eq!(
@@ -340,8 +370,10 @@ async fn a_stored_null_database_issues_no_use() {
             vec![MockStreamStep::new(
                 "SELECT 1 AS n FROM DUAL",
                 n_column(),
-                7,
-                n_row,
+                MockStreamRows {
+                    count: 7,
+                    make_row: n_row,
+                },
             )],
         ),
         5,
@@ -350,12 +382,14 @@ async fn a_stored_null_database_issues_no_use() {
     cache_truncated(
         &state,
         &conn,
-        "SELECT 1 AS n FROM DUAL",
-        RunDatabase::NoDatabase,
+        TruncatedRun {
+            sql: "SELECT 1 AS n FROM DUAL",
+            database: RunDatabase::NoDatabase,
+        },
     );
 
     let dir = tempfile::tempdir().expect("dir");
-    let (job_id, handle) = spawn_export(&state, &conn, QID, &target_in(&dir));
+    let (job_id, handle) = spawn_export(&state, input(&conn, QID, &target_in(&dir)));
     let done = finish(&state, &job_id, handle).await;
 
     assert_eq!(
@@ -377,8 +411,10 @@ async fn a_null_previous_database_skips_the_restore_with_a_warning() {
             vec![MockStreamStep::new(
                 "SELECT n FROM big",
                 n_column(),
-                3,
-                n_row,
+                MockStreamRows {
+                    count: 3,
+                    make_row: n_row,
+                },
             )],
         ),
         5,
@@ -387,12 +423,14 @@ async fn a_null_previous_database_skips_the_restore_with_a_warning() {
     cache_truncated(
         &state,
         &conn,
-        "SELECT n FROM big",
-        RunDatabase::Named("shop".into()),
+        TruncatedRun {
+            sql: "SELECT n FROM big",
+            database: RunDatabase::Named("shop".into()),
+        },
     );
 
     let dir = tempfile::tempdir().expect("dir");
-    let (job_id, handle) = spawn_export(&state, &conn, QID, &target_in(&dir));
+    let (job_id, handle) = spawn_export(&state, input(&conn, QID, &target_in(&dir)));
     let done = finish(&state, &job_id, handle).await;
 
     assert_eq!(
@@ -429,14 +467,16 @@ async fn cancel_kills_the_rerun_deletes_the_temp_file_and_restores_the_database(
     cache_truncated(
         &state,
         &conn,
-        "SELECT n FROM big",
-        RunDatabase::Named("shop".into()),
+        TruncatedRun {
+            sql: "SELECT n FROM big",
+            database: RunDatabase::Named("shop".into()),
+        },
     );
 
     let dir = tempfile::tempdir().expect("dir");
     let target = target_in(&dir);
     std::fs::write(&target, "previous export").expect("existing target");
-    let (job_id, handle) = spawn_export(&state, &conn, QID, &target);
+    let (job_id, handle) = spawn_export(&state, input(&conn, QID, &target));
     poll_until(&state, &job_id, |p| p.rows_written > 0).await;
     assert!(
         temp_path_for(&target).exists(),
@@ -492,7 +532,14 @@ async fn a_late_cancel_kill_is_absorbed_before_the_session_is_released() {
         ],
         vec![MockStreamStep {
             throttle: Some((1, Duration::from_millis(2))),
-            ..MockStreamStep::new("SELECT n FROM big", n_column(), 200, n_row)
+            ..MockStreamStep::new(
+                "SELECT n FROM big",
+                n_column(),
+                MockStreamRows {
+                    count: 200,
+                    make_row: n_row,
+                },
+            )
         }],
     );
     late_kill.kill_hits_next_statement = true;
@@ -500,13 +547,15 @@ async fn a_late_cancel_kill_is_absorbed_before_the_session_is_released() {
     cache_truncated(
         &state,
         &conn,
-        "SELECT n FROM big",
-        RunDatabase::Named("shop".into()),
+        TruncatedRun {
+            sql: "SELECT n FROM big",
+            database: RunDatabase::Named("shop".into()),
+        },
     );
 
     let dir = tempfile::tempdir().expect("dir");
     let target = target_in(&dir);
-    let (job_id, handle) = spawn_export(&state, &conn, QID, &target);
+    let (job_id, handle) = spawn_export(&state, input(&conn, QID, &target));
     poll_until(&state, &job_id, |p| p.rows_written > 0).await;
     cancel_result_export_impl(&state, &job_id)
         .await
@@ -531,9 +580,18 @@ async fn a_late_cancel_kill_is_absorbed_before_the_session_is_released() {
     );
 
     // The next query on the shared session is not interrupted.
-    let next = execute_query_impl(&state, &conn, TAB, "SELECT 1 AS ok LIMIT 1", 500, None)
-        .await
-        .expect("the next query runs");
+    let next = execute_query_impl(
+        &state,
+        &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
+            connection_id: conn.to_string(),
+            tab_id: TAB.to_string(),
+            sql: "SELECT 1 AS ok LIMIT 1".to_string(),
+            row_limit: Some(500),
+            view_spec: None,
+        },
+    )
+    .await
+    .expect("the next query runs");
     assert_eq!(next.total_rows, 1);
 }
 
@@ -544,7 +602,14 @@ async fn a_mid_stream_failure_ends_failed_and_cleans_up() {
             vec![database_step(Some(b"crm"))],
             vec![MockStreamStep {
                 end_error: Some((ErrorKind::ER_LOCK_DEADLOCK, b"Deadlock found")),
-                ..MockStreamStep::new("SELECT n FROM big", n_column(), 10, n_row)
+                ..MockStreamStep::new(
+                    "SELECT n FROM big",
+                    n_column(),
+                    MockStreamRows {
+                        count: 10,
+                        make_row: n_row,
+                    },
+                )
             }],
         ),
         5,
@@ -553,14 +618,16 @@ async fn a_mid_stream_failure_ends_failed_and_cleans_up() {
     cache_truncated(
         &state,
         &conn,
-        "SELECT n FROM big",
-        RunDatabase::Named("shop".into()),
+        TruncatedRun {
+            sql: "SELECT n FROM big",
+            database: RunDatabase::Named("shop".into()),
+        },
     );
 
     let dir = tempfile::tempdir().expect("dir");
     let target = target_in(&dir);
     std::fs::write(&target, "previous export").expect("existing target");
-    let (job_id, handle) = spawn_export(&state, &conn, QID, &target);
+    let (job_id, handle) = spawn_export(&state, input(&conn, QID, &target));
     let done = finish(&state, &job_id, handle).await;
 
     assert_eq!(done.status, ResultExportStatus::Failed);
@@ -591,8 +658,10 @@ async fn a_failed_database_switch_fails_the_export_without_rerunning() {
             vec![MockStreamStep::new(
                 "SELECT n FROM big",
                 n_column(),
-                3,
-                n_row,
+                MockStreamRows {
+                    count: 3,
+                    make_row: n_row,
+                },
             )],
         ),
         5,
@@ -601,12 +670,14 @@ async fn a_failed_database_switch_fails_the_export_without_rerunning() {
     cache_truncated(
         &state,
         &conn,
-        "SELECT n FROM big",
-        RunDatabase::Named("shop".into()),
+        TruncatedRun {
+            sql: "SELECT n FROM big",
+            database: RunDatabase::Named("shop".into()),
+        },
     );
 
     let dir = tempfile::tempdir().expect("dir");
-    let (job_id, handle) = spawn_export(&state, &conn, QID, &target_in(&dir));
+    let (job_id, handle) = spawn_export(&state, input(&conn, QID, &target_in(&dir)));
     let done = finish(&state, &job_id, handle).await;
 
     assert_eq!(done.status, ResultExportStatus::Failed);
@@ -626,10 +697,19 @@ async fn call_and_locking_results_are_refused() {
                 MockStreamStep::new(
                     "SELECT n FROM big LIMIT 1000000 FOR UPDATE",
                     n_column(),
-                    8,
-                    n_row,
+                    MockStreamRows {
+                        count: 8,
+                        make_row: n_row,
+                    },
                 ),
-                MockStreamStep::new("CALL fill_report()", n_column(), 8, n_row),
+                MockStreamStep::new(
+                    "CALL fill_report()",
+                    n_column(),
+                    MockStreamRows {
+                        count: 8,
+                        make_row: n_row,
+                    },
+                ),
             ],
         ),
         5,
@@ -639,11 +719,13 @@ async fn call_and_locking_results_are_refused() {
 
     let locked = execute_query_impl(
         &state,
-        &conn,
-        TAB,
-        "SELECT n FROM big LIMIT 1000000 FOR UPDATE",
-        500,
-        None,
+        &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
+            connection_id: conn.to_string(),
+            tab_id: TAB.to_string(),
+            sql: "SELECT n FROM big LIMIT 1000000 FOR UPDATE".to_string(),
+            row_limit: Some(500),
+            view_spec: None,
+        },
     )
     .await
     .expect("locking run");
@@ -652,9 +734,17 @@ async fn call_and_locking_results_are_refused() {
         .expect_err("locking refused");
     assert_eq!(error, FULL_EXPORT_UNAVAILABLE_MESSAGE);
 
-    let call = execute_call_query_impl(&state, &conn, TAB, "CALL fill_report()", 500)
-        .await
-        .expect("call run");
+    let call = execute_call_query_impl(
+        &state,
+        &sqllumen_lib::mysql::query_executor::ExecuteCallQueryRequest {
+            connection_id: conn.to_string(),
+            tab_id: TAB.to_string(),
+            sql: "CALL fill_report()".to_string(),
+            row_limit: Some(500),
+        },
+    )
+    .await
+    .expect("call run");
     assert!(call.results[0].truncated);
     let error = start_result_export_impl(
         &state,
@@ -683,13 +773,15 @@ async fn closing_the_connection_cancels_a_running_export() {
     cache_truncated(
         &state,
         &conn,
-        "SELECT n FROM big",
-        RunDatabase::Named("shop".into()),
+        TruncatedRun {
+            sql: "SELECT n FROM big",
+            database: RunDatabase::Named("shop".into()),
+        },
     );
 
     let dir = tempfile::tempdir().expect("dir");
     let target = target_in(&dir);
-    let (job_id, handle) = spawn_export(&state, &conn, QID, &target);
+    let (job_id, handle) = spawn_export(&state, input(&conn, QID, &target));
     poll_until(&state, &job_id, |p| p.rows_written > 0).await;
 
     close_connection_impl(&state, &conn).await.expect("close");

@@ -1,29 +1,26 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeArgumentCommand, NO_ARGUMENTS } from './ipc/dispatch'
 import { logFrontend } from './app-log-commands'
 import { PERCENT_SCALE } from './units'
+
+const MAIN_WEBVIEW_LABEL = 'main'
 
 export type WindowBackdrop = 'mica' | 'solid'
 export type WindowThemePreference = 'light' | 'dark' | 'system'
 
-/** Sets the native title bar theme; `null` lets it follow the OS. */
 export async function setWindowTheme(theme: 'light' | 'dark' | null): Promise<void> {
-  await invoke<void>('set_window_theme', { theme })
+  await invokeArgumentCommand({ command: 'set_window_theme', argument: { theme } })
 }
 
-/**
- * Zooms the main webview natively (like browser zoom). CSS `zoom` on the root is avoided: it
- * scales the page's own px but not pointer or rect coordinates, so overlays drift.
- */
+/** CSS `zoom` scales the page's px but not pointer or rect coordinates, so overlays drift. */
 export async function setWebviewZoom(level: number): Promise<void> {
-  await invoke<void>('plugin:webview|set_webview_zoom', {
-    label: 'main',
-    value: level / PERCENT_SCALE,
+  await invokeArgumentCommand({
+    command: 'plugin:webview|set_webview_zoom',
+    argument: { label: MAIN_WEBVIEW_LABEL, value: level / PERCENT_SCALE },
   })
 }
 
-/** `mica` when the window got the Windows 11 backdrop, `solid` otherwise. */
 export async function getWindowBackdrop(): Promise<WindowBackdrop> {
-  return invoke<WindowBackdrop>('get_window_backdrop')
+  return invokeArgumentCommand({ command: 'get_window_backdrop', argument: NO_ARGUMENTS })
 }
 
 /** Keeps the OS-drawn title bar in the app theme; `system` lets it follow the OS. */

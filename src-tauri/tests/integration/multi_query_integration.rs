@@ -11,6 +11,7 @@ use sqllumen_lib::export::{ExportFormat, ExportOptions};
 #[cfg(coverage)]
 use sqllumen_lib::mysql::pool::SslSettings;
 use sqllumen_lib::mysql::query_executor::{update_result_cell_impl, ColumnMeta, StoredResult};
+use sqllumen_lib::mysql::result_cache::CacheKey;
 use sqllumen_lib::mysql::result_view::{
     fetch_result_window_impl, set_result_view_impl, ResultViewSpec,
 };
@@ -19,35 +20,34 @@ use std::collections::HashMap;
 /// Helper: insert a multi-result vector into state.
 fn insert_multi_results(
     state: &sqllumen_lib::state::AppState,
-    conn_id: &str,
-    tab_id: &str,
+    key: CacheKey,
     result_vec: Vec<StoredResult>,
 ) {
-    state.result_cache.insert(conn_id, tab_id, result_vec);
+    state.result_cache.insert(key, result_vec);
 }
 
 /// Create two sample StoredResults with distinguishable data.
 fn two_results() -> Vec<StoredResult> {
     vec![
-        StoredResult::new(
-            "q-first".to_string(),
-            vec![ColumnMeta {
+        StoredResult::new(sqllumen_lib::mysql::query_executor::StoredResultParts {
+            query_id: "q-first".to_string(),
+            columns: vec![ColumnMeta {
                 name: "id".to_string(),
                 data_type: "INT".to_string(),
             }],
-            crate::common::shared_rows(vec![
+            rows: crate::common::shared_rows(vec![
                 vec![serde_json::json!(10)],
                 vec![serde_json::json!(20)],
                 vec![serde_json::json!(30)],
             ]),
-            5,
-            5,
-            0,
-            false,
-        ),
-        StoredResult::new(
-            "q-second".to_string(),
-            vec![
+            execution_time_ms: 5,
+            total_time_ms: 5,
+            affected_rows: 0,
+            auto_limit_applied: false,
+        }),
+        StoredResult::new(sqllumen_lib::mysql::query_executor::StoredResultParts {
+            query_id: "q-second".to_string(),
+            columns: vec![
                 ColumnMeta {
                     name: "name".to_string(),
                     data_type: "VARCHAR".to_string(),
@@ -57,15 +57,15 @@ fn two_results() -> Vec<StoredResult> {
                     data_type: "INT".to_string(),
                 },
             ],
-            crate::common::shared_rows(vec![
+            rows: crate::common::shared_rows(vec![
                 vec![serde_json::json!("Alice"), serde_json::json!(30)],
                 vec![serde_json::json!("Bob"), serde_json::json!(25)],
             ]),
-            3,
-            3,
-            0,
-            false,
-        ),
+            execution_time_ms: 3,
+            total_time_ms: 3,
+            affected_rows: 0,
+            auto_limit_applied: false,
+        }),
     ]
 }
 
@@ -74,10 +74,23 @@ fn two_results() -> Vec<StoredResult> {
 #[test]
 fn fetch_result_window_at_index_zero() {
     let state = test_app_state();
-    insert_multi_results(&state, "c1", "t1", two_results());
+    insert_multi_results(&state, CacheKey::new("c1", "t1"), two_results());
 
-    let result = fetch_result_window_impl(&state, "c1", "t1", 0, "q-first", 1, 0, 100)
-        .expect("fetch at index 0 should succeed");
+    let result = fetch_result_window_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::FetchResultWindowRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: "c1".to_string(),
+                tab_id: "t1".to_string(),
+                result_index: 0,
+                query_id: "q-first".to_string(),
+            },
+            view_version: 1,
+            offset: 0,
+            limit: 100,
+        },
+    )
+    .expect("fetch at index 0 should succeed");
     assert_eq!(result.rows.len(), 3);
     assert_eq!(result.rows[0][0], serde_json::json!(10));
 }
@@ -85,10 +98,23 @@ fn fetch_result_window_at_index_zero() {
 #[test]
 fn fetch_result_window_at_result_index_one() {
     let state = test_app_state();
-    insert_multi_results(&state, "c1", "t1", two_results());
+    insert_multi_results(&state, CacheKey::new("c1", "t1"), two_results());
 
-    let result = fetch_result_window_impl(&state, "c1", "t1", 1, "q-second", 1, 0, 100)
-        .expect("fetch at index 1 should succeed");
+    let result = fetch_result_window_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::FetchResultWindowRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: "c1".to_string(),
+                tab_id: "t1".to_string(),
+                result_index: 1,
+                query_id: "q-second".to_string(),
+            },
+            view_version: 1,
+            offset: 0,
+            limit: 100,
+        },
+    )
+    .expect("fetch at index 1 should succeed");
     assert_eq!(result.rows.len(), 2);
     assert_eq!(result.rows[0][0], serde_json::json!("Alice"));
 }
@@ -96,10 +122,23 @@ fn fetch_result_window_at_result_index_one() {
 #[test]
 fn fetch_result_window_with_out_of_range_index_errors() {
     let state = test_app_state();
-    insert_multi_results(&state, "c1", "t1", two_results());
+    insert_multi_results(&state, CacheKey::new("c1", "t1"), two_results());
 
-    let err = fetch_result_window_impl(&state, "c1", "t1", 5, "q-first", 1, 0, 100)
-        .expect_err("out-of-range result_index should error");
+    let err = fetch_result_window_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::FetchResultWindowRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: "c1".to_string(),
+                tab_id: "t1".to_string(),
+                result_index: 5,
+                query_id: "q-first".to_string(),
+            },
+            view_version: 1,
+            offset: 0,
+            limit: 100,
+        },
+    )
+    .expect_err("out-of-range result_index should error");
     assert!(err.contains("Result index 5 out of range"));
 }
 
@@ -108,14 +147,26 @@ fn fetch_result_window_with_out_of_range_index_errors() {
 #[test]
 fn set_result_view_sorts_only_the_targeted_result() {
     let state = test_app_state();
-    insert_multi_results(&state, "c1", "t1", two_results());
+    insert_multi_results(&state, CacheKey::new("c1", "t1"), two_results());
 
     let spec: ResultViewSpec = serde_json::from_value(serde_json::json!({
         "sort": { "column": "name", "direction": "desc" }
     }))
     .expect("spec");
-    let page = set_result_view_impl(&state, "c1", "t1", 1, "q-second", 1, &spec)
-        .expect("sort at index 1 should succeed");
+    let page = set_result_view_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::SetResultViewRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: "c1".to_string(),
+                tab_id: "t1".to_string(),
+                result_index: 1,
+                query_id: "q-second".to_string(),
+            },
+            base_view_version: 1,
+            view_spec: spec.clone(),
+        },
+    )
+    .expect("sort at index 1 should succeed");
     assert_eq!(page.first_window.rows.len(), 2);
     assert_eq!(page.first_window.rows[0][0], serde_json::json!("Bob"));
     assert_eq!(page.first_window.rows[1][0], serde_json::json!("Alice"));
@@ -133,16 +184,20 @@ fn set_result_view_sorts_only_the_targeted_result() {
 #[test]
 fn set_result_view_with_out_of_range_index_errors() {
     let state = test_app_state();
-    insert_multi_results(&state, "c1", "t1", two_results());
+    insert_multi_results(&state, CacheKey::new("c1", "t1"), two_results());
 
     let err = set_result_view_impl(
         &state,
-        "c1",
-        "t1",
-        99,
-        "q-first",
-        1,
-        &ResultViewSpec::default(),
+        &sqllumen_lib::mysql::result_view::SetResultViewRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: "c1".to_string(),
+                tab_id: "t1".to_string(),
+                result_index: 99,
+                query_id: "q-first".to_string(),
+            },
+            base_view_version: 1,
+            view_spec: ResultViewSpec::default(),
+        },
     )
     .expect_err("out-of-range result_index should error");
     assert!(err.contains("Result index 99 out of range"));
@@ -153,12 +208,22 @@ fn set_result_view_with_out_of_range_index_errors() {
 #[test]
 fn update_result_cell_with_result_index_one() {
     let state = test_app_state();
-    insert_multi_results(&state, "c1", "t1", two_results());
+    insert_multi_results(&state, CacheKey::new("c1", "t1"), two_results());
 
     let mut updates = HashMap::new();
     updates.insert(0, serde_json::json!("Charlie"));
 
-    let result = update_result_cell_impl(&state, "c1", "t1", 0, updates, Some(1), "q-second");
+    let result = update_result_cell_impl(
+        &state,
+        sqllumen_lib::mysql::query_executor::UpdateResultCellRequest {
+            connection_id: "c1".to_string(),
+            tab_id: "t1".to_string(),
+            row_index: 0,
+            updates,
+            result_index: Some(1),
+            query_id: "q-second".to_string(),
+        },
+    );
     assert!(result.is_ok());
 
     // Verify the second result was updated
@@ -173,10 +238,20 @@ fn update_result_cell_with_result_index_one() {
 #[test]
 fn update_result_cell_with_out_of_range_index_errors() {
     let state = test_app_state();
-    insert_multi_results(&state, "c1", "t1", two_results());
+    insert_multi_results(&state, CacheKey::new("c1", "t1"), two_results());
 
     let updates = HashMap::new();
-    let result = update_result_cell_impl(&state, "c1", "t1", 0, updates, Some(10), "q-first");
+    let result = update_result_cell_impl(
+        &state,
+        sqllumen_lib::mysql::query_executor::UpdateResultCellRequest {
+            connection_id: "c1".to_string(),
+            tab_id: "t1".to_string(),
+            row_index: 0,
+            updates,
+            result_index: Some(10),
+            query_id: "q-first".to_string(),
+        },
+    );
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Result index 10 out of range"));
 }
@@ -186,7 +261,7 @@ fn update_result_cell_with_out_of_range_index_errors() {
 #[test]
 fn export_with_result_index_one_exports_second_result() {
     let state = test_app_state();
-    insert_multi_results(&state, "c1", "t1", two_results());
+    insert_multi_results(&state, CacheKey::new("c1", "t1"), two_results());
 
     let dir = std::env::temp_dir();
     let path = dir.join(format!("test_multi_export_{}.json", std::process::id()));
@@ -199,8 +274,16 @@ fn export_with_result_index_one_exports_second_result() {
         table_name: None,
     };
 
-    let result = export_results_impl(&state, "c1", "t1", options, Some(1))
-        .expect("export at index 1 should succeed");
+    let result = export_results_impl(
+        &state,
+        sqllumen_lib::commands::export::ExportResultsRequest {
+            connection_id: "c1".to_string(),
+            tab_id: "t1".to_string(),
+            options,
+            result_index: Some(1),
+        },
+    )
+    .expect("export at index 1 should succeed");
     assert_eq!(result.rows_exported, 2); // second result has 2 rows
 
     // Verify the exported content contains the second result's data
@@ -214,7 +297,7 @@ fn export_with_result_index_one_exports_second_result() {
 #[test]
 fn export_with_result_index_out_of_range_errors() {
     let state = test_app_state();
-    insert_multi_results(&state, "c1", "t1", two_results());
+    insert_multi_results(&state, CacheKey::new("c1", "t1"), two_results());
 
     let options = ExportOptions {
         format: ExportFormat::Csv,
@@ -223,15 +306,23 @@ fn export_with_result_index_out_of_range_errors() {
         table_name: None,
     };
 
-    let err = export_results_impl(&state, "c1", "t1", options, Some(5))
-        .expect_err("out-of-range result_index should error");
+    let err = export_results_impl(
+        &state,
+        sqllumen_lib::commands::export::ExportResultsRequest {
+            connection_id: "c1".to_string(),
+            tab_id: "t1".to_string(),
+            options,
+            result_index: Some(5),
+        },
+    )
+    .expect_err("out-of-range result_index should error");
     assert!(err.contains("Result index 5 out of range"));
 }
 
 #[test]
 fn export_with_none_defaults_to_first_result() {
     let state = test_app_state();
-    insert_multi_results(&state, "c1", "t1", two_results());
+    insert_multi_results(&state, CacheKey::new("c1", "t1"), two_results());
 
     let dir = std::env::temp_dir();
     let path = dir.join(format!(
@@ -247,8 +338,16 @@ fn export_with_none_defaults_to_first_result() {
         table_name: None,
     };
 
-    let result = export_results_impl(&state, "c1", "t1", options, None)
-        .expect("export with None should default to index 0");
+    let result = export_results_impl(
+        &state,
+        sqllumen_lib::commands::export::ExportResultsRequest {
+            connection_id: "c1".to_string(),
+            tab_id: "t1".to_string(),
+            options,
+            result_index: None,
+        },
+    )
+    .expect("export with None should default to index 0");
     assert_eq!(result.rows_exported, 3); // first result has 3 rows
 
     let _ = std::fs::remove_file(&path);
@@ -315,7 +414,7 @@ mod coverage_reexecute {
     async fn reexecute_replaces_only_targeted_index() {
         let state = test_app_state();
         register_lazy_pool(&state, "conn-re", false);
-        insert_multi_results(&state, "conn-re", "tab-re", two_results());
+        insert_multi_results(&state, CacheKey::new("conn-re", "tab-re"), two_results());
 
         // Verify initial state: two results
         {
@@ -333,12 +432,14 @@ mod coverage_reexecute {
         // Re-execute index 1
         let item = reexecute_single_result_impl(
             &state,
-            "conn-re",
-            "tab-re",
-            1,
-            "SELECT name FROM users",
-            100,
-            None,
+            &sqllumen_lib::mysql::query_executor::ReexecuteSingleResultRequest {
+                connection_id: "conn-re".to_string(),
+                tab_id: "tab-re".to_string(),
+                result_index: 1,
+                sql: "SELECT name FROM users".to_string(),
+                row_limit: Some(100),
+                view_spec: None,
+            },
         )
         .await
         .expect("reexecute should succeed");
@@ -374,12 +475,25 @@ mod coverage_reexecute {
     #[tokio::test]
     async fn reexecute_missing_connection_errors() {
         let state = test_app_state();
-        insert_multi_results(&state, "conn-missing", "tab-1", two_results());
+        insert_multi_results(
+            &state,
+            CacheKey::new("conn-missing", "tab-1"),
+            two_results(),
+        );
 
-        let err =
-            reexecute_single_result_impl(&state, "conn-missing", "tab-1", 0, "SELECT 1", 100, None)
-                .await
-                .expect_err("missing connection should error");
+        let err = reexecute_single_result_impl(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ReexecuteSingleResultRequest {
+                connection_id: "conn-missing".to_string(),
+                tab_id: "tab-1".to_string(),
+                result_index: 0,
+                sql: "SELECT 1".to_string(),
+                row_limit: Some(100),
+                view_spec: None,
+            },
+        )
+        .await
+        .expect_err("missing connection should error");
         assert!(err.contains("not found"));
     }
 
@@ -387,16 +501,18 @@ mod coverage_reexecute {
     async fn reexecute_read_only_blocks_dml() {
         let state = test_app_state();
         register_lazy_pool(&state, "ro-conn", true);
-        insert_multi_results(&state, "ro-conn", "tab-1", two_results());
+        insert_multi_results(&state, CacheKey::new("ro-conn", "tab-1"), two_results());
 
         let err = reexecute_single_result_impl(
             &state,
-            "ro-conn",
-            "tab-1",
-            0,
-            "INSERT INTO t VALUES (1)",
-            100,
-            None,
+            &sqllumen_lib::mysql::query_executor::ReexecuteSingleResultRequest {
+                connection_id: "ro-conn".to_string(),
+                tab_id: "tab-1".to_string(),
+                result_index: 0,
+                sql: "INSERT INTO t VALUES (1)".to_string(),
+                row_limit: Some(100),
+                view_spec: None,
+            },
         )
         .await
         .expect_err("read-only should block DML");
@@ -407,12 +523,21 @@ mod coverage_reexecute {
     async fn reexecute_out_of_range_index_errors() {
         let state = test_app_state();
         register_lazy_pool(&state, "conn-re2", false);
-        insert_multi_results(&state, "conn-re2", "tab-1", two_results());
+        insert_multi_results(&state, CacheKey::new("conn-re2", "tab-1"), two_results());
 
-        let err =
-            reexecute_single_result_impl(&state, "conn-re2", "tab-1", 5, "SELECT 1", 100, None)
-                .await
-                .expect_err("out-of-range index should error");
+        let err = reexecute_single_result_impl(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ReexecuteSingleResultRequest {
+                connection_id: "conn-re2".to_string(),
+                tab_id: "tab-1".to_string(),
+                result_index: 5,
+                sql: "SELECT 1".to_string(),
+                row_limit: Some(100),
+                view_spec: None,
+            },
+        )
+        .await
+        .expect_err("out-of-range index should error");
         assert!(err.contains("Result index 5 out of range"));
     }
 
@@ -423,12 +548,14 @@ mod coverage_reexecute {
 
         let err = reexecute_single_result_impl(
             &state,
-            "conn-re3",
-            "tab-missing",
-            0,
-            "SELECT 1",
-            100,
-            None,
+            &sqllumen_lib::mysql::query_executor::ReexecuteSingleResultRequest {
+                connection_id: "conn-re3".to_string(),
+                tab_id: "tab-missing".to_string(),
+                result_index: 0,
+                sql: "SELECT 1".to_string(),
+                row_limit: Some(100),
+                view_spec: None,
+            },
         )
         .await
         .expect_err("missing results should error");
@@ -504,9 +631,17 @@ mod coverage_multi_query {
             "SELECT 2".to_string(),
         ];
 
-        let result = execute_multi_query_impl(&state, "mq-conn", "mq-tab", stmts, 100)
-            .await
-            .expect("should succeed");
+        let result = execute_multi_query_impl(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteMultiQueryRequest {
+                connection_id: "mq-conn".to_string(),
+                tab_id: "mq-tab".to_string(),
+                statements: stmts,
+                row_limit: Some(100),
+            },
+        )
+        .await
+        .expect("should succeed");
 
         assert_eq!(result.results.len(), 3);
         assert_eq!(result.results[0].source_sql, "SELECT 1");
@@ -538,9 +673,17 @@ mod coverage_multi_query {
             "SELECT 2".to_string(),
         ];
 
-        let result = execute_multi_query_impl(&state, "mq-call", "mq-tab", stmts, 100)
-            .await
-            .expect("should succeed");
+        let result = execute_multi_query_impl(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteMultiQueryRequest {
+                connection_id: "mq-call".to_string(),
+                tab_id: "mq-tab".to_string(),
+                statements: stmts,
+                row_limit: Some(100),
+            },
+        )
+        .await
+        .expect("should succeed");
 
         assert_eq!(result.results.len(), 3);
         assert!(
@@ -562,9 +705,17 @@ mod coverage_multi_query {
         let state = test_app_state();
 
         let stmts = vec!["SELECT 1".to_string()];
-        let err = execute_multi_query_impl(&state, "no-conn", "tab-1", stmts, 100)
-            .await
-            .expect_err("missing connection should error");
+        let err = execute_multi_query_impl(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteMultiQueryRequest {
+                connection_id: "no-conn".to_string(),
+                tab_id: "tab-1".to_string(),
+                statements: stmts,
+                row_limit: Some(100),
+            },
+        )
+        .await
+        .expect_err("missing connection should error");
         assert!(err.contains("not found"));
     }
 
@@ -579,9 +730,17 @@ mod coverage_multi_query {
             "SELECT 2".to_string(),
         ];
 
-        let result = execute_multi_query_impl(&state, "ro-mq", "tab-1", stmts, 100)
-            .await
-            .expect("should succeed with error entry");
+        let result = execute_multi_query_impl(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteMultiQueryRequest {
+                connection_id: "ro-mq".to_string(),
+                tab_id: "tab-1".to_string(),
+                statements: stmts,
+                row_limit: Some(100),
+            },
+        )
+        .await
+        .expect("should succeed with error entry");
 
         // Should stop at the read-only violation: SELECT succeeds, DELETE produces error entry
         assert_eq!(result.results.len(), 2);
@@ -601,9 +760,17 @@ mod coverage_multi_query {
 
         let stmts = vec!["".to_string(), "  ".to_string(), "SELECT 1".to_string()];
 
-        let result = execute_multi_query_impl(&state, "mq-empty", "mq-tab", stmts, 100)
-            .await
-            .expect("should succeed");
+        let result = execute_multi_query_impl(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteMultiQueryRequest {
+                connection_id: "mq-empty".to_string(),
+                tab_id: "mq-tab".to_string(),
+                statements: stmts,
+                row_limit: Some(100),
+            },
+        )
+        .await
+        .expect("should succeed");
 
         // Only the non-empty SELECT should produce a result
         assert_eq!(result.results.len(), 1);
@@ -620,9 +787,17 @@ mod coverage_multi_query {
             "SELECT * FROM t LIMIT 10".to_string(), // already has limit
         ];
 
-        let result = execute_multi_query_impl(&state, "mq-limit", "mq-tab", stmts, 100)
-            .await
-            .expect("should succeed");
+        let result = execute_multi_query_impl(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteMultiQueryRequest {
+                connection_id: "mq-limit".to_string(),
+                tab_id: "mq-tab".to_string(),
+                statements: stmts,
+                row_limit: Some(100),
+            },
+        )
+        .await
+        .expect("should succeed");
 
         assert_eq!(result.results.len(), 2);
         assert!(result.results[0].auto_limit_applied);
@@ -645,9 +820,17 @@ mod coverage_multi_query {
             "SELECT 2".to_string(),
         ];
 
-        let result = execute_multi_query_impl(&state, "mq-call-batch", "mq-tab-batch", stmts, 100)
-            .await
-            .expect("should succeed");
+        let result = execute_multi_query_impl(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteMultiQueryRequest {
+                connection_id: "mq-call-batch".to_string(),
+                tab_id: "mq-tab-batch".to_string(),
+                statements: stmts,
+                row_limit: Some(100),
+            },
+        )
+        .await
+        .expect("should succeed");
 
         // The coverage stub produces 1 entry per non-empty statement
         assert_eq!(result.results.len(), 3);
@@ -697,9 +880,17 @@ mod coverage_multi_query {
 
         let stmts = vec!["/*!50001 CALL my_proc() */".to_string()];
 
-        let result = execute_multi_query_impl(&state, "mq-exec-comment", "mq-tab-ec", stmts, 100)
-            .await
-            .expect("should succeed");
+        let result = execute_multi_query_impl(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteMultiQueryRequest {
+                connection_id: "mq-exec-comment".to_string(),
+                tab_id: "mq-tab-ec".to_string(),
+                statements: stmts,
+                row_limit: Some(100),
+            },
+        )
+        .await
+        .expect("should succeed");
 
         assert_eq!(result.results.len(), 1);
         assert_eq!(result.results[0].source_sql, "/*!50001 CALL my_proc() */");
@@ -723,9 +914,17 @@ mod coverage_multi_query {
             "SELECT * FROM t".to_string(),
         ];
 
-        let result = execute_multi_query_impl(&state, "mq-mixed", "mq-tab-mixed", stmts, 100)
-            .await
-            .expect("should succeed");
+        let result = execute_multi_query_impl(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteMultiQueryRequest {
+                connection_id: "mq-mixed".to_string(),
+                tab_id: "mq-tab-mixed".to_string(),
+                statements: stmts,
+                row_limit: Some(100),
+            },
+        )
+        .await
+        .expect("should succeed");
 
         assert_eq!(result.results.len(), 4);
         assert_eq!(result.results[0].source_sql, "INSERT INTO t VALUES (1)");
@@ -774,7 +973,7 @@ mod coverage_multi_query {
         use sqllumen_lib::mysql::multi_result::is_call_statement;
         use sqllumen_lib::mysql::query_executor::MultiQueryResultItem;
 
-        let stmts = vec![
+        let stmts = [
             "SELECT 1".to_string(),
             "CALL proc_with_2_selects()".to_string(),
             "SELECT 2".to_string(),
@@ -968,10 +1167,17 @@ mod coverage_call_query {
         let state = test_app_state();
         register_lazy_pool(&state, "call-conn", false);
 
-        let result =
-            execute_call_query_impl(&state, "call-conn", "call-tab", "CALL my_proc()", 100)
-                .await
-                .expect("should succeed");
+        let result = execute_call_query_impl(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteCallQueryRequest {
+                connection_id: "call-conn".to_string(),
+                tab_id: "call-tab".to_string(),
+                sql: "CALL my_proc()".to_string(),
+                row_limit: Some(100),
+            },
+        )
+        .await
+        .expect("should succeed");
 
         assert_eq!(result.results.len(), 1);
         assert_eq!(result.results[0].source_sql, "CALL my_proc()");
@@ -990,9 +1196,17 @@ mod coverage_call_query {
     async fn call_query_missing_connection_errors() {
         let state = test_app_state();
 
-        let err = execute_call_query_impl(&state, "no-conn", "tab-1", "CALL my_proc()", 100)
-            .await
-            .expect_err("missing connection should error");
+        let err = execute_call_query_impl(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteCallQueryRequest {
+                connection_id: "no-conn".to_string(),
+                tab_id: "tab-1".to_string(),
+                sql: "CALL my_proc()".to_string(),
+                row_limit: Some(100),
+            },
+        )
+        .await
+        .expect_err("missing connection should error");
         assert!(err.contains("not found"));
     }
 
@@ -1001,9 +1215,17 @@ mod coverage_call_query {
         let state = test_app_state();
         register_lazy_pool(&state, "ro-call", true);
 
-        let err = execute_call_query_impl(&state, "ro-call", "tab-1", "CALL my_proc()", 100)
-            .await
-            .expect_err("read-only should block CALL");
+        let err = execute_call_query_impl(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteCallQueryRequest {
+                connection_id: "ro-call".to_string(),
+                tab_id: "tab-1".to_string(),
+                sql: "CALL my_proc()".to_string(),
+                row_limit: Some(100),
+            },
+        )
+        .await
+        .expect_err("read-only should block CALL");
         assert!(err.contains("read-only"));
         assert!(err.contains("CALL"));
     }

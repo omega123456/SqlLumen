@@ -223,7 +223,18 @@ fn processlist_steps_with_signed_id_and_null_fields() -> Vec<MockQueryStep> {
     }]
 }
 
-fn register_mock_session(state: &AppState, session_id: &str, port: u16, read_only: bool) {
+struct MockSession<'a> {
+    session_id: &'a str,
+    port: u16,
+    read_only: bool,
+}
+
+fn register_mock_session(state: &AppState, session: MockSession<'_>) {
+    let MockSession {
+        session_id,
+        port,
+        read_only,
+    } = session;
     let pool = MySqlPoolOptions::new().connect_lazy_with(
         MySqlConnectOptions::new()
             .host("127.0.0.1")
@@ -301,7 +312,14 @@ async fn test_get_processlist_returns_rows_with_registered_mock_session() {
     let state = common::test_app_state();
 
     let server = MockMySqlServer::start_script(processlist_steps()).await;
-    register_mock_session(&state, "sess-processlist", server.port, false);
+    register_mock_session(
+        &state,
+        MockSession {
+            session_id: "sess-processlist",
+            port: server.port,
+            read_only: false,
+        },
+    );
 
     let rows = get_processlist_impl(&state, "sess-processlist")
         .await
@@ -319,7 +337,14 @@ async fn test_get_processlist_handles_signed_ids_and_null_fields() {
 
     let server =
         MockMySqlServer::start_script(processlist_steps_with_signed_id_and_null_fields()).await;
-    register_mock_session(&state, "sess-processlist-null", server.port, false);
+    register_mock_session(
+        &state,
+        MockSession {
+            session_id: "sess-processlist-null",
+            port: server.port,
+            read_only: false,
+        },
+    );
 
     let rows = get_processlist_impl(&state, "sess-processlist-null")
         .await
@@ -345,9 +370,15 @@ async fn test_kill_queries_allows_read_only_connection() {
     let server = MockMySqlServer::start_script(processlist_steps()).await;
     let session_id = open_session(&state, server.port, true).await;
 
-    let results = kill_queries_impl(&state, &session_id, vec![42])
-        .await
-        .expect("read-only profiles should still be able to kill queries");
+    let results = kill_queries_impl(
+        &state,
+        sqllumen_lib::commands::processlist::KillQueriesRequest {
+            session_id: session_id.to_string(),
+            ids: vec![42],
+        },
+    )
+    .await
+    .expect("read-only profiles should still be able to kill queries");
     assert!(results[0].success);
 }
 
@@ -355,7 +386,14 @@ async fn test_kill_queries_allows_read_only_connection() {
 async fn test_kill_queries_invalid_session() {
     common::ensure_fake_backend_once();
     let state = common::test_app_state();
-    let result = kill_queries_impl(&state, "nonexistent", vec![1]).await;
+    let result = kill_queries_impl(
+        &state,
+        sqllumen_lib::commands::processlist::KillQueriesRequest {
+            session_id: "nonexistent".to_string(),
+            ids: vec![1],
+        },
+    )
+    .await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("not found"));
 }
@@ -366,11 +404,24 @@ async fn test_kill_queries_allows_read_only_registered_mock_session() {
     let state = common::test_app_state();
 
     let server = MockMySqlServer::start_script(processlist_steps()).await;
-    register_mock_session(&state, "sess-readonly", server.port, true);
+    register_mock_session(
+        &state,
+        MockSession {
+            session_id: "sess-readonly",
+            port: server.port,
+            read_only: true,
+        },
+    );
 
-    let results = kill_queries_impl(&state, "sess-readonly", vec![42])
-        .await
-        .expect("read-only profiles should still be able to kill queries");
+    let results = kill_queries_impl(
+        &state,
+        sqllumen_lib::commands::processlist::KillQueriesRequest {
+            session_id: "sess-readonly".to_string(),
+            ids: vec![42],
+        },
+    )
+    .await
+    .expect("read-only profiles should still be able to kill queries");
     assert!(results[0].success);
 }
 
@@ -390,11 +441,24 @@ async fn test_kill_queries_uses_rds_stored_procedure() {
         .expect("seed connection");
 
     let server = MockMySqlServer::start_script(processlist_steps_with_rds_kill_error()).await;
-    register_mock_session(&state, "sess-rds", server.port, false);
+    register_mock_session(
+        &state,
+        MockSession {
+            session_id: "sess-rds",
+            port: server.port,
+            read_only: false,
+        },
+    );
 
-    let results = kill_queries_impl(&state, "sess-rds", vec![99])
-        .await
-        .expect("kill queries should return result list");
+    let results = kill_queries_impl(
+        &state,
+        sqllumen_lib::commands::processlist::KillQueriesRequest {
+            session_id: "sess-rds".to_string(),
+            ids: vec![99],
+        },
+    )
+    .await
+    .expect("kill queries should return result list");
 
     assert!(!results[0].success);
     assert!(results[0]
@@ -404,8 +468,17 @@ async fn test_kill_queries_uses_rds_stored_procedure() {
         .contains("Used mysql.rds_kill"));
 
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    let page =
-        list_history_impl(&state, "profile-processlist-test", 1, 50, None, None).expect("history");
+    let page = list_history_impl(
+        &state,
+        &sqllumen_lib::commands::history::ListHistoryRequest {
+            connection_id: "profile-processlist-test".to_string(),
+            page: 1,
+            page_size: 50,
+            search: None,
+            since: None,
+        },
+    )
+    .expect("history");
     assert_eq!(page.total, 1);
     assert_eq!(page.entries[0].sql_text, "CALL mysql.rds_kill(99)");
     assert!(!page.entries[0].success);
@@ -417,11 +490,24 @@ async fn test_kill_queries_returns_results_with_registered_mock_session() {
     let state = common::test_app_state();
 
     let server = MockMySqlServer::start_script(processlist_steps()).await;
-    register_mock_session(&state, "sess-kill", server.port, false);
+    register_mock_session(
+        &state,
+        MockSession {
+            session_id: "sess-kill",
+            port: server.port,
+            read_only: false,
+        },
+    );
 
-    let results = kill_queries_impl(&state, "sess-kill", vec![42, 99])
-        .await
-        .expect("should kill queries");
+    let results = kill_queries_impl(
+        &state,
+        sqllumen_lib::commands::processlist::KillQueriesRequest {
+            session_id: "sess-kill".to_string(),
+            ids: vec![42, 99],
+        },
+    )
+    .await
+    .expect("should kill queries");
 
     assert_eq!(results.len(), 2);
     assert!(results.iter().all(|result| result.success));
@@ -433,11 +519,24 @@ async fn test_kill_queries_returns_per_id_failures() {
     let state = common::test_app_state();
 
     let server = MockMySqlServer::start_script(processlist_steps_with_kill_error()).await;
-    register_mock_session(&state, "sess-kill-error", server.port, false);
+    register_mock_session(
+        &state,
+        MockSession {
+            session_id: "sess-kill-error",
+            port: server.port,
+            read_only: false,
+        },
+    );
 
-    let results = kill_queries_impl(&state, "sess-kill-error", vec![42, 99])
-        .await
-        .expect("kill queries should return result list");
+    let results = kill_queries_impl(
+        &state,
+        sqllumen_lib::commands::processlist::KillQueriesRequest {
+            session_id: "sess-kill-error".to_string(),
+            ids: vec![42, 99],
+        },
+    )
+    .await
+    .expect("kill queries should return result list");
 
     assert_eq!(results.len(), 2);
     assert!(results[0].success);
@@ -459,9 +558,15 @@ async fn test_kill_queries_returns_results() {
     let server = MockMySqlServer::start_script(processlist_steps()).await;
     let session_id = open_session(&state, server.port, false).await;
 
-    let results = kill_queries_impl(&state, &session_id, vec![42, 99])
-        .await
-        .expect("should kill queries");
+    let results = kill_queries_impl(
+        &state,
+        sqllumen_lib::commands::processlist::KillQueriesRequest {
+            session_id: session_id.to_string(),
+            ids: vec![42, 99],
+        },
+    )
+    .await
+    .expect("should kill queries");
     assert_eq!(results.len(), 2);
     assert_eq!(results[0].id, 42);
     assert!(results[0].success);

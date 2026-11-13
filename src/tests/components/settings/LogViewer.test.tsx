@@ -46,13 +46,13 @@ describe('LogViewer', () => {
       'title',
       'first line\nsecond line'
     )
-    expect(ipc.calls('list_logs')[0]).toEqual({ page: 1, level: 'all' })
+    expect(ipc.payloads('list_logs')[0]).toEqual({ page: 1, level: 'all' })
   })
 
   it('resets to page 1 when the filter changes', async () => {
     const user = userEvent.setup()
 
-    ipc.override('list_logs', (args) => {
+    ipc.overridePayload('list_logs', (args) => {
       const page = Number(args?.page ?? 1)
       const level = String(args?.level ?? 'all')
       return {
@@ -81,7 +81,7 @@ describe('LogViewer', () => {
     await user.click(screen.getByTestId('log-viewer-level-filter-option-warn'))
 
     await screen.findByText('row-1-warn')
-    const calls = ipc.calls('list_logs') as Array<Record<string, unknown>>
+    const calls = ipc.payloads('list_logs') as Array<Record<string, unknown>>
     expect(calls[calls.length - 1]).toEqual({ page: 1, level: 'warn' })
     expect((screen.getAllByTestId('pagination-page-input')[0] as HTMLInputElement).value).toBe('1')
   })
@@ -108,14 +108,14 @@ describe('LogViewer', () => {
     render(<LogViewer />)
 
     await screen.findByText('auto')
-    expect(ipc.calls('list_logs')).toHaveLength(1)
+    expect(ipc.payloads('list_logs')).toHaveLength(1)
 
     await act(async () => {
       vi.advanceTimersByTime(5000)
     })
 
     await waitFor(() => {
-      expect(ipc.calls('list_logs')).toHaveLength(2)
+      expect(ipc.payloads('list_logs')).toHaveLength(2)
     })
 
     await user.click(screen.getByLabelText('Auto-refresh'))
@@ -127,7 +127,7 @@ describe('LogViewer', () => {
       vi.advanceTimersByTime(5000)
     })
 
-    expect(ipc.calls('list_logs')).toHaveLength(2)
+    expect(ipc.payloads('list_logs')).toHaveLength(2)
   })
 
   it('renders an inline error state and logs failures', async () => {
@@ -140,7 +140,7 @@ describe('LogViewer', () => {
     expect(await screen.findByTestId('log-viewer-error')).toHaveTextContent('Failed to load logs.')
 
     await waitFor(() => {
-      const logCall = (ipc.calls('log_frontend') as Array<Record<string, unknown>>).find(
+      const logCall = (ipc.payloads('log_frontend') as Array<Record<string, unknown>>).find(
         (call) =>
           call.level === 'error' &&
           typeof call.message === 'string' &&
@@ -153,7 +153,7 @@ describe('LogViewer', () => {
   it('shows first and last pagination controls without a page-size dropdown', async () => {
     const user = userEvent.setup()
 
-    ipc.override('list_logs', (args) => {
+    ipc.overridePayload('list_logs', (args) => {
       const page = Number(args?.page ?? 1)
       return {
         entries: [
@@ -191,7 +191,7 @@ describe('LogViewer', () => {
     await screen.findByText('Primary log fixture entry')
     await user.click(screen.getByTestId('log-viewer-export'))
 
-    expect(ipc.calls('export_logs')).toHaveLength(0)
+    expect(ipc.payloads('export_logs')).toHaveLength(0)
     expect(screen.getByTestId('log-export-dialog')).toBeInTheDocument()
   })
 })

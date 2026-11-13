@@ -23,6 +23,7 @@ import {
   isScopedTableDataTab,
   isScopedTableDataTabOf,
   isTabInStack,
+  WORKSPACE_TAB_STACK_ORDER,
   type WorkspaceTabStackKey,
 } from '../lib/workspace-tab-stacks'
 import {
@@ -104,19 +105,9 @@ interface WorkspaceState {
   renameQueryTab: (connectionId: string, tabId: string, nextLabel: string) => void
   reorderWorkspaceTab: (connectionId: string, tabId: string, insertIndex: number) => void
   closeTabsByDatabase: (connectionId: string, databaseName: string) => void
-  closeTabsByObject: (
-    connectionId: string,
-    databaseName: string,
-    objectName: string,
-    objectType?: EditableObjectType
-  ) => void
+  closeTabsByObject: (connectionId: string, target: DroppedObjectTarget) => void
   updateTabDatabase: (connectionId: string, oldDatabase: string, newDatabase: string) => void
-  updateTabObject: (
-    connectionId: string,
-    databaseName: string,
-    oldObjectName: string,
-    newObjectName: string
-  ) => void
+  updateTabObject: (connectionId: string, rename: ObjectRename) => void
   updateTableDesignerTab: (
     tabId: string,
     partial: Partial<Omit<TableDesignerTab, 'type' | 'id'>>
@@ -262,11 +253,11 @@ function updateConnectionTabs(
     },
     stackRecencyByConnection: {
       ...state.stackRecencyByConnection,
-      [connectionId]: getNextStackRecency(
-        newTabs,
-        state.stackRecencyByConnection[connectionId],
-        newActive
-      ),
+      [connectionId]: getNextStackRecency({
+        tabs: newTabs,
+        currentRecency: state.stackRecencyByConnection[connectionId],
+        activeTabId: newActive,
+      }),
     },
   }
 }
@@ -282,10 +273,10 @@ function removeConnectionTabs(
     ? (tabs.find((tab) => tab.id === currentActiveId) ?? null)
     : null
   const activeTabIndex = activeTab ? tabs.findIndex((tab) => tab.id === activeTab.id) : -1
-  const wasActiveRemoved = activeTab ? shouldRemove(activeTab) : false
+  const wasActiveRemoved = activeTab !== null && shouldRemove(activeTab)
   const remainingTabs = tabs.filter((tab) => !shouldRemove(tab))
   const nextActive = wasActiveRemoved
-    ? getNextActiveTabIdAfterClose(remainingTabs, activeTab!, activeTabIndex)
+    ? getNextActiveTabIdAfterClose(remainingTabs, activeTab, activeTabIndex)
     : currentActiveId
   const normalizedActive = normalizeWorkspaceActiveTab(remainingTabs, nextActive)
 
@@ -300,21 +291,28 @@ function removeConnectionTabs(
     },
     stackRecencyByConnection: {
       ...state.stackRecencyByConnection,
-      [connectionId]: getNextStackRecency(
-        remainingTabs,
-        state.stackRecencyByConnection[connectionId],
-        normalizedActive
-      ),
+      [connectionId]: getNextStackRecency({
+        tabs: remainingTabs,
+        currentRecency: state.stackRecencyByConnection[connectionId],
+        activeTabId: normalizedActive,
+      }),
     },
   }
 }
 
-function getNextStackRecency(
-  tabs: WorkspaceTab[],
-  currentRecency: Partial<Record<WorkspaceTabStackKey, string>> | undefined,
-  activeTabId: string | null,
+interface StackRecencyInputs {
+  tabs: WorkspaceTab[]
+  currentRecency: Partial<Record<WorkspaceTabStackKey, string>> | undefined
+  activeTabId: string | null
   remappedTableTabIds?: Map<string, string>
-): Partial<Record<WorkspaceTabStackKey, string>> {
+}
+
+function getNextStackRecency({
+  tabs,
+  currentRecency,
+  activeTabId,
+  remappedTableTabIds,
+}: StackRecencyInputs): Partial<Record<WorkspaceTabStackKey, string>> {
   const nextRecency: Partial<Record<WorkspaceTabStackKey, string>> = {
     ...(currentRecency ?? {}),
   }
@@ -322,9 +320,9 @@ function getNextStackRecency(
     hideScopedTableDataTabs: isTableTabsInBottomPanelEnabled(),
   })
 
-  for (const [stackKey, tabId] of Object.entries(nextRecency) as Array<
-    [WorkspaceTabStackKey, string]
-  >) {
+  for (const stackKey of WORKSPACE_TAB_STACK_ORDER) {
+    const tabId = nextRecency[stackKey]
+    if (tabId === undefined) continue
     const retainedTabId = retainedRecencyTabId(tabId, memberIds[stackKey], remappedTableTabIds)
     if (!retainedTabId) {
       delete nextRecency[stackKey]
@@ -423,12 +421,19 @@ function normalizeWorkspaceActiveTab(
   return activeTabId
 }
 
-function getStandaloneTableActivationTarget(
-  connectionId: string,
-  tabs: WorkspaceTab[],
-  activeTabId: string | null,
+interface StandaloneActivationInputs {
+  connectionId: string
+  tabs: WorkspaceTab[]
+  activeTabId: string | null
   remappedTableTabIds: Map<string, string>
-): string | null {
+}
+
+function getStandaloneTableActivationTarget({
+  connectionId,
+  tabs,
+  activeTabId,
+  remappedTableTabIds,
+}: StandaloneActivationInputs): string | null {
   if (!activeTabId) {
     return null
   }
@@ -647,11 +652,11 @@ function activateWorkspaceTab(connectionId: string, tabId: string): void {
     tabLastUsedAt: { ...state.tabLastUsedAt, [tabId]: ++tabUseCounter },
     stackRecencyByConnection: {
       ...state.stackRecencyByConnection,
-      [connectionId]: getNextStackRecency(
-        state.tabsByConnection[connectionId] || [],
-        state.stackRecencyByConnection[connectionId],
-        tabId
-      ),
+      [connectionId]: getNextStackRecency({
+        tabs: state.tabsByConnection[connectionId] || [],
+        currentRecency: state.stackRecencyByConnection[connectionId],
+        activeTabId: tabId,
+      }),
     },
   }))
 
@@ -714,10 +719,16 @@ interface GuardedTabStore {
   cleanupTab: (tabId: string) => void
 }
 
-interface DroppedObjectTarget {
+export interface DroppedObjectTarget {
   databaseName: string
   objectName: string
   objectType?: EditableObjectType
+}
+
+export interface ObjectRename {
+  databaseName: string
+  oldObjectName: string
+  newObjectName: string
 }
 
 interface WorkspaceTabRemoval {
@@ -925,11 +936,11 @@ function removeWorkspaceTab(removal: WorkspaceTabRemoval): void {
   useWorkspaceStore.setState((current) => ({
     stackRecencyByConnection: {
       ...current.stackRecencyByConnection,
-      [connectionId]: getNextStackRecency(
-        remaining,
-        current.stackRecencyByConnection[connectionId],
-        nextActiveTabId
-      ),
+      [connectionId]: getNextStackRecency({
+        tabs: remaining,
+        currentRecency: current.stackRecencyByConnection[connectionId],
+        activeTabId: nextActiveTabId,
+      }),
     },
     pendingCascadeClose: cascadeCloseAfterClosing(current.pendingCascadeClose, closingTab.id),
     tabsByConnection: {
@@ -994,23 +1005,23 @@ function applyScopedTableNormalization(
   if (normalized.tabs === currentTabs) return currentTabs
   useWorkspaceStore.setState((state) => {
     const previousActiveTabId = state.activeTabByConnection[connectionId] ?? null
-    const standaloneTarget = getStandaloneTableActivationTarget(
-      connectionId,
-      currentTabs,
-      previousActiveTabId,
-      normalized.remappedTableTabIds
-    )
+    const standaloneTarget = getStandaloneTableActivationTarget({
+      connectionId: connectionId,
+      tabs: currentTabs,
+      activeTabId: previousActiveTabId,
+      remappedTableTabIds: normalized.remappedTableTabIds,
+    })
     const nextActiveTabId =
       standaloneTarget ?? normalizeWorkspaceActiveTab(normalized.tabs, previousActiveTabId)
     return {
       stackRecencyByConnection: {
         ...state.stackRecencyByConnection,
-        [connectionId]: getNextStackRecency(
-          normalized.tabs,
-          state.stackRecencyByConnection[connectionId],
-          nextActiveTabId,
-          normalized.remappedTableTabIds
-        ),
+        [connectionId]: getNextStackRecency({
+          tabs: normalized.tabs,
+          currentRecency: state.stackRecencyByConnection[connectionId],
+          activeTabId: nextActiveTabId,
+          remappedTableTabIds: normalized.remappedTableTabIds,
+        }),
       },
       tabsByConnection: {
         ...state.tabsByConnection,
@@ -1140,7 +1151,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
       ...tab,
       ...(isScopedTableDataType ? { parentQueryTabId } : {}),
       id: generateTabId(),
-    } as WorkspaceTab
+    }
     set((state) => ({
       tabsByConnection: {
         ...state.tabsByConnection,
@@ -1182,11 +1193,11 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
         },
         stackRecencyByConnection: {
           ...state.stackRecencyByConnection,
-          [tab.connectionId]: getNextStackRecency(
-            nextTabs,
-            state.stackRecencyByConnection[tab.connectionId],
-            nextActiveTab
-          ),
+          [tab.connectionId]: getNextStackRecency({
+            tabs: nextTabs,
+            currentRecency: state.stackRecencyByConnection[tab.connectionId],
+            activeTabId: nextActiveTab,
+          }),
         },
       }
     })
@@ -1213,12 +1224,12 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
       const nextActiveTabByConnection = Object.fromEntries(
         Object.entries(nextTabsByConnection).map(([connectionId, normalized]) => {
           const currentTabs = state.tabsByConnection[connectionId] ?? []
-          const preferredTableTabId = getStandaloneTableActivationTarget(
-            connectionId,
-            currentTabs,
-            state.activeTabByConnection[connectionId] ?? null,
-            normalized.remappedTableTabIds
-          )
+          const preferredTableTabId = getStandaloneTableActivationTarget({
+            connectionId: connectionId,
+            tabs: currentTabs,
+            activeTabId: state.activeTabByConnection[connectionId] ?? null,
+            remappedTableTabIds: normalized.remappedTableTabIds,
+          })
 
           return [
             connectionId,
@@ -1233,12 +1244,12 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
       const nextStackRecencyByConnection = Object.fromEntries(
         Object.entries(nextTabsByConnection).map(([connectionId, normalized]) => [
           connectionId,
-          getNextStackRecency(
-            normalized.tabs,
-            state.stackRecencyByConnection[connectionId],
-            nextActiveTabByConnection[connectionId] ?? null,
-            normalized.remappedTableTabIds
-          ),
+          getNextStackRecency({
+            tabs: normalized.tabs,
+            currentRecency: state.stackRecencyByConnection[connectionId],
+            activeTabId: nextActiveTabByConnection[connectionId] ?? null,
+            remappedTableTabIds: normalized.remappedTableTabIds,
+          }),
         ])
       )
 
@@ -1569,19 +1580,9 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
 
   // ------ closeTabsByObject ------
 
-  closeTabsByObject: (
-    connectionId: string,
-    databaseName: string,
-    objectName: string,
-    objectType?: EditableObjectType
-  ) => {
+  closeTabsByObject: (connectionId: string, target: DroppedObjectTarget) => {
     const state = get()
     const tabs = state.tabsByConnection[connectionId] || []
-    const target: DroppedObjectTarget = {
-      databaseName: databaseName,
-      objectName: objectName,
-      objectType: objectType,
-    }
     const shouldRemove = (tab: WorkspaceTab): boolean =>
       shouldRemoveTabForDroppedObject(tab, target)
     const removedTabs = tabs.filter(shouldRemove)
@@ -1615,7 +1616,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
             ...tab,
             databaseName: newDatabase,
             label: getUpdatedObjectTabLabel(tab, tab.objectName),
-          } as WorkspaceTab
+          }
         })
       )
     )
@@ -1625,9 +1626,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
 
   updateTabObject: (
     connectionId: string,
-    databaseName: string,
-    oldObjectName: string,
-    newObjectName: string
+    { databaseName, oldObjectName, newObjectName }: ObjectRename
   ) => {
     set((state) =>
       updateConnectionTabs(state, connectionId, (tabs) =>
@@ -1641,7 +1640,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
             ...tab,
             objectName: newObjectName,
             label: getUpdatedObjectTabLabel(tab, newObjectName),
-          } as WorkspaceTab
+          }
         })
       )
     )

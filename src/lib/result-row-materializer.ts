@@ -40,13 +40,20 @@ interface Entry {
   object: ResultRow
 }
 
-/** Build one row object. Missing cells become `null`. */
-export function materializeRow(
-  position: number,
-  baseIndex: number,
-  row: readonly unknown[],
+export interface RowMaterialization {
+  position: number
+  baseIndex: number
+  row: readonly unknown[]
   columnCount: number
-): ResultRow {
+}
+
+/** Build one row object. Missing cells become `null`. */
+export function materializeRow({
+  position,
+  baseIndex,
+  row,
+  columnCount,
+}: RowMaterialization): ResultRow {
   const object: ResultRow = { __rowIdx: position, __baseIdx: baseIndex }
   for (let columnIndex = 0; columnIndex < columnCount; columnIndex++) {
     object[columnKey(columnIndex)] = row[columnIndex] ?? null
@@ -87,7 +94,12 @@ export function createWindowRowMaterializer(initialColumnCount = 0): WindowRowMa
       if (isSameEntry(previous, { row, position })) {
         return previous.object
       }
-      const object = materializeRow(position, baseIndex, row, columnCount)
+      const object = materializeRow({
+        position: position,
+        baseIndex: baseIndex,
+        row: row,
+        columnCount: columnCount,
+      })
       const isNewEntryOverCapacity = !previous && entries.size >= MATERIALIZER_MAX_ENTRIES
       if (isNewEntryOverCapacity) {
         entries = new Map()

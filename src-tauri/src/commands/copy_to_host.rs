@@ -77,11 +77,17 @@ pub fn build_copyable_tables(rows: &[(String, String, i64)]) -> Vec<CopyableTabl
         .collect()
 }
 
-/// Split decoded `(routine_name, routine_type)` pairs into `(procedures, functions)`.
+/// Split decoded `(routine_name, routine_type)` pairs into procedures and functions.
 ///
 /// `ROUTINE_TYPE` is `PROCEDURE` or `FUNCTION` (case-insensitive); unknown types are
 /// ignored. Pure shaping helper.
-pub fn split_routines(rows: &[(String, String)]) -> (Vec<String>, Vec<String>) {
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RoutineNames {
+    pub procedures: Vec<String>,
+    pub functions: Vec<String>,
+}
+
+pub fn split_routines(rows: &[(String, String)]) -> RoutineNames {
     let mut procedures = Vec::new();
     let mut functions = Vec::new();
     for (name, routine_type) in rows {
@@ -94,7 +100,10 @@ pub fn split_routines(rows: &[(String, String)]) -> (Vec<String>, Vec<String>) {
             _ => {}
         }
     }
-    (procedures, functions)
+    RoutineNames {
+        procedures,
+        functions,
+    }
 }
 
 /// Collect non-empty names from decoded single-column rows (triggers / events).
@@ -113,9 +122,10 @@ pub fn collect_names(rows: &[String]) -> Vec<String> {
 /// `query_log` helpers.
 pub async fn list_copyable_objects_impl(
     state: &AppState,
-    connection_id: &str,
-    database: &str,
+    request: &crate::commands::requests::DatabaseRequest,
 ) -> Result<CopyableObjects, String> {
+    let connection_id = request.connection_id.as_str();
+    let database = request.database.as_str();
     if is_system_schema(database) {
         return Err(format!(
             "Database '{database}' is a system schema and cannot be copied"
@@ -180,7 +190,10 @@ pub async fn list_copyable_objects_impl(
             (name, routine_type)
         })
         .collect();
-    let (procedures, functions) = split_routines(&decoded_routines);
+    let RoutineNames {
+        procedures,
+        functions,
+    } = split_routines(&decoded_routines);
 
     // ── Triggers ───────────────────────────────────────────────────────────
     let triggers_query = "\
@@ -256,8 +269,13 @@ pub fn is_same_host(source_host: &str, target_host: &str) -> bool {
 ///
 /// The source is a runtime **session id** (its host lives in the registry's
 /// stored connection params); the target is a saved **profile id** (its host is
-/// read from the SQLite connection store). Returns `(source_host, target_host)`.
-fn resolve_hosts(state: &AppState, params: &CopyToHostParams) -> Result<(String, String), String> {
+/// read from the SQLite connection store).
+struct CopyHosts {
+    source_host: String,
+    target_host: String,
+}
+
+fn resolve_hosts(state: &AppState, params: &CopyToHostParams) -> Result<CopyHosts, String> {
     let source_host = state
         .registry
         .get_connection_params(&params.source_connection_id)
@@ -286,7 +304,10 @@ fn resolve_hosts(state: &AppState, params: &CopyToHostParams) -> Result<(String,
         }
     };
 
-    Ok((source_host, target_host))
+    Ok(CopyHosts {
+        source_host,
+        target_host,
+    })
 }
 
 fn validate_target_connection_is_writable(
@@ -338,7 +359,10 @@ pub fn start_copy_to_host_impl(
     validate_selection_for_options(&params.objects, &params.options)?;
     validate_target_connection_is_writable(state, &params.target_connection_id)?;
 
-    let (source_host, target_host) = resolve_hosts(state, &params)?;
+    let CopyHosts {
+        source_host,
+        target_host,
+    } = resolve_hosts(state, &params)?;
     if is_same_host(&source_host, &target_host) {
         return Err(format!(
             "Source and target are on the same host ('{source_host}'). \
@@ -422,7 +446,8 @@ fn spawn_copy_job(state: &AppState, params: CopyToHostParams, job_id: String) {
 
     tauri::async_runtime::spawn(async move {
         let app_state = app_handle.state::<AppState>();
-        crate::export::copy_to_host::run_copy(app_state.inner(), params, jobs, job_id).await;
+        let job = crate::export::copy_to_host::CopyJob { jobs, job_id };
+        crate::export::copy_to_host::run_copy(app_state.inner(), params, job).await;
     });
 }
 
@@ -438,10 +463,9 @@ fn spawn_copy_job(_state: &AppState, _params: CopyToHostParams, _job_id: String)
 #[tauri::command]
 pub async fn list_copyable_objects(
     state: tauri::State<'_, AppState>,
-    connection_id: String,
-    database: String,
+    payload: crate::commands::requests::DatabaseRequest,
 ) -> Result<CopyableObjects, String> {
-    list_copyable_objects_impl(&state, &connection_id, &database).await
+    list_copyable_objects_impl(&state, &payload).await
 }
 
 #[cfg(not(coverage))]
@@ -474,8 +498,7 @@ pub async fn cancel_copy(state: tauri::State<'_, AppState>, job_id: String) -> R
 #[tauri::command]
 pub async fn list_copyable_objects(
     _state: tauri::State<'_, AppState>,
-    _connection_id: String,
-    _database: String,
+    _payload: crate::commands::requests::DatabaseRequest,
 ) -> Result<CopyableObjects, String> {
     Ok(CopyableObjects::default())
 }

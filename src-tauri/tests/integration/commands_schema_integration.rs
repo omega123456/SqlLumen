@@ -162,15 +162,26 @@ fn test_registry_contains_returns_false_for_unknown_id() {
 async fn test_invalidate_metadata_cache_impl_clears_connection_entries() {
     let state = common::test_app_state();
     register_lazy_pool(&state, "test-conn", false);
-    state
-        .metadata_cache
-        .insert("test-conn", "db", "tbl", None, Vec::new());
+    state.metadata_cache.insert(
+        sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new("test-conn", "db", "tbl"),
+        sqllumen_lib::mysql::metadata_cache::TableKeyMetadata {
+            primary_key: None,
+            columns: Vec::new(),
+        },
+    );
 
     let result =
         sqllumen_lib::commands::schema::invalidate_metadata_cache_impl(&state, "test-conn");
 
     assert!(result.is_ok());
-    assert!(state.metadata_cache.get("test-conn", "db", "tbl").is_none());
+    assert!(state
+        .metadata_cache
+        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+            "test-conn",
+            "db",
+            "tbl"
+        ))
+        .is_none());
 }
 
 #[tokio::test]
@@ -206,28 +217,60 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_list_schema_objects_impl_coverage_valid() {
         let state = common::test_app_state();
-        let result = list_schema_objects_impl(&state, "test-conn", "db", "table").await;
+        let result = list_schema_objects_impl(
+            &state,
+            &sqllumen_lib::commands::schema::ListSchemaObjectsRequest {
+                connection_id: "test-conn".to_string(),
+                database: "db".to_string(),
+                object_type: "table".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_list_schema_objects_impl_coverage_invalid() {
         let state = common::test_app_state();
-        let result = list_schema_objects_impl(&state, "test-conn", "db", "invalid").await;
+        let result = list_schema_objects_impl(
+            &state,
+            &sqllumen_lib::commands::schema::ListSchemaObjectsRequest {
+                connection_id: "test-conn".to_string(),
+                database: "db".to_string(),
+                object_type: "invalid".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_list_columns_impl_coverage() {
         let state = common::test_app_state();
-        let result = list_columns_impl(&state, "test-conn", "db", "tbl").await;
+        let result = list_columns_impl(
+            &state,
+            &sqllumen_lib::commands::requests::TableRequest {
+                connection_id: "test-conn".to_string(),
+                database: "db".to_string(),
+                table: "tbl".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_get_table_foreign_keys_impl_coverage() {
         let state = common::test_app_state();
-        let result = get_table_foreign_keys_impl(&state, "test-conn", "db", "tbl").await;
+        let result = get_table_foreign_keys_impl(
+            &state,
+            &sqllumen_lib::commands::requests::TableRequest {
+                connection_id: "test-conn".to_string(),
+                database: "db".to_string(),
+                table: "tbl".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
     }
@@ -235,14 +278,30 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_get_schema_info_impl_coverage() {
         let state = common::test_app_state();
-        let result = get_schema_info_impl(&state, "test-conn", "db", "obj", "table").await;
+        let result = get_schema_info_impl(
+            &state,
+            &sqllumen_lib::commands::requests::SchemaObjectRequest {
+                connection_id: "test-conn".to_string(),
+                database: "db".to_string(),
+                object_name: "obj".to_string(),
+                object_type: "table".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_get_database_details_impl_coverage() {
         let state = common::test_app_state();
-        let result = get_database_details_impl(&state, "test-conn", "mydb").await;
+        let result = get_database_details_impl(
+            &state,
+            &sqllumen_lib::commands::requests::DatabaseRequest {
+                connection_id: "test-conn".to_string(),
+                database: "mydb".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap().name, "mydb");
     }
@@ -265,49 +324,107 @@ mod coverage_stubs {
     async fn test_create_database_impl_coverage() {
         let state = common::test_app_state();
         // Registry has no entries, so is_read_only returns false
-        let result = create_database_impl(&state, "test-conn", "newdb", None, None).await;
+        let result = create_database_impl(
+            &state,
+            &sqllumen_lib::commands::schema::DatabaseEncodingRequest {
+                connection_id: "test-conn".to_string(),
+                name: "newdb".to_string(),
+                charset: None,
+                collation: None,
+            },
+        )
+        .await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_drop_database_impl_coverage() {
         let state = common::test_app_state();
-        let result = drop_database_impl(&state, "test-conn", "db").await;
+        let result = drop_database_impl(
+            &state,
+            &sqllumen_lib::commands::schema::DropDatabaseRequest {
+                connection_id: "test-conn".to_string(),
+                name: "db".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_alter_database_impl_coverage() {
         let state = common::test_app_state();
-        let result = alter_database_impl(&state, "test-conn", "db", Some("utf8"), None).await;
+        let result = alter_database_impl(
+            &state,
+            &sqllumen_lib::commands::schema::DatabaseEncodingRequest {
+                connection_id: "test-conn".to_string(),
+                name: "db".to_string(),
+                charset: Some("utf8".to_string()),
+                collation: None,
+            },
+        )
+        .await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_rename_database_impl_coverage() {
         let state = common::test_app_state();
-        let result = rename_database_impl(&state, "test-conn", "old", "new").await;
+        let result = rename_database_impl(
+            &state,
+            &sqllumen_lib::commands::schema::RenameDatabaseRequest {
+                connection_id: "test-conn".to_string(),
+                old_name: "old".to_string(),
+                new_name: "new".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_drop_table_impl_coverage() {
         let state = common::test_app_state();
-        let result = drop_table_impl(&state, "test-conn", "db", "tbl").await;
+        let result = drop_table_impl(
+            &state,
+            &sqllumen_lib::commands::requests::TableRequest {
+                connection_id: "test-conn".to_string(),
+                database: "db".to_string(),
+                table: "tbl".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_truncate_table_impl_coverage() {
         let state = common::test_app_state();
-        let result = truncate_table_impl(&state, "test-conn", "db", "tbl").await;
+        let result = truncate_table_impl(
+            &state,
+            &sqllumen_lib::commands::requests::TableRequest {
+                connection_id: "test-conn".to_string(),
+                database: "db".to_string(),
+                table: "tbl".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_rename_table_impl_coverage() {
         let state = common::test_app_state();
-        let result = rename_table_impl(&state, "test-conn", "db", "old", "new").await;
+        let result = rename_table_impl(
+            &state,
+            &sqllumen_lib::commands::schema::RenameTableRequest {
+                connection_id: "test-conn".to_string(),
+                database: "db".to_string(),
+                old_name: "old".to_string(),
+                new_name: "new".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_ok());
     }
 
@@ -315,14 +432,25 @@ mod coverage_stubs {
     async fn test_invalidate_metadata_cache_impl_coverage() {
         let state = common::test_app_state();
         super::register_lazy_pool(&state, "test-conn", false);
-        state
-            .metadata_cache
-            .insert("test-conn", "db", "tbl", None, Vec::new());
+        state.metadata_cache.insert(
+            sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new("test-conn", "db", "tbl"),
+            sqllumen_lib::mysql::metadata_cache::TableKeyMetadata {
+                primary_key: None,
+                columns: Vec::new(),
+            },
+        );
 
         let result = invalidate_metadata_cache_impl(&state, "test-conn");
 
         assert!(result.is_ok());
-        assert!(state.metadata_cache.get("test-conn", "db", "tbl").is_none());
+        assert!(state
+            .metadata_cache
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "test-conn",
+                "db",
+                "tbl"
+            ))
+            .is_none());
     }
 
     #[test]
@@ -340,7 +468,16 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_create_database_impl_rejects_empty_name() {
         let state = common::test_app_state();
-        let result = create_database_impl(&state, "test-conn", "", None, None).await;
+        let result = create_database_impl(
+            &state,
+            &sqllumen_lib::commands::schema::DatabaseEncodingRequest {
+                connection_id: "test-conn".to_string(),
+                name: "".to_string(),
+                charset: None,
+                collation: None,
+            },
+        )
+        .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("empty"));
     }
@@ -349,7 +486,15 @@ mod coverage_stubs {
     async fn test_drop_table_impl_rejects_long_identifier() {
         let state = common::test_app_state();
         let long = "a".repeat(65);
-        let result = drop_table_impl(&state, "test-conn", &long, "tbl").await;
+        let result = drop_table_impl(
+            &state,
+            &sqllumen_lib::commands::requests::TableRequest {
+                connection_id: "test-conn".to_string(),
+                database: long.to_string(),
+                table: "tbl".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_err());
     }
 }
@@ -375,7 +520,16 @@ async fn test_create_database_rejected_when_connection_read_only() {
     let state = common::test_app_state();
     register_lazy_pool(&state, "ro-conn", true);
 
-    let result = create_database_impl(&state, "ro-conn", "newdb", None, None).await;
+    let result = create_database_impl(
+        &state,
+        &sqllumen_lib::commands::schema::DatabaseEncodingRequest {
+            connection_id: "ro-conn".to_string(),
+            name: "newdb".to_string(),
+            charset: None,
+            collation: None,
+        },
+    )
+    .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(

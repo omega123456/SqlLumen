@@ -677,6 +677,70 @@ function ConnectionFormFooter({
   )
 }
 
+interface DeleteConfirmState {
+  error: string | null
+}
+
+interface ConnectionEditorState {
+  formData: ConnectionFormData
+  errors: FormErrors
+  activeTab: FormTab
+  testResult: TestConnectionResultType | null
+  savedId: string | null
+  hasSavedPassword: boolean
+  clearSavedPassword: boolean
+  deletedConnectionId: string | null
+  deleteConfirm: DeleteConfirmState | null
+}
+
+function createIdleEditorState(): ConnectionEditorState {
+  return {
+    formData: getDefaultFormData(),
+    errors: {},
+    activeTab: 'general',
+    testResult: null,
+    savedId: null,
+    hasSavedPassword: false,
+    clearSavedPassword: false,
+    deletedConnectionId: null,
+    deleteConfirm: null,
+  }
+}
+
+function editorStateFor(
+  editingConnection: SavedConnection | undefined,
+  initialData: ConnectionFormSeed | undefined
+): ConnectionEditorState {
+  const idle = createIdleEditorState()
+  if (editingConnection) {
+    return {
+      ...idle,
+      formData: formDataFromConnection(editingConnection),
+      savedId: editingConnection.id,
+      hasSavedPassword: editingConnection.hasPassword,
+    }
+  }
+  return { ...idle, formData: seededFormData(initialData) }
+}
+
+function deletedEditorState(
+  current: ConnectionEditorState,
+  deletedConnectionId: string
+): ConnectionEditorState {
+  return {
+    ...createIdleEditorState(),
+    activeTab: current.activeTab,
+    deletedConnectionId: deletedConnectionId,
+  }
+}
+
+function withoutFieldError(errors: FormErrors, field: string): FormErrors {
+  if (!errors[field]) return errors
+  const next = { ...errors }
+  delete next[field]
+  return next
+}
+
 export function ConnectionForm({
   editingConnection,
   onDeleteConnection,
@@ -684,19 +748,24 @@ export function ConnectionForm({
 }: ConnectionFormProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const nameAutoFocusRef = useRef(true)
-  const [formData, setFormData] = useState<ConnectionFormData>(getDefaultFormData)
-  const [errors, setErrors] = useState<FormErrors>({})
-  const [activeTab, setActiveTab] = useState<FormTab>('general')
+  const [editor, setEditor] = useState<ConnectionEditorState>(createIdleEditorState)
+  const {
+    formData,
+    errors,
+    activeTab,
+    testResult,
+    savedId,
+    hasSavedPassword,
+    clearSavedPassword,
+    deletedConnectionId,
+    deleteConfirm,
+  } = editor
   const [showPassword, setShowPassword] = useState(false)
-  const [hasSavedPassword, setHasSavedPassword] = useState(false)
-  const [clearSavedPassword, setClearSavedPassword] = useState(false)
-  const [testResult, setTestResult] = useState<TestConnectionResultType | null>(null)
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
-  const [savedId, setSavedId] = useState<string | null>(null)
-  const [deletedConnectionId, setDeletedConnectionId] = useState<string | null>(null)
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
-  const [deleteConfirmError, setDeleteConfirmError] = useState<string | null>(null)
   const [dialogPortalRoot, setDialogPortalRoot] = useState<HTMLElement | null>(null)
+
+  const patchEditor = (patch: Partial<ConnectionEditorState>) =>
+    setEditor((current) => ({ ...current, ...patch }))
 
   const connectionGroups = useConnectionStore((state) => state.connectionGroups)
   const fetchSavedConnections = useConnectionStore((state) => state.fetchSavedConnections)
@@ -722,22 +791,7 @@ export function ConnectionForm({
   // Populate form when editingConnection or the duplicate seed changes.
   // Precedence: editing > duplicate seed > defaults.
   useEffect(() => {
-    setDeletedConnectionId(null)
-    setClearSavedPassword(false)
-    setDeleteConfirmOpen(false)
-    setDeleteConfirmError(null)
-    setErrors({})
-    setTestResult(null)
-    setActiveTab('general')
-    if (editingConnection) {
-      setFormData(formDataFromConnection(editingConnection))
-      setSavedId(editingConnection.id)
-      setHasSavedPassword(editingConnection.hasPassword)
-      return
-    }
-    setFormData(seededFormData(initialData))
-    setSavedId(null)
-    setHasSavedPassword(false)
+    setEditor(editorStateFor(editingConnection, initialData))
   }, [editingConnection, initialData])
 
   useEffect(() => {
@@ -748,14 +802,11 @@ export function ConnectionForm({
     field: K,
     value: ConnectionFormData[K]
   ) => {
-    setFormData((previous) => ({ ...previous, [field]: value }))
-    if (errors[field]) {
-      setErrors((previous) => {
-        const next = { ...previous }
-        delete next[field]
-        return next
-      })
-    }
+    setEditor((current) => ({
+      ...current,
+      formData: { ...current.formData, [field]: value },
+      errors: withoutFieldError(current.errors, field),
+    }))
   }
 
   const handleBrowseFile = async (field: SslPathField) => {
@@ -781,12 +832,12 @@ export function ConnectionForm({
   const handlePasswordChange = (value: string) => {
     updateField('password', value)
     if (clearSavedPassword) {
-      setClearSavedPassword(false)
+      patchEditor({ clearSavedPassword: false })
     }
   }
 
   const handleClearSavedPasswordChange = (checked: boolean) => {
-    setClearSavedPassword(checked)
+    patchEditor({ clearSavedPassword: checked })
     if (checked && formData.password) {
       updateField('password', '')
     }
@@ -796,18 +847,17 @@ export function ConnectionForm({
     if (pendingAction === 'delete') {
       return
     }
-    setDeleteConfirmOpen(false)
-    setDeleteConfirmError(null)
+    patchEditor({ deleteConfirm: null })
   }
 
   function runValidation(): boolean {
     const errs = validate(formData)
-    setErrors(errs)
     const errorTab = firstTabWithError(errs)
     if (errorTab) {
-      setActiveTab(errorTab)
+      patchEditor({ errors: errs, activeTab: errorTab })
       return false
     }
+    patchEditor({ errors: errs })
     return true
   }
 
@@ -816,7 +866,7 @@ export function ConnectionForm({
 
   const reportFailure = (error: unknown, toastTitle: string): TestConnectionResultType => {
     const failure = buildErrorResult(error)
-    setTestResult(failure)
+    patchEditor({ testResult: failure })
     showErrorToast(toastTitle, failure.errorMessage ?? undefined)
     return failure
   }
@@ -827,13 +877,13 @@ export function ConnectionForm({
     }
 
     setPendingAction('test')
-    setTestResult(null)
+    patchEditor({ testResult: null })
     try {
       // Use the saved keychain password only when none was freshly typed and the
       // user isn't explicitly clearing it.
       const useSavedPassword = hasSavedPassword && !clearSavedPassword && formData.password === ''
       const result = await testConnection(formData, useSavedPassword ? currentConnectionId : null)
-      setTestResult(result)
+      patchEditor({ testResult: result })
     } catch (error) {
       reportFailure(error, 'Connection test failed')
     } finally {
@@ -845,13 +895,14 @@ export function ConnectionForm({
     const existingId = savedId ?? editingConnection?.id
     if (existingId) {
       await updateConnection(existingId, formData, { clearPassword: clearSavedPassword })
-      setHasSavedPassword(clearSavedPassword ? false : hasSavedPassword || formData.password !== '')
+      patchEditor({
+        hasSavedPassword: clearSavedPassword ? false : hasSavedPassword || formData.password !== '',
+      })
       await fetchSavedConnections()
       return existingId
     }
     const newId = await saveConnectionIPC(formData)
-    setSavedId(newId)
-    setHasSavedPassword(formData.password !== '')
+    patchEditor({ savedId: newId, hasSavedPassword: formData.password !== '' })
     await fetchSavedConnections()
     return newId
   }
@@ -864,7 +915,7 @@ export function ConnectionForm({
     setPendingAction('save')
     try {
       await persistConnection()
-      setClearSavedPassword(false)
+      patchEditor({ clearSavedPassword: false })
       showSuccessToast('Connection saved', formData.name.trim() || undefined)
     } catch (error) {
       reportFailure(error, 'Failed to save connection')
@@ -882,7 +933,7 @@ export function ConnectionForm({
     let connectionId: string
     try {
       connectionId = await persistConnection()
-      setClearSavedPassword(false)
+      patchEditor({ clearSavedPassword: false })
     } catch (error) {
       reportFailure(error, 'Failed to save connection')
       setPendingAction(null)
@@ -893,7 +944,7 @@ export function ConnectionForm({
       await openConnection(connectionId)
       closeDialog()
     } catch (error) {
-      setTestResult(buildErrorResult(error))
+      patchEditor({ testResult: buildErrorResult(error) })
     } finally {
       setPendingAction(null)
     }
@@ -905,23 +956,18 @@ export function ConnectionForm({
     }
 
     setPendingAction('delete')
-    setDeleteConfirmError(null)
+    patchEditor({ deleteConfirm: { error: null } })
     try {
       await deleteConnection(currentConnectionId)
       await fetchSavedConnections()
-      setFormData(getDefaultFormData())
-      setErrors({})
-      setTestResult(null)
-      setSavedId(null)
-      setHasSavedPassword(false)
-      setClearSavedPassword(false)
-      setDeletedConnectionId(currentConnectionId)
-      setDeleteConfirmOpen(false)
+      setEditor((current) => deletedEditorState(current, currentConnectionId))
       onDeleteConnection?.(currentConnectionId)
       showSuccessToast('Connection deleted')
     } catch (error) {
       const failure = reportFailure(error, 'Failed to delete connection')
-      setDeleteConfirmError(failure.errorMessage ?? 'Failed to delete connection')
+      patchEditor({
+        deleteConfirm: { error: failure.errorMessage ?? 'Failed to delete connection' },
+      })
     } finally {
       setPendingAction(null)
     }
@@ -943,7 +989,7 @@ export function ConnectionForm({
               <UnderlineTab
                 key={tab}
                 active={activeTab === tab}
-                onClick={() => setActiveTab(tab)}
+                onClick={() => patchEditor({ activeTab: tab })}
                 data-testid={`connection-form-tab-${tab}`}
               >
                 {TAB_LABELS[tab]}
@@ -1000,12 +1046,12 @@ export function ConnectionForm({
         pendingAction={pendingAction}
         canDelete={currentConnectionId !== null}
         onTest={() => void handleTestConnection()}
-        onDeleteRequest={() => setDeleteConfirmOpen(true)}
+        onDeleteRequest={() => patchEditor({ deleteConfirm: { error: null } })}
         onConnect={() => void handleConnect()}
         onSave={() => void handleSave()}
       />
       <ConfirmDialog
-        isOpen={deleteConfirmOpen}
+        isOpen={deleteConfirm !== null}
         title="Delete connection"
         message={
           <>
@@ -1016,7 +1062,7 @@ export function ConnectionForm({
         confirmLabel="Delete"
         isDestructive
         isLoading={pendingAction === 'delete'}
-        error={deleteConfirmError}
+        error={deleteConfirm?.error ?? null}
         nonDismissible={pendingAction === 'delete'}
         onConfirm={() => void handleDelete()}
         onCancel={cancelDeleteConfirm}

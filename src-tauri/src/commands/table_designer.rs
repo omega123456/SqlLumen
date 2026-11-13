@@ -1,21 +1,15 @@
-//! Tauri commands for the table designer DDL workflow.
-//!
-//! Each public `*_impl` function contains the testable business logic, while
-//! the `#[tauri::command]` wrappers remain thin delegates.
-
 use crate::mysql::ddl_detector::{detect_ddl_tables, DdlDetectionResult};
 use crate::mysql::metadata_cache::{
-    evict_metadata_cache_for_connection, evict_metadata_cache_for_tables,
+    evict_metadata_cache_for_connection, evict_metadata_cache_for_tables, TableEviction,
 };
 use crate::mysql::table_designer::{
     self, DesignerTableProperties, DesignerTableSchema, GenerateDdlRequest, GenerateDdlResponse,
 };
 use crate::state::AppState;
+use serde::Deserialize;
 
 #[cfg(not(coverage))]
-use crate::commands::query_history_bridge::{
-    log_single_entry_if_resolved, resolve_connection_context,
-};
+use crate::commands::query_history_bridge::resolve_connection_context;
 #[cfg(not(coverage))]
 use crate::db::history::NewHistoryEntry;
 #[cfg(not(coverage))]
@@ -30,6 +24,39 @@ use sqlx::mysql::MySqlRow;
 use sqlx::Row;
 #[cfg(not(coverage))]
 use tauri::State;
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadTableForDesignerRequest {
+    pub connection_id: String,
+    pub database: String,
+    pub table_name: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyTableDdlRequest {
+    pub connection_id: String,
+    pub database: String,
+    pub ddl: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedColumnType {
+    pub base_type: String,
+    pub length: String,
+    pub type_modifier: String,
+}
+
+impl ParsedColumnType {
+    fn without_length(base_type: String, type_modifier: String) -> Self {
+        Self {
+            base_type,
+            length: String::new(),
+            type_modifier,
+        }
+    }
+}
 
 fn check_not_read_only(state: &AppState, connection_id: &str) -> Result<(), String> {
     if state.registry.is_read_only(connection_id) {
@@ -47,18 +74,15 @@ fn get_pool(state: &AppState, connection_id: &str) -> Result<sqlx::MySqlPool, St
         .ok_or_else(|| format!("Connection '{connection_id}' is not open"))
 }
 
-pub fn parse_column_type(column_type: &str) -> (String, String, String) {
+pub fn parse_column_type(column_type: &str) -> ParsedColumnType {
     let trimmed = column_type.trim();
 
     match (trimmed.find('('), trimmed.rfind(')')) {
-        (Some(open), Some(close)) if close > open => {
-            let modifier_suffix = trimmed[(close + 1)..].trim().to_ascii_uppercase();
-            (
-                trimmed[..open].trim().to_ascii_uppercase(),
-                trimmed[(open + 1)..close].trim().to_string(),
-                modifier_suffix,
-            )
-        }
+        (Some(open), Some(close)) if close > open => ParsedColumnType {
+            base_type: trimmed[..open].trim().to_ascii_uppercase(),
+            length: trimmed[(open + 1)..close].trim().to_string(),
+            type_modifier: trimmed[(close + 1)..].trim().to_ascii_uppercase(),
+        },
         _ => {
             let parts = trimmed
                 .split_whitespace()
@@ -70,12 +94,11 @@ pub fn parse_column_type(column_type: &str) -> (String, String, String) {
                 .position(|part| matches!(part.as_str(), "UNSIGNED" | "ZEROFILL" | "BINARY"));
 
             match modifier_start {
-                Some(index) if index > 0 => (
+                Some(index) if index > 0 => ParsedColumnType::without_length(
                     parts[..index].join(" "),
-                    String::new(),
                     parts[index..].join(" "),
                 ),
-                _ => (trimmed.to_ascii_uppercase(), String::new(), String::new()),
+                _ => ParsedColumnType::without_length(trimmed.to_ascii_uppercase(), String::new()),
             }
         }
     }
@@ -182,11 +205,11 @@ fn charset_for_collation(collation: &str) -> String {
 #[cfg(not(coverage))]
 pub async fn load_table_for_designer_impl(
     state: &AppState,
-    connection_id: &str,
-    database: &str,
-    table_name: &str,
+    request: &LoadTableForDesignerRequest,
 ) -> Result<DesignerTableSchema, String> {
-    let pool = get_pool(state, connection_id)?;
+    let pool = get_pool(state, &request.connection_id)?;
+    let database = request.database.as_str();
+    let table_name = request.table_name.as_str();
     let binds = [database.to_string(), table_name.to_string()];
 
     let columns_sql = table_designer::load_columns_query();
@@ -236,7 +259,11 @@ pub async fn load_table_for_designer_impl(
             let column_default = decode_optional_text_cell_named(&row, "COLUMN_DEFAULT")?;
             let extra = decode_optional_text_cell_named(&row, "EXTRA")?;
             let comment = decode_optional_text_cell_named(&row, "COLUMN_COMMENT")?;
-            let (base_type, length, type_modifier) = parse_column_type(&column_type);
+            let ParsedColumnType {
+                base_type,
+                length,
+                type_modifier,
+            } = parse_column_type(&column_type);
             let is_auto_increment = extra
                 .as_deref()
                 .unwrap_or_default()
@@ -382,16 +409,15 @@ pub async fn load_table_for_designer_impl(
 #[cfg(coverage)]
 pub async fn load_table_for_designer_impl(
     state: &AppState,
-    connection_id: &str,
-    _database: &str,
-    table_name: &str,
+    request: &LoadTableForDesignerRequest,
 ) -> Result<DesignerTableSchema, String> {
+    let connection_id = request.connection_id.as_str();
     if state.registry.get_pool(connection_id).is_none() {
         return Err(format!("Connection '{connection_id}' is not open"));
     }
 
     Ok(DesignerTableSchema {
-        table_name: table_name.to_string(),
+        table_name: request.table_name.clone(),
         columns: vec![],
         indexes: vec![],
         foreign_keys: vec![],
@@ -429,13 +455,11 @@ pub async fn generate_table_ddl_impl(
                 .as_ref()
                 .ok_or_else(|| "Original schema is required for alter mode".to_string())?;
             table_designer::validate_schema(original_schema)?;
-            let (ddl, warnings) = table_designer::generate_alter_table_ddl(
+            Ok(table_designer::generate_alter_table_ddl(
                 original_schema,
                 &request.current_schema,
                 &request.database,
-            );
-
-            Ok(GenerateDdlResponse { ddl, warnings })
+            ))
         }
         _ => Err(format!(
             "Unsupported DDL generation mode: '{}'",
@@ -482,14 +506,11 @@ pub async fn generate_table_ddl_impl(
 #[cfg(not(coverage))]
 pub async fn apply_table_ddl_impl(
     state: &AppState,
-    connection_id: &str,
-    database: &str,
-    ddl: &str,
+    request: &ApplyTableDdlRequest,
 ) -> Result<(), String> {
-    let _ = database;
-
-    check_not_read_only(state, connection_id)?;
-    let pool = get_pool(state, connection_id)?;
+    check_not_read_only(state, &request.connection_id)?;
+    let pool = get_pool(state, &request.connection_id)?;
+    let ddl = request.ddl.as_str();
 
     query_log::log_outgoing_sql(ddl);
     let result = sqlx::query(sqlx::AssertSqlSafe(ddl))
@@ -503,17 +524,20 @@ pub async fn apply_table_ddl_impl(
 
 pub fn invalidate_metadata_cache_for_applied_table_ddl(
     state: &AppState,
-    connection_id: &str,
-    database: &str,
-    ddl: &str,
+    request: &ApplyTableDdlRequest,
 ) {
-    match detect_ddl_tables(ddl) {
+    match detect_ddl_tables(&request.ddl) {
         DdlDetectionResult::NoDdl => {}
         DdlDetectionResult::DdlDetected(affected_tables) => {
-            evict_metadata_cache_for_tables(state, connection_id, &affected_tables, Some(database));
+            let eviction = TableEviction {
+                connection_id: &request.connection_id,
+                affected_tables: &affected_tables,
+                default_database: Some(&request.database),
+            };
+            evict_metadata_cache_for_tables(state, &eviction);
         }
         DdlDetectionResult::ParseFailed => {
-            evict_metadata_cache_for_connection(state, connection_id);
+            evict_metadata_cache_for_connection(state, &request.connection_id);
         }
     }
 }
@@ -521,19 +545,16 @@ pub fn invalidate_metadata_cache_for_applied_table_ddl(
 #[cfg(coverage)]
 pub async fn apply_table_ddl_impl(
     state: &AppState,
-    connection_id: &str,
-    database: &str,
-    ddl: &str,
+    request: &ApplyTableDdlRequest,
 ) -> Result<(), String> {
-    let _ = database;
-
+    let connection_id = request.connection_id.as_str();
     check_not_read_only(state, connection_id)?;
 
     if state.registry.get_pool(connection_id).is_none() {
         return Err(format!("Connection '{connection_id}' is not open"));
     }
 
-    if ddl.trim().is_empty() {
+    if request.ddl.trim().is_empty() {
         return Err("DDL cannot be empty".to_string());
     }
 
@@ -543,25 +564,21 @@ pub async fn apply_table_ddl_impl(
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn load_table_for_designer(
-    connection_id: String,
-    database: String,
-    table_name: String,
+    payload: LoadTableForDesignerRequest,
     state: State<'_, AppState>,
 ) -> Result<DesignerTableSchema, String> {
     let start = std::time::Instant::now();
-    let result = load_table_for_designer_impl(&state, &connection_id, &database, &table_name).await;
+    let result = load_table_for_designer_impl(&state, &payload).await;
 
     let duration_ms = start.elapsed().as_millis() as i64;
-    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
+    let database = &payload.database;
+    let table_name = &payload.table_name;
     let sql_text = format!(
         "/* table designer */ SELECT ... FROM INFORMATION_SCHEMA FOR TABLE `{database}`.`{table_name}`"
     );
 
-    log_single_entry_if_resolved(
+    resolve_connection_context(&state, &payload.connection_id).log_single_entry_if_resolved(
         &state.db,
-        conn_id,
-        database_name,
-        &connection_id,
         |conn_id, database_name| NewHistoryEntry {
             connection_id: conn_id,
             database_name,
@@ -588,30 +605,24 @@ pub async fn generate_table_ddl(
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn apply_table_ddl(
-    connection_id: String,
-    database: String,
-    ddl: String,
+    payload: ApplyTableDdlRequest,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let start = std::time::Instant::now();
-    let result = apply_table_ddl_impl(&state, &connection_id, &database, &ddl).await;
+    let result = apply_table_ddl_impl(&state, &payload).await;
 
     if result.is_ok() {
-        invalidate_metadata_cache_for_applied_table_ddl(&state, &connection_id, &database, &ddl);
+        invalidate_metadata_cache_for_applied_table_ddl(&state, &payload);
     }
 
     let duration_ms = start.elapsed().as_millis() as i64;
-    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
 
-    log_single_entry_if_resolved(
+    resolve_connection_context(&state, &payload.connection_id).log_single_entry_if_resolved(
         &state.db,
-        conn_id,
-        database_name,
-        &connection_id,
         |conn_id, database_name| NewHistoryEntry {
             connection_id: conn_id,
             database_name,
-            sql_text: ddl,
+            sql_text: payload.ddl,
             duration_ms: Some(duration_ms),
             row_count: Some(0),
             affected_rows: Some(0),

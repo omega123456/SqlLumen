@@ -97,7 +97,17 @@ fn test_history_new_schema_fields() {
 
     drop(conn);
 
-    let page = list_history_impl(&state, "conn-1", 1, 50, None, None).expect("list");
+    let page = list_history_impl(
+        &state,
+        &sqllumen_lib::commands::history::ListHistoryRequest {
+            connection_id: "conn-1".to_string(),
+            page: 1,
+            page_size: 50,
+            search: None,
+            since: None,
+        },
+    )
+    .expect("list");
     assert_eq!(page.total, 1);
     assert_eq!(page.entries[0].sql_text, "SELECT 42");
     assert_eq!(page.entries[0].duration_ms, Some(15));
@@ -126,7 +136,17 @@ fn test_history_error_entry() {
 
     drop(conn);
 
-    let page = list_history_impl(&state, "conn-err", 1, 50, None, None).expect("list");
+    let page = list_history_impl(
+        &state,
+        &sqllumen_lib::commands::history::ListHistoryRequest {
+            connection_id: "conn-err".to_string(),
+            page: 1,
+            page_size: 50,
+            search: None,
+            since: None,
+        },
+    )
+    .expect("list");
     assert_eq!(page.total, 1);
     assert!(!page.entries[0].success);
     assert_eq!(
@@ -159,7 +179,17 @@ fn test_history_batch_insert() {
 
     drop(conn);
 
-    let page = list_history_impl(&state, "conn-batch", 1, 50, None, None).expect("list");
+    let page = list_history_impl(
+        &state,
+        &sqllumen_lib::commands::history::ListHistoryRequest {
+            connection_id: "conn-batch".to_string(),
+            page: 1,
+            page_size: 50,
+            search: None,
+            since: None,
+        },
+    )
+    .expect("list");
     assert_eq!(page.total, 5);
 }
 
@@ -191,7 +221,17 @@ fn test_history_pruning() {
 
     // Verify all still present
     drop(conn);
-    let page = list_history_impl(&state, "conn-prune", 1, 50, None, None).expect("list");
+    let page = list_history_impl(
+        &state,
+        &sqllumen_lib::commands::history::ListHistoryRequest {
+            connection_id: "conn-prune".to_string(),
+            page: 1,
+            page_size: 50,
+            search: None,
+            since: None,
+        },
+    )
+    .expect("list");
     assert_eq!(page.total, 3);
 }
 
@@ -199,12 +239,20 @@ fn test_history_pruning() {
 async fn invalidate_metadata_cache_for_executed_sql_uses_default_database_for_unqualified_ddl() {
     let state = common::test_app_state();
     register_lazy_pool(&state, "sess-ddl", "profile-ddl");
-    state
-        .metadata_cache
-        .insert("sess-ddl", "test_db", "users", None, Vec::new());
-    state
-        .metadata_cache
-        .insert("sess-ddl", "other_db", "users", None, Vec::new());
+    state.metadata_cache.insert(
+        sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new("sess-ddl", "test_db", "users"),
+        sqllumen_lib::mysql::metadata_cache::TableKeyMetadata {
+            primary_key: None,
+            columns: Vec::new(),
+        },
+    );
+    state.metadata_cache.insert(
+        sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new("sess-ddl", "other_db", "users"),
+        sqllumen_lib::mysql::metadata_cache::TableKeyMetadata {
+            primary_key: None,
+            columns: Vec::new(),
+        },
+    );
 
     invalidate_metadata_cache_for_executed_sql(
         &state,
@@ -214,11 +262,15 @@ async fn invalidate_metadata_cache_for_executed_sql_uses_default_database_for_un
 
     assert!(state
         .metadata_cache
-        .get("sess-ddl", "test_db", "users")
+        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+            "sess-ddl", "test_db", "users"
+        ))
         .is_none());
     assert!(state
         .metadata_cache
-        .get("sess-ddl", "other_db", "users")
+        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+            "sess-ddl", "other_db", "users"
+        ))
         .is_some());
 }
 
@@ -226,12 +278,28 @@ async fn invalidate_metadata_cache_for_executed_sql_uses_default_database_for_un
 async fn invalidate_metadata_cache_for_executed_sql_evicts_all_rename_targets() {
     let state = common::test_app_state();
     register_lazy_pool(&state, "sess-rename", "profile-rename");
-    state
-        .metadata_cache
-        .insert("sess-rename", "test_db", "orders", None, Vec::new());
-    state
-        .metadata_cache
-        .insert("sess-rename", "test_db", "orders_archive", None, Vec::new());
+    state.metadata_cache.insert(
+        sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+            "sess-rename",
+            "test_db",
+            "orders",
+        ),
+        sqllumen_lib::mysql::metadata_cache::TableKeyMetadata {
+            primary_key: None,
+            columns: Vec::new(),
+        },
+    );
+    state.metadata_cache.insert(
+        sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+            "sess-rename",
+            "test_db",
+            "orders_archive",
+        ),
+        sqllumen_lib::mysql::metadata_cache::TableKeyMetadata {
+            primary_key: None,
+            columns: Vec::new(),
+        },
+    );
 
     invalidate_metadata_cache_for_executed_sql(
         &state,
@@ -241,11 +309,19 @@ async fn invalidate_metadata_cache_for_executed_sql_evicts_all_rename_targets() 
 
     assert!(state
         .metadata_cache
-        .get("sess-rename", "test_db", "orders")
+        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+            "sess-rename",
+            "test_db",
+            "orders"
+        ))
         .is_none());
     assert!(state
         .metadata_cache
-        .get("sess-rename", "test_db", "orders_archive")
+        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+            "sess-rename",
+            "test_db",
+            "orders_archive"
+        ))
         .is_none());
 }
 
@@ -279,10 +355,18 @@ mod coverage_bridge_tests {
         let state = common::test_app_state();
         register_lazy_pool(&state, "sess-1", "profile-1");
 
-        let result =
-            execute_query_bridge(&state, "sess-1", "tab-1", "SELECT * FROM users", 100, None)
-                .await
-                .expect("bridge should succeed");
+        let result = execute_query_bridge(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
+                connection_id: "sess-1".to_string(),
+                tab_id: "tab-1".to_string(),
+                sql: "SELECT * FROM users".to_string(),
+                row_limit: Some(100),
+                view_spec: None,
+            },
+        )
+        .await
+        .expect("bridge should succeed");
 
         assert!(!result.query_id.is_empty());
 
@@ -290,7 +374,17 @@ mod coverage_bridge_tests {
         wait_for_history_logging().await;
 
         // Verify history entry was logged
-        let page = list_history_impl(&state, "profile-1", 1, 50, None, None).expect("list");
+        let page = list_history_impl(
+            &state,
+            &sqllumen_lib::commands::history::ListHistoryRequest {
+                connection_id: "profile-1".to_string(),
+                page: 1,
+                page_size: 50,
+                search: None,
+                since: None,
+            },
+        )
+        .expect("list");
         assert_eq!(page.total, 1);
         assert!(page.entries[0].success);
         assert_eq!(page.entries[0].sql_text, "SELECT * FROM users");
@@ -304,9 +398,18 @@ mod coverage_bridge_tests {
         let state = common::test_app_state();
         // Don't register any connection — this will cause an error
 
-        let err = execute_query_bridge(&state, "missing-sess", "tab-1", "SELECT 1", 100, None)
-            .await
-            .expect_err("should fail for missing connection");
+        let err = execute_query_bridge(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
+                connection_id: "missing-sess".to_string(),
+                tab_id: "tab-1".to_string(),
+                sql: "SELECT 1".to_string(),
+                row_limit: Some(100),
+                view_spec: None,
+            },
+        )
+        .await
+        .expect_err("should fail for missing connection");
 
         assert!(err.contains("not found"));
 
@@ -316,7 +419,17 @@ mod coverage_bridge_tests {
         // The registry does not resolve a saved connection id for "missing-sess", so the
         // bridge skips history logging entirely (with a warning) rather than writing the
         // ephemeral session id as the connection id.
-        let page = list_history_impl(&state, "missing-sess", 1, 50, None, None).expect("list");
+        let page = list_history_impl(
+            &state,
+            &sqllumen_lib::commands::history::ListHistoryRequest {
+                connection_id: "missing-sess".to_string(),
+                page: 1,
+                page_size: 50,
+                search: None,
+                since: None,
+            },
+        )
+        .expect("list");
         assert_eq!(page.total, 0);
     }
 
@@ -333,9 +446,17 @@ mod coverage_bridge_tests {
             "INSERT INTO t VALUES (1)".to_string(),
         ];
 
-        let result = execute_multi_query_bridge(&state, "sess-2", "tab-2", statements, 100)
-            .await
-            .expect("bridge should succeed");
+        let result = execute_multi_query_bridge(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteMultiQueryRequest {
+                connection_id: "sess-2".to_string(),
+                tab_id: "tab-2".to_string(),
+                statements,
+                row_limit: Some(100),
+            },
+        )
+        .await
+        .expect("bridge should succeed");
 
         assert!(!result.results.is_empty());
 
@@ -343,7 +464,17 @@ mod coverage_bridge_tests {
         wait_for_history_logging().await;
 
         // Verify batch history entries were logged
-        let page = list_history_impl(&state, "profile-2", 1, 50, None, None).expect("list");
+        let page = list_history_impl(
+            &state,
+            &sqllumen_lib::commands::history::ListHistoryRequest {
+                connection_id: "profile-2".to_string(),
+                page: 1,
+                page_size: 50,
+                search: None,
+                since: None,
+            },
+        )
+        .expect("list");
         assert!(
             page.total >= 1,
             "at least one history entry should be logged"
@@ -354,31 +485,49 @@ mod coverage_bridge_tests {
     async fn test_execute_query_bridge_evicts_targeted_metadata_on_ddl_with_default_database() {
         let state = common::test_app_state();
         register_lazy_pool(&state, "sess-ddl", "profile-ddl");
-        state
-            .metadata_cache
-            .insert("sess-ddl", "test_db", "users", None, Vec::new());
-        state
-            .metadata_cache
-            .insert("sess-ddl", "other_db", "users", None, Vec::new());
+        state.metadata_cache.insert(
+            sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "sess-ddl", "test_db", "users",
+            ),
+            sqllumen_lib::mysql::metadata_cache::TableKeyMetadata {
+                primary_key: None,
+                columns: Vec::new(),
+            },
+        );
+        state.metadata_cache.insert(
+            sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "sess-ddl", "other_db", "users",
+            ),
+            sqllumen_lib::mysql::metadata_cache::TableKeyMetadata {
+                primary_key: None,
+                columns: Vec::new(),
+            },
+        );
 
         execute_query_bridge(
             &state,
-            "sess-ddl",
-            "tab-ddl",
-            "ALTER TABLE users ADD COLUMN email VARCHAR(255)",
-            100,
-            None,
+            &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
+                connection_id: "sess-ddl".to_string(),
+                tab_id: "tab-ddl".to_string(),
+                sql: "ALTER TABLE users ADD COLUMN email VARCHAR(255)".to_string(),
+                row_limit: Some(100),
+                view_spec: None,
+            },
         )
         .await
         .expect("bridge should succeed");
 
         assert!(state
             .metadata_cache
-            .get("sess-ddl", "test_db", "users")
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "sess-ddl", "test_db", "users"
+            ))
             .is_none());
         assert!(state
             .metadata_cache
-            .get("sess-ddl", "other_db", "users")
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "sess-ddl", "other_db", "users"
+            ))
             .is_some());
     }
 
@@ -386,34 +535,60 @@ mod coverage_bridge_tests {
     async fn test_execute_multi_query_bridge_evicts_metadata_for_successful_ddl_statements() {
         let state = common::test_app_state();
         register_lazy_pool(&state, "sess-multi-ddl", "profile-multi-ddl");
-        state
-            .metadata_cache
-            .insert("sess-multi-ddl", "test_db", "users", None, Vec::new());
-        state
-            .metadata_cache
-            .insert("sess-multi-ddl", "test_db", "orders", None, Vec::new());
+        state.metadata_cache.insert(
+            sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "sess-multi-ddl",
+                "test_db",
+                "users",
+            ),
+            sqllumen_lib::mysql::metadata_cache::TableKeyMetadata {
+                primary_key: None,
+                columns: Vec::new(),
+            },
+        );
+        state.metadata_cache.insert(
+            sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "sess-multi-ddl",
+                "test_db",
+                "orders",
+            ),
+            sqllumen_lib::mysql::metadata_cache::TableKeyMetadata {
+                primary_key: None,
+                columns: Vec::new(),
+            },
+        );
 
         execute_multi_query_bridge(
             &state,
-            "sess-multi-ddl",
-            "tab-multi-ddl",
-            vec![
-                "SELECT 1".to_string(),
-                "DROP TABLE test_db.users".to_string(),
-                "RENAME TABLE test_db.orders TO test_db.orders_archive".to_string(),
-            ],
-            100,
+            &sqllumen_lib::mysql::query_executor::ExecuteMultiQueryRequest {
+                connection_id: "sess-multi-ddl".to_string(),
+                tab_id: "tab-multi-ddl".to_string(),
+                statements: vec![
+                    "SELECT 1".to_string(),
+                    "DROP TABLE test_db.users".to_string(),
+                    "RENAME TABLE test_db.orders TO test_db.orders_archive".to_string(),
+                ],
+                row_limit: Some(100),
+            },
         )
         .await
         .expect("bridge should succeed");
 
         assert!(state
             .metadata_cache
-            .get("sess-multi-ddl", "test_db", "users")
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "sess-multi-ddl",
+                "test_db",
+                "users"
+            ))
             .is_none());
         assert!(state
             .metadata_cache
-            .get("sess-multi-ddl", "test_db", "orders")
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "sess-multi-ddl",
+                "test_db",
+                "orders"
+            ))
             .is_none());
     }
 
@@ -426,16 +601,34 @@ mod coverage_bridge_tests {
 
         let statements = vec!["SELECT 1".to_string()];
 
-        let err = execute_multi_query_bridge(&state, "missing", "tab-1", statements, 100)
-            .await
-            .expect_err("should fail for missing connection");
+        let err = execute_multi_query_bridge(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteMultiQueryRequest {
+                connection_id: "missing".to_string(),
+                tab_id: "tab-1".to_string(),
+                statements,
+                row_limit: Some(100),
+            },
+        )
+        .await
+        .expect_err("should fail for missing connection");
 
         assert!(err.contains("not found"));
 
         wait_for_history_logging().await;
 
         // No saved connection id resolves for "missing", so history logging is skipped.
-        let page = list_history_impl(&state, "missing", 1, 50, None, None).expect("list");
+        let page = list_history_impl(
+            &state,
+            &sqllumen_lib::commands::history::ListHistoryRequest {
+                connection_id: "missing".to_string(),
+                page: 1,
+                page_size: 50,
+                search: None,
+                since: None,
+            },
+        )
+        .expect("list");
         assert_eq!(page.total, 0);
     }
 
@@ -446,16 +639,34 @@ mod coverage_bridge_tests {
         let state = common::test_app_state();
         register_lazy_pool(&state, "sess-3", "profile-3");
 
-        let result = execute_call_query_bridge(&state, "sess-3", "tab-3", "CALL my_proc()", 100)
-            .await
-            .expect("bridge should succeed");
+        let result = execute_call_query_bridge(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteCallQueryRequest {
+                connection_id: "sess-3".to_string(),
+                tab_id: "tab-3".to_string(),
+                sql: "CALL my_proc()".to_string(),
+                row_limit: Some(100),
+            },
+        )
+        .await
+        .expect("bridge should succeed");
 
         assert!(!result.results.is_empty());
 
         wait_for_history_logging().await;
 
         // Verify history entry was logged
-        let page = list_history_impl(&state, "profile-3", 1, 50, None, None).expect("list");
+        let page = list_history_impl(
+            &state,
+            &sqllumen_lib::commands::history::ListHistoryRequest {
+                connection_id: "profile-3".to_string(),
+                page: 1,
+                page_size: 50,
+                search: None,
+                since: None,
+            },
+        )
+        .expect("list");
         assert_eq!(page.total, 1);
         assert!(page.entries[0].success);
         assert_eq!(page.entries[0].sql_text, "CALL my_proc()");
@@ -468,16 +679,34 @@ mod coverage_bridge_tests {
         let state = common::test_app_state();
         // Don't register connection
 
-        let err = execute_call_query_bridge(&state, "missing", "tab-1", "CALL bad()", 100)
-            .await
-            .expect_err("should fail for missing connection");
+        let err = execute_call_query_bridge(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteCallQueryRequest {
+                connection_id: "missing".to_string(),
+                tab_id: "tab-1".to_string(),
+                sql: "CALL bad()".to_string(),
+                row_limit: Some(100),
+            },
+        )
+        .await
+        .expect_err("should fail for missing connection");
 
         assert!(err.contains("not found"));
 
         wait_for_history_logging().await;
 
         // No saved connection id resolves for "missing", so history logging is skipped.
-        let page = list_history_impl(&state, "missing", 1, 50, None, None).expect("list");
+        let page = list_history_impl(
+            &state,
+            &sqllumen_lib::commands::history::ListHistoryRequest {
+                connection_id: "missing".to_string(),
+                page: 1,
+                page_size: 50,
+                search: None,
+                since: None,
+            },
+        )
+        .expect("list");
         assert_eq!(page.total, 0);
     }
 
@@ -492,19 +721,48 @@ mod coverage_bridge_tests {
         // Register with a different profile_id than session_id
         register_lazy_pool(&state, "session-abc", "profile-xyz");
 
-        let _result = execute_query_bridge(&state, "session-abc", "tab-1", "SELECT 42", 100, None)
-            .await
-            .expect("bridge should succeed");
+        let _result = execute_query_bridge(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
+                connection_id: "session-abc".to_string(),
+                tab_id: "tab-1".to_string(),
+                sql: "SELECT 42".to_string(),
+                row_limit: Some(100),
+                view_spec: None,
+            },
+        )
+        .await
+        .expect("bridge should succeed");
 
         wait_for_history_logging().await;
 
         // History is logged under profile_id "profile-xyz" (bridge resolves session→profile)
-        let page = list_history_impl(&state, "profile-xyz", 1, 50, None, None).expect("list");
+        let page = list_history_impl(
+            &state,
+            &sqllumen_lib::commands::history::ListHistoryRequest {
+                connection_id: "profile-xyz".to_string(),
+                page: 1,
+                page_size: 50,
+                search: None,
+                since: None,
+            },
+        )
+        .expect("list");
         assert_eq!(page.total, 1);
 
         // Querying by session_id also resolves to profile_id and returns the same results —
         // list_history_impl resolves session_id→profile_id via the registry before querying.
-        let page_sess = list_history_impl(&state, "session-abc", 1, 50, None, None).expect("list");
+        let page_sess = list_history_impl(
+            &state,
+            &sqllumen_lib::commands::history::ListHistoryRequest {
+                connection_id: "session-abc".to_string(),
+                page: 1,
+                page_size: 50,
+                search: None,
+                since: None,
+            },
+        )
+        .expect("list");
         assert_eq!(page_sess.total, 1);
         assert_eq!(page_sess.entries[0].sql_text, "SELECT 42");
     }
@@ -517,14 +775,33 @@ mod coverage_bridge_tests {
         let state = common::test_app_state();
         // No registration — get_profile_id returns None for this session.
 
-        let _err = execute_query_bridge(&state, "session-unknown", "tab-1", "SELECT 42", 100, None)
-            .await
-            .expect_err("should fail for missing connection");
+        let _err = execute_query_bridge(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
+                connection_id: "session-unknown".to_string(),
+                tab_id: "tab-1".to_string(),
+                sql: "SELECT 42".to_string(),
+                row_limit: Some(100),
+                view_spec: None,
+            },
+        )
+        .await
+        .expect_err("should fail for missing connection");
 
         wait_for_history_logging().await;
 
         // No history row written under the session id (or anything else).
-        let page = list_history_impl(&state, "session-unknown", 1, 50, None, None).expect("list");
+        let page = list_history_impl(
+            &state,
+            &sqllumen_lib::commands::history::ListHistoryRequest {
+                connection_id: "session-unknown".to_string(),
+                page: 1,
+                page_size: 50,
+                search: None,
+                since: None,
+            },
+        )
+        .expect("list");
         assert_eq!(page.total, 0);
     }
 }

@@ -123,9 +123,9 @@ async function runLoader(): Promise<void> {
 }
 
 function lastFetchPkPairs(): [string, unknown][] {
-  const calls = ipc.calls('fetch_blob_value')
-  const args = calls[calls.length - 1] as { pkPairs: [string, unknown][] }
-  return args.pkPairs
+  const calls = ipc.payloads('fetch_blob_value')
+  const args = calls[calls.length - 1] as { primaryKeyPairs: [string, unknown][] }
+  return args.primaryKeyPairs
 }
 
 function isBytesEnvelope(value: unknown): value is BlobEnvelope & { base64: string } {
@@ -189,7 +189,7 @@ describe('blob fetch with binary primary key — TableDataGrid', () => {
       lastGridProps().onCellDoubleClick({ pk: '0xZZ', data: '[BLOB - 1 bytes]' }, 'data')
     })
 
-    expect(ipc.calls('fetch_blob_value')).toHaveLength(0)
+    expect(ipc.payloads('fetch_blob_value')).toHaveLength(0)
     expect(useToastStore.getState().toasts.some((toast) => toast.variant === 'error')).toBe(true)
   })
 })
@@ -227,7 +227,7 @@ describe('blob fetch with binary primary key — TableDataFormView', () => {
       lastFormProps().onBlobView({ key: 'data' }, { pk: '0xZZ', data: '[BLOB - 1 bytes]' })
     })
 
-    expect(ipc.calls('fetch_blob_value')).toHaveLength(0)
+    expect(ipc.payloads('fetch_blob_value')).toHaveLength(0)
     expect(useToastStore.getState().toasts.some((toast) => toast.variant === 'error')).toBe(true)
   })
 })

@@ -84,8 +84,7 @@ const EXPORT_FORMAT_CONFIG: Record<
   },
 }
 
-/** All format keys in display order. */
-const FORMAT_KEYS = Object.keys(EXPORT_FORMAT_CONFIG) as ExportFormat[]
+const FORMAT_KEYS: readonly ExportFormat[] = ['csv', 'json', 'xlsx', 'sql-insert']
 
 /** XLSX option description when the dialog offers "All rows" (wireframe 6). */
 const XLSX_ALL_ROWS_DESCRIPTION = 'Excel (.xlsx) · up to 1,048,576 rows'
@@ -238,7 +237,7 @@ function FullExportProgress({ exportJob, onCancel }: FullExportProgressProps) {
 
 interface RowScopeFieldProps {
   offersAllRows: boolean
-  options: DropdownOption[]
+  options: DropdownOption<ExportRowScope>[]
   value: ExportRowScope
   onChange: (scope: ExportRowScope) => void
 }
@@ -255,7 +254,7 @@ function RowScopeField({ offersAllRows, options, value, onChange }: RowScopeFiel
         labelledBy="export-rows-label"
         options={options}
         value={value}
-        onChange={(selected) => onChange(selected as ExportRowScope)}
+        onChange={onChange}
         data-testid="export-rows-select"
         className={styles.formatDropdownRoot}
         triggerClassName={styles.formatDropdownTrigger}
@@ -457,7 +456,7 @@ export default function ExportDialog({
     }
   }, [isView, format])
 
-  const formatDropdownOptions: DropdownOption[] = useMemo(
+  const formatDropdownOptions: DropdownOption<ExportFormat>[] = useMemo(
     () =>
       FORMAT_KEYS.filter((key) => !isUnavailableFormat(key, isView)).map((key) => ({
         value: key,
@@ -469,7 +468,7 @@ export default function ExportDialog({
 
   const viewModifiers = viewModifiersOf(result)
   const viewRowCount = viewModifiers.viewRowCount
-  const rowScopeOptions: DropdownOption[] = useMemo(
+  const rowScopeOptions: DropdownOption<ExportRowScope>[] = useMemo(
     () => [
       {
         value: 'currentView',
@@ -517,7 +516,13 @@ export default function ExportDialog({
     setError(null)
     const exportCurrentView = onExport
       ? () => onExport(requestedOptions)
-      : () => exportResults(connectionId, tabId, backendOptions, resultIndex)
+      : () =>
+          exportResults({
+            connectionId: connectionId,
+            tabId: tabId,
+            options: backendOptions,
+            resultIndex: resultIndex,
+          })
     try {
       await exportCurrentView()
       onClose()
@@ -615,7 +620,7 @@ export default function ExportDialog({
                 labelledBy="export-format-label"
                 options={formatDropdownOptions}
                 value={format}
-                onChange={(value) => setFormat(value as ExportFormat)}
+                onChange={setFormat}
                 data-testid="export-format-select"
                 className={styles.formatDropdownRoot}
                 triggerClassName={styles.formatDropdownTrigger}

@@ -1,4 +1,3 @@
-import { invoke } from '@tauri-apps/api/core'
 import type {
   FetchResultWindowResult,
   MultiQueryResult,
@@ -12,194 +11,157 @@ import type {
   SchemaMetadataFull,
   SetResultViewResult,
 } from '../types/schema'
+import { invokeArgumentCommand, invokeCommand } from './ipc/dispatch'
+import type { ResultSlotRequest } from './ipc/requests'
 
 /** `execute_query` response: metadata plus the first window of the view. */
 export interface ExecuteQueryResult extends QueryResultMeta, ResultWindowMeta {}
 
-/**
- * Execute one statement. When `viewSpec` is given, the cached result is stored
- * with that sort and filter, and the first window comes back already applied.
- */
-export async function executeQuery(
-  connectionId: string,
-  tabId: string,
-  sql: string,
-  rowLimit = 1000,
-  viewSpec?: ResultViewSpec | null
-): Promise<ExecuteQueryResult> {
-  return invoke<ExecuteQueryResult>('execute_query', {
-    connectionId,
-    tabId,
-    sql,
-    rowLimit,
-    ...(viewSpec ? { viewSpec } : {}),
-  })
-}
-
-export async function executeMultiQuery(
-  connectionId: string,
-  tabId: string,
-  statements: string[],
+export interface ExecuteQueryRequest {
+  connectionId: string
+  tabId: string
+  sql: string
   rowLimit: number
-): Promise<MultiQueryResult> {
-  return invoke<MultiQueryResult>('execute_multi_query', {
-    connectionId,
-    tabId,
-    statements,
-    rowLimit,
-  })
+  viewSpec?: ResultViewSpec
 }
 
-export async function executeCallQuery(
-  connectionId: string,
-  tabId: string,
-  sql: string,
+export interface ExecuteMultiQueryRequest {
+  connectionId: string
+  tabId: string
+  statements: string[]
   rowLimit: number
-): Promise<MultiQueryResult> {
-  return invoke<MultiQueryResult>('execute_call_query', {
-    connectionId,
-    tabId,
-    sql,
-    rowLimit,
-  })
 }
 
-export async function reexecuteSingleResult(
-  connectionId: string,
-  tabId: string,
-  resultIndex: number,
-  sql: string,
-  rowLimit: number,
-  viewSpec?: ResultViewSpec | null
-): Promise<MultiQueryResultItem> {
-  return invoke<MultiQueryResultItem>('reexecute_single_result', {
-    connectionId,
-    tabId,
-    resultIndex,
-    sql,
-    rowLimit,
-    ...(viewSpec ? { viewSpec } : {}),
-  })
+export interface ExecuteCallQueryRequest {
+  connectionId: string
+  tabId: string
+  sql: string
+  rowLimit: number
 }
 
-/** Identifies one cached result slot (and the query that produced it). */
-export interface ResultSlotRef {
+export interface ReexecuteSingleResultRequest {
   connectionId: string
   tabId: string
   resultIndex: number
-  queryId: string
+  sql: string
+  rowLimit: number
+  viewSpec?: ResultViewSpec
 }
 
-/**
- * Replace a cached result's whole view spec (compare-and-swap against
- * `baseViewVersion`). Fails with `view_superseded: current=<n>` when the slot's
- * view changed since the caller last saw it.
- */
-export async function setResultView(
-  slot: ResultSlotRef,
-  baseViewVersion: number,
+export type ResultSlotRef = ResultSlotRequest
+
+export interface SetResultViewRequest extends ResultSlotRequest {
+  baseViewVersion: number
   viewSpec: ResultViewSpec
-): Promise<SetResultViewResult> {
-  return invoke<SetResultViewResult>('set_result_view', {
-    ...slot,
-    baseViewVersion,
-    viewSpec,
-  })
 }
 
-/** Fetch a window of the current view (`limit` is clamped to 2,000 in Rust). */
-export async function fetchResultWindow(
-  slot: ResultSlotRef,
-  viewVersion: number,
-  offset: number,
+export interface FetchResultWindowRequest extends ResultSlotRequest {
+  viewVersion: number
+  offset: number
   limit: number
-): Promise<FetchResultWindowResult> {
-  return invoke<FetchResultWindowResult>('fetch_result_window', {
-    ...slot,
-    viewVersion,
-    offset,
-    limit,
-  })
 }
 
-/** Tombstone deleted rows in the cached result (compare-and-swap like `setResultView`). */
-export async function removeResultRows(
-  slot: ResultSlotRef,
-  baseViewVersion: number,
+export interface RemoveResultRowsRequest extends ResultSlotRequest {
+  baseViewVersion: number
   baseIndices: number[]
+}
+
+export interface UpdateResultCellRequest {
+  connectionId: string
+  tabId: string
+  rowIndex: number
+  updates: Record<number, unknown>
+  queryId: string
+  resultIndex?: number
+}
+
+export interface ResultCacheTouchResult {
+  status: 'available' | 'expired' | 'missing'
+}
+
+export async function executeQuery(request: ExecuteQueryRequest): Promise<ExecuteQueryResult> {
+  return invokeCommand({ command: 'execute_query', payload: request })
+}
+
+export async function executeMultiQuery(
+  request: ExecuteMultiQueryRequest
+): Promise<MultiQueryResult> {
+  return invokeCommand({ command: 'execute_multi_query', payload: request })
+}
+
+export async function executeCallQuery(
+  request: ExecuteCallQueryRequest
+): Promise<MultiQueryResult> {
+  return invokeCommand({ command: 'execute_call_query', payload: request })
+}
+
+export async function reexecuteSingleResult(
+  request: ReexecuteSingleResultRequest
+): Promise<MultiQueryResultItem> {
+  return invokeCommand({ command: 'reexecute_single_result', payload: request })
+}
+
+export async function setResultView(request: SetResultViewRequest): Promise<SetResultViewResult> {
+  return invokeCommand({ command: 'set_result_view', payload: request })
+}
+
+export async function fetchResultWindow(
+  request: FetchResultWindowRequest
+): Promise<FetchResultWindowResult> {
+  return invokeCommand({ command: 'fetch_result_window', payload: request })
+}
+
+export async function removeResultRows(
+  request: RemoveResultRowsRequest
 ): Promise<RemoveResultRowsResult> {
-  return invoke<RemoveResultRowsResult>('remove_result_rows', {
-    ...slot,
-    baseViewVersion,
-    baseIndices,
-  })
+  return invokeCommand({ command: 'remove_result_rows', payload: request })
 }
 
 export async function evictResults(connectionId: string, tabId: string): Promise<void> {
-  return invoke<void>('evict_results', { connectionId, tabId })
+  return invokeCommand({ command: 'evict_results', payload: { connectionId, tabId } })
 }
 
 export async function selectDatabase(connectionId: string, databaseName: string): Promise<void> {
-  return invoke<void>('select_database', { connectionId, databaseName })
+  return invokeCommand({ command: 'select_database', payload: { connectionId, databaseName } })
 }
 
 export async function fetchSchemaMetadata(connectionId: string): Promise<SchemaMetadataResponse> {
-  return invoke<SchemaMetadataResponse>('fetch_schema_metadata', { connectionId })
+  return invokeArgumentCommand({ command: 'fetch_schema_metadata', argument: { connectionId } })
 }
 
 export async function fetchSchemaMetadataFull(connectionId: string): Promise<SchemaMetadataFull> {
-  return invoke<SchemaMetadataFull>('fetch_schema_metadata_full', { connectionId })
+  return invokeArgumentCommand({
+    command: 'fetch_schema_metadata_full',
+    argument: { connectionId },
+  })
 }
 
 export async function readFile(path: string): Promise<string> {
-  return invoke<string>('read_file', { path })
+  return invokeArgumentCommand({ command: 'read_file', argument: { path } })
 }
 
 export async function writeFile(path: string, content: string): Promise<void> {
-  return invoke<void>('write_file', { path, content })
+  return invokeCommand({ command: 'write_file', payload: { path, content } })
 }
 
 export async function analyzeQueryForEdit(
   connectionId: string,
   sql: string
 ): Promise<QueryTableEditInfo[]> {
-  return invoke<QueryTableEditInfo[]>('analyze_query_for_edit', { connectionId, sql })
+  return invokeCommand({ command: 'analyze_query_for_edit', payload: { connectionId, sql } })
 }
 
-/** Update cells of one cached row. `rowIndex` is a **base** row index. */
-/**
- * Sync a saved row into the cached result at base index `rowIndex`. Rust
- * refuses the write ("Results were refreshed during edit") when the slot no
- * longer holds `queryId`, i.e. a re-run replaced it while the save was running.
- */
-export async function updateResultCell(
-  connectionId: string,
-  tabId: string,
-  rowIndex: number,
-  updates: Record<number, unknown>,
-  queryId: string,
-  resultIndex?: number
-): Promise<void> {
-  return invoke<void>('update_result_cell', {
-    connectionId,
-    tabId,
-    rowIndex,
-    updates,
-    queryId,
-    ...(resultIndex !== undefined ? { resultIndex } : {}),
-  })
+export async function updateResultCell(request: UpdateResultCellRequest): Promise<void> {
+  return invokeCommand({ command: 'update_result_cell', payload: request })
 }
 
 export async function cancelQuery(connectionId: string, tabId: string): Promise<boolean> {
-  return invoke<boolean>('cancel_query', { connectionId, tabId })
+  return invokeCommand({ command: 'cancel_query', payload: { connectionId, tabId } })
 }
 
 export async function touchResults(
   connectionId: string,
   tabId: string
-): Promise<{ status: 'available' | 'expired' | 'missing' }> {
-  return invoke<{ status: 'available' | 'expired' | 'missing' }>('touch_results', {
-    connectionId,
-    tabId,
-  })
+): Promise<ResultCacheTouchResult> {
+  return invokeCommand({ command: 'touch_results', payload: { connectionId, tabId } })
 }

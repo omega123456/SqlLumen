@@ -1,5 +1,6 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeArgumentCommand, invokeCommand } from './ipc/dispatch'
 import type { ExportFormat, ExportOptions } from '../types/schema'
+import type { ResultSlotRequest } from './ipc/requests'
 
 /** Result returned by the `export_results` Tauri command. */
 export interface ExportResult {
@@ -7,29 +8,15 @@ export interface ExportResult {
   rowsExported: number
 }
 
-/**
- * Export the stored query results for the given connection/tab to a file.
- * The Rust backend copies the row pointers under a brief lock and writes
- * in a background thread so the UI stays responsive.
- *
- * The export always writes the result's **current view**: the active sort and
- * filter are applied and deleted rows are excluded.
- *
- * @param resultIndex — optional index into the `Vec<StoredResult>` for multi-result tabs.
- *                      If omitted, the backend defaults to index 0.
- */
-export async function exportResults(
-  connectionId: string,
-  tabId: string,
-  options: ExportOptions,
+export interface ExportResultsRequest {
+  connectionId: string
+  tabId: string
+  options: ExportOptions
   resultIndex?: number
-): Promise<ExportResult> {
-  return invoke<ExportResult>('export_results', {
-    connectionId,
-    tabId,
-    options,
-    ...(resultIndex !== undefined ? { resultIndex } : {}),
-  })
+}
+
+export async function exportResults(request: ExportResultsRequest): Promise<ExportResult> {
+  return invokeCommand({ command: 'export_results', payload: request })
 }
 
 /** Status of a streaming full export (`get_result_export_progress`). */
@@ -46,7 +33,13 @@ export interface ResultExportProgress {
   error: string | null
 }
 
-/** Arguments of `start_result_export`. */
+export interface StartResultExportRequest extends ResultSlotRequest {
+  format: ExportFormat
+  filePath: string
+  includeHeaders: boolean
+  tableName: string | null
+}
+
 export interface StartResultExportArgs {
   connectionId: string
   tabId: string
@@ -59,14 +52,8 @@ export interface StartResultExportArgs {
   tableName?: string
 }
 
-/**
- * Start a streaming full export of a truncated, re-runnable result. The
- * backend re-runs the result's SQL on the editor session (no auto-LIMIT, no
- * row ceiling) in the database it originally ran in, and streams every row to
- * the file. Grid sort and filter are not applied. Resolves with the job id.
- */
-export async function startResultExport(args: StartResultExportArgs): Promise<string> {
-  return invoke<string>('start_result_export', {
+function toStartResultExportRequest(args: StartResultExportArgs): StartResultExportRequest {
+  return {
     connectionId: args.connectionId,
     tabId: args.tabId,
     resultIndex: args.resultIndex,
@@ -75,15 +62,20 @@ export async function startResultExport(args: StartResultExportArgs): Promise<st
     filePath: args.filePath,
     includeHeaders: args.includeHeaders,
     tableName: args.tableName ?? null,
+  }
+}
+
+export async function startResultExport(args: StartResultExportArgs): Promise<string> {
+  return invokeCommand({
+    command: 'start_result_export',
+    payload: toStartResultExportRequest(args),
   })
 }
 
-/** Poll the progress of a streaming full export. */
 export async function getResultExportProgress(jobId: string): Promise<ResultExportProgress> {
-  return invoke<ResultExportProgress>('get_result_export_progress', { jobId })
+  return invokeArgumentCommand({ command: 'get_result_export_progress', argument: { jobId } })
 }
 
-/** Cancel a streaming full export (`KILL QUERY` on its re-run; no file is written). */
 export async function cancelResultExport(jobId: string): Promise<void> {
-  await invoke('cancel_result_export', { jobId })
+  await invokeArgumentCommand({ command: 'cancel_result_export', argument: { jobId } })
 }

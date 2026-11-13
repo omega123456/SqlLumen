@@ -19,6 +19,7 @@ import {
   deleteTableRow as deleteTableRowCmd,
   normalizeTinyIntRows,
 } from '../lib/table-data-commands'
+import type { DeleteTableRowRequest } from '../lib/table-data-commands'
 import { getTableForeignKeys } from '../lib/schema-commands'
 import { cancelQuery as cancelQueryCmd } from '../lib/query-commands'
 import { getTemporalValidationResult } from '../lib/table-data-save-utils'
@@ -38,6 +39,8 @@ import {
   isBlobEnvelope,
 } from '../lib/blob-utils'
 import type { BlobEnvelope } from '../types/schema'
+import type { TableRequest } from '../lib/ipc/requests'
+import type { CellValueSync } from '../components/shared/editor-callbacks-context'
 import { describeQueryFailure, toErrorMessage } from '../lib/error-message'
 // ---------------------------------------------------------------------------
 // Helpers
@@ -151,38 +154,6 @@ function buildCurrentValuesFromRow(
     currentValues[columns[index].name] = rowValues[index]
   }
   return currentValues
-}
-
-function appendDraftRow(
-  tab: TableDataTabState,
-  patchTab: (tabId: string, partial: Partial<TableDataTabState>) => void,
-  startEditing: (
-    tabId: string,
-    rowKey: Record<string, unknown>,
-    currentValues: Record<string, unknown>
-  ) => void,
-  tabId: string,
-  rowValues: unknown[],
-  modifiedColumns: Set<string>
-): void {
-  const tempId = 'new-' + Date.now()
-  const newRows = [...tab.rows, rowValues]
-
-  patchTab(tabId, { rows: newRows, selectedRowKey: { __tempId: tempId } })
-
-  startEditing(tabId, { __tempId: tempId }, buildCurrentValuesFromRow(tab.columns, rowValues))
-
-  const updatedTab = useTableDataStore.getState().tabs[tabId]
-  if (!updatedTab?.editState) return
-
-  patchTab(tabId, {
-    editState: {
-      ...updatedTab.editState,
-      isNewRow: true,
-      tempId: tempId,
-      modifiedColumns: modifiedColumns,
-    },
-  })
 }
 
 function evictTableDataWithWarning(
@@ -420,7 +391,7 @@ function buildUpdatePayload(
  */
 function reconcileSavedBlobValue(value: unknown): unknown {
   if (!isBlobEnvelope(value)) return value
-  const envelope = value as BlobEnvelope
+  const envelope = value
   if (envelope.kind === 'null') return null
   if (envelope.kind === 'empty') return blobPlaceholder(0)
   let byteLength = 0
@@ -502,11 +473,7 @@ export {
 // Default state factory
 // ---------------------------------------------------------------------------
 
-function createDefaultTabState(
-  connectionId: string,
-  database: string,
-  table: string
-): TableDataTabState {
+function createDefaultTabState({ connectionId, database, table }: TableRequest): TableDataTabState {
   return {
     columns: [],
     rows: [],
@@ -545,12 +512,28 @@ function isSeededFromColumnDefault(column: TableDataColumnMeta): boolean {
 // Store interface
 // ---------------------------------------------------------------------------
 
+export interface StagedBlobEnvelope {
+  rowData: Record<string, unknown>
+  column: string
+  envelope: BlobEnvelope
+}
+
+export interface TableCellValueSync extends CellValueSync {
+  rowKeyOverride?: Record<string, unknown>
+}
+
+interface DraftRowSeed {
+  tab: TableDataTabState
+  rowValues: unknown[]
+  modifiedColumns: Set<string>
+}
+
 export interface TableDataStore {
   tabs: Record<string, TableDataTabState>
   columnJumpRequests: Record<string, { columnKey: string; nonce: number }>
   highlightedColumnByTab: Record<string, string | null>
 
-  initTab: (tabId: string, connectionId: string, database: string, table: string) => void
+  initTab: (tabId: string, table: TableRequest) => void
   cleanupTab: (tabId: string) => void
   loadTableData: (tabId: string) => Promise<void>
   fetchPage: (tabId: string, page: number) => Promise<void>
@@ -575,19 +558,8 @@ export interface TableDataStore {
    * envelope as the cell's modified value, and reflects it in the in-memory row
    * so the grid renders the `[BLOB - N bytes*]` placeholder.
    */
-  stageBlobEnvelope: (
-    tabId: string,
-    rowData: Record<string, unknown>,
-    column: string,
-    envelope: BlobEnvelope
-  ) => void
-  syncCellValue: (
-    tabId: string,
-    rowData: Record<string, unknown> | undefined,
-    column: string,
-    value: unknown,
-    rowKeyOverride?: Record<string, unknown>
-  ) => void
+  stageBlobEnvelope: (tabId: string, staged: StagedBlobEnvelope) => void
+  syncCellValue: (tabId: string, sync: TableCellValueSync) => void
   clearEditStateIfUnmodified: (tabId: string, rowKey: Record<string, unknown>) => void
   saveCurrentRow: (tabId: string) => Promise<boolean>
   discardCurrentRow: (tabId: string) => void
@@ -819,6 +791,31 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
     })
   }
 
+  const appendDraftRow = (tabId: string, { tab, rowValues, modifiedColumns }: DraftRowSeed) => {
+    const tempId = 'new-' + Date.now()
+    const newRows = [...tab.rows, rowValues]
+
+    patchTab(tabId, { rows: newRows, selectedRowKey: { __tempId: tempId } })
+
+    get().startEditing(
+      tabId,
+      { __tempId: tempId },
+      buildCurrentValuesFromRow(tab.columns, rowValues)
+    )
+
+    const updatedTab = get().tabs[tabId]
+    if (!updatedTab?.editState) return
+
+    patchTab(tabId, {
+      editState: {
+        ...updatedTab.editState,
+        isNewRow: true,
+        tempId: tempId,
+        modifiedColumns: modifiedColumns,
+      },
+    })
+  }
+
   const patchTabResidency = (tabId: string, partial: Partial<FrontendRowResidencyState>) => {
     set((state) => {
       const existing = state.tabs[tabId]
@@ -937,7 +934,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       database: tab.database,
       table: tab.table,
       values: buildInsertPayload(columns, editState),
-      pkInfo: primaryKey,
+      primaryKeyInfo: primaryKey,
     })
     if (!get().tabs[tabId]) return true
 
@@ -992,7 +989,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       database: tab.database,
       table: tab.table,
       primaryKeyColumns: primaryKey.keyColumns,
-      originalPkValues: payload.originalPkValues,
+      originalPrimaryKeyValues: payload.originalPkValues,
       updatedValues: payload.updatedValues,
     })
     if (!get().tabs[tabId]) return true
@@ -1069,7 +1066,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
     tabId: string,
     tab: TableDataTabState,
     rowKey: RowKey
-  ): Parameters<typeof deleteTableRowCmd>[0] | null {
+  ): DeleteTableRowRequest | null {
     if (!tab.primaryKey) return null
     // Binary PK values bind as bytes; the caller keeps the hex rowKey for the local lookup (C5).
     const converted = convertBinaryPrimaryKeyValuesToEnvelopes(
@@ -1086,8 +1083,8 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       connectionId: tab.connectionId,
       database: tab.database,
       table: tab.table,
-      pkColumns: tab.primaryKey.keyColumns,
-      pkValues: converted.values,
+      primaryKeyColumns: tab.primaryKey.keyColumns,
+      primaryKeyValues: converted.values,
     }
   }
 
@@ -1132,11 +1129,11 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
     // ------ initTab ------
 
-    initTab: (tabId, connectionId, database, table) => {
+    initTab: (tabId, table) => {
       set((state) => ({
         tabs: {
           ...state.tabs,
-          [tabId]: createDefaultTabState(connectionId, database, table),
+          [tabId]: createDefaultTabState(table),
         },
       }))
     },
@@ -1463,7 +1460,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
     // ------ stageBlobEnvelope ------
 
-    stageBlobEnvelope: (tabId, rowData, column, envelope) => {
+    stageBlobEnvelope: (tabId, { rowData, column, envelope }) => {
       const tab = get().tabs[tabId]
       if (!tab) return
 
@@ -1491,7 +1488,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
     // ------ syncCellValue ------
 
-    syncCellValue: (tabId, rowData, column, value, rowKeyOverride) => {
+    syncCellValue: (tabId, { rowData, column, value, rowKeyOverride }) => {
       const tab = get().tabs[tabId]
       if (!tab) return
       if (!rowData) return
@@ -1575,7 +1572,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         }
       }
 
-      appendDraftRow(tab, patchTab, get().startEditing, tabId, newRow, seededColumns)
+      appendDraftRow(tabId, { tab: tab, rowValues: newRow, modifiedColumns: seededColumns })
     },
 
     cloneSelectedRow: (tabId) => {
@@ -1600,7 +1597,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         tab.columns.filter((column) => !column.isPrimaryKey).map((column) => column.name)
       )
 
-      appendDraftRow(tab, patchTab, get().startEditing, tabId, clonedRow, modifiedColumns)
+      appendDraftRow(tabId, { tab: tab, rowValues: clonedRow, modifiedColumns: modifiedColumns })
     },
 
     // ------ deleteRow ------

@@ -29,12 +29,19 @@ export function drawSelectedRowAccent(
   }
 }
 
-export function drawModifiedCellIndicator(
-  context: CanvasRenderingContext2D,
-  rect: Rectangle,
-  color: string,
+export interface ModifiedCellIndicatorDrawing {
+  context: CanvasRenderingContext2D
+  rect: Rectangle
+  color: string
   isDark: boolean
-): void {
+}
+
+export function drawModifiedCellIndicator({
+  context,
+  rect,
+  color,
+  isDark,
+}: ModifiedCellIndicatorDrawing): void {
   context.save()
   try {
     context.fillStyle = color
@@ -90,12 +97,14 @@ export function drawNullText(
   }
 }
 
-export function drawBlobText(
-  context: CanvasRenderingContext2D,
-  rect: Rectangle,
-  text: string,
+export interface BlobTextDrawing {
+  context: CanvasRenderingContext2D
+  rect: Rectangle
+  text: string
   theme: Theme
-): void {
+}
+
+export function drawBlobText({ context, rect, text, theme }: BlobTextDrawing): void {
   context.save()
   try {
     context.fillStyle = theme.textMedium
@@ -150,18 +159,26 @@ export function drawHighlightedColumnBackground(
   }
 }
 
+export interface SkeletonCellDrawing {
+  context: CanvasRenderingContext2D
+  rect: Rectangle
+  color: string
+  horizontalPadding: number
+  lineHeight: number
+}
+
 /**
  * Skeleton for a row that isn't loaded yet (wireframe 2): a flat bar in the
  * resolved `--skeleton-base` colour, one text line high, inset by the cell
  * padding. No shimmer and no gradient, and deliberately unlike NULL text.
  */
-export function drawSkeletonCell(
-  context: CanvasRenderingContext2D,
-  rect: Rectangle,
-  color: string,
-  horizontalPadding: number,
-  lineHeight: number
-): void {
+export function drawSkeletonCell({
+  context,
+  rect,
+  color,
+  horizontalPadding,
+  lineHeight,
+}: SkeletonCellDrawing): void {
   const width = Math.max(0, rect.width - horizontalPadding * BOTH_SIDES)
   const height = Math.max(0, Math.min(lineHeight, rect.height - SKELETON_VERTICAL_INSET_PX))
   if (width === 0) return

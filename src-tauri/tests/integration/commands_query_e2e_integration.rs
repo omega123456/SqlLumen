@@ -18,10 +18,15 @@ use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionIn
 use sqllumen_lib::commands::mysql::{
     close_connection_impl, open_connection_impl, OpenConnectionResult,
 };
-use sqllumen_lib::commands::session::{select_database_impl, set_test_select_database_hook};
+use sqllumen_lib::commands::requests::ConnectionTabRequest;
+use sqllumen_lib::commands::session::{
+    select_database_impl, set_test_select_database_hook, SelectDatabaseRequest,
+};
 use sqllumen_lib::mysql::query_executor::{
     cancel_query_impl, execute_call_query_impl, execute_multi_query_impl, execute_query_impl,
-    reexecute_single_result_impl, ExecuteQueryResult, MultiQueryResult, MultiQueryResultItem,
+    reexecute_single_result_impl, ExecuteCallQueryRequest, ExecuteMultiQueryRequest,
+    ExecuteQueryRequest, ExecuteQueryResult, MultiQueryResult, MultiQueryResultItem,
+    ReexecuteSingleResultRequest,
 };
 use sqllumen_lib::mysql::session::QUEUED_RUN_CANCELLED_MESSAGE;
 use sqllumen_lib::state::AppState;
@@ -81,96 +86,58 @@ async fn close_connection(
 
 #[tauri::command]
 async fn select_database(
-    connection_id: String,
-    database_name: String,
+    payload: SelectDatabaseRequest,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-    select_database_impl(&state, &connection_id, &database_name).await
+    select_database_impl(&state, &payload).await
 }
 
 #[tauri::command]
 async fn execute_query(
-    connection_id: String,
-    tab_id: String,
-    sql: String,
-    row_limit: Option<usize>,
+    payload: ExecuteQueryRequest,
     state: tauri::State<'_, AppState>,
 ) -> Result<ExecuteQueryResult, String> {
-    execute_query_impl(
-        &state,
-        &connection_id,
-        &tab_id,
-        &sql,
-        row_limit.unwrap_or(1000),
-        None,
-    )
-    .await
+    execute_query_impl(&state, &payload).await
 }
 
 #[tauri::command]
 async fn execute_multi_query(
-    connection_id: String,
-    tab_id: String,
-    statements: Vec<String>,
-    row_limit: Option<usize>,
+    payload: ExecuteMultiQueryRequest,
     state: tauri::State<'_, AppState>,
 ) -> Result<MultiQueryResult, String> {
-    execute_multi_query_impl(
-        &state,
-        &connection_id,
-        &tab_id,
-        statements,
-        row_limit.unwrap_or(1000),
-    )
-    .await
+    execute_multi_query_impl(&state, &payload).await
 }
 
 #[tauri::command]
 async fn execute_call_query(
-    connection_id: String,
-    tab_id: String,
-    sql: String,
-    row_limit: Option<usize>,
+    payload: ExecuteCallQueryRequest,
     state: tauri::State<'_, AppState>,
 ) -> Result<MultiQueryResult, String> {
-    execute_call_query_impl(
-        &state,
-        &connection_id,
-        &tab_id,
-        &sql,
-        row_limit.unwrap_or(1000),
-    )
-    .await
+    execute_call_query_impl(&state, &payload).await
 }
 
 #[tauri::command]
 async fn reexecute_single_result(
-    connection_id: String,
-    tab_id: String,
-    result_index: usize,
-    sql: String,
-    row_limit: Option<usize>,
+    payload: ReexecuteSingleResultRequest,
     state: tauri::State<'_, AppState>,
 ) -> Result<MultiQueryResultItem, String> {
-    reexecute_single_result_impl(
-        &state,
-        &connection_id,
-        &tab_id,
-        result_index,
-        &sql,
-        row_limit.unwrap_or(1000),
-        None,
-    )
-    .await
+    reexecute_single_result_impl(&state, &payload).await
 }
 
 #[tauri::command]
 async fn cancel_query(
-    connection_id: String,
-    tab_id: String,
+    payload: ConnectionTabRequest,
     state: tauri::State<'_, AppState>,
 ) -> Result<bool, String> {
-    cancel_query_impl(&state, &connection_id, &tab_id).await
+    cancel_query_impl(&state, &payload).await
+}
+
+fn invoke_payload_command<T: DeserializeOwned>(
+    webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
+    cmd: &str,
+    payload: serde_json::Value,
+) -> Result<T, serde_json::Value> {
+    invoke_tauri_command(webview, cmd, json!({ "payload": payload }))
 }
 
 fn invoke_tauri_command<T: DeserializeOwned>(
@@ -251,15 +218,12 @@ struct OpenConnectionPayloadDto {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
 struct OpenConnectionResultDto {
     session_id: String,
-    server_version: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
 struct ColumnMetaDto {
     name: String,
     data_type: String,
@@ -267,27 +231,14 @@ struct ColumnMetaDto {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
 struct ExecuteQueryResultDto {
-    query_id: String,
     columns: Vec<ColumnMetaDto>,
     total_rows: usize,
-    execution_time_ms: u64,
-    total_time_ms: u64,
-    affected_rows: u64,
-    auto_limit_applied: bool,
-    view_row_count: usize,
-    view_version: u64,
-    truncated: bool,
-    row_ceiling: usize,
-    applied_row_limit: Option<usize>,
-    full_export_blocked_reason: Option<String>,
     first_window: ResultWindowDto,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
 struct MultiQueryResultItemDto {
     query_id: String,
     source_sql: String,
@@ -310,7 +261,6 @@ struct MultiQueryResultItemDto {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
 struct ResultWindowDto {
     offset: usize,
     rows: Vec<Vec<serde_json::Value>>,
@@ -319,7 +269,6 @@ struct ResultWindowDto {
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
 struct MultiQueryResultDto {
     results: Vec<MultiQueryResultItemDto>,
 }
@@ -371,7 +320,7 @@ async fn execute_query_via_mock(response: MockQueryResponse) -> ExecuteQueryResu
     let (_app, webview) = build_query_commands_app();
     let open_result = open_mock_connection(&webview, server.port).await;
 
-    invoke_tauri_command(
+    invoke_payload_command(
         &webview,
         "execute_query",
         json!({
@@ -400,7 +349,7 @@ async fn execute_multi_query_via_mock(
         "rowLimit": row_limit,
     });
 
-    let result = invoke_tauri_command(&webview, "execute_multi_query", request_body.clone())
+    let result = invoke_payload_command(&webview, "execute_multi_query", request_body.clone())
         .expect("execute_multi_query IPC should succeed");
 
     (result, request_body)
@@ -422,25 +371,22 @@ async fn execute_call_query_via_mock(
         "rowLimit": row_limit,
     });
 
-    let result = invoke_tauri_command(&webview, "execute_call_query", request_body.clone())
+    let result = invoke_payload_command(&webview, "execute_call_query", request_body.clone())
         .expect("execute_call_query IPC should succeed");
 
     (result, request_body)
 }
 
 async fn reexecute_single_result_via_mock(
-    initial_steps: Vec<MockQueryStep>,
-    reexecute_step: MockQueryStep,
+    steps: Vec<MockQueryStep>,
     sql: &'static str,
     row_limit: usize,
 ) -> (MultiQueryResultItemDto, serde_json::Value) {
-    let mut steps = initial_steps;
-    steps.push(reexecute_step);
     let server = MockMySqlServer::start_script(steps).await;
     let (_app, webview) = build_query_commands_app();
     let open_result = open_mock_connection(&webview, server.port).await;
 
-    let _initial: MultiQueryResultDto = invoke_tauri_command(
+    let _initial: MultiQueryResultDto = invoke_payload_command(
         &webview,
         "execute_multi_query",
         json!({
@@ -460,7 +406,7 @@ async fn reexecute_single_result_via_mock(
         "rowLimit": row_limit,
     });
 
-    let result = invoke_tauri_command(&webview, "reexecute_single_result", request_body.clone())
+    let result = invoke_payload_command(&webview, "reexecute_single_result", request_body.clone())
         .expect("reexecute_single_result IPC should succeed");
 
     (result, request_body)
@@ -907,8 +853,7 @@ async fn reexecute_single_result_ipc_uses_row_limit_and_serializes_rows_without_
     };
 
     let (result, request_body) = reexecute_single_result_via_mock(
-        vec![initial_step, seeded_query_step],
-        reexecute_step,
+        vec![initial_step, seeded_query_step, reexecute_step],
         sql,
         777,
     )
@@ -941,7 +886,7 @@ async fn execute_query_ipc_runs_start_transaction_without_prepared_statement_pro
     let (_app, webview) = build_query_commands_app();
     let open_result = open_mock_connection(&webview, server.port).await;
 
-    let result: ExecuteQueryResultDto = invoke_tauri_command(
+    let result: ExecuteQueryResultDto = invoke_payload_command(
         &webview,
         "execute_query",
         json!({
@@ -970,23 +915,18 @@ fn connection_id_step() -> MockQueryStep {
     }
 }
 
+#[derive(Clone, Copy)]
+struct SingleRun<'a> {
+    connection_id: &'a str,
+    tab_id: &'a str,
+    sql: &'a str,
+}
+
 fn run_single(
     webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
-    connection_id: &str,
-    tab_id: &str,
-    sql: &str,
+    run: SingleRun<'_>,
 ) -> ExecuteQueryResultDto {
-    invoke_tauri_command(
-        webview,
-        "execute_query",
-        json!({
-            "connectionId": connection_id,
-            "tabId": tab_id,
-            "sql": sql,
-            "rowLimit": 1000,
-        }),
-    )
-    .expect("execute_query IPC should succeed")
+    try_run_single(webview, run).expect("execute_query IPC should succeed")
 }
 
 fn session_setup_count(server: &MockMySqlServer) -> usize {
@@ -1005,9 +945,23 @@ async fn query_editor_windows_share_one_session_per_connection() {
     let conn_id = open_result.session_id.as_str();
     let connections_before = server.connection_count();
 
-    run_single(&webview, conn_id, "tab-1", "SET @region_id = 22");
-    run_single(&webview, conn_id, "tab-2", "SET @other = @region_id");
-    let multi: MultiQueryResultDto = invoke_tauri_command(
+    run_single(
+        &webview,
+        SingleRun {
+            connection_id: conn_id,
+            tab_id: "tab-1",
+            sql: "SET @region_id = 22",
+        },
+    );
+    run_single(
+        &webview,
+        SingleRun {
+            connection_id: conn_id,
+            tab_id: "tab-2",
+            sql: "SET @other = @region_id",
+        },
+    );
+    let multi: MultiQueryResultDto = invoke_payload_command(
         &webview,
         "execute_multi_query",
         json!({
@@ -1047,7 +1001,16 @@ async fn query_editor_concurrent_runs_queue_on_the_shared_session() {
     std::thread::scope(|scope| {
         for tab in ["tab-1", "tab-2", "tab-3"] {
             let webview = webview.clone();
-            scope.spawn(move || run_single(&webview, conn_id, tab, "SET @x = 1"));
+            scope.spawn(move || {
+                run_single(
+                    &webview,
+                    SingleRun {
+                        connection_id: conn_id,
+                        tab_id: tab,
+                        sql: "SET @x = 1",
+                    },
+                )
+            });
         }
     });
 
@@ -1062,17 +1025,15 @@ const QUEUED_SQL: &str = "SET @x = 1";
 
 fn try_run_single(
     webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
-    connection_id: &str,
-    tab_id: &str,
-    sql: &str,
+    run: SingleRun<'_>,
 ) -> Result<ExecuteQueryResultDto, serde_json::Value> {
-    invoke_tauri_command(
+    invoke_payload_command(
         webview,
         "execute_query",
         json!({
-            "connectionId": connection_id,
-            "tabId": tab_id,
-            "sql": sql,
+            "connectionId": run.connection_id,
+            "tabId": run.tab_id,
+            "sql": run.sql,
             "rowLimit": 1000,
         }),
     )
@@ -1083,7 +1044,7 @@ fn cancel_run(
     connection_id: &str,
     tab_id: &str,
 ) -> bool {
-    invoke_tauri_command(
+    invoke_payload_command(
         webview,
         "cancel_query",
         json!({ "connectionId": connection_id, "tabId": tab_id }),
@@ -1126,8 +1087,16 @@ async fn cancel_query_cancels_a_run_queued_behind_another_window() {
         .expect("first window should acquire the session");
 
     let queued_result = std::thread::scope(|scope| {
-        let queued_run =
-            scope.spawn(|| try_run_single(&webview, conn_id, QUEUED_TAB_ID, QUEUED_SQL));
+        let queued_run = scope.spawn(|| {
+            try_run_single(
+                &webview,
+                SingleRun {
+                    connection_id: conn_id,
+                    tab_id: QUEUED_TAB_ID,
+                    sql: QUEUED_SQL,
+                },
+            )
+        });
         cancel_once_queued(&webview, conn_id, QUEUED_TAB_ID);
         queued_run
             .join()
@@ -1142,7 +1111,14 @@ async fn cancel_query_cancels_a_run_queued_behind_another_window() {
     let queued_sql_reached_server = server_received(&server, QUEUED_SQL);
     assert!(!queued_sql_reached_server);
 
-    run_single(&webview, conn_id, QUEUED_TAB_ID, QUEUED_SQL);
+    run_single(
+        &webview,
+        SingleRun {
+            connection_id: conn_id,
+            tab_id: QUEUED_TAB_ID,
+            sql: QUEUED_SQL,
+        },
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1152,7 +1128,14 @@ async fn close_connection_drops_the_editor_session() {
     let open_result = open_mock_connection(&webview, server.port).await;
     let conn_id = open_result.session_id.as_str();
 
-    run_single(&webview, conn_id, "tab-1", "SET @x = 1");
+    run_single(
+        &webview,
+        SingleRun {
+            connection_id: conn_id,
+            tab_id: "tab-1",
+            sql: "SET @x = 1",
+        },
+    );
     assert!(app.state::<AppState>().editor_sessions.has_session(conn_id));
 
     let _: () = invoke_tauri_command(
@@ -1173,8 +1156,15 @@ async fn select_database_switches_the_existing_editor_session() {
     let open_result = open_mock_connection(&webview, server.port).await;
     let conn_id = open_result.session_id.as_str();
 
-    run_single(&webview, conn_id, "tab-1", "SET @x = 1");
-    let result: Result<(), _> = invoke_tauri_command(
+    run_single(
+        &webview,
+        SingleRun {
+            connection_id: conn_id,
+            tab_id: "tab-1",
+            sql: "SET @x = 1",
+        },
+    );
+    let result: Result<(), _> = invoke_payload_command(
         &webview,
         "select_database",
         json!({ "connectionId": conn_id, "databaseName": "web_content" }),
@@ -1210,10 +1200,17 @@ async fn select_database_recovers_when_the_editor_session_died() {
     let conn_id = open_result.session_id.as_str();
     let session_index = server.connection_count();
 
-    run_single(&webview, conn_id, "tab-1", "SET @x = 1");
+    run_single(
+        &webview,
+        SingleRun {
+            connection_id: conn_id,
+            tab_id: "tab-1",
+            sql: "SET @x = 1",
+        },
+    );
     server.drop_connection(session_index);
 
-    let result: Result<(), _> = invoke_tauri_command(
+    let result: Result<(), _> = invoke_payload_command(
         &webview,
         "select_database",
         json!({ "connectionId": conn_id, "databaseName": "web_content" }),
@@ -1222,7 +1219,14 @@ async fn select_database_recovers_when_the_editor_session_died() {
     result.expect("select_database should succeed on a dead session");
 
     assert_eq!(registry_default_database(&app, conn_id), "web_content");
-    run_single(&webview, conn_id, "tab-1", "SET @y = 1");
+    run_single(
+        &webview,
+        SingleRun {
+            connection_id: conn_id,
+            tab_id: "tab-1",
+            sql: "SET @y = 1",
+        },
+    );
     assert_eq!(session_setup_count(&server), 2, "session should reconnect");
 }
 
@@ -1245,8 +1249,15 @@ async fn select_database_surfaces_server_errors_and_keeps_the_previous_database(
     let conn_id = open_result.session_id.as_str();
     let previous_database = registry_default_database(&app, conn_id);
 
-    run_single(&webview, conn_id, "tab-1", "SET @x = 1");
-    let result: Result<(), serde_json::Value> = invoke_tauri_command(
+    run_single(
+        &webview,
+        SingleRun {
+            connection_id: conn_id,
+            tab_id: "tab-1",
+            sql: "SET @x = 1",
+        },
+    );
+    let result: Result<(), serde_json::Value> = invoke_payload_command(
         &webview,
         "select_database",
         json!({ "connectionId": conn_id, "databaseName": "web_content" }),
@@ -1261,7 +1272,14 @@ async fn select_database_surfaces_server_errors_and_keeps_the_previous_database(
         "unexpected error: {error}"
     );
     assert_eq!(registry_default_database(&app, conn_id), previous_database);
-    run_single(&webview, conn_id, "tab-1", "SET @y = 1");
+    run_single(
+        &webview,
+        SingleRun {
+            connection_id: conn_id,
+            tab_id: "tab-1",
+            sql: "SET @y = 1",
+        },
+    );
     assert_eq!(session_setup_count(&server), 1, "session should be kept");
 }
 
@@ -1349,7 +1367,7 @@ async fn execute_call_query_ipc_drains_column_less_sets_and_streams_row_set() {
     let (_app, webview) = build_query_commands_app();
     let open_result = open_mock_connection(&webview, server.port).await;
 
-    let result: MultiQueryResultDto = invoke_tauri_command(
+    let result: MultiQueryResultDto = invoke_payload_command(
         &webview,
         "execute_call_query",
         json!({

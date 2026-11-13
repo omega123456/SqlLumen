@@ -1,5 +1,25 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy)]
+pub struct MemoryOwner<'a> {
+    pub scope: MemoryScope,
+    pub owner_id: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MemoryVector<'a> {
+    pub memory_id: i64,
+    pub embedding: &'a [f32],
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MemoryMove<'a> {
+    pub memory_id: i64,
+    pub from: MemoryOwner<'a>,
+    pub to: MemoryOwner<'a>,
+    pub embedding: &'a [f32],
+}
+
 /// The scope (level) a memory belongs to.
 ///
 /// Serializes over IPC as `"connection" | "group" | "global"`.

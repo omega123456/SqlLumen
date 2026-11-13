@@ -32,6 +32,13 @@ export interface ConnectionIndexState {
   error?: string
 }
 
+export interface SchemaIndexProgress {
+  profileId: string
+  phase: BuildPhase
+  tablesDone: number
+  tablesTotal: number
+}
+
 interface SchemaIndexStore {
   // State
   connections: Record<string, ConnectionIndexState>
@@ -47,12 +54,7 @@ interface SchemaIndexStore {
   getStatusForSession: (sessionId: string) => ConnectionIndexState | undefined
 
   // Internal — called by event listeners
-  _handleProgress: (
-    profileId: string,
-    phase: BuildPhase,
-    tablesDone: number,
-    tablesTotal: number
-  ) => void
+  _handleProgress: (progress: SchemaIndexProgress) => void
   _handleComplete: (profileId: string) => void
   _handleError: (profileId: string, error: string) => void
 }
@@ -96,30 +98,27 @@ function createDefaultConnectionIndexState(): ConnectionIndexState {
 // Shared helper for event handlers
 // ---------------------------------------------------------------------------
 
-/** Resolve all sessions for a profile, apply an update to each connection state. */
-function updateSessionsForProfile(
-  get: () => SchemaIndexStore,
-  set: (updater: (state: SchemaIndexStore) => Partial<SchemaIndexStore>) => void,
-  profileId: string,
-  update: (connection: ConnectionIndexState) => ConnectionIndexState
-): void {
-  const sessions = get().profileToSessions[profileId] ?? []
-  if (sessions.length === 0) return
-
-  set((state) => {
-    const newConnections = { ...state.connections }
-    for (const sid of sessions) {
-      newConnections[sid] = update(newConnections[sid] ?? createDefaultConnectionIndexState())
-    }
-    return { connections: newConnections }
-  })
-}
-
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
 
 export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
+  const updateSessionsForProfile = (
+    profileId: string,
+    update: (connection: ConnectionIndexState) => ConnectionIndexState
+  ): void => {
+    const sessions = get().profileToSessions[profileId] ?? []
+    if (sessions.length === 0) return
+
+    set((state) => {
+      const newConnections = { ...state.connections }
+      for (const sid of sessions) {
+        newConnections[sid] = update(newConnections[sid] ?? createDefaultConnectionIndexState())
+      }
+      return { connections: newConnections }
+    })
+  }
+
   // ------ Event listener setup (lazy, once) ------
 
   let listenersInitialized = false
@@ -129,18 +128,8 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
     if (!hasTauriApis()) return
     listenersInitialized = true
 
-    listen<{
-      profileId: string
-      phase: BuildPhase
-      tablesDone: number
-      tablesTotal: number
-    }>('schema-index-progress', (event) => {
-      get()._handleProgress(
-        event.payload.profileId,
-        event.payload.phase,
-        event.payload.tablesDone,
-        event.payload.tablesTotal
-      )
+    listen<SchemaIndexProgress>('schema-index-progress', (event) => {
+      get()._handleProgress(event.payload)
     }).catch((error) => {
       logFrontendError('[schema-index-store] Failed to listen for schema-index-progress:', error)
     })
@@ -453,8 +442,8 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
       return get().connections[sessionId]
     },
 
-    _handleProgress: (profileId, phase, tablesDone, tablesTotal) => {
-      updateSessionsForProfile(get, set, profileId, (connection) => ({
+    _handleProgress: ({ profileId, phase, tablesDone, tablesTotal }) => {
+      updateSessionsForProfile(profileId, (connection) => ({
         ...connection,
         status: 'building',
         phase: phase,
@@ -464,7 +453,7 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
     },
 
     _handleComplete: (profileId) => {
-      updateSessionsForProfile(get, set, profileId, (connection) => ({
+      updateSessionsForProfile(profileId, (connection) => ({
         ...connection,
         status: 'ready',
         phase: null,
@@ -473,7 +462,7 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
     },
 
     _handleError: (profileId, error) => {
-      updateSessionsForProfile(get, set, profileId, (connection) => ({
+      updateSessionsForProfile(profileId, (connection) => ({
         ...connection,
         status: 'error',
         phase: null,

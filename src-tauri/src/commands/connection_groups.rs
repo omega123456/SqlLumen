@@ -1,6 +1,7 @@
 use crate::commands::helpers::lock_db;
 use crate::db::connection_groups::{self, ConnectionGroupRecord};
 use crate::state::AppState;
+use serde::Deserialize;
 #[cfg(not(coverage))]
 use tauri::State;
 
@@ -22,9 +23,19 @@ pub fn list_connection_groups_impl(state: &AppState) -> Result<Vec<ConnectionGro
     }
 }
 
-pub fn update_connection_group_impl(state: &AppState, id: &str, name: &str) -> Result<(), String> {
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateConnectionGroupRequest {
+    pub id: String,
+    pub name: String,
+}
+
+pub fn update_connection_group_impl(
+    state: &AppState,
+    request: &UpdateConnectionGroupRequest,
+) -> Result<(), String> {
     let conn = lock_db(state)?;
-    match connection_groups::update_group(&conn, id, name) {
+    match connection_groups::update_group(&conn, &request.id, &request.name) {
         Ok(()) => Ok(()),
         Err(error) => Err(error.to_string()),
     }
@@ -57,11 +68,10 @@ pub fn list_connection_groups(
 #[cfg(not(coverage))]
 #[tauri::command]
 pub fn update_connection_group(
-    id: String,
-    name: String,
+    payload: UpdateConnectionGroupRequest,
     state: State<AppState>,
 ) -> Result<(), String> {
-    update_connection_group_impl(&state, &id, &name)
+    update_connection_group_impl(&state, &payload)
 }
 
 #[cfg(not(coverage))]

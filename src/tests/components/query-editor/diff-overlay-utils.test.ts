@@ -117,7 +117,7 @@ describe('applyDiff', () => {
       originalRange: DEFAULT_RANGE,
     }
 
-    const result = applyDiff(null, state, 'SELECT id FROM users')
+    const result = applyDiff({ editor: null, state: state, finalSql: 'SELECT id FROM users' })
     expect(result).toBe(false)
 
     const toasts = useToastStore.getState().toasts
@@ -138,7 +138,7 @@ describe('applyDiff', () => {
       originalRange: DEFAULT_RANGE,
     }
 
-    const result = applyDiff(editor, state, 'SELECT id FROM users')
+    const result = applyDiff({ editor: editor, state: state, finalSql: 'SELECT id FROM users' })
     expect(result).toBe(false)
   })
 
@@ -151,7 +151,11 @@ describe('applyDiff', () => {
       originalRange: DEFAULT_RANGE,
     }
 
-    const result = applyDiff(editor, state, 'SELECT id, name FROM users WHERE active = 1')
+    const result = applyDiff({
+      editor: editor,
+      state: state,
+      finalSql: 'SELECT id, name FROM users WHERE active = 1',
+    })
     expect(result).toBe(true)
     // Uses model.pushEditOperations to bypass readOnly (editor is locked during ai-reviewing)
     expect(editor._mockModel.pushEditOperations).toHaveBeenCalledWith(
@@ -173,7 +177,7 @@ describe('applyDiff', () => {
       originalRange: DEFAULT_RANGE,
     }
 
-    const result = applyDiff(editor, state, 'SELECT id FROM users')
+    const result = applyDiff({ editor: editor, state: state, finalSql: 'SELECT id FROM users' })
     expect(result).toBe(true)
     expect(editor._mockModel.pushEditOperations).toHaveBeenCalledWith(
       [],
@@ -191,7 +195,7 @@ describe('applyDiff', () => {
       originalRange: DEFAULT_RANGE,
     }
 
-    applyDiff(editor, state, 'CUSTOM FINAL SQL')
+    applyDiff({ editor: editor, state: state, finalSql: 'CUSTOM FINAL SQL' })
     expect(editor._mockModel.pushEditOperations).toHaveBeenCalledWith(
       [],
       [expect.objectContaining({ text: 'CUSTOM FINAL SQL' })],
@@ -235,7 +239,7 @@ describe('handleDiffAccept flow — attachedContext staleness', () => {
     // Set up query store tab so restoreTabAfterDiff works
     useQueryStore.getState().setTabStatus('tab-1', 'ai-reviewing')
 
-    const applied = applyDiff(editor, state, finalSql, 'tab-1')
+    const applied = applyDiff({ editor: editor, state: state, finalSql: finalSql, tabId: 'tab-1' })
     expect(applied).toBe(true)
 
     restoreTabAfterDiff('tab-1')
@@ -291,7 +295,7 @@ describe('applyDiff — attachedContext sync edge cases', () => {
       originalRange: range,
     }
 
-    applyDiff(editor, state, 'SELECT id FROM users')
+    applyDiff({ editor: editor, state: state, finalSql: 'SELECT id FROM users' })
     // Without tabId, context should remain unchanged
     expect(useAiStore.getState().tabs['tab-no-id']?.attachedContext?.sql).toBe(
       'SELECT * FROM users'
@@ -310,7 +314,12 @@ describe('applyDiff — attachedContext sync edge cases', () => {
     }
 
     // Should not throw
-    applyDiff(editor, state, 'SELECT id FROM users', 'tab-empty')
+    applyDiff({
+      editor: editor,
+      state: state,
+      finalSql: 'SELECT id FROM users',
+      tabId: 'tab-empty',
+    })
     expect(useAiStore.getState().tabs['tab-empty']?.attachedContext).toBeUndefined()
   })
 
@@ -327,7 +336,12 @@ describe('applyDiff — attachedContext sync edge cases', () => {
     }
 
     useQueryStore.getState().setTabStatus('tab-multi', 'ai-reviewing')
-    applyDiff(editor, state, 'SELECT\n  id\nFROM users', 'tab-multi')
+    applyDiff({
+      editor: editor,
+      state: state,
+      finalSql: 'SELECT\n  id\nFROM users',
+      tabId: 'tab-multi',
+    })
 
     const ctx = useAiStore.getState().tabs['tab-multi']?.attachedContext
     expect(ctx?.sql).toBe('SELECT\n  id\nFROM users')

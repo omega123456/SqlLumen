@@ -39,13 +39,22 @@ pub fn resolve_embedding_endpoint(db: &Connection) -> Result<String, String> {
     Ok(chat.trim().to_string())
 }
 
-/// Reads embedding configuration (endpoint, model) from SQLite settings.
-/// Returns `(endpoint, model)` or an error if not configured.
-///
-/// The endpoint is resolved via [`resolve_embedding_endpoint`] so the dedicated
-/// embedding URL is honoured with a fallback to the chat URL. The function still
-/// errors when the *resolved* (effective) endpoint is empty.
-pub fn read_embedding_config(db: &Connection) -> Result<(String, String), String> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmbeddingConfig {
+    pub endpoint: String,
+    pub model: String,
+}
+
+impl EmbeddingConfig {
+    pub fn embedding_model(&self) -> crate::schema_index::embeddings::EmbeddingModel<'_> {
+        crate::schema_index::embeddings::EmbeddingModel {
+            base_url: &self.endpoint,
+            model: &self.model,
+        }
+    }
+}
+
+pub fn read_embedding_config(db: &Connection) -> Result<EmbeddingConfig, String> {
     let endpoint = resolve_embedding_endpoint(db)?;
     if endpoint.is_empty() {
         return Err("Embedding endpoint is empty".to_string());
@@ -56,5 +65,5 @@ pub fn read_embedding_config(db: &Connection) -> Result<(String, String), String
     if model.trim().is_empty() {
         return Err("Embedding model is empty".to_string());
     }
-    Ok((endpoint, model))
+    Ok(EmbeddingConfig { endpoint, model })
 }

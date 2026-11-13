@@ -5,14 +5,14 @@ use rusqlite::Connection;
 use sqllumen_lib::init_sqlite_vec;
 use sqllumen_lib::schema_index::search::{
     apply_graph_expansion, multi_query_search, multi_query_search_configured,
-    multi_query_search_extended, multi_query_search_with_hints,
-    multi_query_search_with_query_texts, RetrievalHints, SearchConfig, SearchConfigExt,
-    SearchResult, TableHint, TableRef,
+    multi_query_search_extended, multi_query_search_with_hints, RetrievalHints, SearchConfig,
+    SearchConfigExt, SearchResult, TableHint, TableRef,
 };
 use sqllumen_lib::schema_index::storage;
 use sqllumen_lib::schema_index::types::{ChunkInsert, ChunkType, FkEdge};
 
 use crate::common;
+use crate::common::schema_index_chunks::{insert_table_chunk, TestTableChunk};
 
 const DIM: usize = 4;
 
@@ -50,31 +50,6 @@ fn blend_vec(axis_a: usize, axis_b: usize, weight_a: f32) -> Vec<f32> {
         v.iter_mut().for_each(|x| *x /= len);
     }
     v
-}
-
-fn insert_table_chunk(
-    conn: &Connection,
-    connection_id: &str,
-    db_name: &str,
-    table_name: &str,
-    embedding: Vec<f32>,
-) -> i64 {
-    let chunk = ChunkInsert {
-        connection_id: connection_id.to_string(),
-        chunk_key: format!("table:{db_name}.{table_name}"),
-        db_name: db_name.to_string(),
-        table_name: table_name.to_string(),
-        chunk_type: ChunkType::Table,
-        ddl_text: format!("CREATE TABLE `{table_name}` (id INT PRIMARY KEY)"),
-        ddl_hash: format!("hash_{table_name}"),
-        model_id: "test-model".to_string(),
-        ref_db_name: None,
-        ref_table_name: None,
-        embedding,
-        text_for_embedding: None,
-        row_count_approx: None,
-    };
-    storage::insert_chunk(conn, &chunk).expect("insert table chunk")
 }
 
 struct FkChunkFixture<'a> {
@@ -151,8 +126,16 @@ fn insert_fk_edge(conn: &Connection, fixture: FkEdgeFixture<'_>) {
         on_delete: Some("RESTRICT".to_string()),
         on_update: Some("RESTRICT".to_string()),
     };
-    storage::replace_fk_edges_for_table(conn, connection_id, src_db, src_tbl, &[edge])
-        .expect("insert fk edge");
+    storage::replace_fk_edges_for_table(
+        conn,
+        &sqllumen_lib::schema_index::storage::IndexedTableRef {
+            connection_id,
+            db_name: src_db,
+            table_name: src_tbl,
+        },
+        &[edge],
+    )
+    .expect("insert fk edge");
 }
 
 // ── Empty index ─────────────────────────────────────────────────────────
@@ -161,8 +144,20 @@ fn insert_fk_edge(conn: &Connection, fixture: FkEdgeFixture<'_>) {
 fn test_empty_index_returns_empty() {
     let conn = setup_db();
     let query = vec![unit_vec(0)];
-    let results =
-        multi_query_search(&conn, "conn-1", &query, 5, 10, 20).expect("search should succeed");
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
+    )
+    .expect("search should succeed");
     assert!(results.is_empty(), "empty index should return no results");
 }
 
@@ -171,9 +166,29 @@ fn test_empty_index_returns_empty() {
 #[test]
 fn test_empty_queries_returns_empty() {
     let conn = setup_db();
-    insert_table_chunk(&conn, "conn-1", "testdb", "users", unit_vec(0));
-    let results: Vec<SearchResult> =
-        multi_query_search(&conn, "conn-1", &[], 5, 10, 20).expect("search should succeed");
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
+    let results: Vec<SearchResult> = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &[],
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
+    )
+    .expect("search should succeed");
     assert!(results.is_empty(), "empty queries should return no results");
 }
 
@@ -184,14 +199,50 @@ fn test_single_query_returns_top_k() {
     let conn = setup_db();
 
     // Insert 3 table chunks with different embeddings
-    insert_table_chunk(&conn, "conn-1", "testdb", "users", unit_vec(0));
-    insert_table_chunk(&conn, "conn-1", "testdb", "orders", unit_vec(1));
-    insert_table_chunk(&conn, "conn-1", "testdb", "products", unit_vec(2));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "orders",
+            embedding: unit_vec(1),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "products",
+            embedding: unit_vec(2),
+        },
+    );
 
     // Query along axis 0 — should match "users" best
     let query = vec![unit_vec(0)];
-    let results =
-        multi_query_search(&conn, "conn-1", &query, 5, 10, 20).expect("search should succeed");
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
+    )
+    .expect("search should succeed");
 
     assert!(!results.is_empty(), "should have results");
     assert!(results.len() <= 5, "should be capped at top_k_per_query");
@@ -219,15 +270,43 @@ fn test_multi_query_dedup_keeps_best_score() {
     let conn = setup_db();
 
     // Insert 2 table chunks
-    insert_table_chunk(&conn, "conn-1", "testdb", "users", unit_vec(0));
-    insert_table_chunk(&conn, "conn-1", "testdb", "orders", unit_vec(1));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "orders",
+            embedding: unit_vec(1),
+        },
+    );
 
     // Two queries: both should match "users" (axis 0) but second is slightly off-axis
     let query_exact = unit_vec(0); // perfect match to users
     let query_blend = blend_vec(0, 1, 0.9); // also close to users but less so
 
-    let results = multi_query_search(&conn, "conn-1", &[query_exact, query_blend], 5, 10, 20)
-        .expect("search should succeed");
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &[query_exact, query_blend],
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
+    )
+    .expect("search should succeed");
 
     // "users" should only appear once (deduped)
     let users_results: Vec<&SearchResult> =
@@ -254,17 +333,61 @@ fn test_top_n_selection() {
     let conn = setup_db();
 
     // Insert 4 table chunks along different axes
-    insert_table_chunk(&conn, "conn-1", "testdb", "t0", unit_vec(0));
-    insert_table_chunk(&conn, "conn-1", "testdb", "t1", unit_vec(1));
-    insert_table_chunk(&conn, "conn-1", "testdb", "t2", unit_vec(2));
-    insert_table_chunk(&conn, "conn-1", "testdb", "t3", unit_vec(3));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "t0",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "t1",
+            embedding: unit_vec(1),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "t2",
+            embedding: unit_vec(2),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "t3",
+            embedding: unit_vec(3),
+        },
+    );
 
     // Query along axis 0
     let query = vec![unit_vec(0)];
 
     // top_n_results = 2 — should return at most 2 table chunks
-    let results =
-        multi_query_search(&conn, "conn-1", &query, 5, 2, 20).expect("search should succeed");
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 2,
+            max_foreign_key_chunks: 20,
+        },
+    )
+    .expect("search should succeed");
 
     // Only table chunks in results (no FK chunks inserted)
     let table_chunks: Vec<&SearchResult> =
@@ -283,8 +406,24 @@ fn test_fk_fanout_includes_related_fk_chunks() {
     let conn = setup_db();
 
     // Insert table chunks
-    insert_table_chunk(&conn, "conn-1", "testdb", "users", unit_vec(0));
-    insert_table_chunk(&conn, "conn-1", "testdb", "orders", unit_vec(1));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "orders",
+            embedding: unit_vec(1),
+        },
+    );
 
     // Insert FK edge: orders → users
     insert_fk_edge(
@@ -302,7 +441,15 @@ fn test_fk_fanout_includes_related_fk_chunks() {
     );
 
     // Also insert a third table linked via FK to orders but far from query
-    insert_table_chunk(&conn, "conn-1", "testdb", "order_items", unit_vec(3));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "order_items",
+            embedding: unit_vec(3),
+        },
+    );
     insert_fk_edge(
         &conn,
         FkEdgeFixture {
@@ -320,8 +467,20 @@ fn test_fk_fanout_includes_related_fk_chunks() {
     // Query along axis 0 — should match "users" (top-N), and "orders" should
     // appear via FK edge fan-out since "users" ↔ "orders" have an FK edge.
     let query = vec![unit_vec(0)];
-    let results =
-        multi_query_search(&conn, "conn-1", &query, 5, 10, 20).expect("search should succeed");
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
+    )
+    .expect("search should succeed");
 
     // Both users and orders should appear (orders is FK-related to users)
     let has_users = results.iter().any(|r| r.table_name == "users");
@@ -337,12 +496,28 @@ fn test_fk_fanout_is_capped() {
     let conn = setup_db();
 
     // Insert one table chunk (close to query)
-    insert_table_chunk(&conn, "conn-1", "testdb", "users", unit_vec(0));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
 
     // Insert 3 related table chunks (far from query) and FK edges pointing to users
     for i in 0..3 {
         let tbl_name = format!("related_table_{i}");
-        insert_table_chunk(&conn, "conn-1", "testdb", &tbl_name, unit_vec(3));
+        insert_table_chunk(
+            &conn,
+            TestTableChunk {
+                connection_id: "conn-1",
+                db_name: "testdb",
+                table_name: &tbl_name,
+                embedding: unit_vec(3),
+            },
+        );
         insert_fk_edge(
             &conn,
             FkEdgeFixture {
@@ -374,8 +549,16 @@ fn test_fk_fanout_is_capped() {
         hints: RetrievalHints::default(),
     };
 
-    let results =
-        multi_query_search_extended(&conn, "conn-1", &[], &query, &config).expect("search");
+    let results = multi_query_search_extended(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        &config,
+    )
+    .expect("search");
 
     // First result should be the table chunk (top-N)
     assert_eq!(results[0].chunk_type, "table");
@@ -399,8 +582,24 @@ fn test_result_ordering() {
     let conn = setup_db();
 
     // Insert table chunks
-    insert_table_chunk(&conn, "conn-1", "testdb", "users", unit_vec(0));
-    insert_table_chunk(&conn, "conn-1", "testdb", "orders", blend_vec(0, 1, 0.7));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "orders",
+            embedding: blend_vec(0, 1, 0.7),
+        },
+    );
 
     // Insert FK chunk
     insert_fk_chunk(
@@ -417,8 +616,20 @@ fn test_result_ordering() {
     );
 
     let query = vec![unit_vec(0)];
-    let results =
-        multi_query_search(&conn, "conn-1", &query, 5, 10, 20).expect("search should succeed");
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
+    )
+    .expect("search should succeed");
 
     // Find the boundary between table and FK chunks
     let mut saw_fk = false;
@@ -452,13 +663,41 @@ fn test_connection_isolation() {
     storage::create_vec_table(&conn, "conn-2", DIM).expect("create vec table for conn-2");
 
     // Insert chunks for two different connections with similar embeddings
-    insert_table_chunk(&conn, "conn-1", "testdb", "users", unit_vec(0));
-    insert_table_chunk(&conn, "conn-2", "testdb", "secret_table", unit_vec(0));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-2",
+            db_name: "testdb",
+            table_name: "secret_table",
+            embedding: unit_vec(0),
+        },
+    );
 
     // Search for conn-1 only
     let query = vec![unit_vec(0)];
-    let results =
-        multi_query_search(&conn, "conn-1", &query, 5, 10, 20).expect("search should succeed");
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
+    )
+    .expect("search should succeed");
 
     // Should NOT contain conn-2's table
     let has_secret = results.iter().any(|r| r.table_name == "secret_table");
@@ -479,7 +718,15 @@ fn test_fk_in_top_n_not_duplicated_by_fanout() {
     let conn = setup_db();
 
     // Insert a table chunk
-    insert_table_chunk(&conn, "conn-1", "testdb", "users", unit_vec(0));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
 
     // Insert FK chunk with embedding close to query (so it appears in KNN top-N)
     let fk_id = insert_fk_chunk(
@@ -496,8 +743,20 @@ fn test_fk_in_top_n_not_duplicated_by_fanout() {
     );
 
     let query = vec![unit_vec(0)];
-    let results =
-        multi_query_search(&conn, "conn-1", &query, 5, 10, 20).expect("search should succeed");
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
+    )
+    .expect("search should succeed");
 
     // The FK chunk should appear exactly once
     let fk_count = results.iter().filter(|r| r.chunk_id == fk_id).count();
@@ -514,7 +773,15 @@ fn test_fk_fanout_includes_fk_for_referenced_table() {
     let conn = setup_db();
 
     // "orders" table is in top-N
-    insert_table_chunk(&conn, "conn-1", "testdb", "orders", unit_vec(0));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "orders",
+            embedding: unit_vec(0),
+        },
+    );
 
     // FK chunk: orders → users (orders is the source table)
     // This FK should be picked up because "orders" is in the top-N
@@ -532,8 +799,20 @@ fn test_fk_fanout_includes_fk_for_referenced_table() {
     );
 
     let query = vec![unit_vec(0)];
-    let results =
-        multi_query_search(&conn, "conn-1", &query, 5, 10, 20).expect("search should succeed");
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
+    )
+    .expect("search should succeed");
 
     let has_fk = results.iter().any(|r| r.chunk_id == fk_id);
     assert!(
@@ -549,12 +828,32 @@ fn test_score_is_distance_based_similarity() {
     let conn = setup_db();
 
     // Insert a chunk with a known unit vector
-    insert_table_chunk(&conn, "conn-1", "testdb", "users", unit_vec(0));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
 
     // Query with the exact same vector — L2 distance should be 0, score should be 1.0
     let query = vec![unit_vec(0)];
-    let results =
-        multi_query_search(&conn, "conn-1", &query, 5, 10, 20).expect("search should succeed");
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
+    )
+    .expect("search should succeed");
 
     assert_eq!(results.len(), 1);
     // Score is now RRF-based: 1/(60+1) ≈ 0.01639 for rank 1 with single query
@@ -569,8 +868,20 @@ fn test_score_is_distance_based_similarity() {
     // Query with an orthogonal vector — cosine distance = 1.0
     // RRF score = 1/(60+1) since it's still the only result
     let query_ortho = vec![unit_vec(1)];
-    let results_ortho = multi_query_search(&conn, "conn-1", &query_ortho, 5, 10, 20)
-        .expect("search should succeed");
+    let results_ortho = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query_ortho,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
+    )
+    .expect("search should succeed");
 
     assert_eq!(results_ortho.len(), 1);
     // Even with orthogonal vector, the single chunk is still returned with rank 1
@@ -596,11 +907,31 @@ fn test_score_is_distance_based_similarity() {
 fn test_search_result_fields() {
     let conn = setup_db();
 
-    let chunk_id = insert_table_chunk(&conn, "conn-1", "mydb", "accounts", unit_vec(0));
+    let chunk_id = insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "mydb",
+            table_name: "accounts",
+            embedding: unit_vec(0),
+        },
+    );
 
     let query = vec![unit_vec(0)];
-    let results =
-        multi_query_search(&conn, "conn-1", &query, 5, 10, 20).expect("search should succeed");
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
+    )
+    .expect("search should succeed");
 
     assert_eq!(results.len(), 1);
     let r = &results[0];
@@ -698,8 +1029,24 @@ fn test_fk_fanout_dedup_within_fanout() {
     let conn = setup_db();
 
     // Insert two table chunks that will both be in top-N
-    insert_table_chunk(&conn, "conn-1", "testdb", "users", unit_vec(0));
-    insert_table_chunk(&conn, "conn-1", "testdb", "orders", blend_vec(0, 1, 0.8));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "orders",
+            embedding: blend_vec(0, 1, 0.8),
+        },
+    );
 
     // Insert FK chunk: orders → users (should be found via BOTH "orders" and "users" fan-out)
     let fk_id = insert_fk_chunk(
@@ -716,8 +1063,20 @@ fn test_fk_fanout_dedup_within_fanout() {
     );
 
     let query = vec![unit_vec(0)];
-    let results =
-        multi_query_search(&conn, "conn-1", &query, 5, 10, 20).expect("search should succeed");
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
+    )
+    .expect("search should succeed");
 
     // The FK chunk should appear exactly once even though both tables trigger fan-out
     let fk_count = results.iter().filter(|r| r.chunk_id == fk_id).count();
@@ -734,7 +1093,15 @@ fn test_fk_chunks_in_top_n_sorted_after_table_chunks() {
     let conn = setup_db();
 
     // Insert a table chunk
-    insert_table_chunk(&conn, "conn-1", "testdb", "users", unit_vec(0));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
 
     // Insert FK chunk with embedding close to query (so it enters KNN top-N)
     insert_fk_chunk(
@@ -751,8 +1118,20 @@ fn test_fk_chunks_in_top_n_sorted_after_table_chunks() {
     );
 
     let query = vec![unit_vec(0)];
-    let results =
-        multi_query_search(&conn, "conn-1", &query, 5, 10, 20).expect("search should succeed");
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
+    )
+    .expect("search should succeed");
 
     assert!(results.len() >= 2, "should have at least 2 results");
 
@@ -775,15 +1154,59 @@ fn test_multi_query_multiple_axes() {
     let conn = setup_db();
 
     // Insert chunks along different axes
-    insert_table_chunk(&conn, "conn-1", "testdb", "users", unit_vec(0));
-    insert_table_chunk(&conn, "conn-1", "testdb", "orders", unit_vec(1));
-    insert_table_chunk(&conn, "conn-1", "testdb", "products", unit_vec(2));
-    insert_table_chunk(&conn, "conn-1", "testdb", "reviews", unit_vec(3));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "orders",
+            embedding: unit_vec(1),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "products",
+            embedding: unit_vec(2),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "reviews",
+            embedding: unit_vec(3),
+        },
+    );
 
     // Two queries along different axes — should find chunks near both
     let queries = vec![unit_vec(0), unit_vec(2)];
-    let results =
-        multi_query_search(&conn, "conn-1", &queries, 5, 10, 20).expect("search should succeed");
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &queries,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
+    )
+    .expect("search should succeed");
 
     // Should have results from both query vectors
     let has_users = results.iter().any(|r| r.table_name == "users");
@@ -800,19 +1223,31 @@ fn test_query_text_boosts_exact_table_name_matches() {
     // so the lexical boost should differentiate them
     insert_table_chunk(
         &conn,
-        "conn-1",
-        "sykes_reservations",
-        "itinerary",
-        blend_vec(0, 3, 0.8),
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "sykes_reservations",
+            table_name: "itinerary",
+            embedding: blend_vec(0, 3, 0.8),
+        },
     );
     insert_table_chunk(
         &conn,
-        "conn-1",
-        "sykes_reservations",
-        "itinerary_date_history",
-        blend_vec(0, 3, 0.8),
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "sykes_reservations",
+            table_name: "itinerary_date_history",
+            embedding: blend_vec(0, 3, 0.8),
+        },
     );
-    insert_table_chunk(&conn, "conn-1", "sykes_portal", "session_rfx", unit_vec(1));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "sykes_portal",
+            table_name: "session_rfx",
+            embedding: unit_vec(1),
+        },
+    );
 
     let query_vectors = vec![unit_vec(0), unit_vec(1)];
     let query_texts = vec![
@@ -820,14 +1255,18 @@ fn test_query_text_boosts_exact_table_name_matches() {
         "SELECT brand_id FROM rfx WHERE brand_id = 331".to_string(),
     ];
 
-    let results = multi_query_search_with_query_texts(
+    let results = multi_query_search(
         &conn,
-        "conn-1",
-        &query_texts,
-        &query_vectors,
-        5,
-        10,
-        20,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &query_texts,
+            query_vectors: &query_vectors,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
     )
     .expect("search should succeed");
 
@@ -852,20 +1291,40 @@ fn test_query_text_boost_prefers_schema_qualified_exact_match() {
     let conn = setup_db();
 
     // Both tables have similar cosine scores so lexical boost differentiates
-    insert_table_chunk(&conn, "conn-1", "sales", "orders", blend_vec(0, 1, 0.5));
-    insert_table_chunk(&conn, "conn-1", "support", "orders", blend_vec(0, 1, 0.5));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "sales",
+            table_name: "orders",
+            embedding: blend_vec(0, 1, 0.5),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "support",
+            table_name: "orders",
+            embedding: blend_vec(0, 1, 0.5),
+        },
+    );
 
     let query_vectors = vec![unit_vec(0)];
     let query_texts = vec!["SELECT * FROM sales.orders".to_string()];
 
-    let results = multi_query_search_with_query_texts(
+    let results = multi_query_search(
         &conn,
-        "conn-1",
-        &query_texts,
-        &query_vectors,
-        5,
-        10,
-        20,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &query_texts,
+            query_vectors: &query_vectors,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
     )
     .expect("search should succeed");
 
@@ -890,30 +1349,38 @@ fn test_query_text_boosts_segment_matches_for_related_table_names() {
 
     insert_table_chunk(
         &conn,
-        "conn-1",
-        "sykes_reservations",
-        "itinerary_date_history",
-        unit_vec(2),
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "sykes_reservations",
+            table_name: "itinerary_date_history",
+            embedding: unit_vec(2),
+        },
     );
     insert_table_chunk(
         &conn,
-        "conn-1",
-        "sykes_reservations",
-        "booking_history",
-        unit_vec(0),
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "sykes_reservations",
+            table_name: "booking_history",
+            embedding: unit_vec(0),
+        },
     );
 
     let query_vectors = vec![unit_vec(0)];
     let query_texts = vec!["find rows from itinerary linked to session".to_string()];
 
-    let results = multi_query_search_with_query_texts(
+    let results = multi_query_search(
         &conn,
-        "conn-1",
-        &query_texts,
-        &query_vectors,
-        5,
-        10,
-        20,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &query_texts,
+            query_vectors: &query_vectors,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
     )
     .expect("search should succeed");
 
@@ -932,8 +1399,24 @@ fn test_top_n_with_fk_only_knn_results() {
     let conn = setup_db();
 
     // Insert related table chunks but make FK chunks the only KNN winners.
-    insert_table_chunk(&conn, "conn-1", "testdb", "orders", unit_vec(3));
-    insert_table_chunk(&conn, "conn-1", "testdb", "items", unit_vec(3));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "orders",
+            embedding: unit_vec(3),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "items",
+            embedding: unit_vec(3),
+        },
+    );
 
     insert_fk_chunk(
         &conn,
@@ -961,8 +1444,20 @@ fn test_top_n_with_fk_only_knn_results() {
     );
 
     let query = vec![unit_vec(0)];
-    let results =
-        multi_query_search(&conn, "conn-1", &query, 5, 10, 20).expect("search should succeed");
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
+    )
+    .expect("search should succeed");
 
     assert!(!results.is_empty(), "should have some results");
     // Base search no longer enriches FK chunks with table DDLs.
@@ -982,20 +1477,40 @@ fn test_query_text_boost_prefers_schema_qualified_tokens_without_sql_keywords() 
     let conn = setup_db();
 
     // Both tables have similar cosine so lexical differentiates
-    insert_table_chunk(&conn, "conn-1", "sales", "orders", blend_vec(0, 1, 0.5));
-    insert_table_chunk(&conn, "conn-1", "support", "orders", blend_vec(0, 1, 0.5));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "sales",
+            table_name: "orders",
+            embedding: blend_vec(0, 1, 0.5),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "support",
+            table_name: "orders",
+            embedding: blend_vec(0, 1, 0.5),
+        },
+    );
 
     let query_vectors = vec![unit_vec(0)];
     let query_texts = vec!["sales.orders revenue total".to_string()];
 
-    let results = multi_query_search_with_query_texts(
+    let results = multi_query_search(
         &conn,
-        "conn-1",
-        &query_texts,
-        &query_vectors,
-        5,
-        10,
-        20,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &query_texts,
+            query_vectors: &query_vectors,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
     )
     .expect("search should succeed");
 
@@ -1020,11 +1535,31 @@ fn test_query_text_boost_prefers_schema_qualified_tokens_without_sql_keywords() 
 fn test_single_chunk_single_query() {
     let conn = setup_db();
 
-    insert_table_chunk(&conn, "conn-1", "testdb", "solo", unit_vec(0));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "solo",
+            embedding: unit_vec(0),
+        },
+    );
 
     let query = vec![unit_vec(0)];
-    let results =
-        multi_query_search(&conn, "conn-1", &query, 1, 1, 0).expect("search should succeed");
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 1,
+            top_n_results: 1,
+            max_foreign_key_chunks: 0,
+        },
+    )
+    .expect("search should succeed");
 
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].table_name, "solo");
@@ -1045,9 +1580,33 @@ fn test_fk_fanout_cap_zero() {
     let conn = setup_db();
 
     // Insert enough table chunks to fill the top-N entirely with table results
-    insert_table_chunk(&conn, "conn-1", "testdb", "users", unit_vec(0));
-    insert_table_chunk(&conn, "conn-1", "testdb", "orders", blend_vec(0, 1, 0.8));
-    insert_table_chunk(&conn, "conn-1", "testdb", "products", blend_vec(0, 2, 0.7));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "orders",
+            embedding: blend_vec(0, 1, 0.8),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "products",
+            embedding: blend_vec(0, 2, 0.7),
+        },
+    );
 
     // Insert many FK chunks far from query, so they don't appear in KNN
     for i in 0..5 {
@@ -1067,8 +1626,20 @@ fn test_fk_fanout_cap_zero() {
 
     // top_n_results=3 to fill with table chunks, max_fk_chunks=0 to block fan-out
     let query = vec![unit_vec(0)];
-    let results =
-        multi_query_search(&conn, "conn-1", &query, 5, 3, 0).expect("search should succeed");
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 3,
+            max_foreign_key_chunks: 0,
+        },
+    )
+    .expect("search should succeed");
 
     // FK chunks from fan-out have score 0.0 — with cap=0, none should appear from fan-out
     let fk_fanout: Vec<&SearchResult> = results
@@ -1088,7 +1659,15 @@ fn test_fk_fanout_cap_zero() {
 fn test_multiple_fk_chunks_same_table_pair() {
     let conn = setup_db();
 
-    insert_table_chunk(&conn, "conn-1", "testdb", "users", unit_vec(0));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
 
     // Two FK constraints from orders → users
     insert_fk_chunk(
@@ -1117,8 +1696,20 @@ fn test_multiple_fk_chunks_same_table_pair() {
     );
 
     let query = vec![unit_vec(0)];
-    let results =
-        multi_query_search(&conn, "conn-1", &query, 5, 10, 20).expect("search should succeed");
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
+    )
+    .expect("search should succeed");
 
     // Both FK chunks should be included
     let fk_chunks: Vec<&SearchResult> = results.iter().filter(|r| r.chunk_type == "fk").collect();
@@ -1138,13 +1729,33 @@ fn test_knn_returns_results_but_connection_filter_removes_them() {
     storage::create_vec_table(&conn, "conn-2", DIM).expect("create vec table for conn-2");
 
     // Only insert data for conn-2 (not conn-1)
-    insert_table_chunk(&conn, "conn-2", "testdb", "users", unit_vec(0));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-2",
+            db_name: "testdb",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
 
     // Query for conn-1 — KNN may return conn-2's vectors since vec table is per-profile,
     // but conn-1's vec table is empty. So KNN returns nothing.
     let query = vec![unit_vec(0)];
-    let results =
-        multi_query_search(&conn, "conn-1", &query, 5, 10, 20).expect("search should succeed");
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
+    )
+    .expect("search should succeed");
 
     assert!(results.is_empty(), "conn-1 should have no results");
 }
@@ -1156,15 +1767,59 @@ fn test_top_k_per_query_limit() {
     let conn = setup_db();
 
     // Insert many chunks
-    insert_table_chunk(&conn, "conn-1", "testdb", "t0", unit_vec(0));
-    insert_table_chunk(&conn, "conn-1", "testdb", "t1", blend_vec(0, 1, 0.9));
-    insert_table_chunk(&conn, "conn-1", "testdb", "t2", blend_vec(0, 1, 0.8));
-    insert_table_chunk(&conn, "conn-1", "testdb", "t3", blend_vec(0, 1, 0.7));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "t0",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "t1",
+            embedding: blend_vec(0, 1, 0.9),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "t2",
+            embedding: blend_vec(0, 1, 0.8),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "t3",
+            embedding: blend_vec(0, 1, 0.7),
+        },
+    );
 
     // With top_k_per_query=2, only 2 KNN hits per query vector
     let query = vec![unit_vec(0)];
-    let results =
-        multi_query_search(&conn, "conn-1", &query, 2, 10, 20).expect("search should succeed");
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 2,
+            top_n_results: 10,
+            max_foreign_key_chunks: 20,
+        },
+    )
+    .expect("search should succeed");
 
     // Should have at most 2 results (top_k_per_query=2)
     assert!(
@@ -1181,8 +1836,24 @@ fn extended_search_applies_hint_boost_to_reorder_results() {
     let conn = setup_db();
 
     // Two tables with similar embeddings — users slightly closer to query
-    insert_table_chunk(&conn, "conn-1", "db1", "users", unit_vec(0));
-    insert_table_chunk(&conn, "conn-1", "db1", "orders", blend_vec(0, 1, 0.95));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "orders",
+            embedding: blend_vec(0, 1, 0.95),
+        },
+    );
 
     let query = vec![unit_vec(0)];
     let config = SearchConfigExt {
@@ -1205,8 +1876,16 @@ fn extended_search_applies_hint_boost_to_reorder_results() {
         },
     };
 
-    let results = multi_query_search_extended(&conn, "conn-1", &[], &query, &config)
-        .expect("extended search");
+    let results = multi_query_search_extended(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        &config,
+    )
+    .expect("extended search");
 
     assert!(results.len() >= 2);
     // With a strong boost on 'orders', it should be ranked first
@@ -1218,8 +1897,24 @@ fn extended_search_graph_walk_adds_related_tables() {
     let conn = setup_db();
 
     // A -> B edge, only A is close to query
-    insert_table_chunk(&conn, "conn-1", "db1", "A", unit_vec(0));
-    insert_table_chunk(&conn, "conn-1", "db1", "B", unit_vec(2)); // far from query
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "A",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "B",
+            embedding: unit_vec(2),
+        },
+    ); // far from query
 
     let edge = FkEdge {
         connection_id: "conn-1".to_string(),
@@ -1233,7 +1928,16 @@ fn extended_search_graph_walk_adds_related_tables() {
         on_delete: None,
         on_update: None,
     };
-    storage::replace_fk_edges_for_table(&conn, "conn-1", "db1", "A", &[edge]).unwrap();
+    storage::replace_fk_edges_for_table(
+        &conn,
+        &sqllumen_lib::schema_index::storage::IndexedTableRef {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "A",
+        },
+        &[edge],
+    )
+    .unwrap();
 
     let query = vec![unit_vec(0)];
     let config = SearchConfigExt {
@@ -1248,8 +1952,16 @@ fn extended_search_graph_walk_adds_related_tables() {
         hints: RetrievalHints::default(),
     };
 
-    let results = multi_query_search_extended(&conn, "conn-1", &[], &query, &config)
-        .expect("extended search with graph walk");
+    let results = multi_query_search_extended(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        &config,
+    )
+    .expect("extended search with graph walk");
 
     // Should include both A (from KNN) and B (from graph walk)
     let names: Vec<&str> = results.iter().map(|r| r.table_name.as_str()).collect();
@@ -1271,9 +1983,33 @@ fn extended_search_editor_tables_become_graph_seeds() {
 
     // Three tables: X (close to query), Y (far), Z (far)
     // Y -> Z edge exists. Y is an "editor table" hint.
-    insert_table_chunk(&conn, "conn-1", "db1", "X", unit_vec(0));
-    insert_table_chunk(&conn, "conn-1", "db1", "Y", unit_vec(2));
-    insert_table_chunk(&conn, "conn-1", "db1", "Z", unit_vec(3));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "X",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "Y",
+            embedding: unit_vec(2),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "Z",
+            embedding: unit_vec(3),
+        },
+    );
 
     let edge = FkEdge {
         connection_id: "conn-1".to_string(),
@@ -1287,7 +2023,16 @@ fn extended_search_editor_tables_become_graph_seeds() {
         on_delete: None,
         on_update: None,
     };
-    storage::replace_fk_edges_for_table(&conn, "conn-1", "db1", "Y", &[edge]).unwrap();
+    storage::replace_fk_edges_for_table(
+        &conn,
+        &sqllumen_lib::schema_index::storage::IndexedTableRef {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "Y",
+        },
+        &[edge],
+    )
+    .unwrap();
 
     let query = vec![unit_vec(0)];
     let config = SearchConfigExt {
@@ -1309,8 +2054,16 @@ fn extended_search_editor_tables_become_graph_seeds() {
         },
     };
 
-    let results = multi_query_search_extended(&conn, "conn-1", &[], &query, &config)
-        .expect("extended search with editor tables as seeds");
+    let results = multi_query_search_extended(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        &config,
+    )
+    .expect("extended search with editor tables as seeds");
 
     let names: Vec<&str> = results.iter().map(|r| r.table_name.as_str()).collect();
     // Z should be found via graph walk from editor table Y
@@ -1324,7 +2077,16 @@ fn extended_search_editor_tables_become_graph_seeds() {
 fn extended_search_empty_vectors_returns_empty() {
     let conn = setup_db();
     let config = SearchConfigExt::default();
-    let results = multi_query_search_extended(&conn, "conn-1", &[], &[], &config).unwrap();
+    let results = multi_query_search_extended(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &[],
+        },
+        &config,
+    )
+    .unwrap();
     assert!(results.is_empty());
 }
 
@@ -1332,8 +2094,24 @@ fn extended_search_empty_vectors_returns_empty() {
 fn extended_search_with_accepted_tables_boost() {
     let conn = setup_db();
 
-    insert_table_chunk(&conn, "conn-1", "db1", "alpha", unit_vec(0));
-    insert_table_chunk(&conn, "conn-1", "db1", "beta", blend_vec(0, 1, 0.95));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "alpha",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "beta",
+            embedding: blend_vec(0, 1, 0.95),
+        },
+    );
 
     let query = vec![unit_vec(0)];
     let config = SearchConfigExt {
@@ -1356,7 +2134,16 @@ fn extended_search_with_accepted_tables_boost() {
         },
     };
 
-    let results = multi_query_search_extended(&conn, "conn-1", &[], &query, &config).unwrap();
+    let results = multi_query_search_extended(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query,
+        },
+        &config,
+    )
+    .unwrap();
     assert!(results.len() >= 2);
     // beta should be first due to strong accepted boost
     assert_eq!(results[0].table_name, "beta");
@@ -1369,15 +2156,42 @@ fn lexical_direct_table_match_boosts_score() {
     let conn = setup_db();
 
     // Insert two table chunks with similar embeddings
-    insert_table_chunk(&conn, "conn-1", "db1", "users", unit_vec(0));
-    insert_table_chunk(&conn, "conn-1", "db1", "orders", blend_vec(0, 1, 0.9));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "orders",
+            embedding: blend_vec(0, 1, 0.9),
+        },
+    );
 
     let query_texts = vec!["SELECT * FROM orders".to_string()];
     let query_vecs = vec![unit_vec(0)]; // points at users
 
-    let results =
-        multi_query_search_with_query_texts(&conn, "conn-1", &query_texts, &query_vecs, 10, 10, 30)
-            .unwrap();
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &query_texts,
+            query_vectors: &query_vecs,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 10,
+            top_n_results: 10,
+            max_foreign_key_chunks: 30,
+        },
+    )
+    .unwrap();
 
     // "orders" should appear and get a lexical boost from the direct table match
     let order_pos = results.iter().position(|r| r.table_name == "orders");
@@ -1388,15 +2202,42 @@ fn lexical_direct_table_match_boosts_score() {
 fn lexical_qualified_identifier_match() {
     let conn = setup_db();
 
-    insert_table_chunk(&conn, "conn-1", "db1", "customers", unit_vec(0));
-    insert_table_chunk(&conn, "conn-1", "db1", "products", blend_vec(0, 1, 0.8));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "customers",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "products",
+            embedding: blend_vec(0, 1, 0.8),
+        },
+    );
 
     let query_texts = vec!["SELECT * FROM db1.products JOIN db1.customers ON true".to_string()];
     let query_vecs = vec![unit_vec(0)]; // points at customers
 
-    let results =
-        multi_query_search_with_query_texts(&conn, "conn-1", &query_texts, &query_vecs, 10, 10, 30)
-            .unwrap();
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &query_texts,
+            query_vectors: &query_vecs,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 10,
+            top_n_results: 10,
+            max_foreign_key_chunks: 30,
+        },
+    )
+    .unwrap();
 
     // Both tables should appear since both are mentioned in the query
     let names: Vec<&str> = results.iter().map(|r| r.table_name.as_str()).collect();
@@ -1408,16 +2249,43 @@ fn lexical_qualified_identifier_match() {
 fn lexical_identifier_token_segment_match() {
     let conn = setup_db();
 
-    insert_table_chunk(&conn, "conn-1", "db1", "user_profiles", unit_vec(0));
-    insert_table_chunk(&conn, "conn-1", "db1", "order_items", unit_vec(1));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "user_profiles",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "order_items",
+            embedding: unit_vec(1),
+        },
+    );
 
     // Query mentions "profiles" which is a segment of "user_profiles"
     let query_texts = vec!["show me profiles data".to_string()];
     let query_vecs = vec![blend_vec(0, 1, 0.5)]; // equidistant
 
-    let results =
-        multi_query_search_with_query_texts(&conn, "conn-1", &query_texts, &query_vecs, 10, 10, 30)
-            .unwrap();
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &query_texts,
+            query_vectors: &query_vecs,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 10,
+            top_n_results: 10,
+            max_foreign_key_chunks: 30,
+        },
+    )
+    .unwrap();
 
     // user_profiles should get a segment match boost from "profiles"
     let profile_pos = results.iter().position(|r| r.table_name == "user_profiles");
@@ -1431,8 +2299,24 @@ fn lexical_identifier_token_segment_match() {
 fn lexical_boost_with_fk_enrichment() {
     let conn = setup_db();
 
-    insert_table_chunk(&conn, "conn-1", "db1", "orders", unit_vec(0));
-    insert_table_chunk(&conn, "conn-1", "db1", "customers", unit_vec(1));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "orders",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "customers",
+            embedding: unit_vec(1),
+        },
+    );
     insert_fk_chunk(
         &conn,
         FkChunkFixture {
@@ -1462,9 +2346,20 @@ fn lexical_boost_with_fk_enrichment() {
     let query_texts = vec!["SELECT * FROM orders".to_string()];
     let query_vecs = vec![unit_vec(0)];
 
-    let results =
-        multi_query_search_with_query_texts(&conn, "conn-1", &query_texts, &query_vecs, 10, 10, 30)
-            .unwrap();
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &query_texts,
+            query_vectors: &query_vecs,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 10,
+            top_n_results: 10,
+            max_foreign_key_chunks: 30,
+        },
+    )
+    .unwrap();
 
     // Should have orders table + customers via FK fan-out
     let names: Vec<&str> = results.iter().map(|r| r.table_name.as_str()).collect();
@@ -1479,16 +2374,43 @@ fn lexical_boost_with_fk_enrichment() {
 fn lexical_dotted_identifier_in_natural_text() {
     let conn = setup_db();
 
-    insert_table_chunk(&conn, "conn-1", "mydb", "accounts", unit_vec(0));
-    insert_table_chunk(&conn, "conn-1", "mydb", "transactions", unit_vec(1));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "mydb",
+            table_name: "accounts",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "mydb",
+            table_name: "transactions",
+            embedding: unit_vec(1),
+        },
+    );
 
     // Natural language query with a dotted identifier
     let query_texts = vec!["look up mydb.accounts balance".to_string()];
     let query_vecs = vec![unit_vec(1)]; // points away from accounts
 
-    let results =
-        multi_query_search_with_query_texts(&conn, "conn-1", &query_texts, &query_vecs, 10, 10, 30)
-            .unwrap();
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &query_texts,
+            query_vectors: &query_vecs,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 10,
+            top_n_results: 10,
+            max_foreign_key_chunks: 30,
+        },
+    )
+    .unwrap();
 
     // accounts should appear despite vector pointing at transactions
     let has_accounts = results.iter().any(|r| r.table_name == "accounts");
@@ -1503,9 +2425,33 @@ fn extended_search_graph_walk_with_lexical_and_hints() {
     let conn = setup_db();
 
     // Create a chain: A -> B -> C
-    insert_table_chunk(&conn, "conn-1", "db1", "A", unit_vec(0));
-    insert_table_chunk(&conn, "conn-1", "db1", "B", unit_vec(1));
-    insert_table_chunk(&conn, "conn-1", "db1", "C", unit_vec(2));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "A",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "B",
+            embedding: unit_vec(1),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "C",
+            embedding: unit_vec(2),
+        },
+    );
 
     insert_fk_edge(
         &conn,
@@ -1557,8 +2503,16 @@ fn extended_search_graph_walk_with_lexical_and_hints() {
         },
     };
 
-    let results =
-        multi_query_search_extended(&conn, "conn-1", &query_texts, &query_vecs, &config).unwrap();
+    let results = multi_query_search_extended(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &query_texts,
+            query_vectors: &query_vecs,
+        },
+        &config,
+    )
+    .unwrap();
 
     let names: Vec<&str> = results.iter().map(|r| r.table_name.as_str()).collect();
     assert!(names.contains(&"A"), "A should appear as direct match");
@@ -1575,8 +2529,24 @@ fn fk_chunk_in_knn_triggers_enrichment_with_referenced_table() {
     // should add the referenced table chunk automatically.
     let conn = setup_db();
 
-    insert_table_chunk(&conn, "conn-1", "db1", "orders", unit_vec(1));
-    insert_table_chunk(&conn, "conn-1", "db1", "customers", unit_vec(2));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "orders",
+            embedding: unit_vec(1),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "customers",
+            embedding: unit_vec(2),
+        },
+    );
     // FK chunk with ref_db_name/ref_table_name pointing at customers
     insert_fk_chunk(
         &conn,
@@ -1593,7 +2563,20 @@ fn fk_chunk_in_knn_triggers_enrichment_with_referenced_table() {
 
     let query_vecs = vec![unit_vec(0)]; // will match FK chunk first
 
-    let results = multi_query_search(&conn, "conn-1", &query_vecs, 10, 10, 30).unwrap();
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query_vecs,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 10,
+            top_n_results: 10,
+            max_foreign_key_chunks: 30,
+        },
+    )
+    .unwrap();
 
     let names: Vec<&str> = results.iter().map(|r| r.table_name.as_str()).collect();
     // The FK chunk references both orders and customers; both table chunks should be enriched
@@ -1611,15 +2594,42 @@ fn fk_chunk_in_knn_triggers_enrichment_with_referenced_table() {
 fn lexical_boost_backtick_qualified_identifier() {
     let conn = setup_db();
 
-    insert_table_chunk(&conn, "conn-1", "sales", "invoices", unit_vec(0));
-    insert_table_chunk(&conn, "conn-1", "sales", "payments", unit_vec(1));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "sales",
+            table_name: "invoices",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "sales",
+            table_name: "payments",
+            embedding: unit_vec(1),
+        },
+    );
 
     let query_texts = vec!["SELECT * FROM `sales`.`invoices`".to_string()];
     let query_vecs = vec![unit_vec(1)]; // points at payments
 
-    let results =
-        multi_query_search_with_query_texts(&conn, "conn-1", &query_texts, &query_vecs, 10, 10, 30)
-            .unwrap();
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &query_texts,
+            query_vectors: &query_vecs,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 10,
+            top_n_results: 10,
+            max_foreign_key_chunks: 30,
+        },
+    )
+    .unwrap();
 
     // invoices should get a direct qualified table match boost
     let has_invoices = results.iter().any(|r| r.table_name == "invoices");
@@ -1633,9 +2643,33 @@ fn lexical_boost_backtick_qualified_identifier() {
 fn search_with_multiple_query_texts_and_vectors() {
     let conn = setup_db();
 
-    insert_table_chunk(&conn, "conn-1", "db1", "users", unit_vec(0));
-    insert_table_chunk(&conn, "conn-1", "db1", "orders", unit_vec(1));
-    insert_table_chunk(&conn, "conn-1", "db1", "products", unit_vec(2));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "orders",
+            embedding: unit_vec(1),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "products",
+            embedding: unit_vec(2),
+        },
+    );
 
     // Multiple queries — both vectors and texts
     let query_texts = vec![
@@ -1644,9 +2678,20 @@ fn search_with_multiple_query_texts_and_vectors() {
     ];
     let query_vecs = vec![unit_vec(0), unit_vec(2)];
 
-    let results =
-        multi_query_search_with_query_texts(&conn, "conn-1", &query_texts, &query_vecs, 10, 10, 30)
-            .unwrap();
+    let results = multi_query_search(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &query_texts,
+            query_vectors: &query_vecs,
+        },
+        sqllumen_lib::schema_index::search::SearchLimits {
+            top_k_per_query: 10,
+            top_n_results: 10,
+            max_foreign_key_chunks: 30,
+        },
+    )
+    .unwrap();
 
     let names: Vec<&str> = results.iter().map(|r| r.table_name.as_str()).collect();
     assert!(names.contains(&"users"), "users should appear");
@@ -1657,7 +2702,15 @@ fn search_with_multiple_query_texts_and_vectors() {
 fn configured_search_with_zero_lexical_weight() {
     let conn = setup_db();
 
-    insert_table_chunk(&conn, "conn-1", "db1", "items", unit_vec(0));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "items",
+            embedding: unit_vec(0),
+        },
+    );
 
     let query_texts = vec!["SELECT * FROM items".to_string()];
     let query_vecs = vec![unit_vec(0)];
@@ -1669,8 +2722,16 @@ fn configured_search_with_zero_lexical_weight() {
         lexical_weight: 0.0,
     };
 
-    let results =
-        multi_query_search_configured(&conn, "conn-1", &query_texts, &query_vecs, &config).unwrap();
+    let results = multi_query_search_configured(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &query_texts,
+            query_vectors: &query_vecs,
+        },
+        &config,
+    )
+    .unwrap();
 
     assert!(
         !results.is_empty(),
@@ -1685,8 +2746,24 @@ fn configured_search_with_zero_lexical_weight() {
 fn with_hints_applies_feedback_boost() {
     let conn = setup_db();
 
-    insert_table_chunk(&conn, "conn-1", "db1", "users", unit_vec(0));
-    insert_table_chunk(&conn, "conn-1", "db1", "orders", unit_vec(1));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "orders",
+            embedding: unit_vec(1),
+        },
+    );
 
     let query = vec![blend_vec(0, 1, 0.6)]; // slightly closer to users
     let query_texts = vec!["find users".to_string()];
@@ -1711,8 +2788,16 @@ fn with_hints_applies_feedback_boost() {
         },
     };
 
-    let results =
-        multi_query_search_with_hints(&conn, "conn-1", &query_texts, &query, &config).unwrap();
+    let results = multi_query_search_with_hints(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &query_texts,
+            query_vectors: &query,
+        },
+        &config,
+    )
+    .unwrap();
 
     assert!(!results.is_empty());
     // orders should be boosted above users despite lower cosine
@@ -1724,7 +2809,16 @@ fn with_hints_empty_results() {
     let conn = setup_db();
 
     let config = SearchConfigExt::default();
-    let results = multi_query_search_with_hints(&conn, "conn-1", &[], &[], &config).unwrap();
+    let results = multi_query_search_with_hints(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &[],
+        },
+        &config,
+    )
+    .unwrap();
     assert!(results.is_empty());
 }
 
@@ -1734,9 +2828,33 @@ fn with_hints_empty_results() {
 fn apply_graph_expansion_adds_related_tables() {
     let conn = setup_db();
 
-    insert_table_chunk(&conn, "conn-1", "db1", "users", unit_vec(0));
-    insert_table_chunk(&conn, "conn-1", "db1", "orders", unit_vec(1));
-    insert_table_chunk(&conn, "conn-1", "db1", "products", unit_vec(2));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "orders",
+            embedding: unit_vec(1),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "products",
+            embedding: unit_vec(2),
+        },
+    );
 
     // FK: orders → users
     storage::replace_fk_edges_for_connection(
@@ -1770,7 +2888,16 @@ fn apply_graph_expansion_adds_related_tables() {
         score: 0.9,
     }];
 
-    let results = apply_graph_expansion(&conn, "conn-1", initial, 2, 30).unwrap();
+    let results = apply_graph_expansion(
+        &conn,
+        initial,
+        &sqllumen_lib::schema_index::search::GraphExpansion {
+            connection_id: "conn-1",
+            graph_depth: 2,
+            max_foreign_key_chunks: 30,
+        },
+    )
+    .unwrap();
 
     // Should have added orders via FK edge
     let names: Vec<&str> = results.iter().map(|r| r.table_name.as_str()).collect();
@@ -1784,7 +2911,15 @@ fn apply_graph_expansion_adds_related_tables() {
 #[test]
 fn apply_graph_expansion_zero_depth_noop() {
     let conn = setup_db();
-    insert_table_chunk(&conn, "conn-1", "db1", "users", unit_vec(0));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
 
     let initial = vec![SearchResult {
         chunk_id: 1,
@@ -1798,13 +2933,31 @@ fn apply_graph_expansion_zero_depth_noop() {
         score: 0.9,
     }];
 
-    let results = apply_graph_expansion(&conn, "conn-1", initial.clone(), 0, 30).unwrap();
+    let results = apply_graph_expansion(
+        &conn,
+        initial.clone(),
+        &sqllumen_lib::schema_index::search::GraphExpansion {
+            connection_id: "conn-1",
+            graph_depth: 0,
+            max_foreign_key_chunks: 30,
+        },
+    )
+    .unwrap();
     assert_eq!(results.len(), initial.len());
 }
 
 #[test]
 fn apply_graph_expansion_empty_results() {
     let conn = setup_db();
-    let results = apply_graph_expansion(&conn, "conn-1", vec![], 2, 30).unwrap();
+    let results = apply_graph_expansion(
+        &conn,
+        vec![],
+        &sqllumen_lib::schema_index::search::GraphExpansion {
+            connection_id: "conn-1",
+            graph_depth: 2,
+            max_foreign_key_chunks: 30,
+        },
+    )
+    .unwrap();
     assert!(results.is_empty());
 }

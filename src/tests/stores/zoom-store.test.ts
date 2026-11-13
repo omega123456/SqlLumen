@@ -47,7 +47,7 @@ describe('zoom-store', () => {
     await waitFor(() =>
       expect(
         ipc
-          .calls('log_frontend')
+          .payloads('log_frontend')
           .some((call) => String((call as { message: string }).message).includes('denied'))
       ).toBe(true)
     )
@@ -59,7 +59,7 @@ describe('zoom-store', () => {
       await useZoomStore.getState().setZoom(125)
       expect(useZoomStore.getState().zoomLevel).toBe(125)
       expect(appliedZoom()).toEqual({ label: 'main', value: 1.25 })
-      const calls = ipc.calls('set_setting')
+      const calls = ipc.payloads('set_setting')
       expect(calls).toHaveLength(1)
       expect(calls[0]).toEqual({ key: 'appearance.zoom', value: '125' })
     })
@@ -77,7 +77,7 @@ describe('zoom-store', () => {
       expect(useZoomStore.getState().previewSnapshot).toBe(100)
       expect(appliedZoom()).toEqual({ label: 'main', value: 1.5 })
       // No persistence calls
-      expect(ipc.calls('set_setting')).toHaveLength(0)
+      expect(ipc.payloads('set_setting')).toHaveLength(0)
 
       // Preview again to 175 — snapshot should stay at 100
       useZoomStore.getState().previewZoom(175)
@@ -89,7 +89,7 @@ describe('zoom-store', () => {
       expect(useZoomStore.getState().zoomLevel).toBe(100)
       expect(useZoomStore.getState().previewSnapshot).toBeNull()
       expect(appliedZoom()).toEqual({ label: 'main', value: 1 })
-      expect(ipc.calls('set_setting')).toHaveLength(0)
+      expect(ipc.payloads('set_setting')).toHaveLength(0)
     })
 
     it('revertPreview is no-op when no snapshot', () => {
@@ -113,7 +113,7 @@ describe('zoom-store', () => {
       useZoomStore.setState({ zoomLevel: max })
       await useZoomStore.getState().zoomIn()
       expect(useZoomStore.getState().zoomLevel).toBe(max)
-      expect(ipc.calls('set_setting')).toHaveLength(0)
+      expect(ipc.payloads('set_setting')).toHaveLength(0)
     })
   })
 
@@ -132,7 +132,7 @@ describe('zoom-store', () => {
       useZoomStore.setState({ zoomLevel: min })
       await useZoomStore.getState().zoomOut()
       expect(useZoomStore.getState().zoomLevel).toBe(min)
-      expect(ipc.calls('set_setting')).toHaveLength(0)
+      expect(ipc.payloads('set_setting')).toHaveLength(0)
     })
   })
 
@@ -143,7 +143,7 @@ describe('zoom-store', () => {
       await useZoomStore.getState().resetZoom()
       expect(useZoomStore.getState().zoomLevel).toBe(100)
       expect(appliedZoom()).toEqual({ label: 'main', value: 1 })
-      const calls = ipc.calls('set_setting')
+      const calls = ipc.payloads('set_setting')
       expect(calls).toHaveLength(1)
       expect(calls[0]).toEqual({ key: 'appearance.zoom', value: '100' })
     })

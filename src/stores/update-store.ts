@@ -159,7 +159,7 @@ interface UpdateCheckFailure {
 }
 
 async function checkForAvailableUpdate(): Promise<Update | null> {
-  return (await check()) as Update | null
+  return await check()
 }
 
 function markUpdateChecking(set: UpdateStateSetter): void {

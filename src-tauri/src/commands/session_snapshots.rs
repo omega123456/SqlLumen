@@ -1,60 +1,53 @@
-//! Tauri IPC command wrappers for session snapshots.
-//!
-//! Under `cfg(coverage)`, all Tauri command wrappers are excluded — tests exercise
-//! the `*_impl` functions / repository directly.
-
 use crate::commands::helpers::lock_db;
 use crate::db::session_snapshots::{self, NewSnapshot, SnapshotSummary};
 use crate::state::AppState;
+use serde::Deserialize;
 use tracing::error;
 
-// ── create_session_snapshot ─────────────────────────────────────────────────
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateSessionSnapshotRequest {
+    pub trigger_type: String,
+    pub connection_count: i64,
+    pub tab_count: i64,
+    pub summary_json: String,
+    pub state_json: String,
+    pub keep: i64,
+}
 
-#[allow(clippy::too_many_arguments)]
 pub fn create_session_snapshot_impl(
     state: &AppState,
-    trigger_type: &str,
-    connection_count: i64,
-    tab_count: i64,
-    summary_json: &str,
-    state_json: &str,
-    keep: i64,
+    request: CreateSessionSnapshotRequest,
 ) -> Result<i64, String> {
     let conn = lock_db(state)?;
-    let snapshot = NewSnapshot {
-        trigger_type: trigger_type.to_string(),
+    let CreateSessionSnapshotRequest {
+        trigger_type,
         connection_count,
         tab_count,
-        summary_json: summary_json.to_string(),
-        state_json: state_json.to_string(),
+        summary_json,
+        state_json,
+        keep,
+    } = request;
+    let snapshot = NewSnapshot {
+        trigger_type,
+        connection_count,
+        tab_count,
+        summary_json,
+        state_json,
     };
     session_snapshots::insert_and_prune(&conn, &snapshot, keep).map_err(|error| {
-        error!(error = %error, trigger_type, "failed to create session snapshot");
+        error!(error = %error, trigger_type = %snapshot.trigger_type, "failed to create session snapshot");
         error.to_string()
     })
 }
 
 #[cfg(not(coverage))]
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub fn create_session_snapshot(
-    trigger_type: String,
-    connection_count: i64,
-    tab_count: i64,
-    summary_json: String,
-    state_json: String,
-    keep: i64,
+    payload: CreateSessionSnapshotRequest,
     state: tauri::State<'_, AppState>,
 ) -> Result<i64, String> {
-    create_session_snapshot_impl(
-        &state,
-        &trigger_type,
-        connection_count,
-        tab_count,
-        &summary_json,
-        &state_json,
-        keep,
-    )
+    create_session_snapshot_impl(&state, payload)
 }
 
 // ── list_session_snapshots ──────────────────────────────────────────────────

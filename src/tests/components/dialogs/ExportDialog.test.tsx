@@ -160,7 +160,7 @@ describe('ExportDialog', () => {
 
     await waitFor(
       () => {
-        const calls = ipc.calls('export_results')
+        const calls = ipc.payloads('export_results')
         expect(calls).toHaveLength(1)
         const args = calls[0] as Record<string, unknown>
         expect(args).toMatchObject({
@@ -192,7 +192,7 @@ describe('ExportDialog', () => {
     fireEvent.submit(screen.getByTestId('export-dialog-panel'))
 
     await waitFor(() => {
-      const calls = ipc.calls('export_results')
+      const calls = ipc.payloads('export_results')
       expect(calls).toHaveLength(1)
       const args = calls[0] as Record<string, unknown>
       const options = args.options as Record<string, unknown>
@@ -214,7 +214,7 @@ describe('ExportDialog', () => {
 
     await waitFor(
       () => {
-        const calls = ipc.calls('export_results')
+        const calls = ipc.payloads('export_results')
         expect(calls).toHaveLength(1)
         const args = calls[0] as Record<string, unknown>
         const options = args.options as Record<string, unknown>
@@ -376,7 +376,7 @@ describe('ExportDialog', () => {
 
     await waitFor(
       () => {
-        const calls = ipc.calls('export_results')
+        const calls = ipc.payloads('export_results')
         expect(calls).toHaveLength(1)
         const args = calls[0] as Record<string, unknown>
         const options = args.options as Record<string, unknown>
@@ -420,7 +420,7 @@ describe('ExportDialog', () => {
       { timeout: 5000 }
     )
     // Built-in exportResults should NOT have been called
-    expect(ipc.calls('export_results')).toHaveLength(0)
+    expect(ipc.payloads('export_results')).toHaveLength(0)
     // Should close on success
     await waitFor(
       () => {
@@ -476,7 +476,7 @@ describe('ExportDialog', () => {
     expect(exportBtn).toBeDisabled()
     await user.click(exportBtn)
 
-    expect(ipc.calls('export_results')).toHaveLength(0)
+    expect(ipc.payloads('export_results')).toHaveLength(0)
   })
 
   it('close X button calls onClose', async () => {
@@ -519,7 +519,7 @@ describe('ExportDialog', () => {
 
     await waitFor(
       () => {
-        const calls = ipc.calls('export_results')
+        const calls = ipc.payloads('export_results')
         expect(calls).toHaveLength(1)
         const options = (calls[0] as Record<string, unknown>).options as Record<string, unknown>
         expect(options).toMatchObject({
@@ -600,7 +600,7 @@ describe('ExportDialog', () => {
 
     await waitFor(
       () => {
-        const calls = ipc.calls('export_results')
+        const calls = ipc.payloads('export_results')
         expect(calls).toHaveLength(1)
         const args = calls[0] as Record<string, unknown>
         expect(args.options).toMatchObject({ format: 'csv' })
@@ -836,8 +836,8 @@ describe('ExportDialog — full export of truncated results', () => {
     render(<Harness />)
     setExportDestinationPath('/tmp/view.csv')
     await user.click(screen.getByTestId('export-submit-button'))
-    await waitFor(() => expect(ipc.calls('export_results')).toHaveLength(1))
-    expect(ipc.calls('start_result_export')).toHaveLength(0)
+    await waitFor(() => expect(ipc.payloads('export_results')).toHaveLength(1))
+    expect(ipc.payloads('start_result_export')).toHaveLength(0)
   })
 
   it('streams all rows with progress, cannot be dismissed, and cancels', async () => {
@@ -847,13 +847,13 @@ describe('ExportDialog — full export of truncated results', () => {
     progress = running(1_240_000, 318 * 1024 * 1024, 42_000)
 
     await startAllRowsExport(user)
-    expect(ipc.calls('start_result_export')[0]).toMatchObject({
+    expect(ipc.payloads('start_result_export')[0]).toMatchObject({
       tabId: TAB,
       queryId: 'q-truncated',
       format: 'csv',
       filePath: '/tmp/all.csv',
     })
-    expect(ipc.calls('export_results')).toHaveLength(0)
+    expect(ipc.payloads('export_results')).toHaveLength(0)
     expect(screen.getByText('Exporting all rows…')).toBeInTheDocument()
     await waitFor(() =>
       expect(screen.getByTestId('export-progress-stats')).toHaveTextContent(
@@ -938,8 +938,8 @@ describe('ExportDialog — full export of truncated results', () => {
     progress = running(1)
     await user.click(screen.getByTestId('export-try-again'))
     await screen.findByTestId('export-progress')
-    expect(ipc.calls('start_result_export')).toHaveLength(2)
-    expect(ipc.calls('start_result_export')[1]).toMatchObject({ filePath: '/tmp/all.csv' })
+    expect(ipc.payloads('start_result_export')).toHaveLength(2)
+    expect(ipc.payloads('start_result_export')[1]).toMatchObject({ filePath: '/tmp/all.csv' })
   })
 
   it('closing on a tab switch keeps the export running, and reopening shows its progress', async () => {

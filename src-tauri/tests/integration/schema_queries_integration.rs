@@ -473,17 +473,31 @@ async fn schema_queries_cover_success_and_error_paths() {
         .expect("metadata");
     assert_eq!(metadata.table_rows, 10);
 
-    let schema_info = query_schema_info(&pool, "app", "users", "table")
-        .await
-        .expect("schema info table");
+    let schema_info = query_schema_info(
+        &pool,
+        sqllumen_lib::mysql::schema_queries::SchemaObjectRef {
+            database: "app",
+            object_name: "users",
+            object_type: "table",
+        },
+    )
+    .await
+    .expect("schema info table");
     assert_eq!(schema_info.columns.len(), 2);
     assert_eq!(schema_info.indexes.len(), 2);
     assert_eq!(schema_info.foreign_keys.len(), 1);
     assert!(schema_info.metadata.is_some());
 
-    let proc_info = query_schema_info(&pool, "app", "sync_users", "procedure")
-        .await
-        .expect("schema info procedure");
+    let proc_info = query_schema_info(
+        &pool,
+        sqllumen_lib::mysql::schema_queries::SchemaObjectRef {
+            database: "app",
+            object_name: "sync_users",
+            object_type: "procedure",
+        },
+    )
+    .await
+    .expect("schema info procedure");
     assert!(proc_info.columns.is_empty());
     assert!(proc_info.ddl.contains("CREATE PROCEDURE"));
 
@@ -500,20 +514,40 @@ async fn schema_queries_cover_success_and_error_paths() {
     assert!(rename_err.contains("views"));
     assert!(rename_err.contains("procedures"));
 
-    let routine_params = query_routine_parameters(&pool, "app", "sync_users", "PROCEDURE")
-        .await
-        .expect("routine params");
+    let routine_params = query_routine_parameters(
+        &pool,
+        sqllumen_lib::mysql::schema_queries::RoutineRef {
+            database: "app",
+            routine_name: "sync_users",
+            routine_type: "PROCEDURE",
+        },
+    )
+    .await
+    .expect("routine params");
     assert_eq!(routine_params[0].name, "p_limit");
 
-    let routine_with_return =
-        query_routine_parameters_with_return_type(&pool, "app", "fn_user_name", "FUNCTION")
-            .await
-            .expect("routine with return");
+    let routine_with_return = query_routine_parameters_with_return_type(
+        &pool,
+        sqllumen_lib::mysql::schema_queries::RoutineRef {
+            database: "app",
+            routine_name: "fn_user_name",
+            routine_type: "FUNCTION",
+        },
+    )
+    .await
+    .expect("routine with return");
     assert_eq!(routine_with_return[0].ordinal_position, 0);
 
-    let routine_exists = query_routine_exists(&pool, "app", "fn_user_name", "FUNCTION")
-        .await
-        .expect("routine exists");
+    let routine_exists = query_routine_exists(
+        &pool,
+        sqllumen_lib::mysql::schema_queries::RoutineRef {
+            database: "app",
+            routine_name: "fn_user_name",
+            routine_type: "FUNCTION",
+        },
+    )
+    .await
+    .expect("routine exists");
     assert!(routine_exists);
 
     let all_fks = query_all_foreign_keys(&pool, "app").await.expect("all fks");
@@ -556,8 +590,15 @@ async fn schema_queries_cover_error_paths() {
         .expect_err("invalid collation");
     assert!(invalid_collation.contains("Invalid collation"));
 
-    let invalid_schema_type = query_schema_info(&pool, "app", "users", "materialized_view")
-        .await
-        .expect_err("unknown type");
+    let invalid_schema_type = query_schema_info(
+        &pool,
+        sqllumen_lib::mysql::schema_queries::SchemaObjectRef {
+            database: "app",
+            object_name: "users",
+            object_type: "materialized_view",
+        },
+    )
+    .await
+    .expect_err("unknown type");
     assert!(invalid_schema_type.contains("Unknown object type"));
 }

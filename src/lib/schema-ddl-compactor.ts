@@ -69,6 +69,13 @@ function compactCreateTableStatement(
   return `CREATE TABLE ${quoteIdentifier(dbName)}.${quoteIdentifier(tableName)} (${parts.join(', ')});`
 }
 
+export interface SchemaDdlInputs {
+  tables: Record<string, TableInfo[]>
+  columns: Record<string, ColumnMeta[]>
+  foreignKeys?: Record<string, ForeignKeyInfo[]>
+  indexes?: Record<string, IndexInfo[]>
+}
+
 /**
  * Compact schema metadata into minimal single-line CREATE TABLE statements
  * suitable for inclusion in an AI system prompt.
@@ -83,12 +90,12 @@ function compactCreateTableStatement(
  * @param indexes     - Indexes keyed by `"database.tableName"`
  * @returns Compact DDL string, estimated token count, and warning flag
  */
-export function compactSchemaDdl(
-  tables: Record<string, TableInfo[]>,
-  columns: Record<string, ColumnMeta[]>,
-  foreignKeys: Record<string, ForeignKeyInfo[]> = {},
-  indexes: Record<string, IndexInfo[]> = {}
-): SchemaCompactionResult {
+export function compactSchemaDdl({
+  tables,
+  columns,
+  foreignKeys = {},
+  indexes = {},
+}: SchemaDdlInputs): SchemaCompactionResult {
   if (Object.keys(tables).length === 0) {
     return { ddl: '', estimatedTokens: 0, warning: false }
   }

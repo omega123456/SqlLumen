@@ -420,15 +420,18 @@ function CommandPaletteSession({
       return []
     }
 
-    return filterColumns(activeConnectionId, databasePill.value, tablePill.label, '').map(
-      (column) => ({
-        database: databasePill.value,
-        table: tablePill.label,
-        objectType: 'column',
-        name: column.name,
-        metaLabel: column.dataType,
-      })
-    )
+    return filterColumns({
+      connectionId: activeConnectionId,
+      database: databasePill.value,
+      table: tablePill.label,
+      prefix: '',
+    }).map((column) => ({
+      database: databasePill.value,
+      table: tablePill.label,
+      objectType: 'column',
+      name: column.name,
+      metaLabel: column.dataType,
+    }))
   }, [activeConnectionId, databasePill, searchableObjects, tablePill])
   const columnIndex = useMemo(() => buildCommandPaletteSearchIndex(columnObjects), [columnObjects])
   const profileId = activeConnection?.profile.id ?? null
@@ -509,7 +512,12 @@ function CommandPaletteSession({
 
       if (result.objectType === 'column') {
         if (result.table) {
-          activateColumnFromPalette(activeConnectionId, result.database, result.table, result.name)
+          activateColumnFromPalette({
+            connectionId: activeConnectionId,
+            database: result.database,
+            table: result.table,
+            columnName: result.name,
+          })
         }
         onClose()
         return
@@ -520,12 +528,12 @@ function CommandPaletteSession({
         objectType: result.objectType,
         name: result.name,
       })
-      await activateObjectFromPalette(
-        activeConnectionId,
-        result.database,
-        result.objectType,
-        result.name
-      )
+      await activateObjectFromPalette({
+        connectionId: activeConnectionId,
+        database: result.database,
+        objectType: result.objectType,
+        name: result.name,
+      })
       onClose()
     },
     [activeConnectionId, onClose, profileId, recordSelection]

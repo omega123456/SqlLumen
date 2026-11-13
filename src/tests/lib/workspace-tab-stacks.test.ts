@@ -148,9 +148,21 @@ describe('workspace-tab-stacks', () => {
       makeTab({ id: 'q2', type: 'query-editor', label: 'Query 2', connectionId: 'conn-1' }),
     ]
 
-    expect(getWorkspaceStackActivationTarget('queries', queryTabs, 'q2')?.id).toBe('q2')
-    expect(getWorkspaceStackActivationTarget('queries', queryTabs, 'missing')?.id).toBe('q1')
-    expect(getWorkspaceStackActivationTarget('queries', queryTabs, null)?.id).toBe('q1')
+    expect(
+      getWorkspaceStackActivationTarget({ stackKey: 'queries', tabs: queryTabs, recentTabId: 'q2' })
+        ?.id
+    ).toBe('q2')
+    expect(
+      getWorkspaceStackActivationTarget({
+        stackKey: 'queries',
+        tabs: queryTabs,
+        recentTabId: 'missing',
+      })?.id
+    ).toBe('q1')
+    expect(
+      getWorkspaceStackActivationTarget({ stackKey: 'queries', tabs: queryTabs, recentTabId: null })
+        ?.id
+    ).toBe('q1')
   })
 
   it('returns the most recent visible member for the requested stack', () => {
@@ -160,8 +172,12 @@ describe('workspace-tab-stacks', () => {
       makeTab({ id: 'q2', type: 'query-editor', label: 'Query 2', connectionId: 'conn-1' }),
     ]
 
-    expect(getWorkspaceStackActivationTarget('queries', tabs, 'q2')?.id).toBe('q2')
-    expect(getWorkspaceStackActivationTarget('tables', tabs, 't1')?.id).toBe('t1')
+    expect(
+      getWorkspaceStackActivationTarget({ stackKey: 'queries', tabs: tabs, recentTabId: 'q2' })?.id
+    ).toBe('q2')
+    expect(
+      getWorkspaceStackActivationTarget({ stackKey: 'tables', tabs: tabs, recentTabId: 't1' })?.id
+    ).toBe('t1')
   })
 
   it('defines a label for every tab group', () => {

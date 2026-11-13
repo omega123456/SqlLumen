@@ -1,20 +1,19 @@
-import { invoke } from '@tauri-apps/api/core'
 import type { GenerateDdlRequest, GenerateDdlResponse, TableDesignerSchema } from '../types/schema'
+import { invokeArgumentCommand, invokeCommand } from './ipc/dispatch'
 
 export async function loadTableForDesigner(
   connectionId: string,
   database: string,
   tableName: string
 ): Promise<TableDesignerSchema> {
-  return invoke<TableDesignerSchema>('load_table_for_designer', {
-    connectionId,
-    database,
-    tableName,
+  return invokeCommand({
+    command: 'load_table_for_designer',
+    payload: { connectionId, database, tableName },
   })
 }
 
 export async function generateTableDdl(request: GenerateDdlRequest): Promise<GenerateDdlResponse> {
-  return invoke<GenerateDdlResponse>('generate_table_ddl', { request })
+  return invokeArgumentCommand({ command: 'generate_table_ddl', argument: { request } })
 }
 
 export async function applyTableDdl(
@@ -22,5 +21,5 @@ export async function applyTableDdl(
   database: string,
   ddl: string
 ): Promise<void> {
-  return invoke<void>('apply_table_ddl', { connectionId, database, ddl })
+  return invokeCommand({ command: 'apply_table_ddl', payload: { connectionId, database, ddl } })
 }

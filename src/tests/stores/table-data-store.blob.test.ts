@@ -65,7 +65,9 @@ const TAB_ID = 'blob-tab'
 async function setupTab(): Promise<void> {
   ipc.override('fetch_table_data', () => response)
   await act(async () => {
-    useTableDataStore.getState().initTab(TAB_ID, 'conn-1', 'db', 'photos')
+    useTableDataStore
+      .getState()
+      .initTab(TAB_ID, { connectionId: 'conn-1', database: 'db', table: 'photos' })
     await useTableDataStore.getState().loadTableData(TAB_ID)
   })
 }
@@ -86,9 +88,11 @@ describe('table-data-store blob staging', () => {
     const rowData = { id: 1, photo: '[BLOB - 5 bytes]' }
 
     act(() => {
-      useTableDataStore
-        .getState()
-        .stageBlobEnvelope(TAB_ID, rowData, 'photo', bytesEnvelope(TWO_BYTE_BASE64))
+      useTableDataStore.getState().stageBlobEnvelope(TAB_ID, {
+        rowData: rowData,
+        column: 'photo',
+        envelope: bytesEnvelope(TWO_BYTE_BASE64),
+      })
     })
 
     const tab = getTab()
@@ -105,13 +109,15 @@ describe('table-data-store blob staging', () => {
     const envelope = bytesEnvelope(TWO_BYTE_BASE64)
 
     let captured: Record<string, unknown> | null = null
-    ipc.override('update_table_row', (args) => {
+    ipc.overridePayload('update_table_row', (args) => {
       captured = (args?.updatedValues as Record<string, unknown>) ?? null
       return undefined
     })
 
     act(() => {
-      useTableDataStore.getState().stageBlobEnvelope(TAB_ID, rowData, 'photo', envelope)
+      useTableDataStore
+        .getState()
+        .stageBlobEnvelope(TAB_ID, { rowData: rowData, column: 'photo', envelope: envelope })
     })
     await act(async () => {
       await useTableDataStore.getState().saveCurrentRow(TAB_ID)
@@ -126,7 +132,7 @@ describe('table-data-store blob staging', () => {
     const envelope = bytesEnvelope(TWO_BYTE_BASE64)
 
     let captured: Record<string, unknown> | null = null
-    ipc.override('insert_table_row', (args) => {
+    ipc.overridePayload('insert_table_row', (args) => {
       captured = (args?.values as Record<string, unknown>) ?? null
       return [
         ['id', 3],
@@ -149,7 +155,9 @@ describe('table-data-store blob staging', () => {
     }
 
     act(() => {
-      useTableDataStore.getState().stageBlobEnvelope(TAB_ID, draftRowData, 'photo', envelope)
+      useTableDataStore
+        .getState()
+        .stageBlobEnvelope(TAB_ID, { rowData: draftRowData, column: 'photo', envelope: envelope })
     })
     await act(async () => {
       await useTableDataStore.getState().saveCurrentRow(TAB_ID)
@@ -165,9 +173,11 @@ describe('table-data-store blob staging', () => {
     ipc.override('update_table_row', () => undefined)
 
     act(() => {
-      useTableDataStore
-        .getState()
-        .stageBlobEnvelope(TAB_ID, rowData, 'photo', bytesEnvelope(TWO_BYTE_BASE64))
+      useTableDataStore.getState().stageBlobEnvelope(TAB_ID, {
+        rowData: rowData,
+        column: 'photo',
+        envelope: bytesEnvelope(TWO_BYTE_BASE64),
+      })
     })
     await act(async () => {
       await useTableDataStore.getState().saveCurrentRow(TAB_ID)
@@ -184,7 +194,9 @@ describe('table-data-store blob staging', () => {
     ipc.override('update_table_row', () => undefined)
 
     act(() => {
-      useTableDataStore.getState().stageBlobEnvelope(TAB_ID, rowData, 'photo', emptyEnvelope())
+      useTableDataStore
+        .getState()
+        .stageBlobEnvelope(TAB_ID, { rowData: rowData, column: 'photo', envelope: emptyEnvelope() })
     })
     await act(async () => {
       await useTableDataStore.getState().saveCurrentRow(TAB_ID)
@@ -199,7 +211,9 @@ describe('table-data-store blob staging', () => {
     ipc.override('update_table_row', () => undefined)
 
     act(() => {
-      useTableDataStore.getState().stageBlobEnvelope(TAB_ID, rowData, 'photo', nullEnvelope())
+      useTableDataStore
+        .getState()
+        .stageBlobEnvelope(TAB_ID, { rowData: rowData, column: 'photo', envelope: nullEnvelope() })
     })
     await act(async () => {
       await useTableDataStore.getState().saveCurrentRow(TAB_ID)
@@ -211,7 +225,11 @@ describe('table-data-store blob staging', () => {
   it('is a no-op for an unknown column', async () => {
     await setupTab()
     act(() => {
-      useTableDataStore.getState().stageBlobEnvelope(TAB_ID, { id: 1 }, 'missing', nullEnvelope())
+      useTableDataStore.getState().stageBlobEnvelope(TAB_ID, {
+        rowData: { id: 1 },
+        column: 'missing',
+        envelope: nullEnvelope(),
+      })
     })
     expect(getTab().editState).toBeNull()
   })
@@ -272,7 +290,9 @@ async function setupBinaryPkTab(
   }
   ipc.override('fetch_table_data', () => pkResponse)
   await act(async () => {
-    useTableDataStore.getState().initTab(BINARY_PK_TAB, 'conn-1', 'db', 'binkeyed')
+    useTableDataStore
+      .getState()
+      .initTab(BINARY_PK_TAB, { connectionId: 'conn-1', database: 'db', table: 'binkeyed' })
     await useTableDataStore.getState().loadTableData(BINARY_PK_TAB)
   })
 }
@@ -300,8 +320,8 @@ describe('table-data-store binary primary-key conversion', () => {
     await setupBinaryPkTab(binCols, ['uid'], [['0xDEADBEEF', 'old-label']])
 
     let captured: Record<string, unknown> | null = null
-    ipc.override('update_table_row', (args) => {
-      captured = (args?.originalPkValues as Record<string, unknown>) ?? null
+    ipc.overridePayload('update_table_row', (args) => {
+      captured = (args?.originalPrimaryKeyValues as Record<string, unknown>) ?? null
       return undefined
     })
 
@@ -338,8 +358,8 @@ describe('table-data-store binary primary-key conversion', () => {
     )
 
     let captured: Record<string, unknown> | null = null
-    ipc.override('delete_table_row', (args) => {
-      captured = (args?.pkValues as Record<string, unknown>) ?? null
+    ipc.overridePayload('delete_table_row', (args) => {
+      captured = (args?.primaryKeyValues as Record<string, unknown>) ?? null
       return undefined
     })
 
@@ -363,8 +383,8 @@ describe('table-data-store binary primary-key conversion', () => {
     await setupBinaryPkTab(cols, ['tenant_id', 'external_ref'], [[7, '0x0102', 'row-a']])
 
     let captured: Record<string, unknown> | null = null
-    ipc.override('delete_table_row', (args) => {
-      captured = (args?.pkValues as Record<string, unknown>) ?? null
+    ipc.overridePayload('delete_table_row', (args) => {
+      captured = (args?.primaryKeyValues as Record<string, unknown>) ?? null
       return undefined
     })
 
@@ -387,13 +407,13 @@ describe('table-data-store binary primary-key conversion', () => {
     await setupBinaryPkTab(cols, ['id'], [[42, 'old-label']])
 
     let updatePk: Record<string, unknown> | null = null
-    ipc.override('update_table_row', (args) => {
-      updatePk = (args?.originalPkValues as Record<string, unknown>) ?? null
+    ipc.overridePayload('update_table_row', (args) => {
+      updatePk = (args?.originalPrimaryKeyValues as Record<string, unknown>) ?? null
       return undefined
     })
     let deletePk: Record<string, unknown> | null = null
-    ipc.override('delete_table_row', (args) => {
-      deletePk = (args?.pkValues as Record<string, unknown>) ?? null
+    ipc.overridePayload('delete_table_row', (args) => {
+      deletePk = (args?.primaryKeyValues as Record<string, unknown>) ?? null
       return undefined
     })
 

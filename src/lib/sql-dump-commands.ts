@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeArgumentCommand, invokeCommand } from './ipc/dispatch'
 import type { JobStatus } from './job-progress'
 
 /** A database with its exportable tables/views. */
@@ -56,24 +56,20 @@ export interface DumpJobProgress {
   cancelRequested: boolean
 }
 
-/** List databases and their tables/views that can be exported via SQL dump. */
 export async function listExportableObjects(connectionId: string): Promise<ExportableDatabase[]> {
-  return invoke<ExportableDatabase[]>('list_exportable_objects', { connectionId })
+  return invokeArgumentCommand({ command: 'list_exportable_objects', argument: { connectionId } })
 }
 
-/** Start a SQL dump export job. Returns the job ID for progress tracking. */
 export async function startSqlDump(input: StartDumpInput): Promise<string> {
-  return invoke<string>('start_sql_dump', { input })
+  return invokeArgumentCommand({ command: 'start_sql_dump', argument: { input } })
 }
 
-/** Get progress of a SQL dump export job. */
 export async function getDumpProgress(jobId: string): Promise<DumpJobProgress> {
-  return invoke<DumpJobProgress>('get_dump_progress', { jobId })
+  return invokeArgumentCommand({ command: 'get_dump_progress', argument: { jobId } })
 }
 
-/** Cancel a running SQL dump export job. */
 export async function cancelDump(jobId: string, connectionId: string): Promise<void> {
-  return invoke<void>('cancel_dump', { jobId, connectionId })
+  return invokeCommand({ command: 'cancel_dump', payload: { jobId, connectionId } })
 }
 
 // ---------------------------------------------------------------------------
@@ -101,23 +97,27 @@ export interface ImportJobProgress {
   cancelRequested: boolean
 }
 
-/** Start a SQL import job. Returns the job ID for progress tracking. */
+export interface StartImportInput {
+  connectionId: string
+  filePath: string
+  stopOnError: boolean
+}
+
 export async function startSqlImport(
   connectionId: string,
   filePath: string,
   stopOnError: boolean
 ): Promise<string> {
-  return invoke<string>('start_sql_import', {
-    input: { connectionId, filePath, stopOnError },
+  return invokeArgumentCommand({
+    command: 'start_sql_import',
+    argument: { input: { connectionId, filePath, stopOnError } },
   })
 }
 
-/** Get progress of a SQL import job. */
 export async function getImportProgress(jobId: string): Promise<ImportJobProgress> {
-  return invoke<ImportJobProgress>('get_import_progress', { jobId })
+  return invokeArgumentCommand({ command: 'get_import_progress', argument: { jobId } })
 }
 
-/** Cancel a running SQL import job. */
 export async function cancelImport(jobId: string): Promise<void> {
-  return invoke<void>('cancel_import', { jobId })
+  return invokeArgumentCommand({ command: 'cancel_import', argument: { jobId } })
 }

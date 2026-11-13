@@ -97,7 +97,12 @@ export function QueryEditorTab({ tab, isActive = true }: QueryEditorTabProps) {
   /** Accept the AI-proposed change — replace the original range in the editor. */
   const handleDiffAccept = useCallback(
     (finalSql: string) => {
-      const applied = applyDiff(editorRef.current, diffOverlayState, finalSql, tab.id)
+      const applied = applyDiff({
+        editor: editorRef.current,
+        state: diffOverlayState,
+        finalSql: finalSql,
+        tabId: tab.id,
+      })
       if (applied) {
         setDiffOverlayState(DIFF_OVERLAY_INITIAL)
         restoreTabAfterDiff(tab.id)

@@ -164,7 +164,7 @@ describe('AiMemoriesSettings', () => {
   it('deletes a memory with confirmation and calls delete_memory', async () => {
     const user = userEvent.setup()
     const deleted: Array<Record<string, unknown>> = []
-    ipc.override('delete_memory', (args) => {
+    ipc.overridePayload('delete_memory', (args) => {
       deleted.push(args as Record<string, unknown>)
       return undefined
     })
@@ -193,7 +193,7 @@ describe('AiMemoriesSettings', () => {
   it('adds a memory inline at the section scope using an active session', async () => {
     const user = userEvent.setup()
     const saved: Array<Record<string, unknown>> = []
-    ipc.override('save_memory', (args) => {
+    ipc.overridePayload('save_memory', (args) => {
       saved.push(args as Record<string, unknown>)
       return {
         id: 2,
@@ -279,7 +279,7 @@ describe('AiMemoriesSettings', () => {
 
   it('moves a memory via drag-and-drop onto a target section', async () => {
     const moved: Array<Record<string, unknown>> = []
-    ipc.override('move_memory', (args) => {
+    ipc.overridePayload('move_memory', (args) => {
       moved.push(args as Record<string, unknown>)
       return {
         id: 99,
@@ -439,7 +439,7 @@ describe('AiMemoriesSettings', () => {
 
   it('moves a memory from the serialized drag payload on drop', async () => {
     const moved: Array<Record<string, unknown>> = []
-    ipc.override('move_memory', (args) => {
+    ipc.overridePayload('move_memory', (args) => {
       moved.push(args as Record<string, unknown>)
       return {
         id: 99,
@@ -492,7 +492,7 @@ describe('AiMemoriesSettings', () => {
 
   it('accepts a serialized memory drag during dragover when active drag state is unavailable', async () => {
     const moved: Array<Record<string, unknown>> = []
-    ipc.override('move_memory', (args) => {
+    ipc.overridePayload('move_memory', (args) => {
       moved.push(args as Record<string, unknown>)
       return {
         id: 99,
@@ -584,7 +584,7 @@ describe('AiMemoriesSettings', () => {
   it('adds a memory at connection and group scope using a matching session', async () => {
     const user = userEvent.setup()
     const saved: Array<Record<string, unknown>> = []
-    ipc.override('save_memory', (args) => {
+    ipc.overridePayload('save_memory', (args) => {
       saved.push(args as Record<string, unknown>)
       return {
         id: 5,
@@ -692,7 +692,7 @@ describe('AiMemoriesSettings', () => {
 
   it('drops a group-scoped memory onto the global section', async () => {
     const moved: Array<Record<string, unknown>> = []
-    ipc.override('move_memory', (args) => {
+    ipc.overridePayload('move_memory', (args) => {
       moved.push(args as Record<string, unknown>)
       return {
         id: 99,
@@ -780,7 +780,7 @@ describe('AiMemoriesSettings', () => {
 
   it('ignores a drop whose source memory cannot be found', async () => {
     const moved: Array<Record<string, unknown>> = []
-    ipc.override('move_memory', (args) => {
+    ipc.overridePayload('move_memory', (args) => {
       moved.push(args as Record<string, unknown>)
       return {
         id: 1,
@@ -852,7 +852,7 @@ describe('AiMemoriesSettings', () => {
   it('adds to an ungrouped connection and cancels the delete dialog', async () => {
     const user = userEvent.setup()
     const saved: Array<Record<string, unknown>> = []
-    ipc.override('save_memory', (args) => {
+    ipc.overridePayload('save_memory', (args) => {
       saved.push(args as Record<string, unknown>)
       return {
         id: 7,
@@ -891,7 +891,7 @@ describe('AiMemoriesSettings', () => {
 
   it('moves a connection memory onto another connection via drop', async () => {
     const moved: Array<Record<string, unknown>> = []
-    ipc.override('move_memory', (args) => {
+    ipc.overridePayload('move_memory', (args) => {
       moved.push(args as Record<string, unknown>)
       return {
         id: 99,

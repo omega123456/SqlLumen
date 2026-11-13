@@ -133,9 +133,15 @@ async fn select_database_updates_registry_default_database() {
 
     let _guard = install_test_hook();
 
-    select_database_impl(&state, "conn-1", "analytics_db")
-        .await
-        .expect("select database should succeed");
+    select_database_impl(
+        &state,
+        &sqllumen_lib::commands::session::SelectDatabaseRequest {
+            connection_id: "conn-1".to_string(),
+            database_name: "analytics_db".to_string(),
+        },
+    )
+    .await
+    .expect("select database should succeed");
 
     let params = state
         .registry
@@ -148,9 +154,15 @@ async fn select_database_updates_registry_default_database() {
 async fn select_database_rejects_missing_connection() {
     let state = test_state();
 
-    let err = select_database_impl(&state, "missing", "analytics_db")
-        .await
-        .expect_err("missing connection should error");
+    let err = select_database_impl(
+        &state,
+        &sqllumen_lib::commands::session::SelectDatabaseRequest {
+            connection_id: "missing".to_string(),
+            database_name: "analytics_db".to_string(),
+        },
+    )
+    .await
+    .expect_err("missing connection should error");
     assert!(err.contains("not found"));
 }
 
@@ -159,9 +171,15 @@ async fn select_database_rejects_empty_database_name() {
     let state = test_state();
     register_connection(&state, "conn-1");
 
-    let err = select_database_impl(&state, "conn-1", "")
-        .await
-        .expect_err("empty database should error");
+    let err = select_database_impl(
+        &state,
+        &sqllumen_lib::commands::session::SelectDatabaseRequest {
+            connection_id: "conn-1".to_string(),
+            database_name: "".to_string(),
+        },
+    )
+    .await
+    .expect_err("empty database should error");
     assert!(err.contains("empty"));
 }
 
@@ -172,9 +190,15 @@ async fn select_database_hook_errors_do_not_update_registry_default_database() {
 
     let _guard = install_failing_test_hook();
 
-    let err = select_database_impl(&state, "conn-1", "analytics_db")
-        .await
-        .expect_err("hook failure should be surfaced");
+    let err = select_database_impl(
+        &state,
+        &sqllumen_lib::commands::session::SelectDatabaseRequest {
+            connection_id: "conn-1".to_string(),
+            database_name: "analytics_db".to_string(),
+        },
+    )
+    .await
+    .expect_err("hook failure should be surfaced");
     assert!(err.contains("hook failed"));
 
     let params = state
@@ -193,9 +217,15 @@ async fn select_database_reconnects_with_password_and_updates_registry_without_h
     sqllumen_lib::credentials::store_password("profile-select-success", "secret")
         .expect("password should be stored");
 
-    select_database_impl(&state, "conn-1", "analytics_db")
-        .await
-        .expect("select database should succeed");
+    select_database_impl(
+        &state,
+        &sqllumen_lib::commands::session::SelectDatabaseRequest {
+            connection_id: "conn-1".to_string(),
+            database_name: "analytics_db".to_string(),
+        },
+    )
+    .await
+    .expect("select database should succeed");
 
     let params = state
         .registry
@@ -213,9 +243,15 @@ async fn select_database_surfaces_pool_errors_after_password_lookup() {
     sqllumen_lib::credentials::store_password("profile-select-failure", "secret")
         .expect("password should be stored");
 
-    let err = select_database_impl(&state, "conn-1", "analytics_db")
-        .await
-        .expect_err("pool error should surface");
+    let err = select_database_impl(
+        &state,
+        &sqllumen_lib::commands::session::SelectDatabaseRequest {
+            connection_id: "conn-1".to_string(),
+            database_name: "analytics_db".to_string(),
+        },
+    )
+    .await
+    .expect_err("pool error should surface");
     assert!(err.contains("Failed to select database 'analytics_db'"));
 
     let params = state
@@ -232,9 +268,15 @@ async fn select_database_errors_when_password_lookup_fails() {
     register_connection_with_password(&state, "conn-1", "profile-select-failure");
     common::fake_credentials::queue_fake_credential_error("missing secret");
 
-    let err = select_database_impl(&state, "conn-1", "analytics_db")
-        .await
-        .expect_err("password lookup failure should be surfaced");
+    let err = select_database_impl(
+        &state,
+        &sqllumen_lib::commands::session::SelectDatabaseRequest {
+            connection_id: "conn-1".to_string(),
+            database_name: "analytics_db".to_string(),
+        },
+    )
+    .await
+    .expect_err("password lookup failure should be surfaced");
     assert!(err.contains(&retrieve_password_prefix()));
 
     let params = state

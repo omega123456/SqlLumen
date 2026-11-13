@@ -165,7 +165,11 @@ impl XlsxSink {
     fn write_sheet_row(&mut self, row: &[serde_json::Value]) -> Result<(), String> {
         let worksheet = self.workbook.worksheet_from_index(0).map_err(xlsx_err)?;
         for (column_index, value) in row.iter().enumerate() {
-            xlsx_writer::write_xlsx_cell(worksheet, self.next_row, column_index as u16, value)?;
+            let position = xlsx_writer::CellPosition {
+                row: self.next_row,
+                col: column_index as u16,
+            };
+            xlsx_writer::write_xlsx_cell(worksheet, position, value)?;
         }
         self.next_row += 1;
         Ok(())
@@ -191,37 +195,31 @@ pub struct RowSink {
     rows_written: u64,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct RowSinkSpec<'a> {
+    pub format: &'a ExportFormat,
+    pub path: &'a Path,
+    pub columns: &'a [String],
+    pub include_headers: bool,
+    pub table_name: Option<&'a str>,
+}
+
 impl RowSink {
-    /// Create the file at `path` and write the header (CSV with headers, XLSX
-    /// with headers). JSON and SQL ignore `include_headers`, as the slice
-    /// writers do. `table_name` is only used for SQL INSERT output.
-    pub fn create(
-        format: &ExportFormat,
-        path: &Path,
-        columns: &[String],
-        include_headers: bool,
-        table_name: Option<&str>,
+    pub fn create(spec: &RowSinkSpec<'_>) -> Result<Self, String> {
+        Self::create_with_sheet_row_limit(spec, XLSX_SHEET_ROW_LIMIT)
+    }
+
+    pub fn create_with_sheet_row_limit(
+        spec: &RowSinkSpec<'_>,
+        sheet_row_limit: u32,
     ) -> Result<Self, String> {
-        Self::create_with_sheet_row_limit(
+        let RowSinkSpec {
             format,
             path,
             columns,
             include_headers,
             table_name,
-            XLSX_SHEET_ROW_LIMIT,
-        )
-    }
-
-    /// [`RowSink::create`] with an explicit XLSX sheet row limit (header
-    /// included). Tests use it to reach the limit with a handful of rows.
-    pub fn create_with_sheet_row_limit(
-        format: &ExportFormat,
-        path: &Path,
-        columns: &[String],
-        include_headers: bool,
-        table_name: Option<&str>,
-        sheet_row_limit: u32,
-    ) -> Result<Self, String> {
+        } = *spec;
         let kind = match format {
             ExportFormat::Csv => {
                 let mut wtr = csv::WriterBuilder::new()

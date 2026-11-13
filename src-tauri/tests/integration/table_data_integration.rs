@@ -66,25 +66,31 @@ async fn fetch_table_pk_cached_returns_cached_metadata_without_querying_mysql() 
     }];
 
     metadata_cache.insert(
-        "cached-connection",
-        "cached_db",
-        "cached_table",
-        cached_pk.clone(),
-        cached_columns.clone(),
+        sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+            "cached-connection",
+            "cached_db",
+            "cached_table",
+        ),
+        sqllumen_lib::mysql::metadata_cache::TableKeyMetadata {
+            primary_key: cached_pk.clone(),
+            columns: cached_columns.clone(),
+        },
     );
 
     let result = fetch_table_pk_cached(
-        &pool,
-        "cached-connection",
+        &sqllumen_lib::mysql::table_data::TableDataContext {
+            pool: &pool,
+            connection_id: "cached-connection",
+            metadata_cache: &metadata_cache,
+        },
         "cached_db",
         "cached_table",
-        &metadata_cache,
     )
     .await
     .expect("cache hit should return without touching mysql");
 
-    assert_eq!(result.0, cached_pk);
-    assert_eq!(result.1, cached_columns);
+    assert_eq!(result.primary_key, cached_pk);
+    assert_eq!(result.columns, cached_columns);
 
     pool.close().await;
 }
@@ -962,17 +968,21 @@ mod fetch_cancellation_integration {
         let running_queries = tokio::sync::RwLock::new(HashMap::new());
 
         let result = fetch_table_data_impl(
-            &pool,
-            "conn-1",
-            "tab-1",
+            &sqllumen_lib::mysql::table_data::TableDataContext {
+                pool: &pool,
+                connection_id: "conn-1",
+                metadata_cache: &metadata_cache,
+            },
             &running_queries,
-            &metadata_cache,
-            "app_db",
-            "users",
-            1,
-            50,
-            None,
-            vec![],
+            &sqllumen_lib::mysql::table_data::TableDataPageQuery {
+                tab_id: "tab-1".to_string(),
+                database: "app_db".to_string(),
+                table: "users".to_string(),
+                page: 1,
+                page_size: 50,
+                sort: None,
+                filter_model: vec![],
+            },
         )
         .await
         .expect("fetch should succeed");
@@ -1003,7 +1013,6 @@ mod command_wrapper_coverage {
     use sqllumen_lib::mysql::table_data::{PrimaryKeyInfo, TableDataColumnMeta, TableDataResponse};
     use sqllumen_lib::state::AppState;
     use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
-    use std::collections::HashMap;
     use tauri::ipc::{CallbackFn, InvokeBody};
     use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
     use tauri::webview::InvokeRequest;
@@ -1113,13 +1122,9 @@ mod command_wrapper_coverage {
     #[tauri::command]
     async fn restore_table_data_cache(
         app: tauri::AppHandle<tauri::test::MockRuntime>,
-        connection_id: String,
-        tab_id: String,
-        database: String,
-        table: String,
+        payload: sqllumen_lib::mysql::table_data::RestoreTableDataCacheRequest,
     ) -> Result<sqllumen_lib::mysql::table_data::TableDataCacheRestoreResponse, String> {
-        table_data_commands::restore_table_data_cache(app, connection_id, tab_id, database, table)
-            .await
+        table_data_commands::restore_table_data_cache(app, payload).await
     }
 
     #[tauri::command]
@@ -1149,63 +1154,25 @@ mod command_wrapper_coverage {
     #[tauri::command]
     async fn update_table_row(
         state: tauri::State<'_, AppState>,
-        connection_id: String,
-        database: String,
-        table: String,
-        primary_key_columns: Vec<String>,
-        original_pk_values: HashMap<String, serde_json::Value>,
-        updated_values: HashMap<String, serde_json::Value>,
+        payload: sqllumen_lib::mysql::table_data::UpdateTableRowRequest,
     ) -> Result<(), String> {
-        table_data_commands::update_table_row(
-            state,
-            connection_id,
-            database,
-            table,
-            primary_key_columns,
-            original_pk_values,
-            updated_values,
-        )
-        .await
+        table_data_commands::update_table_row(state, payload).await
     }
 
     #[tauri::command]
     async fn insert_table_row(
         state: tauri::State<'_, AppState>,
-        connection_id: String,
-        database: String,
-        table: String,
-        values: HashMap<String, serde_json::Value>,
-        pk_info: sqllumen_lib::mysql::table_data::PrimaryKeyInfo,
+        payload: sqllumen_lib::mysql::table_data::InsertTableRowRequest,
     ) -> Result<Vec<(String, serde_json::Value)>, String> {
-        table_data_commands::insert_table_row(
-            state,
-            connection_id,
-            database,
-            table,
-            values,
-            pk_info,
-        )
-        .await
+        table_data_commands::insert_table_row(state, payload).await
     }
 
     #[tauri::command]
     async fn delete_table_row(
         state: tauri::State<'_, AppState>,
-        connection_id: String,
-        database: String,
-        table: String,
-        pk_columns: Vec<String>,
-        pk_values: HashMap<String, serde_json::Value>,
+        payload: sqllumen_lib::mysql::table_data::DeleteTableRowRequest,
     ) -> Result<(), String> {
-        table_data_commands::delete_table_row(
-            state,
-            connection_id,
-            database,
-            table,
-            pk_columns,
-            pk_values,
-        )
-        .await
+        table_data_commands::delete_table_row(state, payload).await
     }
 
     #[tauri::command]
@@ -1305,14 +1272,14 @@ mod command_wrapper_coverage {
         let read_only_err = invoke_tauri_command::<()>(
             &read_only_webview,
             "update_table_row",
-            json!({
+            json!({ "payload": {
                 "connectionId": "conn-ro",
                 "database": "test_db",
                 "table": "users",
                 "primaryKeyColumns": ["id"],
-                "originalPkValues": { "id": 1 },
+                "originalPrimaryKeyValues": { "id": 1 },
                 "updatedValues": { "name": "Alice" }
-            }),
+            } }),
         )
         .expect_err("read-only connection should error");
         assert!(read_only_err.to_string().contains("read-only"));
@@ -1322,14 +1289,14 @@ mod command_wrapper_coverage {
         let missing_err = invoke_tauri_command::<()>(
             &webview,
             "update_table_row",
-            json!({
+            json!({ "payload": {
                 "connectionId": "missing",
                 "database": "test_db",
                 "table": "users",
                 "primaryKeyColumns": ["id"],
-                "originalPkValues": { "id": 1 },
+                "originalPrimaryKeyValues": { "id": 1 },
                 "updatedValues": { "name": "Alice" }
-            }),
+            } }),
         )
         .expect_err("missing connection should error");
         assert!(missing_err.to_string().contains("not found"));
@@ -1344,31 +1311,31 @@ mod command_wrapper_coverage {
         invoke_tauri_command::<()>(
             &webview,
             "update_table_row",
-            json!({
+            json!({ "payload": {
                 "connectionId": "conn-1",
                 "database": "test_db",
                 "table": "users",
                 "primaryKeyColumns": ["id"],
-                "originalPkValues": { "id": 1 },
+                "originalPrimaryKeyValues": { "id": 1 },
                 "updatedValues": { "name": "Updated" }
-            }),
+            } }),
         )
         .expect("update should succeed");
 
         let inserted = invoke_tauri_command::<Vec<(String, serde_json::Value)>>(
             &webview,
             "insert_table_row",
-            json!({
+            json!({ "payload": {
                 "connectionId": "conn-1",
                 "database": "test_db",
                 "table": "users",
                 "values": { "name": "New User" },
-                "pkInfo": {
+                "primaryKeyInfo": {
                     "keyColumns": ["id"],
                     "hasAutoIncrement": true,
                     "isUniqueKeyFallback": false
                 }
-            }),
+            } }),
         )
         .expect("insert should succeed");
         assert!(inserted.is_empty());
@@ -1376,13 +1343,13 @@ mod command_wrapper_coverage {
         invoke_tauri_command::<()>(
             &webview,
             "delete_table_row",
-            json!({
+            json!({ "payload": {
                 "connectionId": "conn-1",
                 "database": "test_db",
                 "table": "users",
-                "pkColumns": ["id"],
-                "pkValues": { "id": 1 }
-            }),
+                "primaryKeyColumns": ["id"],
+                "primaryKeyValues": { "id": 1 }
+            } }),
         )
         .expect("delete should succeed");
 
@@ -1464,21 +1431,22 @@ mod command_wrapper_coverage {
     async fn table_data_cache_wrappers_restore_and_sync_expected_statuses() {
         let state = common::test_app_state();
         let cached = sample_cached_response(1);
-        state
-            .table_data_cache
-            .insert("conn-1", "tab-1", cached.clone());
+        state.table_data_cache.insert(
+            sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "tab-1"),
+            cached.clone(),
+        );
         let webview = build_app(state);
 
         let restored =
             invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheRestoreResponse>(
                 &webview,
                 "restore_table_data_cache",
-                json!({
+                json!({ "payload": {
                     "connectionId": "conn-1",
                     "tabId": "tab-1",
                     "database": "test_db",
                     "table": "users"
-                }),
+                } }),
             )
             .expect("restore should return cached entry");
         assert_eq!(
@@ -1547,12 +1515,12 @@ mod command_wrapper_coverage {
             invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheRestoreResponse>(
                 &webview,
                 "restore_table_data_cache",
-                json!({
+                json!({ "payload": {
                     "connectionId": "conn-1",
                     "tabId": "tab-1",
                     "database": "test_db",
                     "table": "users"
-                }),
+                } }),
             )
             .expect("restore after update should succeed");
         let after_update_data = after_update.data.expect("updated cache should exist");
@@ -1595,12 +1563,12 @@ mod command_wrapper_coverage {
             invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheRestoreResponse>(
                 &webview,
                 "restore_table_data_cache",
-                json!({
+                json!({ "payload": {
                     "connectionId": "conn-1",
                     "tabId": "tab-1",
                     "database": "test_db",
                     "table": "users"
-                }),
+                } }),
             )
             .expect("restore after delete should succeed");
         let final_data = final_restore
@@ -1646,12 +1614,12 @@ mod command_wrapper_coverage {
             invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheRestoreResponse>(
                 &webview,
                 "restore_table_data_cache",
-                json!({
+                json!({ "payload": {
                     "connectionId": "conn-1",
                     "tabId": "missing-tab",
                     "database": "test_db",
                     "table": "users"
-                }),
+                } }),
             )
             .expect("missing restore should return status");
         assert_eq!(
@@ -1698,8 +1666,17 @@ mod command_wrapper_coverage {
 
         // Verify history was logged
         let conn = db.lock().expect("db lock");
-        let page = sqllumen_lib::db::history::list_history(&conn, "hist-conn", 1, 50, None, None)
-            .expect("list history");
+        let page = sqllumen_lib::db::history::list_history(
+            &conn,
+            &sqllumen_lib::db::history::HistoryQuery {
+                connection_id: "hist-conn",
+                page: 1,
+                page_size: 50,
+                search: None,
+                since: None,
+            },
+        )
+        .expect("list history");
         assert_eq!(page.total, 1, "one history entry should be logged");
         let entry = &page.entries[0];
         assert!(entry.success);
@@ -1747,8 +1724,17 @@ mod command_wrapper_coverage {
         wait_for_history_logging().await;
 
         let conn = db.lock().expect("db lock");
-        let page = sqllumen_lib::db::history::list_history(&conn, "hist-sf", 1, 50, None, None)
-            .expect("list history");
+        let page = sqllumen_lib::db::history::list_history(
+            &conn,
+            &sqllumen_lib::db::history::HistoryQuery {
+                connection_id: "hist-sf",
+                page: 1,
+                page_size: 50,
+                search: None,
+                since: None,
+            },
+        )
+        .expect("list history");
         assert_eq!(page.total, 1);
         let entry = &page.entries[0];
         assert!(entry.success);
@@ -1800,9 +1786,17 @@ mod command_wrapper_coverage {
         wait_for_history_logging().await;
 
         let conn = db.lock().expect("db lock");
-        let page =
-            sqllumen_lib::db::history::list_history(&conn, "hist-fallback", 1, 50, None, None)
-                .expect("list history");
+        let page = sqllumen_lib::db::history::list_history(
+            &conn,
+            &sqllumen_lib::db::history::HistoryQuery {
+                connection_id: "hist-fallback",
+                page: 1,
+                page_size: 50,
+                search: None,
+                since: None,
+            },
+        )
+        .expect("list history");
         assert_eq!(page.total, 1);
 
         let entry = &page.entries[0];
@@ -1852,9 +1846,17 @@ mod command_wrapper_coverage {
         // (the pool lookup fails before the impl call), so we expect NO history entry
         // since the error path logs with the session_id fallback
         let conn = db.lock().expect("db lock");
-        let page =
-            sqllumen_lib::db::history::list_history(&conn, "missing-conn", 1, 50, None, None)
-                .expect("list history");
+        let page = sqllumen_lib::db::history::list_history(
+            &conn,
+            &sqllumen_lib::db::history::HistoryQuery {
+                connection_id: "missing-conn",
+                page: 1,
+                page_size: 50,
+                search: None,
+                since: None,
+            },
+        )
+        .expect("list history");
         // No history logged because the error happens before the impl call
         // and the wrapper returns Err before reaching the history logging code
         assert_eq!(
@@ -1893,8 +1895,17 @@ mod command_wrapper_coverage {
         wait_for_history_logging().await;
 
         let conn = db.lock().expect("db lock");
-        let page = sqllumen_lib::db::history::list_history(&conn, "hist-export", 1, 50, None, None)
-            .expect("list history");
+        let page = sqllumen_lib::db::history::list_history(
+            &conn,
+            &sqllumen_lib::db::history::HistoryQuery {
+                connection_id: "hist-export",
+                page: 1,
+                page_size: 50,
+                search: None,
+                since: None,
+            },
+        )
+        .expect("list history");
         assert_eq!(
             page.total, 1,
             "one history entry should be logged for export"
@@ -1944,9 +1955,17 @@ mod command_wrapper_coverage {
         wait_for_history_logging().await;
 
         let conn = db.lock().expect("db lock");
-        let page =
-            sqllumen_lib::db::history::list_history(&conn, "hist-export-sf", 1, 50, None, None)
-                .expect("list history");
+        let page = sqllumen_lib::db::history::list_history(
+            &conn,
+            &sqllumen_lib::db::history::HistoryQuery {
+                connection_id: "hist-export-sf",
+                page: 1,
+                page_size: 50,
+                search: None,
+                since: None,
+            },
+        )
+        .expect("list history");
         assert_eq!(page.total, 1);
         let entry = &page.entries[0];
         assert!(entry.success);
@@ -1976,22 +1995,31 @@ mod command_wrapper_coverage {
         invoke_tauri_command::<()>(
             &webview,
             "update_table_row",
-            json!({
+            json!({ "payload": {
                 "connectionId": "hist-update",
                 "database": "test_db",
                 "table": "users",
                 "primaryKeyColumns": ["id"],
-                "originalPkValues": { "id": 1 },
+                "originalPrimaryKeyValues": { "id": 1 },
                 "updatedValues": { "name": "Alice" }
-            }),
+            } }),
         )
         .expect("update should succeed");
 
         wait_for_history_logging().await;
 
         let conn = db.lock().expect("db lock");
-        let page = sqllumen_lib::db::history::list_history(&conn, "hist-update", 1, 50, None, None)
-            .expect("list history");
+        let page = sqllumen_lib::db::history::list_history(
+            &conn,
+            &sqllumen_lib::db::history::HistoryQuery {
+                connection_id: "hist-update",
+                page: 1,
+                page_size: 50,
+                search: None,
+                since: None,
+            },
+        )
+        .expect("list history");
         assert_eq!(page.total, 1);
         let entry = &page.entries[0];
         assert!(entry.success);
@@ -2023,25 +2051,34 @@ mod command_wrapper_coverage {
         invoke_tauri_command::<Vec<(String, serde_json::Value)>>(
             &webview,
             "insert_table_row",
-            json!({
+            json!({ "payload": {
                 "connectionId": "hist-insert",
                 "database": "test_db",
                 "table": "users",
                 "values": { "name": "Bob", "age": 30 },
-                "pkInfo": {
+                "primaryKeyInfo": {
                     "keyColumns": ["id"],
                     "hasAutoIncrement": true,
                     "isUniqueKeyFallback": false
                 }
-            }),
+            } }),
         )
         .expect("insert should succeed");
 
         wait_for_history_logging().await;
 
         let conn = db.lock().expect("db lock");
-        let page = sqllumen_lib::db::history::list_history(&conn, "hist-insert", 1, 50, None, None)
-            .expect("list history");
+        let page = sqllumen_lib::db::history::list_history(
+            &conn,
+            &sqllumen_lib::db::history::HistoryQuery {
+                connection_id: "hist-insert",
+                page: 1,
+                page_size: 50,
+                search: None,
+                since: None,
+            },
+        )
+        .expect("list history");
         assert_eq!(page.total, 1);
         let entry = &page.entries[0];
         assert!(entry.success);
@@ -2073,21 +2110,30 @@ mod command_wrapper_coverage {
         invoke_tauri_command::<()>(
             &webview,
             "delete_table_row",
-            json!({
+            json!({ "payload": {
                 "connectionId": "hist-delete",
                 "database": "test_db",
                 "table": "users",
-                "pkColumns": ["id"],
-                "pkValues": { "id": 42 }
-            }),
+                "primaryKeyColumns": ["id"],
+                "primaryKeyValues": { "id": 42 }
+            } }),
         )
         .expect("delete should succeed");
 
         wait_for_history_logging().await;
 
         let conn = db.lock().expect("db lock");
-        let page = sqllumen_lib::db::history::list_history(&conn, "hist-delete", 1, 50, None, None)
-            .expect("list history");
+        let page = sqllumen_lib::db::history::list_history(
+            &conn,
+            &sqllumen_lib::db::history::HistoryQuery {
+                connection_id: "hist-delete",
+                page: 1,
+                page_size: 50,
+                search: None,
+                since: None,
+            },
+        )
+        .expect("list history");
         assert_eq!(page.total, 1);
         let entry = &page.entries[0];
         assert!(entry.success);
@@ -2113,17 +2159,17 @@ mod command_wrapper_coverage {
         let insert_read_only = invoke_tauri_command::<Vec<(String, serde_json::Value)>>(
             &read_only_webview,
             "insert_table_row",
-            json!({
+            json!({ "payload": {
                 "connectionId": "conn-ro",
                 "database": "test_db",
                 "table": "users",
                 "values": { "name": "Blocked" },
-                "pkInfo": {
+                "primaryKeyInfo": {
                     "keyColumns": ["id"],
                     "hasAutoIncrement": true,
                     "isUniqueKeyFallback": false
                 }
-            }),
+            } }),
         )
         .expect_err("read-only insert should error");
         assert!(insert_read_only.to_string().contains("read-only"));
@@ -2131,13 +2177,13 @@ mod command_wrapper_coverage {
         let delete_read_only = invoke_tauri_command::<()>(
             &read_only_webview,
             "delete_table_row",
-            json!({
+            json!({ "payload": {
                 "connectionId": "conn-ro",
                 "database": "test_db",
                 "table": "users",
-                "pkColumns": ["id"],
-                "pkValues": { "id": 1 }
-            }),
+                "primaryKeyColumns": ["id"],
+                "primaryKeyValues": { "id": 1 }
+            } }),
         )
         .expect_err("read-only delete should error");
         assert!(delete_read_only.to_string().contains("read-only"));
@@ -2148,17 +2194,17 @@ mod command_wrapper_coverage {
         let insert_missing = invoke_tauri_command::<Vec<(String, serde_json::Value)>>(
             &webview,
             "insert_table_row",
-            json!({
+            json!({ "payload": {
                 "connectionId": "missing",
                 "database": "test_db",
                 "table": "users",
                 "values": { "name": "Missing" },
-                "pkInfo": {
+                "primaryKeyInfo": {
                     "keyColumns": ["id"],
                     "hasAutoIncrement": true,
                     "isUniqueKeyFallback": false
                 }
-            }),
+            } }),
         )
         .expect_err("missing insert connection should error");
         assert!(insert_missing.to_string().contains("not found"));
@@ -2166,13 +2212,13 @@ mod command_wrapper_coverage {
         let delete_missing = invoke_tauri_command::<()>(
             &webview,
             "delete_table_row",
-            json!({
+            json!({ "payload": {
                 "connectionId": "missing",
                 "database": "test_db",
                 "table": "users",
-                "pkColumns": ["id"],
-                "pkValues": { "id": 1 }
-            }),
+                "primaryKeyColumns": ["id"],
+                "primaryKeyValues": { "id": 1 }
+            } }),
         )
         .expect_err("missing delete connection should error");
         assert!(delete_missing.to_string().contains("not found"));
@@ -2209,7 +2255,16 @@ mod build_select_sql_tests {
 
     #[test]
     fn build_select_sql_basic_no_filter_no_sort() {
-        let sql = build_select_sql("mydb", "users", &[], &None, Some((50, 0)));
+        let sql = build_select_sql(&sqllumen_lib::commands::table_data::SelectSqlSpec {
+            database: "mydb",
+            table: "users",
+            filter: &[],
+            sort: &None,
+            limit: Some(sqllumen_lib::commands::table_data::PageWindow {
+                page_size: 50,
+                offset: 0,
+            }),
+        });
         assert!(sql.is_some());
         let sql = sql.unwrap();
         assert_eq!(sql, "SELECT * FROM `mydb`.`users` LIMIT 50 OFFSET 0");
@@ -2221,7 +2276,17 @@ mod build_select_sql_tests {
             column: "name".to_string(),
             direction: "asc".to_string(),
         });
-        let sql = build_select_sql("mydb", "users", &[], &sort, Some((25, 50))).unwrap();
+        let sql = build_select_sql(&sqllumen_lib::commands::table_data::SelectSqlSpec {
+            database: "mydb",
+            table: "users",
+            filter: &[],
+            sort: &sort,
+            limit: Some(sqllumen_lib::commands::table_data::PageWindow {
+                page_size: 25,
+                offset: 50,
+            }),
+        })
+        .unwrap();
         assert!(sql.contains("ORDER BY `name` ASC"));
         assert!(sql.contains("LIMIT 25 OFFSET 50"));
     }
@@ -2232,7 +2297,17 @@ mod build_select_sql_tests {
             column: "id".to_string(),
             direction: "desc".to_string(),
         });
-        let sql = build_select_sql("db", "tbl", &[], &sort, Some((10, 0))).unwrap();
+        let sql = build_select_sql(&sqllumen_lib::commands::table_data::SelectSqlSpec {
+            database: "db",
+            table: "tbl",
+            filter: &[],
+            sort: &sort,
+            limit: Some(sqllumen_lib::commands::table_data::PageWindow {
+                page_size: 10,
+                offset: 0,
+            }),
+        })
+        .unwrap();
         assert!(sql.contains("ORDER BY `id` DESC"));
     }
 
@@ -2243,14 +2318,31 @@ mod build_select_sql_tests {
             operator: "==".to_string(),
             value: "active".to_string(),
         }];
-        let sql = build_select_sql("db", "tbl", &filter, &None, Some((50, 0))).unwrap();
+        let sql = build_select_sql(&sqllumen_lib::commands::table_data::SelectSqlSpec {
+            database: "db",
+            table: "tbl",
+            filter: &filter,
+            sort: &None,
+            limit: Some(sqllumen_lib::commands::table_data::PageWindow {
+                page_size: 50,
+                offset: 0,
+            }),
+        })
+        .unwrap();
         assert!(sql.contains("WHERE"));
         assert!(sql.contains("`status` = ?"));
     }
 
     #[test]
     fn build_select_sql_no_limit_for_export() {
-        let sql = build_select_sql("mydb", "orders", &[], &None, None).unwrap();
+        let sql = build_select_sql(&sqllumen_lib::commands::table_data::SelectSqlSpec {
+            database: "mydb",
+            table: "orders",
+            filter: &[],
+            sort: &None,
+            limit: None,
+        })
+        .unwrap();
         assert_eq!(sql, "SELECT * FROM `mydb`.`orders`");
         assert!(!sql.contains("LIMIT"));
     }
@@ -2273,7 +2365,17 @@ mod build_select_sql_tests {
             column: "name".to_string(),
             direction: "asc".to_string(),
         });
-        let sql = build_select_sql("shop", "products", &filter, &sort, Some((100, 200))).unwrap();
+        let sql = build_select_sql(&sqllumen_lib::commands::table_data::SelectSqlSpec {
+            database: "shop",
+            table: "products",
+            filter: &filter,
+            sort: &sort,
+            limit: Some(sqllumen_lib::commands::table_data::PageWindow {
+                page_size: 100,
+                offset: 200,
+            }),
+        })
+        .unwrap();
         assert!(sql.starts_with("SELECT * FROM `shop`.`products`"));
         assert!(sql.contains("WHERE"));
         assert!(sql.contains("ORDER BY `name` ASC"));
@@ -2287,9 +2389,45 @@ mod build_select_sql_tests {
             direction: "asc".to_string(),
         });
 
-        assert!(build_select_sql("", "users", &[], &None, Some((10, 0))).is_none());
-        assert!(build_select_sql("db", "", &[], &None, Some((10, 0))).is_none());
-        assert!(build_select_sql("db", "users", &[], &sort, Some((10, 0))).is_none());
+        assert!(
+            build_select_sql(&sqllumen_lib::commands::table_data::SelectSqlSpec {
+                database: "",
+                table: "users",
+                filter: &[],
+                sort: &None,
+                limit: Some(sqllumen_lib::commands::table_data::PageWindow {
+                    page_size: 10,
+                    offset: 0
+                })
+            })
+            .is_none()
+        );
+        assert!(
+            build_select_sql(&sqllumen_lib::commands::table_data::SelectSqlSpec {
+                database: "db",
+                table: "",
+                filter: &[],
+                sort: &None,
+                limit: Some(sqllumen_lib::commands::table_data::PageWindow {
+                    page_size: 10,
+                    offset: 0
+                })
+            })
+            .is_none()
+        );
+        assert!(
+            build_select_sql(&sqllumen_lib::commands::table_data::SelectSqlSpec {
+                database: "db",
+                table: "users",
+                filter: &[],
+                sort: &sort,
+                limit: Some(sqllumen_lib::commands::table_data::PageWindow {
+                    page_size: 10,
+                    offset: 0
+                })
+            })
+            .is_none()
+        );
     }
 }
 
@@ -2872,17 +3010,21 @@ mod coverage_stubs {
         let metadata_cache = MetadataCache::new();
         let running_queries = tokio::sync::RwLock::new(HashMap::new());
         let result = fetch_table_data_impl(
-            &pool,
-            "test-connection",
-            "test-tab",
+            &sqllumen_lib::mysql::table_data::TableDataContext {
+                pool: &pool,
+                connection_id: "test-connection",
+                metadata_cache: &metadata_cache,
+            },
             &running_queries,
-            &metadata_cache,
-            "test_db",
-            "test_table",
-            1,
-            100,
-            None,
-            vec![],
+            &sqllumen_lib::mysql::table_data::TableDataPageQuery {
+                tab_id: "test-tab".to_string(),
+                database: "test_db".to_string(),
+                table: "test_table".to_string(),
+                page: 1,
+                page_size: 100,
+                sort: None,
+                filter_model: vec![],
+            },
         )
         .await;
 
@@ -2911,17 +3053,21 @@ mod coverage_stubs {
         });
         let running_queries = tokio::sync::RwLock::new(HashMap::new());
         let result = fetch_table_data_impl(
-            &pool,
-            "test-connection",
-            "test-tab",
+            &sqllumen_lib::mysql::table_data::TableDataContext {
+                pool: &pool,
+                connection_id: "test-connection",
+                metadata_cache: &metadata_cache,
+            },
             &running_queries,
-            &metadata_cache,
-            "db",
-            "tbl",
-            2,
-            50,
-            sort,
-            filter,
+            &sqllumen_lib::mysql::table_data::TableDataPageQuery {
+                tab_id: "test-tab".to_string(),
+                database: "db".to_string(),
+                table: "tbl".to_string(),
+                page: 2,
+                page_size: 50,
+                sort,
+                filter_model: filter,
+            },
         )
         .await;
 
@@ -2936,18 +3082,21 @@ mod coverage_stubs {
         let pool = dummy_lazy_pool();
         let result = update_table_row_impl(
             &pool,
-            "test_db",
-            "test_table",
-            &["id".to_string()],
-            &{
-                let mut m = HashMap::new();
-                m.insert("id".to_string(), serde_json::json!(1));
-                m
-            },
-            &{
-                let mut m = HashMap::new();
-                m.insert("name".to_string(), serde_json::json!("updated"));
-                m
+            &sqllumen_lib::mysql::table_data::UpdateTableRowRequest {
+                connection_id: String::new(),
+                database: "test_db".to_string(),
+                table: "test_table".to_string(),
+                primary_key_columns: vec!["id".to_string()],
+                original_primary_key_values: {
+                    let mut m = HashMap::new();
+                    m.insert("id".to_string(), serde_json::json!(1));
+                    m
+                },
+                updated_values: {
+                    let mut m = HashMap::new();
+                    m.insert("name".to_string(), serde_json::json!("updated"));
+                    m
+                },
             },
         )
         .await;
@@ -2972,12 +3121,14 @@ mod coverage_stubs {
 
         let result = insert_table_row_impl(
             &pool,
-            "test-connection",
             &metadata_cache,
-            "test_db",
-            "test_table",
-            &values,
-            &pk,
+            &sqllumen_lib::mysql::table_data::InsertTableRowRequest {
+                connection_id: "test-connection".to_string(),
+                database: "test_db".to_string(),
+                table: "test_table".to_string(),
+                values: values.clone(),
+                primary_key_info: pk.clone(),
+            },
         )
         .await;
 
@@ -2988,11 +3139,20 @@ mod coverage_stubs {
     #[tokio::test]
     async fn delete_table_row_impl_stub_returns_ok() {
         let pool = dummy_lazy_pool();
-        let result = delete_table_row_impl(&pool, "test_db", "test_table", &["id".to_string()], &{
-            let mut m = HashMap::new();
-            m.insert("id".to_string(), serde_json::json!(1));
-            m
-        })
+        let result = delete_table_row_impl(
+            &pool,
+            &sqllumen_lib::mysql::table_data::DeleteTableRowRequest {
+                connection_id: String::new(),
+                database: "test_db".to_string(),
+                table: "test_table".to_string(),
+                primary_key_columns: vec!["id".to_string()],
+                primary_key_values: {
+                    let mut m = HashMap::new();
+                    m.insert("id".to_string(), serde_json::json!(1));
+                    m
+                },
+            },
+        )
         .await;
 
         assert!(result.is_ok());
@@ -3015,8 +3175,15 @@ mod coverage_stubs {
         };
         let metadata_cache = MetadataCache::new();
 
-        let result =
-            export_table_data_impl(&pool, "test-connection", &metadata_cache, &options).await;
+        let result = export_table_data_impl(
+            &sqllumen_lib::mysql::table_data::TableDataContext {
+                pool: &pool,
+                connection_id: "test-connection",
+                metadata_cache: &metadata_cache,
+            },
+            &options,
+        )
+        .await;
         assert!(result.is_ok());
     }
 }

@@ -59,19 +59,23 @@ export function useBlobViewerState({
     if (isMissingTarget) {
       throw new Error(MISSING_PRIMARY_KEY_MESSAGE)
     }
-    return fetchBlobValue(
-      tabState.connectionId,
-      tabState.database,
-      tabState.table,
-      blobViewerTarget.columnKey,
-      blobViewerTarget.primaryKeyPairs
-    )
+    return fetchBlobValue({
+      connectionId: tabState.connectionId,
+      database: tabState.database,
+      table: tabState.table,
+      column: blobViewerTarget.columnKey,
+      primaryKeyPairs: blobViewerTarget.primaryKeyPairs,
+    })
   }, [blobViewerTarget, tabState])
 
   const applyBlob = useCallback(
     (envelope: BlobEnvelope) => {
       if (!blobViewerTarget) return
-      stageBlobEnvelope(tabId, blobViewerTarget.rowData, blobViewerTarget.columnKey, envelope)
+      stageBlobEnvelope(tabId, {
+        rowData: blobViewerTarget.rowData,
+        column: blobViewerTarget.columnKey,
+        envelope: envelope,
+      })
     },
     [blobViewerTarget, stageBlobEnvelope, tabId]
   )

@@ -273,8 +273,8 @@ describe('useWorkspaceStore — query result validation on activation', () => {
 
     useWorkspaceStore.getState().setActiveTab('conn-1', queryTab.id)
 
-    expect(ipc.calls('touch_results')).toHaveLength(1)
-    expect(ipc.calls('touch_results')[0]).toMatchObject({
+    expect(ipc.payloads('touch_results')).toHaveLength(1)
+    expect(ipc.payloads('touch_results')[0]).toMatchObject({
       connectionId: 'conn-1',
       tabId: queryTab.id,
     })
@@ -1068,7 +1068,12 @@ describe('useWorkspaceStore — closeTab', () => {
       'requestNavigationAction'
     )
 
-    useTableDesignerStore.getState().initTab(designerTabId, 'alter', 'conn-1', 'mydb', 'users')
+    useTableDesignerStore.getState().initTab(designerTabId, {
+      mode: 'alter',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'users',
+    })
     useTableDesignerStore.setState((state) => ({
       tabs: {
         ...state.tabs,
@@ -1305,7 +1310,9 @@ describe('useWorkspaceStore — closeTabsByObject', () => {
       .openTab(makeDesignerTab({ objectName: 'users', label: 'users designer' }))
     useWorkspaceStore.getState().openTab(makeTab({ objectName: 'orders', label: 'orders' }))
 
-    useWorkspaceStore.getState().closeTabsByObject('conn-1', 'mydb', 'users')
+    useWorkspaceStore
+      .getState()
+      .closeTabsByObject('conn-1', { databaseName: 'mydb', objectName: 'users' })
 
     const state = useWorkspaceStore.getState()
     expect(state.tabsByConnection['conn-1']).toHaveLength(1)
@@ -1329,7 +1336,9 @@ describe('useWorkspaceStore — closeTabsByObject', () => {
     )
     useWorkspaceStore.getState().openTab(makeTab({ objectName: 'orders', label: 'orders' }))
 
-    useWorkspaceStore.getState().closeTabsByObject('conn-1', 'mydb', 'my_proc')
+    useWorkspaceStore
+      .getState()
+      .closeTabsByObject('conn-1', { databaseName: 'mydb', objectName: 'my_proc' })
 
     const state = useWorkspaceStore.getState()
     // Both object-editor tabs should be closed
@@ -1354,7 +1363,11 @@ describe('useWorkspaceStore — closeTabsByObject', () => {
     )
 
     // Dropping the procedure named "orders" should NOT touch the table tabs
-    useWorkspaceStore.getState().closeTabsByObject('conn-1', 'mydb', 'orders', 'procedure')
+    useWorkspaceStore.getState().closeTabsByObject('conn-1', {
+      databaseName: 'mydb',
+      objectName: 'orders',
+      objectType: 'procedure',
+    })
 
     const state = useWorkspaceStore.getState()
     // table-data and table-designer tabs should survive
@@ -1382,7 +1395,11 @@ describe('useWorkspaceStore — closeTabsByObject', () => {
       })
     )
 
-    useWorkspaceStore.getState().closeTabsByObject('conn-1', 'mydb', 'my_obj', 'procedure')
+    useWorkspaceStore.getState().closeTabsByObject('conn-1', {
+      databaseName: 'mydb',
+      objectName: 'my_obj',
+      objectType: 'procedure',
+    })
 
     const state = useWorkspaceStore.getState()
     expect(state.tabsByConnection['conn-1']).toHaveLength(1)
@@ -1401,7 +1418,9 @@ describe('useWorkspaceStore — closeTabsByObject', () => {
     const schemaTwoId = useWorkspaceStore.getState().tabsByConnection['conn-1'][2].id
 
     useWorkspaceStore.getState().setActiveTab('conn-1', schemaOneId)
-    useWorkspaceStore.getState().closeTabsByObject('conn-1', 'mydb', 'users')
+    useWorkspaceStore
+      .getState()
+      .closeTabsByObject('conn-1', { databaseName: 'mydb', objectName: 'users' })
 
     expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(schemaTwoId)
   })
@@ -1433,7 +1452,9 @@ describe('useWorkspaceStore — closeTabsByObject', () => {
       tabId: tableTabId,
     })
 
-    useWorkspaceStore.getState().closeTabsByObject('conn-1', 'mydb', 'users')
+    useWorkspaceStore
+      .getState()
+      .closeTabsByObject('conn-1', { databaseName: 'mydb', objectName: 'users' })
 
     expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(queryTabId)
     expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toEqual([
@@ -1462,7 +1483,11 @@ describe('useWorkspaceStore — updateTabObject', () => {
     useWorkspaceStore
       .getState()
       .openTab(makeTab({ objectName: 'old_table', label: 'mydb.old_table' }))
-    useWorkspaceStore.getState().updateTabObject('conn-1', 'mydb', 'old_table', 'new_table')
+    useWorkspaceStore.getState().updateTabObject('conn-1', {
+      databaseName: 'mydb',
+      oldObjectName: 'old_table',
+      newObjectName: 'new_table',
+    })
 
     const state = useWorkspaceStore.getState()
     const tabs = state.tabsByConnection['conn-1']
@@ -1474,7 +1499,11 @@ describe('useWorkspaceStore — updateTabObject', () => {
 describe('useWorkspaceStore — table-data tab label should only show object name', () => {
   it('updateTabObject sets label to only objectName for table-data tabs', () => {
     useWorkspaceStore.getState().openTab(makeTab({ objectName: 'old_table', label: 'old_table' }))
-    useWorkspaceStore.getState().updateTabObject('conn-1', 'mydb', 'old_table', 'new_table')
+    useWorkspaceStore.getState().updateTabObject('conn-1', {
+      databaseName: 'mydb',
+      oldObjectName: 'old_table',
+      newObjectName: 'new_table',
+    })
 
     const state = useWorkspaceStore.getState()
     const tabs = state.tabsByConnection['conn-1']
@@ -2042,7 +2071,9 @@ describe('useWorkspaceStore — AI store cleanup', () => {
       },
     })
 
-    useWorkspaceStore.getState().closeTabsByObject('conn-1', 'mydb', 'users')
+    useWorkspaceStore
+      .getState()
+      .closeTabsByObject('conn-1', { databaseName: 'mydb', objectName: 'users' })
 
     expect(useAiStore.getState().tabs[tabId]).toBeUndefined()
   })
@@ -2167,7 +2198,12 @@ describe('useWorkspaceStore — max tabs per group', () => {
     const dirty = tabIds()[0]
     useWorkspaceStore.getState().openTab(makeDesignerTab({ objectName: 'b' }))
     const clean = tabIds()[1]
-    useTableDesignerStore.getState().initTab(dirty, 'alter', 'conn-1', 'mydb', 'a')
+    useTableDesignerStore.getState().initTab(dirty, {
+      mode: 'alter',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'a',
+    })
     useTableDesignerStore.setState((state) => ({
       tabs: { ...state.tabs, [dirty]: { ...state.tabs[dirty], isDirty: true } },
     }))

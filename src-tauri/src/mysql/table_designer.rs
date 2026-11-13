@@ -79,7 +79,7 @@ pub struct GenerateDdlRequest {
     pub mode: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct GenerateDdlResponse {
     pub ddl: String,
@@ -241,19 +241,19 @@ pub fn generate_alter_table_ddl(
     original: &DesignerTableSchema,
     current: &DesignerTableSchema,
     database: &str,
-) -> (String, Vec<String>) {
+) -> GenerateDdlResponse {
     let has_invalid_schema =
         validate_schema(original).is_err() || validate_schema(current).is_err();
     if has_invalid_schema {
-        return (String::new(), vec![]);
+        return GenerateDdlResponse::default();
     }
 
     if validate_identifier(database, "Database name").is_err() {
-        return (String::new(), vec![]);
+        return GenerateDdlResponse::default();
     }
 
     if is_blank_identifier(&current.table_name) {
-        return (String::new(), vec![]);
+        return GenerateDdlResponse::default();
     }
 
     let mut warnings = collect_rename_warnings(current);
@@ -333,7 +333,10 @@ pub fn generate_alter_table_ddl(
 
     if clauses.is_empty() {
         warnings.shrink_to_fit();
-        return (String::new(), warnings);
+        return GenerateDdlResponse {
+            ddl: String::new(),
+            warnings,
+        };
     }
 
     let ddl = format!(
@@ -343,7 +346,7 @@ pub fn generate_alter_table_ddl(
         clauses.join(",\n  ")
     );
 
-    (ddl, warnings)
+    GenerateDdlResponse { ddl, warnings }
 }
 
 pub fn load_columns_query() -> &'static str {

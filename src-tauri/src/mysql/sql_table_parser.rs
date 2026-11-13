@@ -416,12 +416,11 @@ fn parse_single_table_ref(
     }
 
     // Read the first identifier (could be database or table)
-    let (first_ident, after_first) = read_identifier(chars, position);
-    if first_ident.is_none() {
+    let first_read = read_identifier(chars, position);
+    let Some(first_ident) = first_read.name else {
         return position;
-    }
-    let first_ident = first_ident.unwrap();
-    position = after_first;
+    };
+    position = first_read.end;
 
     let has_schema_dot = has_char_at(chars, position, '.');
     if !has_schema_dot {
@@ -433,8 +432,8 @@ fn parse_single_table_ref(
     }
 
     position += 1;
-    let (second_ident, after_second) = read_identifier(chars, position);
-    let Some(table_name) = second_ident else {
+    let second_read = read_identifier(chars, position);
+    let Some(table_name) = second_read.name else {
         tables.push(TableReference {
             database: None,
             table: first_ident,
@@ -445,14 +444,34 @@ fn parse_single_table_ref(
         database: Some(first_ident),
         table: table_name,
     });
-    skip_alias(chars, after_second)
+    skip_alias(chars, second_read.end)
+}
+
+struct IdentifierRead {
+    name: Option<String>,
+    end: usize,
+}
+
+impl IdentifierRead {
+    fn from_name(name: String, end: usize) -> Self {
+        Self {
+            name: non_empty_name(name),
+            end,
+        }
+    }
+
+    fn missing_at(position: usize) -> Self {
+        Self {
+            name: None,
+            end: position,
+        }
+    }
 }
 
 /// Read an identifier (plain or backtick-quoted) at position `i`.
-/// Returns (Some(name), position_after) or (None, i) if no identifier found.
-fn read_identifier(chars: &[char], position: usize) -> (Option<String>, usize) {
+fn read_identifier(chars: &[char], position: usize) -> IdentifierRead {
     if is_past_end(chars, position) {
-        return (None, position);
+        return IdentifierRead::missing_at(position);
     }
 
     if chars[position] == '`' {
@@ -461,10 +480,10 @@ fn read_identifier(chars: &[char], position: usize) -> (Option<String>, usize) {
     if is_identifier_start_char(chars[position]) {
         return read_plain_identifier(chars, position);
     }
-    (None, position)
+    IdentifierRead::missing_at(position)
 }
 
-fn read_backtick_identifier(chars: &[char], position: usize) -> (Option<String>, usize) {
+fn read_backtick_identifier(chars: &[char], position: usize) -> IdentifierRead {
     let mut pos = position + 1;
     let mut name = String::new();
     while !is_past_end(chars, pos) {
@@ -475,15 +494,15 @@ fn read_backtick_identifier(chars: &[char], position: usize) -> (Option<String>,
         }
         let is_escaped_backtick = has_char_at(chars, pos + 1, '`');
         if !is_escaped_backtick {
-            return (non_empty_name(name), pos + 1);
+            return IdentifierRead::from_name(name, pos + 1);
         }
         name.push('`');
         pos += 2;
     }
-    (non_empty_name(name), pos)
+    IdentifierRead::from_name(name, pos)
 }
 
-fn read_plain_identifier(chars: &[char], position: usize) -> (Option<String>, usize) {
+fn read_plain_identifier(chars: &[char], position: usize) -> IdentifierRead {
     let mut pos = position;
     let mut name = String::new();
     while chars
@@ -493,7 +512,7 @@ fn read_plain_identifier(chars: &[char], position: usize) -> (Option<String>, us
         name.push(chars[pos]);
         pos += 1;
     }
-    (non_empty_name(name), pos)
+    IdentifierRead::from_name(name, pos)
 }
 
 fn is_identifier_opening_char(character: char) -> bool {
@@ -522,8 +541,7 @@ fn skip_alias(chars: &[char], mut position: usize) -> usize {
         position += 2;
         position = skip_whitespace(chars, position);
         // Read alias name
-        let (_, after_alias) = read_identifier(chars, position);
-        return after_alias;
+        return read_identifier(chars, position).end;
     }
 
     let starts_implicit_alias = chars
@@ -531,8 +549,8 @@ fn skip_alias(chars: &[char], mut position: usize) -> usize {
         .is_some_and(|character| is_identifier_opening_char(*character));
     if starts_implicit_alias {
         // Peek at the identifier
-        let (maybe_alias, after_alias) = read_identifier(chars, position);
-        if let Some(alias) = maybe_alias {
+        let alias_read = read_identifier(chars, position);
+        if let Some(alias) = alias_read.name {
             let upper = alias.to_uppercase();
             // If it's a keyword, don't consume it as an alias
             if is_sql_keyword(&upper) {
@@ -540,7 +558,7 @@ fn skip_alias(chars: &[char], mut position: usize) -> usize {
             }
             // If it looks like it could be a JOIN keyword prefix, be careful
             // It's an alias — consume it
-            return after_alias;
+            return alias_read.end;
         }
     }
 

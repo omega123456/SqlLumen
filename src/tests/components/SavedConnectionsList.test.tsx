@@ -329,7 +329,7 @@ describe('SavedConnectionsList', () => {
       await user.clear(renameInput)
       await user.type(renameInput, 'NewName{Enter}')
 
-      const calls = ipc.calls('update_connection_group')
+      const calls = ipc.payloads('update_connection_group')
       expect(calls).toHaveLength(1)
       expect(calls[0]).toMatchObject({ id: 'grp-1', name: 'NewName' })
     })
@@ -357,7 +357,7 @@ describe('SavedConnectionsList', () => {
       await user.click(document.body)
 
       await waitFor(() => {
-        const calls = ipc.calls('update_connection_group')
+        const calls = ipc.payloads('update_connection_group')
         expect(calls).toHaveLength(1)
         expect(calls[0]).toMatchObject({ id: 'grp-1', name: 'BlurName' })
       })

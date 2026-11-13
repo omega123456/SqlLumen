@@ -81,7 +81,7 @@ describe('useJobProgressPolling', () => {
     renderPolling('job-3', fetchProgress)
 
     await act(async () => {})
-    expect(ipc.calls('log_frontend')).toContainEqual({
+    expect(ipc.payloads('log_frontend')).toContainEqual({
       level: 'error',
       message: '[test] Failed to poll progress: Error: IPC down',
     })

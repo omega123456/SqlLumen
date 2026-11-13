@@ -144,7 +144,7 @@ beforeEach(() => {
 // Helper: init a tab with data loaded
 async function setupTabWithData(tabId = 'tab-1') {
   const store = useTableDataStore.getState()
-  store.initTab(tabId, 'conn-1', 'mydb', 'users')
+  store.initTab(tabId, { connectionId: 'conn-1', database: 'mydb', table: 'users' })
   await store.fetchPage(tabId, 1)
   return useTableDataStore.getState().tabs[tabId]
 }
@@ -155,7 +155,9 @@ async function setupTabWithData(tabId = 'tab-1') {
 
 describe('useTableDataStore — initTab', () => {
   it('creates correct default state', () => {
-    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    useTableDataStore
+      .getState()
+      .initTab('tab-1', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
     const tab = useTableDataStore.getState().tabs['tab-1']
 
     expect(tab).toBeDefined()
@@ -182,7 +184,9 @@ describe('useTableDataStore — initTab', () => {
   })
 
   it('should have scrollRow and scrollCol fields in tab state', () => {
-    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    useTableDataStore
+      .getState()
+      .initTab('tab-1', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
     const tab = useTableDataStore.getState().tabs['tab-1']
 
     expect(tab.scrollRow).toBe(0)
@@ -195,7 +199,7 @@ describe('useTableDataStore — column jumps', () => {
     const store = useTableDataStore.getState()
 
     store.requestColumnJump('tab-1', 'name')
-    store.initTab('tab-1', 'conn-1', 'mydb', 'users')
+    store.initTab('tab-1', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
     expect(useTableDataStore.getState().columnJumpRequests['tab-1']).toEqual({
       columnKey: 'name',
       nonce: 1,
@@ -269,7 +273,9 @@ describe('useTableDataStore — setScrollCell', () => {
 
 describe('useTableDataStore — loadTableData', () => {
   it('calls fetchTableData and populates state', async () => {
-    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    useTableDataStore
+      .getState()
+      .initTab('tab-1', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
     await useTableDataStore.getState().loadTableData('tab-1')
 
     const tab = useTableDataStore.getState().tabs['tab-1']
@@ -285,7 +291,9 @@ describe('useTableDataStore — loadTableData', () => {
   })
 
   it('resets editState and errors on load', async () => {
-    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    useTableDataStore
+      .getState()
+      .initTab('tab-1', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
     // Set some state that should be reset
     useTableDataStore.setState((s) => ({
       tabs: {
@@ -428,7 +436,9 @@ describe('useTableDataStore — fetchPage', () => {
       throw new Error('Fetch failed')
     })
 
-    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    useTableDataStore
+      .getState()
+      .initTab('tab-1', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
     await useTableDataStore.getState().fetchPage('tab-1', 1)
 
     const tab = useTableDataStore.getState().tabs['tab-1']
@@ -456,7 +466,9 @@ describe('useTableDataStore — fetchPage', () => {
         })
     )
 
-    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    useTableDataStore
+      .getState()
+      .initTab('tab-1', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
     const promise = useTableDataStore.getState().fetchPage('tab-1', 1)
 
     // Clean up the tab mid-flight
@@ -478,7 +490,9 @@ describe('useTableDataStore — fetchPage', () => {
       executionTimeMs: 12,
     }))
 
-    useTableDataStore.getState().initTab('tab-bool', 'conn-1', 'mydb', 'users')
+    useTableDataStore
+      .getState()
+      .initTab('tab-bool', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
     await useTableDataStore.getState().fetchPage('tab-bool', 1)
 
     expect(useTableDataStore.getState().tabs['tab-bool'].rows).toEqual([[1, 1]])
@@ -494,7 +508,9 @@ describe('useTableDataStore — fetchPage', () => {
         })
     )
 
-    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    useTableDataStore
+      .getState()
+      .initTab('tab-1', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
 
     const fetchPromise = useTableDataStore.getState().fetchPage('tab-1', 1)
     useTableDataStore.getState().markTableDataSurfaceActive('tab-1')
@@ -515,11 +531,13 @@ describe('useTableDataStore — fetchPage', () => {
 
 describe('useTableDataStore — backend cache lifecycle', () => {
   it('evicts backend cache when cleaning up a tab', async () => {
-    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    useTableDataStore
+      .getState()
+      .initTab('tab-1', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
 
     useTableDataStore.getState().cleanupTab('tab-1')
 
-    expect(ipc.calls('evict_table_data')).toContainEqual({
+    expect(ipc.payloads('evict_table_data')).toContainEqual({
       connectionId: 'conn-1',
       tabId: 'tab-1',
     })
@@ -530,12 +548,14 @@ describe('useTableDataStore — backend cache lifecycle', () => {
     ipc.override('evict_table_data', () => {
       throw new Error('evict failed')
     })
-    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    useTableDataStore
+      .getState()
+      .initTab('tab-1', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
 
     useTableDataStore.getState().cleanupTab('tab-1')
 
     await vi.waitFor(() => {
-      expect(ipc.calls('log_frontend')).toContainEqual({
+      expect(ipc.payloads('log_frontend')).toContainEqual({
         level: 'warn',
         message: 'Table data cache eviction failed for tab tab-1: evict failed',
       })
@@ -628,7 +648,7 @@ describe('useTableDataStore — backend cache lifecycle', () => {
     const result = await useTableDataStore.getState().saveCurrentRow('tab-1')
 
     expect(result).toBe(true)
-    expect(ipc.calls('evict_table_data')).toContainEqual({
+    expect(ipc.payloads('evict_table_data')).toContainEqual({
       connectionId: 'conn-1',
       tabId: 'tab-1',
     })
@@ -643,7 +663,7 @@ describe('useTableDataStore — backend cache lifecycle', () => {
 
     await useTableDataStore.getState().deleteRow('tab-1', { id: 1 })
 
-    expect(ipc.calls('evict_table_data')).toContainEqual({
+    expect(ipc.payloads('evict_table_data')).toContainEqual({
       connectionId: 'conn-1',
       tabId: 'tab-1',
     })
@@ -765,7 +785,7 @@ describe('useTableDataStore — frontend row residency lifecycle', () => {
       isActive: true,
       inactiveSince: null,
     })
-    expect(ipc.calls('restore_table_data_cache')).toContainEqual({
+    expect(ipc.payloads('restore_table_data_cache')).toContainEqual({
       connectionId: 'conn-1',
       tabId: 'tab-1',
       database: 'mydb',
@@ -811,7 +831,9 @@ describe('useTableDataStore — frontend row residency lifecycle', () => {
 
   it('keeps a hidden fetch completion inactive and immediately starts the TTL lifecycle', async () => {
     vi.useFakeTimers()
-    useTableDataStore.getState().initTab('tab-hidden', 'conn-1', 'mydb', 'users')
+    useTableDataStore
+      .getState()
+      .initTab('tab-hidden', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
     useWorkspaceStore.setState({
       tabsByConnection: {
         'conn-1': [
@@ -861,7 +883,9 @@ describe('useTableDataStore — frontend row residency lifecycle', () => {
   })
 
   it('marks a fetch completion active when its connection is the globally visible connection', async () => {
-    useTableDataStore.getState().initTab('tab-conn-visible', 'conn-1', 'mydb', 'users')
+    useTableDataStore
+      .getState()
+      .initTab('tab-conn-visible', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
     resetWorkspaceStore({ visibleConnectionSessionId: 'conn-1' })
     useWorkspaceStore.setState({
       tabsByConnection: {
@@ -892,7 +916,9 @@ describe('useTableDataStore — frontend row residency lifecycle', () => {
   })
 
   it('keeps a fetch completion inactive when the tab is selected but its connection is hidden', async () => {
-    useTableDataStore.getState().initTab('tab-conn-hidden', 'conn-1', 'mydb', 'users')
+    useTableDataStore
+      .getState()
+      .initTab('tab-conn-hidden', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
     // The tab is the selected workspace tab for conn-1, but conn-2 is the
     // globally visible connection, so this completion must stay inactive.
     resetWorkspaceStore({ visibleConnectionSessionId: 'conn-2' })
@@ -969,9 +995,11 @@ describe('useTableDataStore — updateCellValue', () => {
   it('syncCellValue updates the underlying row immediately for existing rows', async () => {
     await setupTabWithData()
 
-    useTableDataStore
-      .getState()
-      .syncCellValue('tab-1', { id: 1, name: 'Alice', __rowIndex: 0 }, 'name', 'Updated')
+    useTableDataStore.getState().syncCellValue('tab-1', {
+      rowData: { id: 1, name: 'Alice', __rowIndex: 0 },
+      column: 'name',
+      value: 'Updated',
+    })
 
     expect(useTableDataStore.getState().tabs['tab-1'].rows[0]).toEqual([1, 'Updated'])
   })
@@ -981,9 +1009,12 @@ describe('useTableDataStore — updateCellValue', () => {
 
     useTableDataStore.getState().startEditing('tab-1', { id: 1 }, { id: 1, name: 'Alice' })
 
-    useTableDataStore
-      .getState()
-      .syncCellValue('tab-1', { id: 10, name: 'Alice', __rowIndex: 0 }, 'id', 10, { id: 1 })
+    useTableDataStore.getState().syncCellValue('tab-1', {
+      rowData: { id: 10, name: 'Alice', __rowIndex: 0 },
+      column: 'id',
+      value: 10,
+      rowKeyOverride: { id: 1 },
+    })
 
     expect(useTableDataStore.getState().tabs['tab-1'].rows[0]).toEqual([10, 'Alice'])
     expect(useTableDataStore.getState().tabs['tab-1'].editState?.rowKey).toEqual({ id: 10 })
@@ -999,14 +1030,14 @@ describe('useTableDataStore — saveCurrentRow (UPDATE path)', () => {
 
     await useTableDataStore.getState().saveCurrentRow('tab-1')
 
-    const updateCalls = ipc.calls('update_table_row')
+    const updateCalls = ipc.payloads('update_table_row')
     expect(updateCalls.length).toBeGreaterThan(0)
     const lastCall = updateCalls[updateCalls.length - 1] as Record<string, unknown>
     expect(lastCall?.connectionId).toBe('conn-1')
     expect(lastCall?.database).toBe('mydb')
     expect(lastCall?.table).toBe('users')
     expect(lastCall?.primaryKeyColumns).toEqual(['id'])
-    expect(lastCall?.originalPkValues).toEqual({ id: 1 })
+    expect(lastCall?.originalPrimaryKeyValues).toEqual({ id: 1 })
     expect(lastCall?.updatedValues).toEqual({ name: 'Updated' })
 
     const tab = useTableDataStore.getState().tabs['tab-1']
@@ -1039,7 +1070,7 @@ describe('useTableDataStore — saveCurrentRow (UPDATE path)', () => {
 
     await useTableDataStore.getState().saveCurrentRow('tab-1')
 
-    expect(ipc.calls('update_table_row').length).toBe(0)
+    expect(ipc.payloads('update_table_row').length).toBe(0)
     expect(useTableDataStore.getState().tabs['tab-1'].editState).toBeNull()
   })
 })
@@ -1054,7 +1085,7 @@ describe('useTableDataStore — saveCurrentRow (INSERT path)', () => {
 
     await useTableDataStore.getState().saveCurrentRow('tab-1')
 
-    const insertCalls = ipc.calls('insert_table_row')
+    const insertCalls = ipc.payloads('insert_table_row')
     expect(insertCalls.length).toBeGreaterThan(0)
     const lastCall = insertCalls[insertCalls.length - 1] as Record<string, unknown>
     expect(lastCall?.connectionId).toBe('conn-1')
@@ -1074,7 +1105,9 @@ describe('useTableDataStore — saveCurrentRow (INSERT path)', () => {
       ['is_admin', true],
     ])
 
-    useTableDataStore.getState().initTab('tab-insert-bool', 'conn-1', 'mydb', 'users')
+    useTableDataStore
+      .getState()
+      .initTab('tab-insert-bool', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
     useTableDataStore.setState((state) => ({
       tabs: {
         ...state.tabs,
@@ -1107,7 +1140,7 @@ describe('useTableDataStore — saveCurrentRow (INSERT path)', () => {
 
     await useTableDataStore.getState().saveCurrentRow('tab-1')
 
-    const insertCalls = ipc.calls('insert_table_row')
+    const insertCalls = ipc.payloads('insert_table_row')
     expect(insertCalls.length).toBeGreaterThan(0)
     const lastCall = insertCalls[insertCalls.length - 1] as Record<string, unknown>
     expect(lastCall?.values).toEqual({ name: 'Alice' })
@@ -1175,7 +1208,7 @@ describe('useTableDataStore — saveCurrentRow (INSERT path)', () => {
 
     await useTableDataStore.getState().saveCurrentRow('tab-1')
 
-    const insertCalls = ipc.calls('insert_table_row')
+    const insertCalls = ipc.payloads('insert_table_row')
     expect(insertCalls.length).toBeGreaterThan(0)
     const lastCall = insertCalls[insertCalls.length - 1] as Record<string, unknown>
     expect(lastCall?.values).toEqual({ tenant_id: 11, user_id: 2, name: 'Alice' })
@@ -1234,9 +1267,12 @@ describe('useTableDataStore — discardCurrentRow', () => {
     await setupTabWithData()
     useTableDataStore.getState().startEditing('tab-1', { id: 1 }, { id: 1, name: 'Alice' })
     useTableDataStore.getState().setSelectedRow('tab-1', { id: 1 })
-    useTableDataStore
-      .getState()
-      .syncCellValue('tab-1', { id: 10, name: 'Alice', __rowIndex: 0 }, 'id', 10, { id: 1 })
+    useTableDataStore.getState().syncCellValue('tab-1', {
+      rowData: { id: 10, name: 'Alice', __rowIndex: 0 },
+      column: 'id',
+      value: 10,
+      rowKeyOverride: { id: 1 },
+    })
     useTableDataStore.getState().updateCellValue('tab-1', 'id', 10)
 
     useTableDataStore.getState().discardCurrentRow('tab-1')
@@ -1415,14 +1451,14 @@ describe('useTableDataStore — deleteRow (existing row)', () => {
 
     await useTableDataStore.getState().deleteRow('tab-1', { id: 1 })
 
-    const deleteCalls = ipc.calls('delete_table_row')
+    const deleteCalls = ipc.payloads('delete_table_row')
     expect(deleteCalls.length).toBeGreaterThan(0)
     const lastCall = deleteCalls[deleteCalls.length - 1] as Record<string, unknown>
     expect(lastCall?.connectionId).toBe('conn-1')
     expect(lastCall?.database).toBe('mydb')
     expect(lastCall?.table).toBe('users')
-    expect(lastCall?.pkColumns).toEqual(['id'])
-    expect(lastCall?.pkValues).toEqual({ id: 1 })
+    expect(lastCall?.primaryKeyColumns).toEqual(['id'])
+    expect(lastCall?.primaryKeyValues).toEqual({ id: 1 })
 
     const tab = useTableDataStore.getState().tabs['tab-1']
     expect(tab.rows).toEqual([[2, 'Bob']])
@@ -1438,7 +1474,7 @@ describe('useTableDataStore — deleteRow (new row)', () => {
 
     await useTableDataStore.getState().deleteRow('tab-1', { __tempId: tempId })
 
-    expect(ipc.calls('delete_table_row').length).toBe(0)
+    expect(ipc.payloads('delete_table_row').length).toBe(0)
     const tab = useTableDataStore.getState().tabs['tab-1']
     expect(tab.rows.length).toBe(rowCountBefore - 1)
   })
@@ -1480,7 +1516,7 @@ describe('useTableDataStore — confirmNavigationSave', () => {
 
     await useTableDataStore.getState().confirmNavigationSave('tab-1')
 
-    expect(ipc.calls('update_table_row').length).toBeGreaterThan(0)
+    expect(ipc.payloads('update_table_row').length).toBeGreaterThan(0)
     await expectToast('success', 'Row saved')
     expect(action).toHaveBeenCalledTimes(1)
     expect(useTableDataStore.getState().tabs['tab-1'].pendingNavigationAction).toBeNull()
@@ -1522,7 +1558,7 @@ describe('useTableDataStore — confirmNavigationSave', () => {
     await useTableDataStore.getState().confirmNavigationSave('tab-1')
 
     await expectToast('error', '')
-    expect(ipc.calls('update_table_row').length).toBe(0)
+    expect(ipc.payloads('update_table_row').length).toBe(0)
     expect(action).not.toHaveBeenCalled()
     expect(useTableDataStore.getState().tabs['tab-1'].pendingNavigationAction).not.toBeNull()
   })
@@ -1594,7 +1630,7 @@ describe('useTableDataStore — commitEditingRowIfNeeded', () => {
 
     await useTableDataStore.getState().commitEditingRowIfNeeded('tab-1', { id: 1 })
 
-    expect(ipc.calls('update_table_row').length).toBe(0)
+    expect(ipc.payloads('update_table_row').length).toBe(0)
     // editState should remain
     expect(useTableDataStore.getState().tabs['tab-1'].editState).not.toBeNull()
   })
@@ -1606,7 +1642,7 @@ describe('useTableDataStore — commitEditingRowIfNeeded', () => {
 
     await useTableDataStore.getState().commitEditingRowIfNeeded('tab-1', { id: 2 })
 
-    expect(ipc.calls('update_table_row').length).toBeGreaterThan(0)
+    expect(ipc.payloads('update_table_row').length).toBeGreaterThan(0)
     // editState should be cleared on success
     expect(useTableDataStore.getState().tabs['tab-1'].editState).toBeNull()
   })
@@ -1633,7 +1669,7 @@ describe('useTableDataStore — commitEditingRowIfNeeded', () => {
 
     await useTableDataStore.getState().commitEditingRowIfNeeded('tab-1', { id: 2 })
 
-    expect(ipc.calls('update_table_row').length).toBe(0)
+    expect(ipc.payloads('update_table_row').length).toBe(0)
   })
 
   it('does nothing when no modifications', async () => {
@@ -1643,7 +1679,7 @@ describe('useTableDataStore — commitEditingRowIfNeeded', () => {
 
     await useTableDataStore.getState().commitEditingRowIfNeeded('tab-1', { id: 2 })
 
-    expect(ipc.calls('update_table_row').length).toBe(0)
+    expect(ipc.payloads('update_table_row').length).toBe(0)
   })
 })
 
@@ -1774,7 +1810,9 @@ describe('useTableDataStore — refreshData', () => {
 
 describe('useTableDataStore — FK metadata in initTab', () => {
   it('initializes foreignKeys to an empty array', () => {
-    useTableDataStore.getState().initTab('tab-fk', 'conn-1', 'mydb', 'users')
+    useTableDataStore
+      .getState()
+      .initTab('tab-fk', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
     const tab = useTableDataStore.getState().tabs['tab-fk']
     expect(tab.foreignKeys).toEqual([])
   })
@@ -1795,7 +1833,9 @@ describe('useTableDataStore — FK metadata in loadTableData', () => {
     ]
     ipc.override('get_table_foreign_keys', () => mockFKs)
 
-    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    useTableDataStore
+      .getState()
+      .initTab('tab-1', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
     await useTableDataStore.getState().loadTableData('tab-1')
 
     // Wait for the fire-and-forget FK promise to settle
@@ -1812,7 +1852,7 @@ describe('useTableDataStore — FK metadata in loadTableData', () => {
       ])
     })
 
-    const fkCalls = ipc.calls('get_table_foreign_keys')
+    const fkCalls = ipc.payloads('get_table_foreign_keys')
     expect(fkCalls.length).toBeGreaterThan(0)
     const lastCall = fkCalls[fkCalls.length - 1] as Record<string, unknown>
     expect(lastCall?.connectionId).toBe('conn-1')
@@ -1852,7 +1892,9 @@ describe('useTableDataStore — FK metadata in loadTableData', () => {
     ]
     ipc.override('get_table_foreign_keys', () => mockFKs)
 
-    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    useTableDataStore
+      .getState()
+      .initTab('tab-1', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
     await useTableDataStore.getState().loadTableData('tab-1')
 
     await vi.waitFor(() => {
@@ -1875,12 +1917,14 @@ describe('useTableDataStore — FK metadata in loadTableData', () => {
       throw new Error('FK fetch error')
     })
 
-    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    useTableDataStore
+      .getState()
+      .initTab('tab-1', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
     await useTableDataStore.getState().loadTableData('tab-1')
 
     // Wait for the fire-and-forget FK promise to settle (catch handler)
     await vi.waitFor(() => {
-      const logCalls = ipc.calls('log_frontend')
+      const logCalls = ipc.payloads('log_frontend')
       const hasWarning = logCalls.some(
         (call) =>
           (call as Record<string, unknown>)?.level === 'warn' &&
@@ -1917,7 +1961,9 @@ describe('useTableDataStore — FK metadata in loadTableData', () => {
     ]
     ipc.override('get_table_foreign_keys', () => mockFKs)
 
-    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    useTableDataStore
+      .getState()
+      .initTab('tab-1', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
     await useTableDataStore.getState().loadTableData('tab-1')
 
     // Wait for FK data to be stored
@@ -1977,7 +2023,9 @@ describe('useTableDataStore — TINYINT boolean normalization', () => {
     }
     ipc.override('fetch_table_data', () => responseWithBooleans)
 
-    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'flags')
+    useTableDataStore
+      .getState()
+      .initTab('tab-1', { connectionId: 'conn-1', database: 'mydb', table: 'flags' })
     await useTableDataStore.getState().fetchPage('tab-1', 1)
 
     const tab = useTableDataStore.getState().tabs['tab-1']
@@ -2027,7 +2075,9 @@ describe('useTableDataStore — TINYINT boolean normalization', () => {
     }
     ipc.override('fetch_table_data', () => responseWithControlStrings)
 
-    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'flags')
+    useTableDataStore
+      .getState()
+      .initTab('tab-1', { connectionId: 'conn-1', database: 'mydb', table: 'flags' })
     await useTableDataStore.getState().fetchPage('tab-1', 1)
 
     const tab = useTableDataStore.getState().tabs['tab-1']
@@ -2243,7 +2293,7 @@ describe('useTableDataStore — setCheckedRowKeys', () => {
 describe('useTableDataStore — deleteRows (bulk)', () => {
   it('deletes multiple persisted rows via IPC and removes them from the grid', async () => {
     const deleteCalls: unknown[] = []
-    ipc.override('delete_table_row', (args) => {
+    ipc.overridePayload('delete_table_row', (args) => {
       deleteCalls.push(args)
       return undefined
     })
@@ -2262,7 +2312,7 @@ describe('useTableDataStore — deleteRows (bulk)', () => {
 
   it('returns 0 and performs no IPC when given an empty list', async () => {
     const deleteCalls: unknown[] = []
-    ipc.override('delete_table_row', (args) => {
+    ipc.overridePayload('delete_table_row', (args) => {
       deleteCalls.push(args)
       return undefined
     })
@@ -2303,7 +2353,7 @@ describe('useTableDataStore — cancelLoad', () => {
 
     await useTableDataStore.getState().cancelLoad('tab-1')
 
-    expect(ipc.calls('cancel_query').length).toBe(0)
+    expect(ipc.payloads('cancel_query').length).toBe(0)
     expect(useTableDataStore.getState().tabs['tab-1'].isCancelling).toBe(false)
   })
 
@@ -2318,7 +2368,9 @@ describe('useTableDataStore — cancelLoad', () => {
     )
     ipc.override('cancel_query', () => true)
 
-    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    useTableDataStore
+      .getState()
+      .initTab('tab-1', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
     const fetchPromise = useTableDataStore.getState().fetchPage('tab-1', 1)
 
     // The fetch is in flight.
@@ -2327,8 +2379,8 @@ describe('useTableDataStore — cancelLoad', () => {
     await useTableDataStore.getState().cancelLoad('tab-1')
 
     // Cancel was issued for the table-data tab, flag set, success toast shown.
-    expect(ipc.calls('cancel_query')).toHaveLength(1)
-    expect(ipc.calls('cancel_query')[0]).toMatchObject({
+    expect(ipc.payloads('cancel_query')).toHaveLength(1)
+    expect(ipc.payloads('cancel_query')[0]).toMatchObject({
       connectionId: 'conn-1',
       tabId: 'tab-1',
     })
@@ -2357,12 +2409,14 @@ describe('useTableDataStore — cancelLoad', () => {
     // Query already finished server-side: cancel finds nothing to kill.
     ipc.override('cancel_query', () => false)
 
-    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    useTableDataStore
+      .getState()
+      .initTab('tab-1', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
     const fetchPromise = useTableDataStore.getState().fetchPage('tab-1', 1)
 
     await useTableDataStore.getState().cancelLoad('tab-1')
 
-    expect(ipc.calls('cancel_query')).toHaveLength(1)
+    expect(ipc.payloads('cancel_query')).toHaveLength(1)
     expect(useTableDataStore.getState().tabs['tab-1'].isCancelling).toBe(false)
 
     // The fetch still completes normally afterwards.
@@ -2378,13 +2432,15 @@ describe('useTableDataStore — cancelLoad', () => {
     ipc.override('fetch_table_data', () => new Promise<TableDataResponse>(() => {}))
     ipc.override('cancel_query', () => true)
 
-    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    useTableDataStore
+      .getState()
+      .initTab('tab-1', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
     void useTableDataStore.getState().fetchPage('tab-1', 1)
 
     await useTableDataStore.getState().cancelLoad('tab-1')
     // Second invocation is a no-op because isCancelling is already set.
     await useTableDataStore.getState().cancelLoad('tab-1')
 
-    expect(ipc.calls('cancel_query')).toHaveLength(1)
+    expect(ipc.payloads('cancel_query')).toHaveLength(1)
   })
 })

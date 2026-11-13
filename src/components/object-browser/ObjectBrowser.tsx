@@ -23,6 +23,7 @@ import { computeScopedFilterMatchIds, isNodeUnderFilterScope } from '../../lib/t
 import { FavouritesView } from '../favourites/FavouritesView'
 import styles from './ObjectBrowser.module.css'
 import { isBlank } from '../../lib/value-checks'
+import { elementOf } from '../../lib/input-events'
 
 const SqlDumpDialog = lazy(() => import('../dialogs/SqlDumpDialog'))
 const CopyToHostDialog = lazy(() => import('../dialogs/CopyToHostDialog'))
@@ -109,7 +110,7 @@ function hasCommandModifier(event: React.KeyboardEvent): boolean {
   return event.ctrlKey || event.altKey || event.metaKey
 }
 
-function isEditableTarget(target: HTMLElement | null): boolean {
+function isEditableTarget(target: Element | null): boolean {
   if (!target) return true
   return target.closest(EDITABLE_TARGET_SELECTOR) !== null
 }
@@ -117,7 +118,7 @@ function isEditableTarget(target: HTMLElement | null): boolean {
 function shouldIgnoreTreeKey(event: React.KeyboardEvent<HTMLDivElement>): boolean {
   if (event.defaultPrevented) return true
   if (hasCommandModifier(event)) return true
-  return isEditableTarget(event.target as HTMLElement | null)
+  return isEditableTarget(elementOf(event.target))
 }
 
 function typeAheadFilterValue(key: string, filterText: string): string | null {
@@ -534,7 +535,13 @@ export function ObjectBrowser({
       }
 
       const dbName = node.databaseName ?? parseNodeId(nodeId).database
-      openObjectDefaultTab(connectionId, dbName, node.type as ObjectType, node.label, node.label)
+      openObjectDefaultTab({
+        connectionId: connectionId,
+        database: dbName,
+        objectType: node.type as ObjectType,
+        name: node.label,
+        label: node.label,
+      })
     },
     [connectionId, nodes]
   )

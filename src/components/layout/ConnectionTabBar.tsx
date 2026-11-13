@@ -29,6 +29,7 @@ import { TabContextMenu } from '../shared/TabContextMenu'
 import { usePointerTabDrag } from '../shared/use-pointer-tab-drag'
 import { dispatchDismissAll } from '../../lib/context-menu-events'
 import { getContextMenuPortalRoot } from '../../lib/context-menu-utils'
+import type { ContextMenuOpenPoint } from '../../lib/context-menu-utils'
 import { isMiddleMouseButton } from '../../lib/input-events'
 import styles from './ConnectionTabBar.module.css'
 
@@ -289,19 +290,13 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
     }
   }
 
-  const openTabContextMenu = (
-    sessionId: string,
-    pointerX: number,
-    pointerY: number,
-    anchor: Element | null,
-    invokerTabId: string
-  ) => {
+  const openTabContextMenu = (sessionId: string, { x, y, anchor }: ContextMenuOpenPoint) => {
     dispatchDismissAll()
     setContextMenu({
       sessionId: sessionId,
-      x: pointerX,
-      y: pointerY,
-      invokerTabId: invokerTabId,
+      x: x,
+      y: y,
+      invokerTabId: sessionId,
       portalRoot: getContextMenuPortalRoot(anchor),
     })
   }
@@ -338,27 +333,23 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
                 onPointerDown={(event) => startPointerDrag(connection.id, event)}
                 onContextMenu={(event) => {
                   event.preventDefault()
-                  openTabContextMenu(
-                    connection.id,
-                    event.clientX,
-                    event.clientY,
-                    event.currentTarget,
-                    connection.id
-                  )
+                  openTabContextMenu(connection.id, {
+                    x: event.clientX,
+                    y: event.clientY,
+                    anchor: event.currentTarget,
+                  })
                 }}
                 onKeyDown={(event) => {
                   if (!isContextMenuKey(event)) {
                     return
                   }
                   event.preventDefault()
-                  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-                  openTabContextMenu(
-                    connection.id,
-                    rect.left,
-                    rect.bottom,
-                    event.currentTarget,
-                    connection.id
-                  )
+                  const rect = event.currentTarget.getBoundingClientRect()
+                  openTabContextMenu(connection.id, {
+                    x: rect.left,
+                    y: rect.bottom,
+                    anchor: event.currentTarget,
+                  })
                 }}
                 dragging={draggingTabId === connection.id}
                 dropIndicator={dropIndicatorFor(connection.id)}

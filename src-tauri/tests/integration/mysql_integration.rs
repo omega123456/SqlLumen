@@ -593,12 +593,14 @@ async fn insert_table_row_impl_refetches_unsigned_bigint_autoincrement_pk() {
     let metadata_cache = MetadataCache::new();
     let insert_outcome = insert_table_row_impl(
         &pool,
-        "mysql-test-connection",
         &metadata_cache,
-        &db_name,
-        &table,
-        &values,
-        &pk,
+        &sqllumen_lib::mysql::table_data::InsertTableRowRequest {
+            connection_id: "mysql-test-connection".to_string(),
+            database: db_name.to_string(),
+            table: table.to_string(),
+            values: values.clone(),
+            primary_key_info: pk.clone(),
+        },
     )
     .await;
 

@@ -11,7 +11,6 @@ import { useCallback, useMemo } from 'react'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { useQueryStore, getActiveResult, isEditableSelectSql } from '../../stores/query-store'
 import { useConnectionStore } from '../../stores/connection-store'
-import type { QueryTableEditInfo } from '../../types/schema'
 import styles from './EditModeDropdown.module.css'
 import { hasResultColumns } from '../../lib/query-result-column-utils'
 
@@ -45,8 +44,7 @@ export function EditModeDropdown({ tabId, connectionId }: EditModeDropdownProps)
     (state) => state.activeConnections[connectionId]?.profile?.readOnly ?? false
   )
 
-  const editTableMetadata = activeResult.editTableMetadata ?? {}
-  const detectedTables = Object.values(editTableMetadata) as QueryTableEditInfo[]
+  const detectedTables = Object.values(activeResult.editTableMetadata)
   const isAnalyzingQuery = activeResult.isAnalyzingQuery
   const editMode = activeResult.editMode
   const editState = activeResult.editState

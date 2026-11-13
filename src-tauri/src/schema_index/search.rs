@@ -229,16 +229,57 @@ impl Default for SearchConfigExt {
     }
 }
 
-fn normalize_result_ddl(
-    db_name: &str,
-    table_name: &str,
-    chunk_type: &str,
-    ddl_text: String,
-) -> String {
-    if chunk_type != "table" {
+#[derive(Debug, Clone, Copy)]
+pub struct SearchQueries<'a> {
+    pub connection_id: &'a str,
+    pub query_texts: &'a [String],
+    pub query_vectors: &'a [Vec<f32>],
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SearchLimits {
+    pub top_k_per_query: usize,
+    pub top_n_results: usize,
+    pub max_foreign_key_chunks: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct GraphExpansion<'a> {
+    pub connection_id: &'a str,
+    pub graph_depth: u32,
+    pub max_foreign_key_chunks: u32,
+}
+
+struct ChunkIdentity<'a> {
+    db_name: &'a str,
+    table_name: &'a str,
+    chunk_type: &'a str,
+}
+
+struct ScoredTable<'a> {
+    db_name: &'a str,
+    table_name: &'a str,
+    score: f64,
+}
+
+#[derive(Clone, Copy)]
+struct LexicalSignals<'a> {
+    direct_table_candidates: &'a HashSet<QualifiedIdentifier>,
+    identifier_tokens: &'a HashSet<String>,
+    segment_df: &'a HashMap<String, usize>,
+    total_tables: usize,
+}
+
+struct NormalizedTableName<'a> {
+    db_name: &'a str,
+    table_name: &'a str,
+}
+
+fn normalize_result_ddl(chunk: &ChunkIdentity<'_>, ddl_text: String) -> String {
+    if chunk.chunk_type != "table" {
         return ddl_text;
     }
-    normalize_table_ddl(db_name, table_name, &ddl_text)
+    normalize_table_ddl(chunk.db_name, chunk.table_name, &ddl_text)
 }
 
 /// Map a row from `schema_index_chunks` (columns: id, chunk_key, db_name,
@@ -255,7 +296,14 @@ fn row_to_search_result(row: &rusqlite::Row<'_>, score: f64) -> Result<SearchRes
         db_name: db_name.clone(),
         table_name: table_name.clone(),
         chunk_type: chunk_type.clone(),
-        ddl_text: normalize_result_ddl(&db_name, &table_name, &chunk_type, ddl_text),
+        ddl_text: normalize_result_ddl(
+            &ChunkIdentity {
+                db_name: &db_name,
+                table_name: &table_name,
+                chunk_type: &chunk_type,
+            },
+            ddl_text,
+        ),
         ref_db_name: row.get(6)?,
         ref_table_name: row.get(7)?,
         score,
@@ -266,10 +314,11 @@ fn row_to_search_result(row: &rusqlite::Row<'_>, score: f64) -> Result<SearchRes
 fn load_table_chunk(
     conn: &Connection,
     connection_id: &str,
-    db: &str,
-    table: &str,
-    score: f64,
+    table: &ScoredTable<'_>,
 ) -> Result<Vec<SearchResult>> {
+    let db = table.db_name;
+    let score = table.score;
+    let table = table.table_name;
     let mut stmt = conn.prepare(
         "SELECT id, chunk_key, db_name, table_name, chunk_type, ddl_text, ref_db_name, ref_table_name
          FROM schema_index_chunks
@@ -292,56 +341,28 @@ fn load_table_chunk(
 /// * `max_fk_chunks` — cap on additional FK chunks from fan-out (typically 20)
 pub fn multi_query_search(
     conn: &Connection,
-    connection_id: &str,
-    query_vectors: &[Vec<f32>],
-    top_k_per_query: usize,
-    top_n_results: usize,
-    max_foreign_key_chunks: usize,
+    queries: &SearchQueries<'_>,
+    limits: SearchLimits,
 ) -> Result<Vec<SearchResult>> {
-    multi_query_search_with_query_texts(
-        conn,
-        connection_id,
-        &[],
-        query_vectors,
-        top_k_per_query,
-        top_n_results,
-        max_foreign_key_chunks,
-    )
+    let config = SearchConfig {
+        top_k_per_query: limits.top_k_per_query,
+        top_n_results: limits.top_n_results,
+        max_fk_chunks: limits.max_foreign_key_chunks,
+        ..SearchConfig::default()
+    };
+    multi_query_search_configured(conn, queries, &config)
 }
 
-/// Run the full multi-query vector search pipeline with optional lexical boosts
-/// derived from the original query text.
-pub fn multi_query_search_with_query_texts(
+pub fn multi_query_search_configured(
     conn: &Connection,
-    connection_id: &str,
-    query_texts: &[String],
-    query_vectors: &[Vec<f32>],
-    top_k_per_query: usize,
-    top_n_results: usize,
-    max_foreign_key_chunks: usize,
+    queries: &SearchQueries<'_>,
+    config: &SearchConfig,
 ) -> Result<Vec<SearchResult>> {
-    multi_query_search_configured(
-        conn,
+    let SearchQueries {
         connection_id,
         query_texts,
         query_vectors,
-        &SearchConfig {
-            top_k_per_query,
-            top_n_results,
-            max_fk_chunks: max_foreign_key_chunks,
-            lexical_weight: 0.2,
-        },
-    )
-}
-
-/// Run the full multi-query vector search pipeline with full configuration.
-pub fn multi_query_search_configured(
-    conn: &Connection,
-    connection_id: &str,
-    query_texts: &[String],
-    query_vectors: &[Vec<f32>],
-    config: &SearchConfig,
-) -> Result<Vec<SearchResult>> {
+    } = *queries;
     tracing::debug!(
         connection_id = %connection_id,
         query_vector_count = query_vectors.len(),
@@ -449,14 +470,13 @@ pub fn multi_query_search_configured(
 
     let has_lexical_signals = !direct_table_candidates.is_empty() || !identifier_tokens.is_empty();
     if has_lexical_signals {
-        let lexical_matches = collect_lexical_table_matches(
-            conn,
-            connection_id,
-            &direct_table_candidates,
-            &identifier_tokens,
-            &segment_df,
+        let signals = LexicalSignals {
+            direct_table_candidates: &direct_table_candidates,
+            identifier_tokens: &identifier_tokens,
+            segment_df: &segment_df,
             total_tables,
-        )?;
+        };
+        let lexical_matches = collect_lexical_table_matches(conn, connection_id, &signals)?;
 
         // Blend: for chunks with RRF, add λ·lexical; for lexical-only, use λ·lexical
         for (chunk_id, blended_score) in best_scores.iter_mut() {
@@ -648,19 +668,10 @@ pub fn multi_query_search_configured(
 /// Used when re-ranking needs to happen between base search and graph walk.
 pub fn multi_query_search_with_hints(
     conn: &Connection,
-    connection_id: &str,
-    query_texts: &[String],
-    query_vectors: &[Vec<f32>],
+    queries: &SearchQueries<'_>,
     config: &SearchConfigExt,
 ) -> Result<Vec<SearchResult>> {
-    // Run the base pipeline
-    let mut results = multi_query_search_configured(
-        conn,
-        connection_id,
-        query_texts,
-        query_vectors,
-        &config.base,
-    )?;
+    let mut results = multi_query_search_configured(conn, queries, &config.base)?;
 
     if results.is_empty() {
         return Ok(results);
@@ -723,11 +734,14 @@ pub fn multi_query_search_with_hints(
 /// This is the graph-walk portion extracted from `multi_query_search_extended`.
 pub fn apply_graph_expansion(
     conn: &Connection,
-    connection_id: &str,
     mut results: Vec<SearchResult>,
-    graph_depth: u32,
-    max_foreign_key_chunks: u32,
+    expansion: &GraphExpansion<'_>,
 ) -> Result<Vec<SearchResult>> {
+    let GraphExpansion {
+        connection_id,
+        graph_depth,
+        max_foreign_key_chunks,
+    } = *expansion;
     let has_nothing_to_expand = graph_depth == 0 || results.is_empty();
     if has_nothing_to_expand {
         return Ok(results);
@@ -762,13 +776,12 @@ pub fn apply_graph_expansion(
         seeds.push(key);
     }
 
-    let graph_nodes = graph::bfs_related(
-        conn,
+    let walk = graph::GraphWalk {
         connection_id,
-        &seeds,
-        graph_depth,
-        max_foreign_key_chunks,
-    )?;
+        depth: graph_depth,
+        edge_budget: max_foreign_key_chunks,
+    };
+    let graph_nodes = graph::bfs_related(conn, &seeds, &walk)?;
 
     if !graph_nodes.is_empty() {
         let seen_chunk_ids: HashSet<i64> = results.iter().map(|result| result.chunk_id).collect();
@@ -781,13 +794,12 @@ pub fn apply_graph_expansion(
             let decayed_score =
                 originating_seed_score * GRAPH_HOP_SCORE_DECAY.powi(node.hop as i32);
 
-            let tbl_results = load_table_chunk(
-                conn,
-                connection_id,
-                &node.db_name,
-                &node.table_name,
-                decayed_score,
-            )?;
+            let scored_table = ScoredTable {
+                db_name: &node.db_name,
+                table_name: &node.table_name,
+                score: decayed_score,
+            };
+            let tbl_results = load_table_chunk(conn, connection_id, &scored_table)?;
             for result in tbl_results {
                 if !seen_chunk_ids.contains(&result.chunk_id) {
                     graph_results.push(result);
@@ -805,14 +817,10 @@ pub fn apply_graph_expansion(
 /// and replaces 1-hop FK fan-out with bounded BFS graph walk.
 pub fn multi_query_search_extended(
     conn: &Connection,
-    connection_id: &str,
-    query_texts: &[String],
-    query_vectors: &[Vec<f32>],
+    queries: &SearchQueries<'_>,
     config: &SearchConfigExt,
 ) -> Result<Vec<SearchResult>> {
-    // Delegate to split functions: base search + hints, then graph expansion
-    let results =
-        multi_query_search_with_hints(conn, connection_id, query_texts, query_vectors, config)?;
+    let results = multi_query_search_with_hints(conn, queries, config)?;
 
     if results.is_empty() {
         return Ok(results);
@@ -831,14 +839,12 @@ pub fn multi_query_search_extended(
         }
     }
 
-    // Apply graph expansion
-    let results = apply_graph_expansion(
-        conn,
-        connection_id,
-        results,
-        config.graph_depth,
-        config.base.max_fk_chunks as u32,
-    )?;
+    let expansion = GraphExpansion {
+        connection_id: queries.connection_id,
+        graph_depth: config.graph_depth,
+        max_foreign_key_chunks: config.base.max_fk_chunks as u32,
+    };
+    let results = apply_graph_expansion(conn, results, &expansion)?;
 
     // If there were editor seeds not already in results, add them to graph expansion
     // (They were already handled in apply_graph_expansion via the results' seed set)
@@ -940,10 +946,7 @@ fn parse_qualified_identifier(identifier: &str) -> QualifiedIdentifier {
 fn collect_lexical_table_matches(
     conn: &Connection,
     connection_id: &str,
-    direct_table_candidates: &HashSet<QualifiedIdentifier>,
-    identifier_tokens: &HashSet<String>,
-    segment_df: &HashMap<String, usize>,
-    total_tables: usize,
+    signals: &LexicalSignals<'_>,
 ) -> Result<HashMap<i64, f64>> {
     let mut stmt = conn.prepare(
         "SELECT id, db_name, table_name
@@ -965,14 +968,11 @@ fn collect_lexical_table_matches(
         let normalized_db_name = db_name.to_ascii_lowercase();
         let normalized_table_name = table_name.to_ascii_lowercase();
 
-        let lexical_score = lexical_score_for_table(
-            &normalized_db_name,
-            &normalized_table_name,
-            direct_table_candidates,
-            identifier_tokens,
-            segment_df,
-            total_tables,
-        );
+        let table = NormalizedTableName {
+            db_name: &normalized_db_name,
+            table_name: &normalized_table_name,
+        };
+        let lexical_score = lexical_score_for_table(&table, signals);
 
         if lexical_score > 0.0 {
             matches.insert(chunk_id, lexical_score);
@@ -1057,14 +1057,15 @@ fn token_length_factor(token: &str) -> f64 {
     (token.len() as f64 / FULL_WEIGHT_TOKEN_CHARS).min(1.0)
 }
 
-fn lexical_score_for_table(
-    db_name: &str,
-    table_name: &str,
-    direct_table_candidates: &HashSet<QualifiedIdentifier>,
-    identifier_tokens: &HashSet<String>,
-    segment_df: &HashMap<String, usize>,
-    total_tables: usize,
-) -> f64 {
+fn lexical_score_for_table(table: &NormalizedTableName<'_>, signals: &LexicalSignals<'_>) -> f64 {
+    let db_name = table.db_name;
+    let table_name = table.table_name;
+    let LexicalSignals {
+        direct_table_candidates,
+        identifier_tokens,
+        segment_df,
+        total_tables,
+    } = *signals;
     // Direct table match (FROM users, schema.users) — full score, no IDF needed
     if direct_table_candidates.contains(&QualifiedIdentifier {
         db_name: Some(db_name.to_string()),

@@ -553,14 +553,27 @@ pub async fn query_table_metadata(
     })
 }
 
-/// DDL via SHOW CREATE TABLE / VIEW / PROCEDURE / FUNCTION / TRIGGER / EVENT.
+#[derive(Debug, Clone, Copy)]
+pub struct SchemaObjectRef<'a> {
+    pub database: &'a str,
+    pub object_name: &'a str,
+    pub object_type: &'a str,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct RoutineRef<'a> {
+    pub database: &'a str,
+    pub routine_name: &'a str,
+    pub routine_type: &'a str,
+}
+
 #[cfg(not(coverage))]
-pub async fn query_ddl(
-    pool: &MySqlPool,
-    database: &str,
-    object_name: &str,
-    object_type: &str,
-) -> Result<String, String> {
+pub async fn query_ddl(pool: &MySqlPool, object: SchemaObjectRef<'_>) -> Result<String, String> {
+    let SchemaObjectRef {
+        database,
+        object_name,
+        object_type,
+    } = object;
     let safe_db = safe_identifier(database)?;
     let safe_name = safe_identifier(object_name)?;
 
@@ -588,26 +601,27 @@ pub async fn query_ddl(
         .ok_or_else(|| format!("{object_type} '{object_name}' not found in '{database}'"))?;
     query_log::log_mysql_rows(std::slice::from_ref(&row));
 
-    // The DDL column may be NULL (e.g. insufficient privileges for SHOW CREATE PROCEDURE).
     let ddl: String = decode_mysql_optional_text_cell(&row, ddl_col_index)?.unwrap_or_default();
 
     Ok(ddl)
 }
 
-/// Combined schema info for get_schema_info command.
 #[cfg(not(coverage))]
 pub async fn query_schema_info(
     pool: &MySqlPool,
-    database: &str,
-    object_name: &str,
-    object_type: &str,
+    object: SchemaObjectRef<'_>,
 ) -> Result<SchemaInfoResponse, String> {
+    let SchemaObjectRef {
+        database,
+        object_name,
+        object_type,
+    } = object;
     match object_type {
         "table" => {
             let columns = query_full_columns(pool, database, object_name).await?;
             let indexes = query_indexes(pool, database, object_name).await?;
             let foreign_keys = query_foreign_keys(pool, database, object_name).await?;
-            let ddl = query_ddl(pool, database, object_name, "table").await?;
+            let ddl = query_ddl(pool, object).await?;
             let metadata = query_table_metadata(pool, database, object_name).await?;
             Ok(SchemaInfoResponse {
                 columns,
@@ -619,7 +633,7 @@ pub async fn query_schema_info(
         }
         "view" => {
             let columns = query_full_columns(pool, database, object_name).await?;
-            let ddl = query_ddl(pool, database, object_name, "view").await?;
+            let ddl = query_ddl(pool, object).await?;
             Ok(SchemaInfoResponse {
                 columns,
                 indexes: vec![],
@@ -629,7 +643,7 @@ pub async fn query_schema_info(
             })
         }
         "procedure" | "function" | "trigger" | "event" => {
-            let ddl = query_ddl(pool, database, object_name, object_type).await?;
+            let ddl = query_ddl(pool, object).await?;
             Ok(SchemaInfoResponse {
                 columns: vec![],
                 indexes: vec![],
@@ -775,18 +789,17 @@ fn routine_parameter_ordinal_filter(include_return_type: bool) -> &'static str {
     "ORDINAL_POSITION > 0"
 }
 
-/// Internal helper that queries INFORMATION_SCHEMA.PARAMETERS.
-///
-/// When `include_return_type` is `true`, includes the `ORDINAL_POSITION = 0` row
-/// (function return type). When `false`, excludes it.
 #[cfg(not(coverage))]
 pub(crate) async fn query_routine_parameters_inner(
     pool: &MySqlPool,
-    database: &str,
-    routine_name: &str,
-    routine_type: &str,
+    routine: RoutineRef<'_>,
     include_return_type: bool,
 ) -> Result<Vec<RoutineParameterRow>, String> {
+    let RoutineRef {
+        database,
+        routine_name,
+        routine_type,
+    } = routine;
     let ordinal_filter = routine_parameter_ordinal_filter(include_return_type);
     let sql = format!(
         "SELECT \
@@ -826,42 +839,32 @@ pub(crate) async fn query_routine_parameters_inner(
     Ok(params)
 }
 
-/// Query INFORMATION_SCHEMA.PARAMETERS for a stored procedure or function.
-///
-/// Excludes `ORDINAL_POSITION = 0` rows (function return type).
-/// `routine_type` must be `"PROCEDURE"` or `"FUNCTION"`.
 #[cfg(not(coverage))]
 pub async fn query_routine_parameters(
     pool: &MySqlPool,
-    database: &str,
-    routine_name: &str,
-    routine_type: &str,
+    routine: RoutineRef<'_>,
 ) -> Result<Vec<RoutineParameterRow>, String> {
-    query_routine_parameters_inner(pool, database, routine_name, routine_type, false).await
+    query_routine_parameters_inner(pool, routine, false).await
 }
 
-/// Fetches routine parameters including the return type row (ORDINAL_POSITION = 0) for stored functions.
 #[cfg(not(coverage))]
 pub async fn query_routine_parameters_with_return_type(
     pool: &MySqlPool,
-    database: &str,
-    routine_name: &str,
-    routine_type: &str,
+    routine: RoutineRef<'_>,
 ) -> Result<Vec<RoutineParameterRow>, String> {
-    query_routine_parameters_inner(pool, database, routine_name, routine_type, true).await
+    query_routine_parameters_inner(pool, routine, true).await
 }
 
-/// Check whether a routine exists in INFORMATION_SCHEMA.ROUTINES.
-///
-/// Used to distinguish "zero-parameter routine" from "routine does not exist"
-/// when the PARAMETERS query returns zero rows.
 #[cfg(not(coverage))]
 pub async fn query_routine_exists(
     pool: &MySqlPool,
-    database: &str,
-    routine_name: &str,
-    routine_type: &str,
+    routine: RoutineRef<'_>,
 ) -> Result<bool, String> {
+    let RoutineRef {
+        database,
+        routine_name,
+        routine_type,
+    } = routine;
     let sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.ROUTINES \
                WHERE ROUTINE_SCHEMA = ? AND ROUTINE_NAME = ? AND ROUTINE_TYPE = ?";
     query_log::log_outgoing_sql_bound(
@@ -949,32 +952,31 @@ pub async fn query_all_foreign_keys(
 // Shared index aggregation helper
 // ---------------------------------------------------------------------------
 
-/// Aggregates raw index rows into `HashMap<key, Vec<IndexInfo>>`, preserving
-/// insertion order of indexes within each key group.
-///
-/// `key_fn` extracts the grouping key (e.g. table name or `"{schema}.{table}"`)
-/// from each row. The remaining column indices locate `INDEX_NAME`, `NON_UNIQUE`,
-/// `INDEX_TYPE`, `COLUMN_NAME`, and `CARDINALITY` within each row.
+#[cfg(not(coverage))]
+struct IndexRowColumns {
+    index_name: usize,
+    non_unique: usize,
+    index_type: usize,
+    column_name: usize,
+    cardinality: usize,
+}
+
 #[cfg(not(coverage))]
 fn aggregate_index_rows(
     rows: &[MySqlRow],
     key_fn: impl Fn(&MySqlRow) -> String,
-    index_name_col: usize,
-    non_unique_col: usize,
-    index_type_col: usize,
-    column_name_col: usize,
-    cardinality_col: usize,
+    columns: &IndexRowColumns,
 ) -> HashMap<String, Vec<IndexInfo>> {
     let mut composite_index_map: HashMap<String, HashMap<String, IndexInfo>> = HashMap::new();
     let mut composite_index_order: HashMap<String, Vec<String>> = HashMap::new();
 
     for row in rows {
         let key = key_fn(row);
-        let index_name = decode_mysql_text_cell(row, index_name_col).unwrap_or_default();
-        let non_unique: i64 = row.try_get(non_unique_col).unwrap_or(0);
-        let index_type = decode_mysql_text_cell(row, index_type_col).unwrap_or_default();
-        let column_name = decode_mysql_text_cell(row, column_name_col).unwrap_or_default();
-        let cardinality: Option<i64> = row.try_get(cardinality_col).ok();
+        let index_name = decode_mysql_text_cell(row, columns.index_name).unwrap_or_default();
+        let non_unique: i64 = row.try_get(columns.non_unique).unwrap_or(0);
+        let index_type = decode_mysql_text_cell(row, columns.index_type).unwrap_or_default();
+        let column_name = decode_mysql_text_cell(row, columns.column_name).unwrap_or_default();
+        let cardinality: Option<i64> = row.try_get(columns.cardinality).ok();
 
         let index_map = composite_index_map.entry(key.clone()).or_default();
         let order = composite_index_order.entry(key).or_default();
@@ -1040,11 +1042,13 @@ pub async fn query_all_indexes(
     Ok(aggregate_index_rows(
         &rows,
         |row| decode_mysql_text_cell(row, 0).unwrap_or_default(),
-        1,
-        2,
-        3,
-        4,
-        5,
+        &IndexRowColumns {
+            index_name: 1,
+            non_unique: 2,
+            index_type: 3,
+            column_name: 4,
+            cardinality: 5,
+        },
     ))
 }
 
@@ -1285,11 +1289,13 @@ pub async fn query_all_indexes_batch(
             let table_name = decode_mysql_text_cell(row, 1).unwrap_or_default();
             format!("{schema}.{table_name}")
         },
-        2,
-        3,
-        4,
-        5,
-        6,
+        &IndexRowColumns {
+            index_name: 2,
+            non_unique: 3,
+            index_type: 4,
+            column_name: 5,
+            cardinality: 6,
+        },
     ))
 }
 

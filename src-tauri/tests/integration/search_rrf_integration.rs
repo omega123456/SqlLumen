@@ -9,9 +9,9 @@ use rusqlite::Connection;
 use sqllumen_lib::init_sqlite_vec;
 use sqllumen_lib::schema_index::search::{multi_query_search_configured, SearchConfig};
 use sqllumen_lib::schema_index::storage;
-use sqllumen_lib::schema_index::types::{ChunkInsert, ChunkType};
 
 use crate::common;
+use crate::common::schema_index_chunks::{insert_table_chunk, TestTableChunk};
 
 const DIM: usize = 4;
 
@@ -52,41 +52,40 @@ fn blend_vec(axis_a: usize, axis_b: usize, weight_a: f32) -> Vec<f32> {
     v
 }
 
-fn insert_table_chunk(
-    conn: &Connection,
-    connection_id: &str,
-    db_name: &str,
-    table_name: &str,
-    embedding: Vec<f32>,
-) -> i64 {
-    let chunk = ChunkInsert {
-        connection_id: connection_id.to_string(),
-        chunk_key: format!("table:{db_name}.{table_name}"),
-        db_name: db_name.to_string(),
-        table_name: table_name.to_string(),
-        chunk_type: ChunkType::Table,
-        ddl_text: format!("CREATE TABLE `{table_name}` (id INT PRIMARY KEY)"),
-        ddl_hash: format!("hash_{table_name}"),
-        model_id: "test-model".to_string(),
-        ref_db_name: None,
-        ref_table_name: None,
-        embedding,
-        text_for_embedding: None,
-        row_count_approx: None,
-    };
-    storage::insert_chunk(conn, &chunk).expect("insert table chunk")
-}
-
 #[test]
 fn test_rrf_multi_query_hit_beats_single_query_top_rank() {
     let conn = setup_db();
 
     // "users" is close to query vectors 0, 1, 2 (moderate match on each)
     // "orders" is a perfect match for query 0 only
-    insert_table_chunk(&conn, "conn-1", "testdb", "users", blend_vec(0, 1, 0.6));
-    insert_table_chunk(&conn, "conn-1", "testdb", "orders", unit_vec(0));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "users",
+            embedding: blend_vec(0, 1, 0.6),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "orders",
+            embedding: unit_vec(0),
+        },
+    );
     // Add a filler chunk so ranks are meaningful
-    insert_table_chunk(&conn, "conn-1", "testdb", "products", unit_vec(3));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "products",
+            embedding: unit_vec(3),
+        },
+    );
 
     // 3 query vectors — "users" will be hit by all 3, "orders" only by query 0
     let query_vectors = vec![
@@ -102,8 +101,16 @@ fn test_rrf_multi_query_hit_beats_single_query_top_rank() {
         lexical_weight: 0.0,
     };
 
-    let results = multi_query_search_configured(&conn, "conn-1", &[], &query_vectors, &config)
-        .expect("search should succeed");
+    let results = multi_query_search_configured(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query_vectors,
+        },
+        &config,
+    )
+    .expect("search should succeed");
 
     assert!(results.len() >= 2, "expected at least 2 results");
 
@@ -132,15 +139,33 @@ fn test_rrf_single_query_preserves_cosine_order() {
 
     // With a single query, RRF degenerates to rank-based ordering which should
     // match cosine distance ordering.
-    insert_table_chunk(&conn, "conn-1", "testdb", "best_match", unit_vec(0));
     insert_table_chunk(
         &conn,
-        "conn-1",
-        "testdb",
-        "medium_match",
-        blend_vec(0, 1, 0.7),
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "best_match",
+            embedding: unit_vec(0),
+        },
     );
-    insert_table_chunk(&conn, "conn-1", "testdb", "poor_match", unit_vec(2));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "medium_match",
+            embedding: blend_vec(0, 1, 0.7),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "poor_match",
+            embedding: unit_vec(2),
+        },
+    );
 
     let query_vectors = vec![unit_vec(0)];
 
@@ -151,8 +176,16 @@ fn test_rrf_single_query_preserves_cosine_order() {
         lexical_weight: 0.0,
     };
 
-    let results = multi_query_search_configured(&conn, "conn-1", &[], &query_vectors, &config)
-        .expect("search should succeed");
+    let results = multi_query_search_configured(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &query_vectors,
+        },
+        &config,
+    )
+    .expect("search should succeed");
 
     assert!(results.len() >= 2, "expected at least 2 results");
     // best_match (cosine=1.0) should be first
@@ -164,7 +197,15 @@ fn test_rrf_single_query_preserves_cosine_order() {
 #[test]
 fn test_rrf_empty_queries_returns_empty() {
     let conn = setup_db();
-    insert_table_chunk(&conn, "conn-1", "testdb", "users", unit_vec(0));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
 
     let config = SearchConfig {
         top_k_per_query: 5,
@@ -173,8 +214,16 @@ fn test_rrf_empty_queries_returns_empty() {
         lexical_weight: 0.0,
     };
 
-    let results = multi_query_search_configured(&conn, "conn-1", &[], &[], &config)
-        .expect("search should succeed");
+    let results = multi_query_search_configured(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &[],
+            query_vectors: &[],
+        },
+        &config,
+    )
+    .expect("search should succeed");
 
     assert!(
         results.is_empty(),

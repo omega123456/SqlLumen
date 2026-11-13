@@ -30,9 +30,10 @@ use std::time::{Duration, Instant, SystemTime};
 use serde::Deserialize;
 
 use super::job_retention::cleanup_terminal_jobs;
-use super::stream_writer::{RowSink, RowWrite, XLSX_SHEET_ROW_LIMIT};
+use super::stream_writer::{RowSink, RowSinkSpec, RowWrite, XLSX_SHEET_ROW_LIMIT};
 use super::ExportFormat;
 use crate::mysql::query_executor::RunDatabase;
+use crate::mysql::result_view::ResultSlotKey;
 use crate::state::{
     AppState, ResultExportCancel, ResultExportJobProgress, ResultExportJobs, ResultExportStatus,
 };
@@ -51,14 +52,19 @@ const EXPORT_KILL_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(1);
 /// releases the editor session: the KILL's 1 s pool acquire plus its round trip.
 pub const CANCEL_KILL_WAIT: Duration = Duration::from_secs(2);
 
+#[derive(Debug, Clone, Copy)]
+pub struct ExportKill<'a> {
+    pub connection_id: &'a str,
+    pub thread_id: u64,
+    pub purpose: &'a str,
+}
+
 /// Input of `start_result_export` (the IPC arguments).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartResultExportInput {
-    pub connection_id: String,
-    pub tab_id: String,
-    pub result_index: usize,
-    pub query_id: String,
+    #[serde(flatten)]
+    pub slot: ResultSlotKey,
     pub format: ExportFormat,
     pub file_path: String,
     pub include_headers: bool,
@@ -101,15 +107,23 @@ pub fn temp_path_for(target: &Path) -> PathBuf {
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
-/// Check that the cached result exists, is current, is truncated and can be
-/// re-run. Returns its source SQL and run database.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FullExportSource {
+    pub source_sql: String,
+    pub run_database: RunDatabase,
+}
+
 pub fn validate_full_export(
     state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
-    result_index: usize,
-    query_id: &str,
-) -> Result<(String, RunDatabase), String> {
+    slot: &ResultSlotKey,
+) -> Result<FullExportSource, String> {
+    let ResultSlotKey {
+        connection_id,
+        tab_id,
+        result_index,
+        query_id,
+    } = slot;
+    let result_index = *result_index;
     let cached = state.result_cache.get(connection_id, tab_id);
     if cached.is_expired() {
         return Err(crate::mysql::result_view::RESULTS_EXPIRED_MESSAGE.to_string());
@@ -123,7 +137,7 @@ pub fn validate_full_export(
             entry.value.len()
         )
     })?;
-    if stored.query_id != query_id {
+    if stored.query_id != *query_id {
         return Err(crate::mysql::result_view::STALE_QUERY_MESSAGE.to_string());
     }
     let rerunnable = stored.truncated
@@ -133,7 +147,10 @@ pub fn validate_full_export(
     if !rerunnable {
         return Err(FULL_EXPORT_UNAVAILABLE_MESSAGE.to_string());
     }
-    Ok((stored.source_sql.clone(), stored.run_database.clone()))
+    Ok(FullExportSource {
+        source_sql: stored.source_sql.clone(),
+        run_database: stored.run_database.clone(),
+    })
 }
 
 /// Validate the request and register a running job. The caller then runs
@@ -145,27 +162,28 @@ pub fn start_result_export_impl(
     if input.file_path.trim().is_empty() {
         return Err("Choose a file to export to.".to_string());
     }
-    let (source_sql, run_database) = validate_full_export(
-        state,
-        &input.connection_id,
-        &input.tab_id,
-        input.result_index,
-        &input.query_id,
-    )?;
+    let FullExportSource {
+        source_sql,
+        run_database,
+    } = validate_full_export(state, &input.slot)?;
     let job_id = uuid::Uuid::new_v4().to_string();
-    let cancel = register_job(&state.result_export_jobs, &job_id, &input.connection_id);
+    let cancel = register_job(
+        &state.result_export_jobs,
+        &job_id,
+        &input.slot.connection_id,
+    );
     let target_path = PathBuf::from(&input.file_path);
     tracing::info!(
         job_id,
-        connection_id = input.connection_id,
-        tab_id = input.tab_id,
-        result_index = input.result_index,
+        connection_id = input.slot.connection_id,
+        tab_id = input.slot.tab_id,
+        result_index = input.slot.result_index,
         format = ?input.format,
         "result export: job started"
     );
     Ok(PreparedResultExport {
         job_id,
-        connection_id: input.connection_id,
+        connection_id: input.slot.connection_id,
         source_sql,
         run_database,
         format: input.format,
@@ -359,7 +377,12 @@ pub async fn cancel_result_export_impl(state: &AppState, job_id: &str) -> Result
             thread_id = kill.thread_id,
             "result export: cancel requested"
         );
-        if kill_export_query(state, &kill.connection_id, kill.thread_id, "cancel").await {
+        let export_kill = ExportKill {
+            connection_id: &kill.connection_id,
+            thread_id: kill.thread_id,
+            purpose: "cancel",
+        };
+        if kill_export_query(state, &export_kill).await {
             kill.mark_sent();
         }
     }
@@ -421,14 +444,14 @@ impl ExportPipeline {
 
     /// Create the temp file and write the header for the re-run's columns.
     pub fn open(&mut self, columns: &[String]) -> Result<(), String> {
-        let sink = RowSink::create_with_sheet_row_limit(
-            &self.format,
-            &self.temp_path,
+        let spec = RowSinkSpec {
+            format: &self.format,
+            path: &self.temp_path,
             columns,
-            self.include_headers,
-            self.table_name.as_deref(),
-            self.sheet_row_limit,
-        )?;
+            include_headers: self.include_headers,
+            table_name: self.table_name.as_deref(),
+        };
+        let sink = RowSink::create_with_sheet_row_limit(&spec, self.sheet_row_limit)?;
         self.sink = Some(sink);
         Ok(())
     }
@@ -555,12 +578,12 @@ impl ExportPipeline {
 /// Issue `KILL QUERY <thread_id>` over a pool connection (1 s acquire timeout).
 /// Returns `false`, with a warning, when it could not be sent.
 #[cfg(not(coverage))]
-pub async fn kill_export_query(
-    state: &AppState,
-    connection_id: &str,
-    thread_id: u64,
-    purpose: &str,
-) -> bool {
+pub async fn kill_export_query(state: &AppState, kill: &ExportKill<'_>) -> bool {
+    let ExportKill {
+        connection_id,
+        thread_id,
+        purpose,
+    } = *kill;
     let Some(pool) = state.registry.get_pool(connection_id) else {
         tracing::warn!(
             connection_id,
@@ -612,21 +635,16 @@ pub async fn kill_export_query(
 
 /// Coverage stub: the KILL needs a live pool.
 #[cfg(coverage)]
-pub async fn kill_export_query(
-    state: &AppState,
-    connection_id: &str,
-    _thread_id: u64,
-    _purpose: &str,
-) -> bool {
-    state.registry.get_pool(connection_id).is_some()
+pub async fn kill_export_query(state: &AppState, kill: &ExportKill<'_>) -> bool {
+    state.registry.get_pool(kill.connection_id).is_some()
 }
 
 /// Run a registered export job to its end: re-run, stream, restore, finalize.
 #[cfg(not(coverage))]
 pub async fn run_result_export_job(state: &AppState, prepared: PreparedResultExport) {
     let mut pipeline = ExportPipeline::new(&prepared);
-    let (outcome, restore_error) = rerun_into_pipeline(state, &prepared, &mut pipeline).await;
-    pipeline.complete(outcome, restore_error);
+    let rerun = rerun_into_pipeline(state, &prepared, &mut pipeline).await;
+    pipeline.complete(rerun.outcome, rerun.restore_error);
 }
 
 /// Coverage stub: the re-run needs a live editor session, so the job fails
@@ -652,18 +670,52 @@ fn missing_live_session_message(state: &AppState, connection_id: &str) -> String
 /// Acquire the editor session and stream the re-run into the pipeline.
 /// Returns the outcome and, if the database restore failed, its message.
 #[cfg(not(coverage))]
+struct RerunEnd {
+    outcome: ExportOutcome,
+    restore_error: Option<String>,
+}
+
+#[cfg(not(coverage))]
+impl RerunEnd {
+    fn without_restore(outcome: ExportOutcome) -> Self {
+        Self {
+            outcome,
+            restore_error: None,
+        }
+    }
+}
+
+#[cfg(not(coverage))]
+struct RerunContext<'a> {
+    state: &'a AppState,
+    prepared: &'a PreparedResultExport,
+    thread_id: u64,
+}
+
+#[cfg(not(coverage))]
+impl RerunContext<'_> {
+    async fn kill(&self, purpose: &str) -> bool {
+        let export_kill = ExportKill {
+            connection_id: &self.prepared.connection_id,
+            thread_id: self.thread_id,
+            purpose,
+        };
+        kill_export_query(self.state, &export_kill).await
+    }
+}
+
+#[cfg(not(coverage))]
 async fn rerun_into_pipeline(
     state: &AppState,
     prepared: &PreparedResultExport,
     pipeline: &mut ExportPipeline,
-) -> (ExportOutcome, Option<String>) {
+) -> RerunEnd {
     if is_cancel_requested(&prepared.jobs, &prepared.job_id) {
-        return (ExportOutcome::Cancelled, None);
+        return RerunEnd::without_restore(ExportOutcome::Cancelled);
     }
-    // Queue behind any running editor query (ADR 2026-10-13).
     let mut guard = match crate::mysql::session::acquire(state, &prepared.connection_id).await {
         Ok(guard) => guard,
-        Err(error) => return (ExportOutcome::Failed(error), None),
+        Err(error) => return RerunEnd::without_restore(ExportOutcome::Failed(error)),
     };
     let session = guard.as_mut().expect("acquire always yields a session");
     let thread_id = session.thread_id;
@@ -680,8 +732,12 @@ async fn rerun_into_pipeline(
         match switch_to_run_database(&mut session.conn, prepared).await {
             Ok(previous) => {
                 restore_to = previous;
-                stream =
-                    stream_rerun(state, &mut session.conn, prepared, pipeline, thread_id).await;
+                let rerun = RerunContext {
+                    state,
+                    prepared,
+                    thread_id,
+                };
+                stream = stream_rerun(&rerun, &mut session.conn, pipeline).await;
             }
             Err(_) if prepared.cancel.requested.load(Ordering::SeqCst) => {}
             Err(error) => stream.outcome = ExportOutcome::Failed(error),
@@ -708,7 +764,10 @@ async fn rerun_into_pipeline(
         None => None,
     };
     drop(guard);
-    (stream.outcome, restore_error)
+    RerunEnd {
+        outcome: stream.outcome,
+        restore_error,
+    }
 }
 
 /// Issue a logged `USE` for `database` on the held connection.
@@ -833,12 +892,11 @@ fn is_interrupted_by_own_kill(
 /// Re-run the source SQL (no auto-LIMIT, no ceiling) and write every row.
 #[cfg(not(coverage))]
 async fn stream_rerun(
-    state: &AppState,
+    rerun: &RerunContext<'_>,
     conn: &mut mysql_async::Conn,
-    prepared: &PreparedResultExport,
     pipeline: &mut ExportPipeline,
-    thread_id: u64,
 ) -> StreamEnd {
+    let prepared = rerun.prepared;
     use crate::mysql::multi_result::{is_query_interrupted, map_mysql_error, serialize_row};
     use mysql_async::prelude::Queryable;
 
@@ -883,8 +941,7 @@ async fn stream_rerun(
     if let Err(error) = pipeline.open(&columns) {
         failure = Some(error);
         stopping = true;
-        own_kill_sent |=
-            kill_export_query(state, &prepared.connection_id, thread_id, "write failure").await;
+        own_kill_sent |= rerun.kill("write failure").await;
     }
 
     let mut row_index = 0usize;
@@ -906,24 +963,12 @@ async fn stream_rerun(
                     Ok(RowWrite::Written) => {}
                     Ok(RowWrite::SheetLimitReached) => {
                         stopping = true;
-                        own_kill_sent |= kill_export_query(
-                            state,
-                            &prepared.connection_id,
-                            thread_id,
-                            "sheet limit",
-                        )
-                        .await;
+                        own_kill_sent |= rerun.kill("sheet limit").await;
                     }
                     Err(error) => {
                         failure = Some(error);
                         stopping = true;
-                        own_kill_sent |= kill_export_query(
-                            state,
-                            &prepared.connection_id,
-                            thread_id,
-                            "write failure",
-                        )
-                        .await;
+                        own_kill_sent |= rerun.kill("write failure").await;
                     }
                 }
             }

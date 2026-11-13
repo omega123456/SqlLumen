@@ -99,7 +99,7 @@ describe('CreateDatabaseDialog', () => {
     await user.click(screen.getByTestId('create-db-submit-button'))
 
     await waitFor(() => {
-      const calls = ipc.calls('create_database')
+      const calls = ipc.payloads('create_database')
       expect(calls).toHaveLength(1)
       const args = calls[0] as Record<string, unknown>
       expect(args).toMatchObject({
@@ -123,7 +123,7 @@ describe('CreateDatabaseDialog', () => {
     await user.type(screen.getByTestId('create-db-name-input'), 'new_database{Enter}')
 
     await waitFor(() => {
-      const calls = ipc.calls('create_database')
+      const calls = ipc.payloads('create_database')
       expect(calls).toHaveLength(1)
       const args = calls[0] as Record<string, unknown>
       expect(args.name).toBe('new_database')

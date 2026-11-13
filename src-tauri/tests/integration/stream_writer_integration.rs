@@ -8,6 +8,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
+use sqllumen_lib::export::stream_writer::RowSinkSpec;
 use sqllumen_lib::export::stream_writer::{
     RowSink, RowWrite, XLSX_SHEET_ROW_LIMIT, XLSX_WIDTH_SAMPLE_ROWS,
 };
@@ -57,15 +58,10 @@ fn temp(name: &str) -> (tempfile::TempDir, PathBuf) {
 }
 
 fn stream(
-    format: &ExportFormat,
-    path: &Path,
-    columns: &[String],
+    spec: &RowSinkSpec<'_>,
     rows: &[Vec<Value>],
-    include_headers: bool,
-    table_name: Option<&str>,
 ) -> sqllumen_lib::export::stream_writer::StreamSummary {
-    let mut sink =
-        RowSink::create(format, path, columns, include_headers, table_name).expect("create sink");
+    let mut sink = RowSink::create(spec).expect("create sink");
     for row in rows {
         assert_eq!(sink.write_row(row).expect("write row"), RowWrite::Written);
     }
@@ -77,16 +73,26 @@ fn csv_stream_is_byte_identical_to_the_slice_writer() {
     for include_headers in [true, false] {
         let (_dir, path) = temp("out.csv");
         let summary = stream(
-            &ExportFormat::Csv,
-            &path,
-            &columns(),
+            &RowSinkSpec {
+                format: &ExportFormat::Csv,
+                path: &path,
+                columns: &columns(),
+                include_headers,
+                table_name: None,
+            },
             &rows(),
-            include_headers,
-            None,
         );
 
         let mut expected = Vec::new();
-        csv_writer::write_csv(&mut expected, &columns(), &rows(), include_headers).expect("csv");
+        csv_writer::write_csv(
+            &mut expected,
+            &sqllumen_lib::export::ExportRows {
+                columns: &columns(),
+                rows: &rows(),
+            },
+            include_headers,
+        )
+        .expect("csv");
         let actual = std::fs::read(&path).expect("read csv");
         assert_eq!(actual, expected, "include_headers={include_headers}");
         assert_eq!(summary.rows_written, 4);
@@ -100,10 +106,26 @@ fn json_stream_is_byte_identical_to_the_slice_writer() {
     let cases: Vec<Vec<Vec<Value>>> = vec![rows(), rows()[..1].to_vec(), vec![]];
     for case in cases {
         let (_dir, path) = temp("out.json");
-        let summary = stream(&ExportFormat::Json, &path, &columns(), &case, true, None);
+        let summary = stream(
+            &RowSinkSpec {
+                format: &ExportFormat::Json,
+                path: &path,
+                columns: &columns(),
+                include_headers: true,
+                table_name: None,
+            },
+            &case,
+        );
 
         let mut expected = Vec::new();
-        json_writer::write_json(&mut expected, &columns(), &case, true).expect("json");
+        json_writer::write_json(
+            &mut expected,
+            &sqllumen_lib::export::ExportRows {
+                columns: &columns(),
+                rows: &case,
+            },
+        )
+        .expect("json");
         let actual = std::fs::read(&path).expect("read json");
         assert_eq!(
             String::from_utf8(actual).expect("utf8"),
@@ -121,29 +143,46 @@ fn json_stream_matches_for_rows_without_columns_and_short_rows() {
     let (_dir, path) = temp("short.json");
     let short_rows = vec![vec![json!(1)], vec![]];
     stream(
-        &ExportFormat::Json,
-        &path,
-        &columns(),
+        &RowSinkSpec {
+            format: &ExportFormat::Json,
+            path: &path,
+            columns: &columns(),
+            include_headers: false,
+            table_name: None,
+        },
         &short_rows,
-        false,
-        None,
     );
     let mut expected = Vec::new();
-    json_writer::write_json(&mut expected, &columns(), &short_rows, false).expect("json");
+    json_writer::write_json(
+        &mut expected,
+        &sqllumen_lib::export::ExportRows {
+            columns: &columns(),
+            rows: &short_rows,
+        },
+    )
+    .expect("json");
     assert_eq!(std::fs::read(&path).expect("read"), expected);
 
     let (_dir, path) = temp("empty-objects.json");
     stream(
-        &ExportFormat::Json,
-        &path,
-        &[],
+        &RowSinkSpec {
+            format: &ExportFormat::Json,
+            path: &path,
+            columns: &[],
+            include_headers: false,
+            table_name: None,
+        },
         &[vec![], vec![]],
-        false,
-        None,
     );
     let mut expected = Vec::new();
-    json_writer::write_json(&mut expected, &[], &[Vec::<Value>::new(), vec![]], false)
-        .expect("json");
+    json_writer::write_json(
+        &mut expected,
+        &sqllumen_lib::export::ExportRows {
+            columns: &[],
+            rows: &[Vec::<Value>::new(), vec![]],
+        },
+    )
+    .expect("json");
     assert_eq!(std::fs::read(&path).expect("read"), expected);
 }
 
@@ -157,15 +196,25 @@ fn sql_stream_is_byte_identical_to_the_slice_writer() {
     for (cols, table_name, slice_table) in cases {
         let (_dir, path) = temp("out.sql");
         let summary = stream(
-            &ExportFormat::SqlInsert,
-            &path,
-            &cols,
+            &RowSinkSpec {
+                format: &ExportFormat::SqlInsert,
+                path: &path,
+                columns: &cols,
+                include_headers: true,
+                table_name,
+            },
             &rows(),
-            true,
-            table_name,
         );
         let mut expected = Vec::new();
-        sql_writer::write_sql(&mut expected, &cols, &rows(), true, slice_table).expect("sql");
+        sql_writer::write_sql(
+            &mut expected,
+            &sqllumen_lib::export::ExportRows {
+                columns: &cols,
+                rows: &rows(),
+            },
+            slice_table,
+        )
+        .expect("sql");
         assert_eq!(
             String::from_utf8(std::fs::read(&path).expect("read")).expect("utf8"),
             String::from_utf8(expected.clone()).expect("utf8")
@@ -177,16 +226,29 @@ fn sql_stream_is_byte_identical_to_the_slice_writer() {
 #[test]
 fn sql_stream_refuses_an_empty_table_name() {
     let (_dir, path) = temp("out.sql");
-    let error = RowSink::create(&ExportFormat::SqlInsert, &path, &columns(), true, Some(""))
-        .err()
-        .expect("empty table name is refused");
+    let error = RowSink::create(&sqllumen_lib::export::stream_writer::RowSinkSpec {
+        format: &ExportFormat::SqlInsert,
+        path: &path,
+        columns: &columns(),
+        include_headers: true,
+        table_name: Some(""),
+    })
+    .err()
+    .expect("empty table name is refused");
     assert!(error.contains("table_name must not be empty"), "{error}");
 }
 
 #[test]
 fn bytes_written_tracks_text_output_and_is_zero_for_xlsx_until_saved() {
     let (_dir, path) = temp("progress.csv");
-    let mut sink = RowSink::create(&ExportFormat::Csv, &path, &columns(), true, None).expect("csv");
+    let mut sink = RowSink::create(&sqllumen_lib::export::stream_writer::RowSinkSpec {
+        format: &ExportFormat::Csv,
+        path: &path,
+        columns: &columns(),
+        include_headers: true,
+        table_name: None,
+    })
+    .expect("csv");
     for _ in 0..2_000 {
         sink.write_row(&rows()[0]).expect("row");
     }
@@ -203,20 +265,38 @@ fn bytes_written_tracks_text_output_and_is_zero_for_xlsx_until_saved() {
     );
 
     let (_dir, path) = temp("progress.json");
-    let mut sink =
-        RowSink::create(&ExportFormat::Json, &path, &columns(), true, None).expect("json");
+    let mut sink = RowSink::create(&sqllumen_lib::export::stream_writer::RowSinkSpec {
+        format: &ExportFormat::Json,
+        path: &path,
+        columns: &columns(),
+        include_headers: true,
+        table_name: None,
+    })
+    .expect("json");
     sink.write_row(&rows()[0]).expect("row");
     assert!(sink.bytes_written() > 0);
 
     let (_dir, path) = temp("progress.sql");
-    let mut sink =
-        RowSink::create(&ExportFormat::SqlInsert, &path, &columns(), true, None).expect("sql");
+    let mut sink = RowSink::create(&sqllumen_lib::export::stream_writer::RowSinkSpec {
+        format: &ExportFormat::SqlInsert,
+        path: &path,
+        columns: &columns(),
+        include_headers: true,
+        table_name: None,
+    })
+    .expect("sql");
     sink.write_row(&rows()[0]).expect("row");
     assert!(sink.bytes_written() > 0);
 
     let (_dir, path) = temp("progress.xlsx");
-    let mut sink =
-        RowSink::create(&ExportFormat::Xlsx, &path, &columns(), true, None).expect("xlsx");
+    let mut sink = RowSink::create(&sqllumen_lib::export::stream_writer::RowSinkSpec {
+        format: &ExportFormat::Xlsx,
+        path: &path,
+        columns: &columns(),
+        include_headers: true,
+        table_name: None,
+    })
+    .expect("xlsx");
     sink.write_row(&rows()[0]).expect("row");
     assert_eq!(sink.bytes_written(), 0);
     assert_eq!(sink.rows_written(), 1);
@@ -233,14 +313,26 @@ fn creating_a_sink_in_a_missing_directory_fails() {
         ExportFormat::Json,
         ExportFormat::SqlInsert,
     ] {
-        let error = RowSink::create(&format, &missing, &columns(), true, None)
-            .err()
-            .expect("missing directory");
+        let error = RowSink::create(&sqllumen_lib::export::stream_writer::RowSinkSpec {
+            format: &format,
+            path: &missing,
+            columns: &columns(),
+            include_headers: true,
+            table_name: None,
+        })
+        .err()
+        .expect("missing directory");
         assert!(error.starts_with("Failed to create file:"), "{error}");
     }
 
-    let mut sink =
-        RowSink::create(&ExportFormat::Xlsx, &missing, &columns(), true, None).expect("xlsx");
+    let mut sink = RowSink::create(&sqllumen_lib::export::stream_writer::RowSinkSpec {
+        format: &ExportFormat::Xlsx,
+        path: &missing,
+        columns: &columns(),
+        include_headers: true,
+        table_name: None,
+    })
+    .expect("xlsx");
     sink.write_row(&rows()[0]).expect("buffered row");
     let error = sink.finish().expect_err("xlsx save fails");
     assert!(error.starts_with("Failed to write XLSX:"), "{error}");
@@ -340,17 +432,21 @@ fn xlsx_stream_has_the_slice_writers_cells_bold_header_and_freeze_pane() {
     let (_dir, stream_path) = temp("stream.xlsx");
     let (_dir2, slice_path) = temp("slice.xlsx");
     let summary = stream(
-        &ExportFormat::Xlsx,
-        &stream_path,
-        &columns(),
+        &RowSinkSpec {
+            format: &ExportFormat::Xlsx,
+            path: &stream_path,
+            columns: &columns(),
+            include_headers: true,
+            table_name: None,
+        },
         &rows(),
-        true,
-        None,
     );
     xlsx_writer::write_xlsx(
         slice_path.to_str().expect("path"),
-        &columns(),
-        &rows(),
+        &sqllumen_lib::export::ExportRows {
+            columns: &columns(),
+            rows: &rows(),
+        },
         true,
     )
     .expect("slice xlsx");
@@ -403,7 +499,16 @@ fn xlsx_stream_has_the_slice_writers_cells_bold_header_and_freeze_pane() {
 #[test]
 fn xlsx_stream_without_headers_starts_at_a1_without_a_freeze_pane() {
     let (_dir, path) = temp("noheaders.xlsx");
-    stream(&ExportFormat::Xlsx, &path, &columns(), &rows(), false, None);
+    stream(
+        &RowSinkSpec {
+            format: &ExportFormat::Xlsx,
+            path: &path,
+            columns: &columns(),
+            include_headers: false,
+            table_name: None,
+        },
+        &rows(),
+    );
     let cells = sheet_cells(&path);
     assert_eq!(cells["A1"], ("n".into(), "1".into(), String::new()));
     assert!(!sheet_xml(&path).contains("<pane"));
@@ -416,12 +521,14 @@ fn xlsx_stream_sizes_columns_from_the_first_1000_rows_only() {
     all[XLSX_WIDTH_SAMPLE_ROWS + 10][1] = json!("x".repeat(45));
     let (_dir, stream_path) = temp("wide.xlsx");
     let summary = stream(
-        &ExportFormat::Xlsx,
-        &stream_path,
-        &columns(),
+        &RowSinkSpec {
+            format: &ExportFormat::Xlsx,
+            path: &stream_path,
+            columns: &columns(),
+            include_headers: true,
+            table_name: None,
+        },
         &all,
-        true,
-        None,
     );
     assert_eq!(summary.rows_written, all.len() as u64);
 
@@ -429,15 +536,24 @@ fn xlsx_stream_sizes_columns_from_the_first_1000_rows_only() {
     let (_dir2, sample_path) = temp("sample.xlsx");
     xlsx_writer::write_xlsx(
         sample_path.to_str().expect("path"),
-        &columns(),
-        &all[..XLSX_WIDTH_SAMPLE_ROWS],
+        &sqllumen_lib::export::ExportRows {
+            columns: &columns(),
+            rows: &all[..XLSX_WIDTH_SAMPLE_ROWS],
+        },
         true,
     )
     .expect("slice xlsx");
     assert_eq!(cols_section(&stream_path), cols_section(&sample_path));
     let (_dir3, full_path) = temp("full.xlsx");
-    xlsx_writer::write_xlsx(full_path.to_str().expect("path"), &columns(), &all, true)
-        .expect("slice xlsx");
+    xlsx_writer::write_xlsx(
+        full_path.to_str().expect("path"),
+        &sqllumen_lib::export::ExportRows {
+            columns: &columns(),
+            rows: &all,
+        },
+        true,
+    )
+    .expect("slice xlsx");
     assert_ne!(
         cols_section(&stream_path),
         cols_section(&full_path),
@@ -460,11 +576,13 @@ fn xlsx_stream_stops_at_the_sheet_row_limit_and_reports_it() {
     for (include_headers, limit, data_rows) in [(true, 4u32, 3u64), (false, 3, 3)] {
         let (_dir, path) = temp("limit.xlsx");
         let mut sink = RowSink::create_with_sheet_row_limit(
-            &ExportFormat::Xlsx,
-            &path,
-            &columns(),
-            include_headers,
-            None,
+            &sqllumen_lib::export::stream_writer::RowSinkSpec {
+                format: &ExportFormat::Xlsx,
+                path: &path,
+                columns: &columns(),
+                include_headers,
+                table_name: None,
+            },
             limit,
         )
         .expect("xlsx");
@@ -509,11 +627,13 @@ fn xlsx_stream_stops_at_the_limit_after_the_width_sample() {
     let limit = (XLSX_WIDTH_SAMPLE_ROWS + 6) as u32;
     let (_dir, path) = temp("limit-after-sample.xlsx");
     let mut sink = RowSink::create_with_sheet_row_limit(
-        &ExportFormat::Xlsx,
-        &path,
-        &columns(),
-        true,
-        None,
+        &sqllumen_lib::export::stream_writer::RowSinkSpec {
+            format: &ExportFormat::Xlsx,
+            path: &path,
+            columns: &columns(),
+            include_headers: true,
+            table_name: None,
+        },
         limit,
     )
     .expect("xlsx");

@@ -56,7 +56,7 @@ describe('schema-index-commands', () => {
   describe('semanticSearch', () => {
     it('invokes semantic_search with correct args and returns results', async () => {
       const results = await semanticSearch('session-1', ['query1', 'query2'])
-      expect(ipc.calls('semantic_search')).toEqual([
+      expect(ipc.payloads('semantic_search')).toEqual([
         { sessionId: 'session-1', queries: ['query1', 'query2'], hints: null },
       ])
       expect(results).toHaveLength(1)
@@ -76,7 +76,7 @@ describe('schema-index-commands', () => {
   describe('invalidateSchemaIndex', () => {
     it('invokes invalidate_schema_index with correct args', async () => {
       await invalidateSchemaIndex('session-1', ['db.users', 'db.orders'])
-      expect(ipc.calls('invalidate_schema_index')).toEqual([
+      expect(ipc.payloads('invalidate_schema_index')).toEqual([
         { sessionId: 'session-1', tables: ['db.users', 'db.orders'] },
       ])
     })

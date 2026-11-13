@@ -114,7 +114,7 @@ describe('listConnections', () => {
 describe('updateConnection', () => {
   it('calls invoke with correct command and args', async () => {
     await updateConnection('abc', sampleFormData)
-    expect(ipc.calls('update_connection')).toEqual([
+    expect(ipc.payloads('update_connection')).toEqual([
       {
         id: 'abc',
         data: {
@@ -129,7 +129,7 @@ describe('updateConnection', () => {
 
   it('converts empty password to null for update', async () => {
     await updateConnection('abc', { ...sampleFormData, password: '' })
-    expect(ipc.calls('update_connection')).toEqual([
+    expect(ipc.payloads('update_connection')).toEqual([
       {
         id: 'abc',
         data: expect.objectContaining({ password: null, clearPassword: false }),
@@ -139,7 +139,7 @@ describe('updateConnection', () => {
 
   it('passes clearPassword when requested', async () => {
     await updateConnection('abc', { ...sampleFormData, password: '' }, { clearPassword: true })
-    expect(ipc.calls('update_connection')).toEqual([
+    expect(ipc.payloads('update_connection')).toEqual([
       {
         id: 'abc',
         data: expect.objectContaining({ password: null, clearPassword: true }),
@@ -205,7 +205,7 @@ describe('listConnectionGroups', () => {
 describe('updateConnectionGroup', () => {
   it('calls invoke with correct command and args', async () => {
     await updateConnectionGroup('grp-1', 'New name')
-    expect(ipc.calls('update_connection_group')).toEqual([
+    expect(ipc.payloads('update_connection_group')).toEqual([
       {
         id: 'grp-1',
         name: 'New name',

@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeArgumentCommand, invokeCommand } from './ipc/dispatch'
 import type { JobStatus } from './job-progress'
 
 /** A table available to copy, with an estimated row count. */
@@ -132,25 +132,24 @@ export interface CopyProgress {
   cancelRequested: boolean
 }
 
-/** List the copyable objects (tables, procedures, functions, triggers, events) of a source database. */
 export async function listCopyableObjects(
   connectionId: string,
   database: string
 ): Promise<CopyableObjects> {
-  return invoke<CopyableObjects>('list_copyable_objects', { connectionId, database })
+  return invokeCommand({ command: 'list_copyable_objects', payload: { connectionId, database } })
 }
 
-/** Start a copy-to-host job. Returns the job ID for progress tracking. */
 export async function startCopyToHost(params: CopyToHostParams): Promise<string> {
-  return invoke<string>('start_copy_to_host', { params: sanitizeCopyToHostParams(params) })
+  return invokeArgumentCommand({
+    command: 'start_copy_to_host',
+    argument: { params: sanitizeCopyToHostParams(params) },
+  })
 }
 
-/** Get progress of a copy-to-host job. */
 export async function getCopyProgress(jobId: string): Promise<CopyProgress> {
-  return invoke<CopyProgress>('get_copy_progress', { jobId })
+  return invokeArgumentCommand({ command: 'get_copy_progress', argument: { jobId } })
 }
 
-/** Cancel a running copy-to-host job. */
 export async function cancelCopy(jobId: string): Promise<void> {
-  return invoke<void>('cancel_copy', { jobId })
+  return invokeArgumentCommand({ command: 'cancel_copy', argument: { jobId } })
 }

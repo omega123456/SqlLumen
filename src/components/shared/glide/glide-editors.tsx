@@ -142,7 +142,7 @@ function applyInitialInputValue(value: GridCell, initialInputValue: string | und
   if (value.kind !== GridCellKind.Text) return value
 
   return {
-    ...(value as TextCell),
+    ...value,
     data: initialInputValue,
     displayData: initialInputValue,
     copyData: initialInputValue,

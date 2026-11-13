@@ -1,9 +1,6 @@
-import { invoke } from '@tauri-apps/api/core'
 import type { AppInfo } from '../types/schema'
+import { invokeArgumentCommand, NO_ARGUMENTS } from './ipc/dispatch'
 
-/**
- * Get application info (version, log directory, RUST_LOG override status).
- */
 export async function getAppInfo(): Promise<AppInfo> {
-  return invoke<AppInfo>('get_app_info')
+  return invokeArgumentCommand({ command: 'get_app_info', argument: NO_ARGUMENTS })
 }

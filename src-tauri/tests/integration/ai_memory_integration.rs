@@ -159,7 +159,15 @@ fn insert_memory_vector_works() {
     let id = storage::insert_memory(&conn, "conn-1", "Test").unwrap();
     let table = storage::ensure_vec_table(&conn, "conn-1", 4).unwrap();
     let embedding = test_embedding(4, 1.0);
-    storage::insert_memory_vector(&conn, &table, id, &embedding).unwrap();
+    storage::insert_memory_vector(
+        &conn,
+        &table,
+        &sqllumen_lib::ai_memory::types::MemoryVector {
+            memory_id: id,
+            embedding: &embedding,
+        },
+    )
+    .unwrap();
 
     // Verify the vector exists
     let count: i64 = conn
@@ -177,7 +185,15 @@ fn delete_memory_vector_removes_entry() {
     let conn = setup_db();
     let id = storage::insert_memory(&conn, "conn-1", "Test").unwrap();
     let table = storage::ensure_vec_table(&conn, "conn-1", 4).unwrap();
-    storage::insert_memory_vector(&conn, &table, id, &test_embedding(4, 1.0)).unwrap();
+    storage::insert_memory_vector(
+        &conn,
+        &table,
+        &sqllumen_lib::ai_memory::types::MemoryVector {
+            memory_id: id,
+            embedding: &test_embedding(4, 1.0),
+        },
+    )
+    .unwrap();
 
     storage::delete_memory_vector(&conn, "conn-1", id).unwrap();
 
@@ -229,9 +245,33 @@ fn knn_search_returns_nearest_vectors() {
     let emb2 = vec![0.9, 0.1, 0.0, 0.0]; // close to emb1
     let emb3 = vec![0.0, 0.0, 0.0, 1.0]; // far from emb1
 
-    storage::insert_memory_vector(&conn, &table, id1, &emb1).unwrap();
-    storage::insert_memory_vector(&conn, &table, id2, &emb2).unwrap();
-    storage::insert_memory_vector(&conn, &table, id3, &emb3).unwrap();
+    storage::insert_memory_vector(
+        &conn,
+        &table,
+        &sqllumen_lib::ai_memory::types::MemoryVector {
+            memory_id: id1,
+            embedding: &emb1,
+        },
+    )
+    .unwrap();
+    storage::insert_memory_vector(
+        &conn,
+        &table,
+        &sqllumen_lib::ai_memory::types::MemoryVector {
+            memory_id: id2,
+            embedding: &emb2,
+        },
+    )
+    .unwrap();
+    storage::insert_memory_vector(
+        &conn,
+        &table,
+        &sqllumen_lib::ai_memory::types::MemoryVector {
+            memory_id: id3,
+            embedding: &emb3,
+        },
+    )
+    .unwrap();
 
     // Search for something close to emb1
     let query_emb = [1.0, 0.0, 0.0, 0.0];
@@ -286,7 +326,14 @@ fn vec_table_name_sanitizes_connection_id() {
 fn insert_memory_vector_errors_on_missing_table() {
     let conn = setup_db();
     let embedding = test_embedding(4, 1.0);
-    let result = storage::insert_memory_vector(&conn, "nonexistent_table", 1, &embedding);
+    let result = storage::insert_memory_vector(
+        &conn,
+        "nonexistent_table",
+        &sqllumen_lib::ai_memory::types::MemoryVector {
+            memory_id: 1,
+            embedding: &embedding,
+        },
+    );
     assert!(result.is_err());
 }
 
@@ -306,7 +353,13 @@ fn delete_memory_impl_errors_for_missing_memory() {
     use sqllumen_lib::commands::ai_memory::delete_memory_impl;
 
     let state = common::test_app_state();
-    let result = delete_memory_impl(&state, MemoryScope::Connection, 99999);
+    let result = delete_memory_impl(
+        &state,
+        &sqllumen_lib::commands::ai_memory::DeleteMemoryRequest {
+            scope: MemoryScope::Connection,
+            memory_id: 99999,
+        },
+    );
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("not found"));
 }
@@ -344,10 +397,25 @@ fn delete_memory_impl_removes_memory_and_vector() {
         let conn = state.db.lock().unwrap();
         let id = storage::insert_memory(&conn, "conn-1", "To delete").unwrap();
         let table = storage::ensure_vec_table(&conn, "conn-1", 4).unwrap();
-        storage::insert_memory_vector(&conn, &table, id, &test_embedding(4, 1.0)).unwrap();
+        storage::insert_memory_vector(
+            &conn,
+            &table,
+            &sqllumen_lib::ai_memory::types::MemoryVector {
+                memory_id: id,
+                embedding: &test_embedding(4, 1.0),
+            },
+        )
+        .unwrap();
         id
     };
-    delete_memory_impl(&state, MemoryScope::Connection, id).unwrap();
+    delete_memory_impl(
+        &state,
+        &sqllumen_lib::commands::ai_memory::DeleteMemoryRequest {
+            scope: MemoryScope::Connection,
+            memory_id: id,
+        },
+    )
+    .unwrap();
     let conn = state.db.lock().unwrap();
     let mem = storage::get_memory_by_id(&conn, id).unwrap();
     assert!(mem.is_none());
@@ -387,7 +455,8 @@ fn read_embedding_config_returns_configured_values() {
     settings::set_setting(&conn, "ai.endpoint", "http://localhost:1234").unwrap();
     settings::set_setting(&conn, "ai.embeddingModel", "test-model").unwrap();
 
-    let (endpoint, model) = read_embedding_config(&conn).unwrap();
+    let sqllumen_lib::ai_memory::EmbeddingConfig { endpoint, model } =
+        read_embedding_config(&conn).unwrap();
     assert_eq!(endpoint, "http://localhost:1234");
     assert_eq!(model, "test-model");
 }
@@ -466,7 +535,14 @@ fn save_memory_impl_errors_without_embedding_config() {
         .unwrap()
         .insert("sess-1".to_string(), "profile-1".to_string());
 
-    let result = save_memory_impl(&state, "sess-1", "Remember this", MemoryScope::Connection);
+    let result = save_memory_impl(
+        &state,
+        &sqllumen_lib::commands::ai_memory::SaveMemoryRequest {
+            session_id: "sess-1".to_string(),
+            content: "Remember this".to_string(),
+            scope: MemoryScope::Connection,
+        },
+    );
     assert!(result.is_err());
     // Should fail because embedding config is not set
     let err = result.unwrap_err();
@@ -491,8 +567,19 @@ fn save_memory_impl_succeeds_with_config() {
         settings::set_setting(&conn, "ai.embeddingModel", "test-model").unwrap();
     }
 
-    let (memory, owner_id, endpoint, model) =
-        save_memory_impl(&state, "sess-1", "Remember this", MemoryScope::Connection).unwrap();
+    let sqllumen_lib::commands::ai_memory::SavedMemory {
+        memory,
+        owner_id,
+        embedding: sqllumen_lib::ai_memory::EmbeddingConfig { endpoint, model },
+    } = save_memory_impl(
+        &state,
+        &sqllumen_lib::commands::ai_memory::SaveMemoryRequest {
+            session_id: "sess-1".to_string(),
+            content: "Remember this".to_string(),
+            scope: MemoryScope::Connection,
+        },
+    )
+    .unwrap();
     assert_eq!(memory.content, "Remember this");
     assert_eq!(owner_id.as_deref(), Some("profile-1"));
     assert_eq!(endpoint, "http://localhost:1234");

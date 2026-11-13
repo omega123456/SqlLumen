@@ -532,19 +532,20 @@ fn evict_results_removes_stored_result() {
 
     // Insert a result manually
     state.result_cache.insert(
-        "conn-1",
-        "tab-1",
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "tab-1"),
         vec![StoredResult::new(
-            "qid-1".to_string(),
-            vec![ColumnMeta {
-                name: "id".to_string(),
-                data_type: "INT".to_string(),
-            }],
-            crate::common::shared_rows(vec![vec![serde_json::json!(1)]]),
-            5,
-            5,
-            0,
-            false,
+            sqllumen_lib::mysql::query_executor::StoredResultParts {
+                query_id: "qid-1".to_string(),
+                columns: vec![ColumnMeta {
+                    name: "id".to_string(),
+                    data_type: "INT".to_string(),
+                }],
+                rows: crate::common::shared_rows(vec![vec![serde_json::json!(1)]]),
+                execution_time_ms: 5,
+                total_time_ms: 5,
+                affected_rows: 0,
+                auto_limit_applied: false,
+            },
         )],
     );
 
@@ -552,7 +553,13 @@ fn evict_results_removes_stored_result() {
     assert!(state.result_cache.get("conn-1", "tab-1").is_available());
 
     // Evict
-    evict_results_impl(&state, "conn-1", "tab-1");
+    evict_results_impl(
+        &state,
+        &sqllumen_lib::commands::requests::ConnectionTabRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+        },
+    );
 
     // Verify gone
     assert!(!state.result_cache.get("conn-1", "tab-1").is_available());
@@ -562,7 +569,13 @@ fn evict_results_removes_stored_result() {
 fn evict_results_no_op_when_not_found() {
     let state = test_state();
     // Should not panic
-    evict_results_impl(&state, "conn-missing", "tab-missing");
+    evict_results_impl(
+        &state,
+        &sqllumen_lib::commands::requests::ConnectionTabRequest {
+            connection_id: "conn-missing".to_string(),
+            tab_id: "tab-missing".to_string(),
+        },
+    );
 }
 
 #[test]
@@ -570,23 +583,30 @@ fn touch_results_reports_available_for_cached_entry() {
     let state = test_state();
 
     state.result_cache.insert(
-        "conn-1",
-        "tab-1",
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "tab-1"),
         vec![StoredResult::new(
-            "qid-1".to_string(),
-            vec![ColumnMeta {
-                name: "id".to_string(),
-                data_type: "INT".to_string(),
-            }],
-            crate::common::shared_rows(vec![vec![serde_json::json!(1)]]),
-            5,
-            5,
-            0,
-            false,
+            sqllumen_lib::mysql::query_executor::StoredResultParts {
+                query_id: "qid-1".to_string(),
+                columns: vec![ColumnMeta {
+                    name: "id".to_string(),
+                    data_type: "INT".to_string(),
+                }],
+                rows: crate::common::shared_rows(vec![vec![serde_json::json!(1)]]),
+                execution_time_ms: 5,
+                total_time_ms: 5,
+                affected_rows: 0,
+                auto_limit_applied: false,
+            },
         )],
     );
 
-    let status = touch_results_impl(&state, "conn-1", "tab-1");
+    let status = touch_results_impl(
+        &state,
+        &sqllumen_lib::commands::requests::ConnectionTabRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+        },
+    );
 
     assert_eq!(status, serde_json::json!({ "status": "available" }));
 }
@@ -595,7 +615,13 @@ fn touch_results_reports_available_for_cached_entry() {
 fn touch_results_reports_missing_for_unknown_entry() {
     let state = test_state();
 
-    let status = touch_results_impl(&state, "conn-1", "tab-missing");
+    let status = touch_results_impl(
+        &state,
+        &sqllumen_lib::commands::requests::ConnectionTabRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-missing".to_string(),
+        },
+    );
 
     assert_eq!(status, serde_json::json!({ "status": "missing" }));
 }
@@ -605,22 +631,29 @@ fn touch_results_reports_expired_for_removed_entry() {
     let state = test_state();
 
     state.result_cache.insert(
-        "conn-1",
-        "tab-1",
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "tab-1"),
         vec![StoredResult::new(
-            "qid-1".to_string(),
-            vec![],
-            std::sync::Arc::new(vec![]),
-            5,
-            5,
-            0,
-            false,
+            sqllumen_lib::mysql::query_executor::StoredResultParts {
+                query_id: "qid-1".to_string(),
+                columns: vec![],
+                rows: std::sync::Arc::new(vec![]),
+                execution_time_ms: 5,
+                total_time_ms: 5,
+                affected_rows: 0,
+                auto_limit_applied: false,
+            },
         )],
     );
     state.result_cache.remove("conn-1", "tab-1");
     state.result_cache.run_pending_tasks();
 
-    let status = touch_results_impl(&state, "conn-1", "tab-1");
+    let status = touch_results_impl(
+        &state,
+        &sqllumen_lib::commands::requests::ConnectionTabRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+        },
+    );
 
     assert_eq!(status, serde_json::json!({ "status": "expired" }));
 }
@@ -633,16 +666,17 @@ fn touch_results_reports_available_after_spill_rewarm() {
         sqllumen_lib::mysql::result_cache::ResultCache::new_for_test(1, tmp.path().to_path_buf());
 
     cache.insert(
-        "conn-1",
-        "tab-1",
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "tab-1"),
         vec![StoredResult::new(
-            "qid-1".to_string(),
-            vec![],
-            crate::common::shared_rows(vec![vec![serde_json::json!(1)]]),
-            5,
-            5,
-            0,
-            false,
+            sqllumen_lib::mysql::query_executor::StoredResultParts {
+                query_id: "qid-1".to_string(),
+                columns: vec![],
+                rows: crate::common::shared_rows(vec![vec![serde_json::json!(1)]]),
+                execution_time_ms: 5,
+                total_time_ms: 5,
+                affected_rows: 0,
+                auto_limit_applied: false,
+            },
         )],
     );
 
@@ -659,7 +693,13 @@ fn touch_results_reports_available_after_spill_rewarm() {
         ..state
     };
 
-    let status = touch_results_impl(&state, "conn-1", "tab-1");
+    let status = touch_results_impl(
+        &state,
+        &sqllumen_lib::commands::requests::ConnectionTabRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+        },
+    );
 
     assert_eq!(status, serde_json::json!({ "status": "available" }));
 }
@@ -674,24 +714,38 @@ fn fetch_result_window_happy_path() {
         (1i64..=5).map(|i| vec![serde_json::json!(i)]).collect();
 
     state.result_cache.insert(
-        "c1",
-        "t1",
+        sqllumen_lib::mysql::result_cache::CacheKey::new("c1", "t1"),
         vec![StoredResult::new(
-            "q1".to_string(),
-            vec![ColumnMeta {
-                name: "n".to_string(),
-                data_type: "INT".to_string(),
-            }],
-            crate::common::shared_rows(rows.clone()),
-            1,
-            1,
-            0,
-            false,
+            sqllumen_lib::mysql::query_executor::StoredResultParts {
+                query_id: "q1".to_string(),
+                columns: vec![ColumnMeta {
+                    name: "n".to_string(),
+                    data_type: "INT".to_string(),
+                }],
+                rows: crate::common::shared_rows(rows.clone()),
+                execution_time_ms: 1,
+                total_time_ms: 1,
+                affected_rows: 0,
+                auto_limit_applied: false,
+            },
         )],
     );
 
-    let result =
-        fetch_result_window_impl(&state, "c1", "t1", 0, "q1", 1, 0, 2000).expect("should succeed");
+    let result = fetch_result_window_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::FetchResultWindowRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: "c1".to_string(),
+                tab_id: "t1".to_string(),
+                result_index: 0,
+                query_id: "q1".to_string(),
+            },
+            view_version: 1,
+            offset: 0,
+            limit: 2000,
+        },
+    )
+    .expect("should succeed");
     assert_eq!(result.rows.len(), 5);
     assert_eq!(result.base_indices, vec![0, 1, 2, 3, 4]);
     assert_eq!(result.view_row_count, 5);
@@ -702,30 +756,57 @@ fn fetch_result_window_errors_on_expired() {
     let state = test_state_with_zero_ttl();
 
     state.result_cache.insert(
-        "c1",
-        "t1",
+        sqllumen_lib::mysql::result_cache::CacheKey::new("c1", "t1"),
         vec![StoredResult::new(
-            "q1".to_string(),
-            vec![],
-            std::sync::Arc::new(vec![]),
-            1,
-            1,
-            0,
-            false,
+            sqllumen_lib::mysql::query_executor::StoredResultParts {
+                query_id: "q1".to_string(),
+                columns: vec![],
+                rows: std::sync::Arc::new(vec![]),
+                execution_time_ms: 1,
+                total_time_ms: 1,
+                affected_rows: 0,
+                auto_limit_applied: false,
+            },
         )],
     );
 
     // With zero TTL the entry expires immediately
-    let err = fetch_result_window_impl(&state, "c1", "t1", 0, "q1", 1, 0, 100)
-        .expect_err("expired cache should error");
+    let err = fetch_result_window_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::FetchResultWindowRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: "c1".to_string(),
+                tab_id: "t1".to_string(),
+                result_index: 0,
+                query_id: "q1".to_string(),
+            },
+            view_version: 1,
+            offset: 0,
+            limit: 100,
+        },
+    )
+    .expect_err("expired cache should error");
     assert!(err.contains("results_expired"));
 }
 
 #[test]
 fn fetch_result_window_errors_when_missing() {
     let state = test_state();
-    let err = fetch_result_window_impl(&state, "conn-missing", "tab-missing", 0, "q1", 1, 0, 100)
-        .expect_err("missing result should error");
+    let err = fetch_result_window_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::FetchResultWindowRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: "conn-missing".to_string(),
+                tab_id: "tab-missing".to_string(),
+                result_index: 0,
+                query_id: "q1".to_string(),
+            },
+            view_version: 1,
+            offset: 0,
+            limit: 100,
+        },
+    )
+    .expect_err("missing result should error");
     assert!(err.contains("No results found") || err.contains("not found"));
 }
 
@@ -734,21 +815,35 @@ fn fetch_result_window_errors_on_query_id_mismatch() {
     let state = test_state();
 
     state.result_cache.insert(
-        "c1",
-        "t1",
+        sqllumen_lib::mysql::result_cache::CacheKey::new("c1", "t1"),
         vec![StoredResult::new(
-            "q1".to_string(),
-            vec![],
-            std::sync::Arc::new(vec![]),
-            1,
-            1,
-            0,
-            false,
+            sqllumen_lib::mysql::query_executor::StoredResultParts {
+                query_id: "q1".to_string(),
+                columns: vec![],
+                rows: std::sync::Arc::new(vec![]),
+                execution_time_ms: 1,
+                total_time_ms: 1,
+                affected_rows: 0,
+                auto_limit_applied: false,
+            },
         )],
     );
 
-    let err = fetch_result_window_impl(&state, "c1", "t1", 0, "wrong-id", 1, 0, 100)
-        .expect_err("wrong query_id should error");
+    let err = fetch_result_window_impl(
+        &state,
+        &sqllumen_lib::mysql::result_view::FetchResultWindowRequest {
+            slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                connection_id: "c1".to_string(),
+                tab_id: "t1".to_string(),
+                result_index: 0,
+                query_id: "wrong-id".to_string(),
+            },
+            view_version: 1,
+            offset: 0,
+            limit: 100,
+        },
+    )
+    .expect_err("wrong query_id should error");
     assert!(err.starts_with("Results were refreshed"));
 }
 
@@ -866,9 +961,18 @@ mod coverage_stubs {
         let state = test_state();
         register_lazy_pool(&state, "conn-cov", false);
 
-        let result = execute_query_impl(&state, "conn-cov", "tab-1", "SELECT * FROM t", 100, None)
-            .await
-            .expect("coverage stub should succeed");
+        let result = execute_query_impl(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
+                connection_id: "conn-cov".to_string(),
+                tab_id: "tab-1".to_string(),
+                sql: "SELECT * FROM t".to_string(),
+                row_limit: Some(100),
+                view_spec: None,
+            },
+        )
+        .await
+        .expect("coverage stub should succeed");
 
         assert!(!result.query_id.is_empty());
         assert!(result.auto_limit_applied);
@@ -879,9 +983,18 @@ mod coverage_stubs {
     async fn execute_query_impl_coverage_missing_connection() {
         let state = test_state();
 
-        let err = execute_query_impl(&state, "missing", "tab-1", "SELECT 1", 100, None)
-            .await
-            .expect_err("missing connection should error");
+        let err = execute_query_impl(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
+                connection_id: "missing".to_string(),
+                tab_id: "tab-1".to_string(),
+                sql: "SELECT 1".to_string(),
+                row_limit: Some(100),
+                view_spec: None,
+            },
+        )
+        .await
+        .expect_err("missing connection should error");
         assert!(err.contains("not found"));
     }
 
@@ -892,11 +1005,13 @@ mod coverage_stubs {
 
         let err = execute_query_impl(
             &state,
-            "ro-conn",
-            "tab-1",
-            "INSERT INTO t VALUES (1)",
-            100,
-            None,
+            &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
+                connection_id: "ro-conn".to_string(),
+                tab_id: "tab-1".to_string(),
+                sql: "INSERT INTO t VALUES (1)".to_string(),
+                row_limit: Some(100),
+                view_spec: None,
+            },
         )
         .await
         .expect_err("read-only should block DML");
@@ -908,9 +1023,18 @@ mod coverage_stubs {
         let state = test_state();
         register_lazy_pool(&state, "ro-conn", true);
 
-        let result = execute_query_impl(&state, "ro-conn", "tab-1", "SELECT 1", 100, None)
-            .await
-            .expect("read-only should allow SELECT");
+        let result = execute_query_impl(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
+                connection_id: "ro-conn".to_string(),
+                tab_id: "tab-1".to_string(),
+                sql: "SELECT 1".to_string(),
+                row_limit: Some(100),
+                view_spec: None,
+            },
+        )
+        .await
+        .expect("read-only should allow SELECT");
         assert!(!result.query_id.is_empty());
     }
 
@@ -919,9 +1043,18 @@ mod coverage_stubs {
         let state = test_state();
         register_lazy_pool(&state, "conn-cov", false);
 
-        let result = execute_query_impl(&state, "conn-cov", "tab-1", "SHOW TABLES", 0, None)
-            .await
-            .expect("row_limit 0 should fallback to 1000");
+        let result = execute_query_impl(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
+                connection_id: "conn-cov".to_string(),
+                tab_id: "tab-1".to_string(),
+                sql: "SHOW TABLES".to_string(),
+                row_limit: Some(0),
+                view_spec: None,
+            },
+        )
+        .await
+        .expect("row_limit 0 should fallback to 1000");
         assert!(result.first_window.rows.is_empty());
     }
 
@@ -933,11 +1066,13 @@ mod coverage_stubs {
         // INSERT doesn't get auto-limit
         let result = execute_query_impl(
             &state,
-            "conn-cov",
-            "tab-1",
-            "INSERT INTO t VALUES (1)",
-            100,
-            None,
+            &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
+                connection_id: "conn-cov".to_string(),
+                tab_id: "tab-1".to_string(),
+                sql: "INSERT INTO t VALUES (1)".to_string(),
+                row_limit: Some(100),
+                view_spec: None,
+            },
         )
         .await
         .expect("stub should succeed");
@@ -949,20 +1084,33 @@ mod coverage_stubs {
         let state = test_state();
         register_lazy_pool(&state, "conn-cov", false);
 
-        let result = execute_query_impl(&state, "conn-cov", "tab-1", "SELECT * FROM t", 100, None)
-            .await
-            .expect("stub should succeed");
+        let result = execute_query_impl(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
+                connection_id: "conn-cov".to_string(),
+                tab_id: "tab-1".to_string(),
+                sql: "SELECT * FROM t".to_string(),
+                row_limit: Some(100),
+                view_spec: None,
+            },
+        )
+        .await
+        .expect("stub should succeed");
 
         // Verify result is stored and can be fetched
         let cached = fetch_result_window_impl(
             &state,
-            "conn-cov",
-            "tab-1",
-            0,
-            &result.query_id,
-            result.view_version,
-            0,
-            100,
+            &sqllumen_lib::mysql::result_view::FetchResultWindowRequest {
+                slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
+                    connection_id: "conn-cov".to_string(),
+                    tab_id: "tab-1".to_string(),
+                    result_index: 0,
+                    query_id: result.query_id.to_string(),
+                },
+                view_version: result.view_version,
+                offset: 0,
+                limit: 100,
+            },
         )
         .expect("window fetch should succeed");
         assert_eq!(cached.rows.len(), 0);

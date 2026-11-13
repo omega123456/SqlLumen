@@ -208,6 +208,15 @@ function isPointerOrUnknownSource(source: CellClickGuardArgs['source']): boolean
 // TableDataGrid component
 // ---------------------------------------------------------------------------
 
+interface CellSwitchTarget {
+  targetRowKey: RowKey
+  fallbackRowIndex: number
+  targetColumnIndex: number
+  enableEditorOnRestore: boolean
+}
+
+type CellSwitchGuardOutcome = { passed: true } | { passed: false; result: CellClickGuardResult }
+
 interface TableDataGridProps {
   tabId: string
   isReadOnly: boolean
@@ -350,7 +359,12 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
   // ---------------------------------------------------------------------------
   const descriptorColumns = useMemo(
     () =>
-      buildColumnDescriptors(columns, isReadOnly, hasPrimaryKey, foreignKeys).map((column) => ({
+      buildColumnDescriptors({
+        columns: columns,
+        isReadOnly: isReadOnly,
+        hasPrimaryKey: hasPrimaryKey,
+        foreignKeys: foreignKeys,
+      }).map((column) => ({
         ...column,
         width: columnWidths[column.key],
       })),
@@ -537,13 +551,13 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
         // BLOB columns stay editable through the shared viewer, so they show no lock.
         const showLock = !column.editable && column.blobViewerEditable !== true
         const headerIconWidthPx = column.foreignKey || showLock ? HEADER_ICON_WIDTH_PX : 0
-        return getAutoSizedColumnWidth(
-          meta,
-          0, // column is at index 0 in our single-column proxy array
-          columnRows,
-          column.key,
-          headerIconWidthPx
-        )
+        return getAutoSizedColumnWidth({
+          column: meta,
+          columnIndex: 0,
+          rows: columnRows,
+          displayName: column.key,
+          headerIconWidthPx: headerIconWidthPx,
+        })
       },
     }
   }, [columns, rows])
@@ -623,12 +637,12 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
   )
 
   const validateAndCommitCurrentEdit = useCallback(
-    async (
-      targetRowKey: Record<string, unknown>,
-      fallbackRowIndex: number,
-      targetColumnIndex: number,
-      options: { enableEditorOnRestore: boolean }
-    ): Promise<{ passed: boolean; result?: CellClickGuardResult }> => {
+    async ({
+      targetRowKey,
+      fallbackRowIndex,
+      targetColumnIndex,
+      enableEditorOnRestore,
+    }: CellSwitchTarget): Promise<CellSwitchGuardOutcome> => {
       const currentState = useTableDataStore.getState().tabs[tabId]
       const currentEditState = currentState?.editState ?? null
       const isSwitchingRows =
@@ -639,7 +653,7 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
         proceed: false,
         targetRowIdx: resolveRestoreRowIndex(currentState, fallbackRowIndex),
         targetColIdx: targetColumnIndex,
-        enableEditor: options.enableEditorOnRestore,
+        enableEditor: enableEditorOnRestore,
         restoreFocus: true,
       }
       const committed = await commitEditingRowBeforeSwitch(currentEditState, targetRowKey)
@@ -680,14 +694,14 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
       const { editable, targetColIdx: targetColumnIndex } = target
 
       // Validate and commit current edit if switching rows (async guard)
-      const guardResult = await validateAndCommitCurrentEdit(
-        targetRowKey,
-        args.rowIdx,
-        targetColumnIndex,
-        { enableEditorOnRestore: !isKeyboardNavigation }
-      )
+      const guardResult = await validateAndCommitCurrentEdit({
+        targetRowKey: targetRowKey,
+        fallbackRowIndex: args.rowIdx,
+        targetColumnIndex: targetColumnIndex,
+        enableEditorOnRestore: !isKeyboardNavigation,
+      })
       if (!guardResult.passed) {
-        return guardResult.result!
+        return guardResult.result
       }
 
       // Guard passed — NOW update selectedRowKey and selectedCell
@@ -749,15 +763,12 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
       const rowKey =
         (row.__editingRowKey as RowKey | undefined) ?? getRowKey(row, primaryKeyColumns)
       if (!isSameRowKey(rowKey, currentEditState.rowKey)) return
-      useTableDataStore
-        .getState()
-        .syncCellValue(
-          tabId,
-          { ...row, __editingRowKey: rowKey },
-          changedColumnKey,
-          row[changedColumnKey],
-          rowKey
-        )
+      useTableDataStore.getState().syncCellValue(tabId, {
+        rowData: { ...row, __editingRowKey: rowKey },
+        column: changedColumnKey,
+        value: row[changedColumnKey],
+        rowKeyOverride: rowKey,
+      })
     },
     [primaryKeyColumns, tabId]
   )
@@ -783,12 +794,12 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
 
       const targetRowKey = getRowKey(args.rowData, primaryKeyColumns)
 
-      const guardResult = await validateAndCommitCurrentEdit(
-        targetRowKey,
-        args.rowIdx,
-        target.targetColIdx,
-        { enableEditorOnRestore: true }
-      )
+      const guardResult = await validateAndCommitCurrentEdit({
+        targetRowKey: targetRowKey,
+        fallbackRowIndex: args.rowIdx,
+        targetColumnIndex: target.targetColIdx,
+        enableEditorOnRestore: true,
+      })
       if (!guardResult.passed) return false
 
       setSelectedRow(tabId, targetRowKey)
@@ -797,9 +808,12 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
 
       const nextValue = args.action === 'cut' ? null : (args.text ?? null)
       storeUpdateCellValue(tabId, args.columnKey, nextValue)
-      useTableDataStore
-        .getState()
-        .syncCellValue(tabId, args.rowData, args.columnKey, nextValue, targetRowKey)
+      useTableDataStore.getState().syncCellValue(tabId, {
+        rowData: args.rowData,
+        column: args.columnKey,
+        value: nextValue,
+        rowKeyOverride: targetRowKey,
+      })
       return true
     },
     [
@@ -849,12 +863,12 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
       )
 
       // Run the unsaved-edit guard (same pattern as cell click guard)
-      const guardResult = await validateAndCommitCurrentEdit(
-        targetRowKey,
-        fallbackRowIndex >= 0 ? fallbackRowIndex : 0,
-        targetColumnIndex >= 0 ? targetColumnIndex : 0,
-        { enableEditorOnRestore: args.source !== 'keyboard' }
-      )
+      const guardResult = await validateAndCommitCurrentEdit({
+        targetRowKey: targetRowKey,
+        fallbackRowIndex: fallbackRowIndex >= 0 ? fallbackRowIndex : 0,
+        targetColumnIndex: targetColumnIndex >= 0 ? targetColumnIndex : 0,
+        enableEditorOnRestore: args.source !== 'keyboard',
+      })
 
       if (guardResult.passed) {
         setSelectedRow(tabId, targetRowKey)
@@ -972,9 +986,12 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
 
       // Update the FK cell with the selected value
       storeUpdateCellValue(tabId, columnKey, selectedValue)
-      useTableDataStore
-        .getState()
-        .syncCellValue(tabId, foreignKeyRowData, columnKey, selectedValue, rowKey)
+      useTableDataStore.getState().syncCellValue(tabId, {
+        rowData: foreignKeyRowData,
+        column: columnKey,
+        value: selectedValue,
+        rowKeyOverride: rowKey,
+      })
 
       // Select the edited row so toolbar actions target it correctly
       setSelectedRow(tabId, rowKey)

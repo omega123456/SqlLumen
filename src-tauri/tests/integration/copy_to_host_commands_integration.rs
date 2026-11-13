@@ -13,7 +13,7 @@ use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionIn
 use sqllumen_lib::commands::copy_to_host::{
     build_copyable_tables, cancel_copy_impl, collect_names, get_copy_progress_impl, is_base_table,
     is_same_host, is_system_schema, list_copyable_objects_impl, normalize_host, split_routines,
-    start_copy_to_host_impl, CopyableObjects, CopyableTable,
+    start_copy_to_host_impl, CopyableObjects, CopyableTable, RoutineNames,
 };
 use sqllumen_lib::export::copy_to_host::{
     CopyOptions, CopySelection, CopyToHostParams, InsertMode,
@@ -81,7 +81,10 @@ fn test_split_routines_groups_procedures_and_functions() {
         ("sp_purge".to_string(), "procedure".to_string()),
         ("fn_avg".to_string(), "function".to_string()),
     ];
-    let (procedures, functions) = split_routines(&rows);
+    let RoutineNames {
+        procedures,
+        functions,
+    } = split_routines(&rows);
     assert_eq!(procedures, vec!["sp_recalc", "sp_purge"]);
     assert_eq!(functions, vec!["fn_total", "fn_avg"]);
 }
@@ -92,7 +95,10 @@ fn test_split_routines_ignores_unknown_and_empty() {
         ("weird".to_string(), "SOMETHING".to_string()),
         (String::new(), "PROCEDURE".to_string()),
     ];
-    let (procedures, functions) = split_routines(&rows);
+    let RoutineNames {
+        procedures,
+        functions,
+    } = split_routines(&rows);
     assert!(procedures.is_empty());
     assert!(functions.is_empty());
 }
@@ -134,7 +140,14 @@ fn test_is_system_schema_classification() {
 #[tokio::test]
 async fn test_list_copyable_objects_rejects_system_schema() {
     let state = common::test_app_state();
-    let result = list_copyable_objects_impl(&state, "conn-1", "mysql").await;
+    let result = list_copyable_objects_impl(
+        &state,
+        &sqllumen_lib::commands::requests::DatabaseRequest {
+            connection_id: "conn-1".to_string(),
+            database: "mysql".to_string(),
+        },
+    )
+    .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(err.contains("system schema"), "unexpected error: {err}");
@@ -143,7 +156,14 @@ async fn test_list_copyable_objects_rejects_system_schema() {
 #[tokio::test]
 async fn test_list_copyable_objects_missing_connection_errors() {
     let state = common::test_app_state();
-    let result = list_copyable_objects_impl(&state, "no-such-conn", "shop").await;
+    let result = list_copyable_objects_impl(
+        &state,
+        &sqllumen_lib::commands::requests::DatabaseRequest {
+            connection_id: "no-such-conn".to_string(),
+            database: "shop".to_string(),
+        },
+    )
+    .await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("not found in registry"));
 }
@@ -329,11 +349,19 @@ fn register_source(state: &AppState, session_id: &str, host: &str) {
 
 /// Save a target connection profile with `host` and return its id.
 fn save_target(state: &AppState, name: &str, host: &str) -> String {
-    save_target_with_read_only(state, name, host, false)
+    save_connection_impl(state, target_input(name, host)).expect("should save target connection")
 }
 
-fn save_target_with_read_only(state: &AppState, name: &str, host: &str, read_only: bool) -> String {
+fn save_read_only_target(state: &AppState, name: &str, host: &str) -> String {
     let input = SaveConnectionInput {
+        read_only: true,
+        ..target_input(name, host)
+    };
+    save_connection_impl(state, input).expect("should save target connection")
+}
+
+fn target_input(name: &str, host: &str) -> SaveConnectionInput {
+    SaveConnectionInput {
         name: name.to_string(),
         host: host.to_string(),
         port: 3306,
@@ -346,12 +374,11 @@ fn save_target_with_read_only(state: &AppState, name: &str, host: &str, read_onl
         ssl_key_path: None,
         color: None,
         group_id: None,
-        read_only,
+        read_only: false,
         sort_order: 0,
         connect_timeout_secs: Some(10),
         keepalive_interval_secs: Some(60),
-    };
-    save_connection_impl(state, input).expect("should save target connection")
+    }
 }
 
 fn sample_params(source_id: &str, target_id: &str) -> CopyToHostParams {
@@ -518,7 +545,7 @@ async fn test_start_copy_unknown_target_errors() {
 async fn test_start_copy_rejects_read_only_target_before_job_registration() {
     let state = common::test_app_state();
     register_source(&state, "src-session", "source-host");
-    let target_id = save_target_with_read_only(&state, "readonly target", "target-host", true);
+    let target_id = save_read_only_target(&state, "readonly target", "target-host");
 
     let params = table_only_params("src-session", &target_id);
     let result = start_copy_to_host_impl(&state, params);

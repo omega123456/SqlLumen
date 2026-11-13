@@ -194,9 +194,18 @@ fn test_command_impls_create_list_get_and_delete_snapshots() {
     let summary_json = "[{\"name\":\"ProdDB\",\"tabCount\":2}]";
     let state_json = "{\"version\":1,\"connections\":[{\"profileId\":\"p-prod\",\"tabs\":[]}]}";
 
-    let created_id =
-        create_session_snapshot_impl(&state, "manual", 1, 2, summary_json, state_json, 10)
-            .expect("create impl should succeed");
+    let created_id = create_session_snapshot_impl(
+        &state,
+        sqllumen_lib::commands::session_snapshots::CreateSessionSnapshotRequest {
+            trigger_type: "manual".to_string(),
+            connection_count: 1,
+            tab_count: 2,
+            summary_json: summary_json.to_string(),
+            state_json: state_json.to_string(),
+            keep: 10,
+        },
+    )
+    .expect("create impl should succeed");
     assert!(created_id > 0, "create impl should return a positive id");
 
     let summaries = list_session_snapshots_impl(&state).expect("list impl should succeed");
@@ -231,32 +240,38 @@ fn test_command_impl_create_prunes_to_keep_limit() {
 
     let first_id = create_session_snapshot_impl(
         &state,
-        "daily",
-        1,
-        1,
-        "[{\"name\":\"ProdDB\",\"tabCount\":1}]",
-        "{\"version\":1,\"ordinal\":1}",
-        2,
+        sqllumen_lib::commands::session_snapshots::CreateSessionSnapshotRequest {
+            trigger_type: "daily".to_string(),
+            connection_count: 1,
+            tab_count: 1,
+            summary_json: "[{\"name\":\"ProdDB\",\"tabCount\":1}]".to_string(),
+            state_json: "{\"version\":1,\"ordinal\":1}".to_string(),
+            keep: 2,
+        },
     )
     .expect("first create should succeed");
     let second_id = create_session_snapshot_impl(
         &state,
-        "daily",
-        1,
-        1,
-        "[{\"name\":\"ProdDB\",\"tabCount\":1}]",
-        "{\"version\":1,\"ordinal\":2}",
-        2,
+        sqllumen_lib::commands::session_snapshots::CreateSessionSnapshotRequest {
+            trigger_type: "daily".to_string(),
+            connection_count: 1,
+            tab_count: 1,
+            summary_json: "[{\"name\":\"ProdDB\",\"tabCount\":1}]".to_string(),
+            state_json: "{\"version\":1,\"ordinal\":2}".to_string(),
+            keep: 2,
+        },
     )
     .expect("second create should succeed");
     let third_id = create_session_snapshot_impl(
         &state,
-        "daily",
-        1,
-        1,
-        "[{\"name\":\"ProdDB\",\"tabCount\":1}]",
-        "{\"version\":1,\"ordinal\":3}",
-        2,
+        sqllumen_lib::commands::session_snapshots::CreateSessionSnapshotRequest {
+            trigger_type: "daily".to_string(),
+            connection_count: 1,
+            tab_count: 1,
+            summary_json: "[{\"name\":\"ProdDB\",\"tabCount\":1}]".to_string(),
+            state_json: "{\"version\":1,\"ordinal\":3}".to_string(),
+            keep: 2,
+        },
     )
     .expect("third create should succeed");
 
@@ -290,12 +305,14 @@ fn test_create_session_snapshot_impl_error_when_table_missing() {
 
     let result = create_session_snapshot_impl(
         &state,
-        "manual",
-        1,
-        2,
-        "[{\"name\":\"ProdDB\",\"tabCount\":2}]",
-        "{\"version\":1}",
-        10,
+        sqllumen_lib::commands::session_snapshots::CreateSessionSnapshotRequest {
+            trigger_type: "manual".to_string(),
+            connection_count: 1,
+            tab_count: 2,
+            summary_json: "[{\"name\":\"ProdDB\",\"tabCount\":2}]".to_string(),
+            state_json: "{\"version\":1}".to_string(),
+            keep: 10,
+        },
     );
     assert!(
         result.is_err(),

@@ -49,7 +49,13 @@ describe('object-activation', () => {
     const openTab = vi.fn()
     useWorkspaceStore.setState({ openTab })
 
-    openObjectDefaultTab(CONNECTION_ID, DATABASE, objectType, 'users', 'Users')
+    openObjectDefaultTab({
+      connectionId: CONNECTION_ID,
+      database: DATABASE,
+      objectType: objectType,
+      name: 'users',
+      label: 'Users',
+    })
 
     expect(openTab).toHaveBeenCalledWith({
       type: expectedTabType,
@@ -171,7 +177,12 @@ describe('object-activation', () => {
       selectNode,
     })
 
-    await revealObjectInTree(CONNECTION_ID, DATABASE, 'trigger', 'trg_users_audit')
+    await revealObjectInTree({
+      connectionId: CONNECTION_ID,
+      database: DATABASE,
+      objectType: 'trigger',
+      name: 'trg_users_audit',
+    })
 
     expect(loadDatabases).toHaveBeenCalledWith(CONNECTION_ID)
     expect(loadChildren).toHaveBeenNthCalledWith(1, CONNECTION_ID, databaseNodeId)
@@ -245,7 +256,12 @@ describe('object-activation', () => {
       },
     })
 
-    await activateObjectFromPalette(CONNECTION_ID, DATABASE, 'view', 'active_users')
+    await activateObjectFromPalette({
+      connectionId: CONNECTION_ID,
+      database: DATABASE,
+      objectType: 'view',
+      name: 'active_users',
+    })
 
     expect(openTab).toHaveBeenCalledWith({
       type: 'table-data',
@@ -297,7 +313,12 @@ describe('object-activation', () => {
       activeTabByConnection: { [CONNECTION_ID]: 'query-tab' },
     })
 
-    activateColumnFromPalette(CONNECTION_ID, DATABASE, 'orders', 'shipping_amount')
+    activateColumnFromPalette({
+      connectionId: CONNECTION_ID,
+      database: DATABASE,
+      table: 'orders',
+      columnName: 'shipping_amount',
+    })
 
     expect(openTab).toHaveBeenCalledWith({
       type: 'table-data',
@@ -488,7 +509,7 @@ describe('object-activation', () => {
       expect(useConnectionStore.getState().activeConnections[CONNECTION_ID].sessionDatabase).toBe(
         DATABASE
       )
-      expect(ipc.calls('select_database')).toEqual([
+      expect(ipc.payloads('select_database')).toEqual([
         { connectionId: CONNECTION_ID, databaseName: DATABASE },
       ])
     })
@@ -500,7 +521,7 @@ describe('object-activation', () => {
 
       await expectToast('warning', "Couldn't find orders in the object browser")
       expect(useSchemaStore.getState().revealRequest).toBeNull()
-      expect(ipc.calls('select_database')).toEqual([])
+      expect(ipc.payloads('select_database')).toEqual([])
       expect(useConnectionStore.getState().activeConnections[CONNECTION_ID].sessionDatabase).toBe(
         'other_db'
       )

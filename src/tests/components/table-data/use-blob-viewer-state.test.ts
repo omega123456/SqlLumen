@@ -81,12 +81,12 @@ describe('useBlobViewerState', () => {
       await result.current.loadBlob()
     })
 
-    expect(ipc.calls('fetch_blob_value')).toContainEqual({
+    expect(ipc.payloads('fetch_blob_value')).toContainEqual({
       connectionId: 'conn-1',
       database: 'mydb',
       table: 'users',
       column: 'payload',
-      pkPairs: [['id', 1]],
+      primaryKeyPairs: [['id', 1]],
     })
   })
 

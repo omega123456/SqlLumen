@@ -65,7 +65,7 @@ interface Pending {
 /** Queue `set_result_view` calls so a test can settle them in any order. */
 function deferSetResultView(): Pending[] {
   const pending: Pending[] = []
-  ipc.override(
+  ipc.overridePayload(
     'set_result_view',
     (args) =>
       new Promise((resolve, reject) => {
@@ -114,7 +114,7 @@ describe('applyQueryFilters', () => {
       await flush()
     })
 
-    expect(ipc.calls('set_result_view')[0]).toEqual({
+    expect(ipc.payloads('set_result_view')[0]).toEqual({
       connectionId: CONN,
       tabId: TAB,
       resultIndex: 0,
@@ -133,7 +133,7 @@ describe('applyQueryFilters', () => {
     expect(painted.checkedRanges).toEqual([])
     expect(painted.checkedViewVersion).toBe(2)
     expect(painted.selectedRowIndex).toBeNull()
-    expect(ipc.calls('execute_query')).toHaveLength(0)
+    expect(ipc.payloads('execute_query')).toHaveLength(0)
   })
 
   it('keeps the current sort when filtering', async () => {
@@ -155,7 +155,7 @@ describe('applyQueryFilters', () => {
       await flush()
     })
 
-    expect(ipc.calls('set_result_view')[0]).toMatchObject({
+    expect(ipc.payloads('set_result_view')[0]).toMatchObject({
       viewSpec: { sort: { column: 'name', direction: 'desc' }, filters: FILTER_A },
     })
     expect(result().sortColumn).toBe('name')
@@ -169,23 +169,25 @@ describe('applyQueryFilters', () => {
       await flush()
     })
 
-    expect(ipc.calls('set_result_view')[0]).toMatchObject({ viewSpec: { sort: null, filters: [] } })
+    expect(ipc.payloads('set_result_view')[0]).toMatchObject({
+      viewSpec: { sort: null, filters: [] },
+    })
     expect(result().filterModel).toEqual([])
     expect(rowsOf(TAB)).toEqual(ROWS)
-    expect(ipc.calls('execute_query')).toHaveLength(0)
-    expect(ipc.calls('reexecute_single_result')).toHaveLength(0)
+    expect(ipc.payloads('execute_query')).toHaveLength(0)
+    expect(ipc.payloads('reexecute_single_result')).toHaveLength(0)
   })
 
   it('ignores an out-of-range result index', () => {
     useQueryStore.getState().applyQueryFilters(TAB, 5, FILTER_A)
     useQueryStore.getState().applyQueryFilters('missing', 0, FILTER_A)
-    expect(ipc.calls('set_result_view')).toHaveLength(0)
+    expect(ipc.payloads('set_result_view')).toHaveLength(0)
   })
 })
 
 describe('sortResults', () => {
   it('sorts in Rust and clearing the sort restores base order with no execute command', async () => {
-    ipc.override('set_result_view', (args) => {
+    ipc.overridePayload('set_result_view', (args) => {
       const sort = (args?.viewSpec as { sort: unknown }).sort
       return sort
         ? viewResponse(2, [ROWS[2], ROWS[1], ROWS[0]], [2, 1, 0])
@@ -193,31 +195,31 @@ describe('sortResults', () => {
     })
 
     await act(async () => {
-      await useQueryStore.getState().sortResults(CONN, TAB, 'id', 'desc')
+      await useQueryStore.getState().sortResults(TAB, 'id', 'desc')
     })
     expect(result().sortColumn).toBe('id')
     expect(result().sortDirection).toBe('desc')
     expect(rowsOf(TAB)).toEqual([ROWS[2], ROWS[1], ROWS[0]])
 
     await act(async () => {
-      await useQueryStore.getState().sortResults(CONN, TAB, 'id', null)
+      await useQueryStore.getState().sortResults(TAB, 'id', null)
     })
-    expect(ipc.calls('set_result_view')[1]).toMatchObject({
+    expect(ipc.payloads('set_result_view')[1]).toMatchObject({
       baseViewVersion: 2,
       viewSpec: { sort: null, filters: [] },
     })
     expect(result().sortColumn).toBeNull()
     expect(result().sortDirection).toBeNull()
     expect(rowsOf(TAB)).toEqual(ROWS)
-    expect(ipc.calls('execute_query')).toHaveLength(0)
-    expect(ipc.calls('reexecute_single_result')).toHaveLength(0)
+    expect(ipc.payloads('execute_query')).toHaveLength(0)
+    expect(ipc.payloads('reexecute_single_result')).toHaveLength(0)
   })
 
   it('shows the sorting overlay while the view request is pending', async () => {
     const pending = deferSetResultView()
     let sortPromise: Promise<void> = Promise.resolve()
     act(() => {
-      sortPromise = useQueryStore.getState().sortResults(CONN, TAB, 'id', 'asc')
+      sortPromise = useQueryStore.getState().sortResults(TAB, 'id', 'asc')
     })
     expect(result().isSorting).toBe(true)
     await act(async () => {
@@ -232,7 +234,7 @@ describe('sortResults', () => {
       throw new Error('results_expired: gone')
     })
     await act(async () => {
-      await useQueryStore.getState().sortResults(CONN, TAB, 'id', 'asc')
+      await useQueryStore.getState().sortResults(TAB, 'id', 'asc')
     })
     expect(result().isExpired).toBe(true)
     expect(result().isSorting).toBe(false)
@@ -242,7 +244,7 @@ describe('sortResults', () => {
     const pending = deferSetResultView()
     let sortPromise: Promise<void> = Promise.resolve()
     act(() => {
-      sortPromise = useQueryStore.getState().sortResults(CONN, TAB, 'id', 'asc')
+      sortPromise = useQueryStore.getState().sortResults(TAB, 'id', 'asc')
     })
     act(() => {
       useQueryStore.setState((state) => ({
@@ -271,7 +273,7 @@ describe('overlapping view changes (D15)', () => {
     })
     let sortPromise: Promise<void> = Promise.resolve()
     act(() => {
-      sortPromise = useQueryStore.getState().sortResults(CONN, TAB, 'name', 'asc')
+      sortPromise = useQueryStore.getState().sortResults(TAB, 'name', 'asc')
     })
     expect(pending.map((call) => call.args.baseViewVersion)).toEqual([1, 1])
     expect(pending[1].args.viewSpec).toEqual({
@@ -307,7 +309,7 @@ describe('overlapping view changes (D15)', () => {
     expect(painted.viewError).toBeNull()
 
     // Window fetches keep working against the painted version.
-    ipc.override('fetch_result_window', (args) => ({
+    ipc.overridePayload('fetch_result_window', (args) => ({
       offset: args?.offset,
       rows: [],
       baseIndices: [],
@@ -324,7 +326,7 @@ describe('overlapping view changes (D15)', () => {
     })
     let sortPromise: Promise<void> = Promise.resolve()
     act(() => {
-      sortPromise = useQueryStore.getState().sortResults(CONN, TAB, 'name', 'asc')
+      sortPromise = useQueryStore.getState().sortResults(TAB, 'name', 'asc')
     })
     await act(async () => {
       pending[0].resolve(viewResponse(2, [ROWS[0], ROWS[2]], [0, 2]))
@@ -357,7 +359,7 @@ describe('overlapping view changes (D15)', () => {
     })
     let sortPromise: Promise<void> = Promise.resolve()
     act(() => {
-      sortPromise = useQueryStore.getState().sortResults(CONN, TAB, 'missing', 'asc')
+      sortPromise = useQueryStore.getState().sortResults(TAB, 'missing', 'asc')
     })
     await act(async () => {
       pending[0].resolve(viewResponse(2, [ROWS[0], ROWS[2]], [0, 2]))
@@ -382,7 +384,7 @@ describe('overlapping view changes (D15)', () => {
     }))
     let sortPromise: Promise<void> = Promise.resolve()
     act(() => {
-      sortPromise = useQueryStore.getState().sortResults(CONN, TAB, 'id', 'asc')
+      sortPromise = useQueryStore.getState().sortResults(TAB, 'id', 'asc')
     })
     await act(async () => {
       pending[0].reject(new Error('view_superseded: current=4'))
@@ -393,7 +395,7 @@ describe('overlapping view changes (D15)', () => {
       await sortPromise
     })
 
-    expect(ipc.calls('fetch_result_window')[0]).toMatchObject({ viewVersion: 4, offset: 0 })
+    expect(ipc.payloads('fetch_result_window')[0]).toMatchObject({ viewVersion: 4, offset: 0 })
     expect(result().viewVersion).toBe(4)
     expect(result().viewError).toBe('view_superseded: current=4')
     expect(rowsOf(TAB)).toEqual([ROWS[1]])
@@ -404,7 +406,7 @@ describe('overlapping view changes (D15)', () => {
       throw new Error('boom')
     })
     await act(async () => {
-      await useQueryStore.getState().sortResults(CONN, TAB, 'id', 'asc')
+      await useQueryStore.getState().sortResults(TAB, 'id', 'asc')
     })
     expect(result().viewVersion).toBe(1)
     expect(result().sortColumn).toBeNull()
@@ -419,7 +421,7 @@ describe('overlapping view changes (D15)', () => {
     })
     let sortPromise: Promise<void> = Promise.resolve()
     act(() => {
-      sortPromise = useQueryStore.getState().sortResults(CONN, TAB, 'id', 'asc')
+      sortPromise = useQueryStore.getState().sortResults(TAB, 'id', 'asc')
     })
     await act(async () => {
       pending[0].reject(new Error('view_superseded: current=4'))
@@ -435,7 +437,7 @@ describe('overlapping view changes (D15)', () => {
     const pending = deferSetResultView()
     let sortPromise: Promise<void> = Promise.resolve()
     act(() => {
-      sortPromise = useQueryStore.getState().sortResults(CONN, TAB, 'name', 'desc')
+      sortPromise = useQueryStore.getState().sortResults(TAB, 'name', 'desc')
     })
     // Meanwhile a delete tombstoned row 1 on top of the sorted view (v3) and painted.
     act(() => {
@@ -465,7 +467,7 @@ describe('overlapping view changes (D15)', () => {
     })
 
     // v2 is never painted: its windows would all be view_stale.
-    expect(ipc.calls('fetch_result_window')[0]).toMatchObject({
+    expect(ipc.payloads('fetch_result_window')[0]).toMatchObject({
       viewVersion: 3,
       offset: 0,
       limit: 1000,
@@ -483,7 +485,7 @@ describe('overlapping view changes (D15)', () => {
     const pending = deferSetResultView()
     let sortPromise: Promise<void> = Promise.resolve()
     act(() => {
-      sortPromise = useQueryStore.getState().sortResults(CONN, TAB, 'name', 'desc')
+      sortPromise = useQueryStore.getState().sortResults(TAB, 'name', 'desc')
     })
     act(() => {
       useQueryStore.setState((state) => {
@@ -522,7 +524,7 @@ describe('overlapping view changes (D15)', () => {
       useQueryStore.getState().retryViewChange(TAB)
       await flush()
     })
-    expect(ipc.calls('set_result_view')[1]).toMatchObject({
+    expect(ipc.payloads('set_result_view')[1]).toMatchObject({
       viewSpec: { sort: null, filters: FILTER_A },
     })
     expect(result().viewError).toBeNull()
@@ -531,7 +533,7 @@ describe('overlapping view changes (D15)', () => {
 
   it('retryViewChange is a no-op for unknown tabs', () => {
     useQueryStore.getState().retryViewChange('missing')
-    expect(ipc.calls('set_result_view')).toHaveLength(0)
+    expect(ipc.payloads('set_result_view')).toHaveLength(0)
   })
 })
 

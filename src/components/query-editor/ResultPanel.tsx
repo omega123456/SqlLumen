@@ -197,7 +197,11 @@ async function resolveLookupRow(
   if (fromGrid) return fromGrid
   const { tabId, resultIndex, rowIndex } = request
   try {
-    const fetched = await readViewRange(tabId, resultIndex, [rowIndex, rowIndex + 1])
+    const fetched = await readViewRange({
+      tabId: tabId,
+      resultIndex: resultIndex,
+      range: [rowIndex, rowIndex + 1],
+    })
     return fetched[0]
   } catch (error) {
     logFrontend(
@@ -242,7 +246,6 @@ interface ForeignKeyLookupContext {
 }
 
 interface ForeignKeyLookupTargetInputs {
-  isOpen: boolean
   context: ForeignKeyLookupContext | null
   editMode: string | null
   editTable: ReturnType<typeof readEditTable>['editTable']
@@ -250,7 +253,6 @@ interface ForeignKeyLookupTargetInputs {
 
 function resolveForeignKeyLookupTarget(inputs: ForeignKeyLookupTargetInputs) {
   const { context, editMode, editTable } = inputs
-  if (!inputs.isOpen) return null
   if (!context) return null
   if (!editMode) return null
   return {
@@ -437,10 +439,10 @@ export function ResultPanel({
   const handleSortChanged = useCallback(
     (column: string, direction: 'asc' | 'desc' | null) => {
       requestNavigationAction(tabId, () => {
-        sortResults(connectionId, tabId, column, direction)
+        sortResults(tabId, column, direction)
       })
     },
-    [requestNavigationAction, sortResults, connectionId, tabId]
+    [requestNavigationAction, sortResults, tabId]
   )
 
   const handleRowSelected = useCallback(
@@ -479,7 +481,8 @@ export function ResultPanel({
   // Grid actions that fetch unloaded rows report progress through the store.
   const gridRowActions = useMemo<GridRowActions>(
     () => ({
-      begin: (verb, total, onCancel) => beginRowAction(tabId, verb, total, onCancel),
+      begin: (verb, total, onCancel) =>
+        beginRowAction(tabId, { verb: verb, total: total, onCancel: onCancel }),
       onExpired: () => markResultsExpired(tabId),
     }),
     [beginRowAction, markResultsExpired, tabId]
@@ -553,16 +556,15 @@ export function ResultPanel({
   // Determine if editing is active (used to disable filter buttons)
   const isEditingActive = editState !== null
 
-  const [foreignKeyLookupOpen, setForeignKeyLookupOpen] = useState(false)
   const [foreignKeyLookupContext, setForeignKeyLookupContext] =
     useState<ForeignKeyLookupContext | null>(null)
+  const closeForeignKeyLookup = useCallback(() => setForeignKeyLookupContext(null), [])
 
   useEffect(() => {
     if (isActive) return
     queueMicrotask(() => {
       if (exportDialogOpen) closeExportDialog(tabId)
       setIsFilterDialogOpen(false)
-      setForeignKeyLookupOpen(false)
       setForeignKeyLookupContext(null)
     })
   }, [closeExportDialog, exportDialogOpen, isActive, tabId])
@@ -628,7 +630,6 @@ export function ResultPanel({
         foreignKey: foreignKey,
         rowData: args.rowData,
       })
-      setForeignKeyLookupOpen(true)
     },
     [
       resolveResultForeignKey,
@@ -638,7 +639,6 @@ export function ResultPanel({
       leaveCurrentEditingRow,
       handleRowSelected,
       startEditingRow,
-      setForeignKeyLookupOpen,
     ]
   )
 
@@ -649,7 +649,7 @@ export function ResultPanel({
       const rowIndex = rowIndexFromRowData(foreignKeyLookupContext.rowData)
       const resultColumnIndex = columnIndexFromKey(foreignKeyLookupContext.columnKey)
       if (resultColumnIndex < 0) {
-        setForeignKeyLookupOpen(false)
+        closeForeignKeyLookup()
         return
       }
 
@@ -663,7 +663,7 @@ export function ResultPanel({
         (!sameRow || !hasModifiedColumns(currentEdit))
       if (isUnchangedLookupValue) {
         handleRowSelected(rowIndex)
-        setForeignKeyLookupOpen(false)
+        closeForeignKeyLookup()
         return
       }
 
@@ -677,7 +677,7 @@ export function ResultPanel({
 
       syncCellValue(tabId, resultColumnIndex, selectedValue)
       handleRowSelected(rowIndex)
-      setForeignKeyLookupOpen(false)
+      closeForeignKeyLookup()
     },
     [
       columns.length,
@@ -687,7 +687,7 @@ export function ResultPanel({
       handleRowSelected,
       startEditingRow,
       syncCellValue,
-      setForeignKeyLookupOpen,
+      closeForeignKeyLookup,
     ]
   )
 
@@ -915,7 +915,6 @@ export function ResultPanel({
   }, [retryExpiredResult, tabId])
 
   const foreignKeyLookupTarget = resolveForeignKeyLookupTarget({
-    isOpen: foreignKeyLookupOpen,
     context: foreignKeyLookupContext,
     editMode: editMode,
     editTable: editTable,
@@ -987,8 +986,8 @@ export function ResultPanel({
 
       {foreignKeyLookupTarget && (
         <FkLookupDialog
-          isOpen={foreignKeyLookupOpen}
-          onClose={() => setForeignKeyLookupOpen(false)}
+          isOpen={true}
+          onClose={closeForeignKeyLookup}
           onApply={handleForeignKeyApply}
           connectionId={connectionId}
           database={foreignKeyLookupTarget.database}

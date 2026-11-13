@@ -97,12 +97,14 @@ export interface WindowStatusPatch {
   failedWindowRange?: ViewRange | null
 }
 
-export type WindowStatusHandler = (
-  tabId: string,
-  resultIndex: number,
-  patch: WindowStatusPatch,
+export interface WindowStatusUpdate {
+  tabId: string
+  resultIndex: number
+  patch: WindowStatusPatch
   failure?: { message: string }
-) => void
+}
+
+export type WindowStatusHandler = (update: WindowStatusUpdate) => void
 
 export type WindowExpiredHandler = (tabId: string) => void
 
@@ -211,7 +213,12 @@ function reportStatus(
   patch: WindowStatusPatch,
   failure?: { message: string }
 ): void {
-  statusHandler?.(surface.slot.tabId, surface.slot.resultIndex, patch, failure)
+  statusHandler?.({
+    tabId: surface.slot.tabId,
+    resultIndex: surface.slot.resultIndex,
+    patch: patch,
+    failure: failure,
+  })
 }
 
 function pageRange(surface: Surface, pageIndex: number): ViewRange {
@@ -543,7 +550,12 @@ async function fetchPage(surface: Surface, pageIndex: number): Promise<void> {
   // stale or failed responses must not re-issue the same request.
   let continueFilling = false
   try {
-    const response = await fetchResultWindow(surface.slot, viewVersion, start, end - start)
+    const response = await fetchResultWindow({
+      ...surface.slot,
+      viewVersion: viewVersion,
+      offset: start,
+      limit: end - start,
+    })
     if (!isSurfaceCurrent(surface, generation)) return
     continueFilling = paintFetchedWindow(surface, response)
   } catch (error) {
@@ -610,19 +622,27 @@ export function retryFailedWindow(tabId: string, resultIndex: number): void {
   if (range) requestVisibleRange(tabId, resultIndex, range)
 }
 
+export interface SavedRowValues {
+  tabId: string
+  resultIndex: number
+  queryId: string
+  baseIndex: number
+  updates: Readonly<Record<number, unknown>>
+}
+
 /**
  * Show a saved row edit (same view version): `updates` maps column index to
  * the displayed value. Patches the loaded page holding `baseIndex`, if any, and
  * tells row-patch subscribers either way. Ignored when the surface no longer
  * shows `queryId` (a re-run replaced the result while the save was running).
  */
-export function applySavedRowValues(
-  tabId: string,
-  resultIndex: number,
-  queryId: string,
-  baseIndex: number,
-  updates: Readonly<Record<number, unknown>>
-): void {
+export function applySavedRowValues({
+  tabId,
+  resultIndex,
+  queryId,
+  baseIndex,
+  updates,
+}: SavedRowValues): void {
   const surface = surfaces.get(resultSurfaceKey(tabId, resultIndex))
   if (!isSurfaceForQuery(surface, queryId)) return
   const apply: RowPatchApply = (row) => {
@@ -695,12 +715,12 @@ interface ViewChunkRequest {
 
 async function fetchViewChunk(surface: Surface, request: ViewChunkRequest): Promise<CachedRow[]> {
   const [chunkStart, chunkEnd] = request.range
-  const response = await fetchResultWindow(
-    surface.slot,
-    request.viewVersion,
-    chunkStart,
-    chunkEnd - chunkStart
-  )
+  const response = await fetchResultWindow({
+    ...surface.slot,
+    viewVersion: request.viewVersion,
+    offset: chunkStart,
+    limit: chunkEnd - chunkStart,
+  })
   throwIfAborted(request.signal)
   if (response.viewVersion !== request.viewVersion) {
     throw new Error(`${VIEW_STALE_PREFIX} the result view changed while rows were loading`)
@@ -709,18 +729,25 @@ async function fetchViewChunk(surface: Surface, request: ViewChunkRequest): Prom
   return rows.map((row, index) => ({ row: row, baseIndex: response.baseIndices[index] }))
 }
 
+export interface ViewRangeRead {
+  tabId: string
+  resultIndex: number
+  range: ViewRange
+  options?: ReadOptions
+}
+
 /**
  * Resolve every row of `range` in the current view, in view order. Loaded rows
  * are reused; missing rows are fetched in 2,000-row chunks. Does not populate
  * the LRU. Rejects with `view_stale:` when the view changes mid-read, and with
  * an `AbortError` when `signal` aborts.
  */
-export async function readViewRange(
-  tabId: string,
-  resultIndex: number,
-  range: ViewRange,
-  options: ReadOptions = {}
-): Promise<CachedRow[]> {
+export async function readViewRange({
+  tabId,
+  resultIndex,
+  range,
+  options = {},
+}: ViewRangeRead): Promise<CachedRow[]> {
   const surface = surfaces.get(resultSurfaceKey(tabId, resultIndex))
   if (!surface) throw new Error('Result rows are not available')
   const start = Math.max(0, range[0])

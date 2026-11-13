@@ -166,7 +166,12 @@ export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
       setError(null)
     })
 
-    getSchemaInfo(tab.connectionId, tab.databaseName, tab.objectName, tab.objectType)
+    getSchemaInfo({
+      connectionId: tab.connectionId,
+      database: tab.databaseName,
+      objectName: tab.objectName,
+      objectType: tab.objectType,
+    })
       .then((result) => {
         if (!cancelled) {
           loadedKeyRef.current = requestKey
@@ -215,7 +220,12 @@ export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
   }, [tab.connectionId, tab.databaseName, tab.objectName])
 
   const handleViewData = useCallback(() => {
-    openObjectDefaultTab(tab.connectionId, tab.databaseName, tab.objectType, tab.objectName)
+    openObjectDefaultTab({
+      connectionId: tab.connectionId,
+      database: tab.databaseName,
+      objectType: tab.objectType,
+      name: tab.objectName,
+    })
   }, [tab.connectionId, tab.databaseName, tab.objectName, tab.objectType])
 
   const TileIcon = TILE_ICONS[tab.objectType]

@@ -61,7 +61,7 @@ describe('AlterDatabaseDialog', () => {
     render(<AlterDatabaseDialog {...defaultProps} />)
 
     await waitFor(() => {
-      const calls = ipc.calls('get_database_details')
+      const calls = ipc.payloads('get_database_details')
       expect(calls).toHaveLength(1)
       const args = calls[0] as Record<string, unknown>
       expect(args).toMatchObject({ connectionId: 'conn-1', database: 'test_db' })
@@ -105,7 +105,7 @@ describe('AlterDatabaseDialog', () => {
     await user.click(screen.getByTestId('alter-db-submit-button'))
 
     await waitFor(() => {
-      const calls = ipc.calls('alter_database')
+      const calls = ipc.payloads('alter_database')
       expect(calls).toHaveLength(1)
       const args = calls[0] as Record<string, unknown>
       expect(args).toMatchObject({

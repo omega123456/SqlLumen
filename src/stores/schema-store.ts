@@ -190,12 +190,20 @@ function setConnectionState(
  * Internal helper that handles the async lifecycle of loading child nodes:
  * mark loading → fetch → merge nodes → mark loaded → clear loading.
  */
-async function fetchChildren(
-  get: () => SchemaState,
-  set: (updater: (state: SchemaState) => Partial<SchemaState>) => void,
-  connectionId: string,
-  nodeId: string,
+interface SchemaStoreAccess {
+  get: () => SchemaState
+  set: (updater: (state: SchemaState) => Partial<SchemaState>) => void
+}
+
+interface ChildNodeFetch {
+  connectionId: string
+  nodeId: string
   fetchNodes: () => Promise<TreeNode[]>
+}
+
+async function fetchChildren(
+  { get, set }: SchemaStoreAccess,
+  { connectionId, nodeId, fetchNodes }: ChildNodeFetch
 ): Promise<void> {
   // 1. Mark loading and capture generation
   const connectionState = getConnectionState(get(), connectionId)
@@ -262,6 +270,11 @@ function databaseNode(databaseName: string, existing: TreeNode | undefined): Tre
   }
 }
 
+function isInListedDatabase(node: TreeNode, databaseIds: Set<string>): boolean {
+  if (!node.databaseName) return false
+  return databaseIds.has(makeNodeId('database', node.databaseName, node.databaseName))
+}
+
 function mergeDatabaseNodes(
   existingNodes: Record<string, TreeNode>,
   databases: string[]
@@ -275,8 +288,7 @@ function mergeDatabaseNodes(
   }
   for (const [nodeId, node] of Object.entries(existingNodes)) {
     if (node.type === 'database') continue
-    const databaseId = makeNodeId('database', node.databaseName!, node.databaseName!)
-    if (databaseIds.has(databaseId)) {
+    if (isInListedDatabase(node, databaseIds)) {
       mergedNodes[nodeId] = node
     }
   }
@@ -435,7 +447,14 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
 
     const loadChildNodes = CHILD_LOADERS[node.type]
     if (!loadChildNodes) return
-    await fetchChildren(get, set, connectionId, nodeId, () => loadChildNodes(connectionId, nodeId))
+    await fetchChildren(
+      { get: get, set: set },
+      {
+        connectionId: connectionId,
+        nodeId: nodeId,
+        fetchNodes: () => loadChildNodes(connectionId, nodeId),
+      }
+    )
   },
 
   // ------ toggleExpand ------

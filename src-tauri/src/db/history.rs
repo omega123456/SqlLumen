@@ -88,22 +88,25 @@ pub fn insert_history_batch(conn: &Connection, entries: &[NewHistoryEntry]) -> R
     Ok(())
 }
 
-/// List history entries for a connection with pagination, newest first.
-///
-/// Supports optional `search` text (LIKE match on `sql_text`) and an optional
-/// `since` lower bound (RFC-3339 timestamp string); entries with
-/// `timestamp >= since` are included. When `since` is supplied, `total` reflects
-/// the count of entries **within that time window** — this lets callers decide
-/// whether a "load more" affordance is warranted for the selected time range.
-pub fn list_history(
-    conn: &Connection,
-    connection_id: &str,
-    page: i64,
-    page_size: i64,
-    search: Option<&str>,
-    since: Option<&str>,
-) -> Result<HistoryPage> {
+#[derive(Debug, Clone, Copy)]
+pub struct HistoryQuery<'a> {
+    pub connection_id: &'a str,
+    pub page: i64,
+    pub page_size: i64,
+    pub search: Option<&'a str>,
+    pub since: Option<&'a str>,
+}
+
+pub fn list_history(conn: &Connection, query: &HistoryQuery<'_>) -> Result<HistoryPage> {
     use rusqlite::types::Value;
+
+    let HistoryQuery {
+        connection_id,
+        page,
+        page_size,
+        search,
+        since,
+    } = *query;
 
     let offset = (page.max(1) - 1) * page_size;
 

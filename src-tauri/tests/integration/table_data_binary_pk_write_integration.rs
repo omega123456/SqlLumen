@@ -58,11 +58,14 @@ mod binary_pk_write_integration {
 
         let result = update_table_row_impl(
             &pool,
-            "app_db",
-            "assets",
-            &["uuid".to_string()],
-            &original_pk,
-            &updated,
+            &sqllumen_lib::mysql::table_data::UpdateTableRowRequest {
+                connection_id: String::new(),
+                database: "app_db".to_string(),
+                table: "assets".to_string(),
+                primary_key_columns: vec!["uuid".to_string()],
+                original_primary_key_values: original_pk.clone(),
+                updated_values: updated.clone(),
+            },
         )
         .await;
 
@@ -91,11 +94,14 @@ mod binary_pk_write_integration {
 
         let result = update_table_row_impl(
             &pool,
-            "app_db",
-            "assets",
-            &["tenant_id".to_string(), "uuid".to_string()],
-            &original_pk,
-            &updated,
+            &sqllumen_lib::mysql::table_data::UpdateTableRowRequest {
+                connection_id: String::new(),
+                database: "app_db".to_string(),
+                table: "assets".to_string(),
+                primary_key_columns: vec!["tenant_id".to_string(), "uuid".to_string()],
+                original_primary_key_values: original_pk.clone(),
+                updated_values: updated.clone(),
+            },
         )
         .await;
 
@@ -118,9 +124,17 @@ mod binary_pk_write_integration {
         let mut pk_values = HashMap::new();
         pk_values.insert("uuid".to_string(), pk_envelope());
 
-        let result =
-            delete_table_row_impl(&pool, "app_db", "assets", &["uuid".to_string()], &pk_values)
-                .await;
+        let result = delete_table_row_impl(
+            &pool,
+            &sqllumen_lib::mysql::table_data::DeleteTableRowRequest {
+                connection_id: String::new(),
+                database: "app_db".to_string(),
+                table: "assets".to_string(),
+                primary_key_columns: vec!["uuid".to_string()],
+                primary_key_values: pk_values.clone(),
+            },
+        )
+        .await;
 
         pool.close().await;
 
@@ -142,10 +156,13 @@ mod binary_pk_write_integration {
 
         let result = delete_table_row_impl(
             &pool,
-            "app_db",
-            "assets",
-            &["tenant_id".to_string(), "uuid".to_string()],
-            &pk_values,
+            &sqllumen_lib::mysql::table_data::DeleteTableRowRequest {
+                connection_id: String::new(),
+                database: "app_db".to_string(),
+                table: "assets".to_string(),
+                primary_key_columns: vec!["tenant_id".to_string(), "uuid".to_string()],
+                primary_key_values: pk_values.clone(),
+            },
         )
         .await;
 
@@ -173,10 +190,13 @@ mod binary_pk_write_integration {
 
         let resp = fetch_blob_value_impl(
             &pool,
-            "app_db",
-            "assets",
-            "photo",
-            &[("uuid".to_string(), pk_envelope())],
+            &sqllumen_lib::mysql::table_data::FetchBlobValueRequest {
+                connection_id: String::new(),
+                database: "app_db".to_string(),
+                table: "assets".to_string(),
+                column: "photo".to_string(),
+                primary_key_pairs: vec![("uuid".to_string(), pk_envelope())],
+            },
         )
         .await
         .expect("blob fetch with enveloped binary PK should succeed");
@@ -204,13 +224,16 @@ mod binary_pk_write_integration {
 
         let resp = fetch_blob_value_impl(
             &pool,
-            "app_db",
-            "assets",
-            "photo",
-            &[
-                ("tenant_id".to_string(), json!(42)),
-                ("uuid".to_string(), pk_envelope()),
-            ],
+            &sqllumen_lib::mysql::table_data::FetchBlobValueRequest {
+                connection_id: String::new(),
+                database: "app_db".to_string(),
+                table: "assets".to_string(),
+                column: "photo".to_string(),
+                primary_key_pairs: vec![
+                    ("tenant_id".to_string(), json!(42)),
+                    ("uuid".to_string(), pk_envelope()),
+                ],
+            },
         )
         .await
         .expect("composite-key blob fetch with enveloped binary PK should succeed");

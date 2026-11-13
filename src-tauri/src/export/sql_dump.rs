@@ -156,16 +156,34 @@ fn structure_comment_label(is_view: bool) -> &'static str {
     "Table structure"
 }
 
-/// Write the structure (CREATE TABLE/VIEW) section for an object.
-///
-/// `create_statement` is the raw output from `SHOW CREATE TABLE`/`SHOW CREATE VIEW`.
-pub fn write_structure<W: Write>(
-    writer: &mut W,
-    object_name: &str,
-    create_statement: &str,
-    include_drop: bool,
-    is_view: bool,
-) -> io::Result<()> {
+#[derive(Debug, Clone, Copy)]
+pub struct DumpStructure<'a> {
+    pub table_name: &'a str,
+    pub create_sql: &'a str,
+    pub include_drop: bool,
+    pub is_view: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct InsertTarget<'a> {
+    pub escaped_table: &'a str,
+    pub col_list: &'a str,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct DumpTableRows<'a> {
+    pub table_name: &'a str,
+    pub columns: &'a [String],
+    pub rows: &'a [Vec<SqlDumpValue>],
+}
+
+pub fn write_structure<W: Write>(writer: &mut W, structure: &DumpStructure<'_>) -> io::Result<()> {
+    let DumpStructure {
+        table_name: object_name,
+        create_sql: create_statement,
+        include_drop,
+        is_view,
+    } = *structure;
     let escaped_name = escape_identifier(object_name);
     writeln!(writer, "--")?;
     let obj_type = structure_comment_label(is_view);
@@ -198,10 +216,13 @@ pub fn write_structure<W: Write>(
 /// and by the streaming helper [`stream_to_dump`](crate::commands::sql_dump::stream_to_dump).
 pub fn write_insert_batch<W: Write>(
     writer: &mut W,
-    escaped_table: &str,
-    col_list: &str,
+    target: &InsertTarget<'_>,
     batch: &[Vec<SqlDumpValue>],
 ) -> io::Result<u64> {
+    let InsertTarget {
+        escaped_table,
+        col_list,
+    } = *target;
     if batch.is_empty() {
         return Ok(0);
     }
@@ -236,12 +257,12 @@ pub fn write_insert_batch<W: Write>(
 ///
 /// Rows are written in batches of up to `INSERT_BATCH_SIZE` rows per INSERT statement
 /// using multi-row VALUES syntax for efficiency.
-pub fn write_data_inserts<W: Write>(
-    writer: &mut W,
-    table_name: &str,
-    columns: &[String],
-    rows: &[Vec<SqlDumpValue>],
-) -> io::Result<u64> {
+pub fn write_data_inserts<W: Write>(writer: &mut W, table: &DumpTableRows<'_>) -> io::Result<u64> {
+    let DumpTableRows {
+        table_name,
+        columns,
+        rows,
+    } = *table;
     let has_nothing_to_insert = rows.is_empty() || columns.is_empty();
     if has_nothing_to_insert {
         return Ok(0);
@@ -264,7 +285,11 @@ pub fn write_data_inserts<W: Write>(
     let mut total_rows: u64 = 0;
 
     for chunk in rows.chunks(INSERT_BATCH_SIZE) {
-        total_rows += write_insert_batch(writer, &escaped_table, &col_list, chunk)?;
+        let target = InsertTarget {
+            escaped_table: &escaped_table,
+            col_list: &col_list,
+        };
+        total_rows += write_insert_batch(writer, &target, chunk)?;
     }
 
     writeln!(writer, "UNLOCK TABLES;")?;

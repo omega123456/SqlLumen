@@ -118,11 +118,19 @@ pub fn list_connections_impl(state: &AppState) -> Result<Vec<ConnectionRecord>, 
     }
 }
 
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateConnectionRequest {
+    pub id: String,
+    pub data: UpdateConnectionInput,
+}
+
 pub fn update_connection_impl(
     state: &AppState,
-    id: &str,
-    data: UpdateConnectionInput,
+    request: UpdateConnectionRequest,
 ) -> Result<(), String> {
+    let UpdateConnectionRequest { id, data } = request;
+    let id = id.as_str();
     let password = data.password.clone();
     let clear_password = data.clear_password;
 
@@ -271,11 +279,10 @@ pub fn list_connections(state: State<AppState>) -> Result<Vec<ConnectionRecord>,
 #[cfg(not(coverage))]
 #[tauri::command]
 pub fn update_connection(
-    id: String,
-    data: UpdateConnectionInput,
+    payload: UpdateConnectionRequest,
     state: State<AppState>,
 ) -> Result<(), String> {
-    update_connection_impl(&state, &id, data)
+    update_connection_impl(&state, payload)
 }
 
 #[cfg(not(coverage))]

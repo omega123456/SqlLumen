@@ -1,26 +1,16 @@
-import { invoke } from '@tauri-apps/api/core'
 import type { Theme } from '../stores/theme-store'
+import { invokeArgumentCommand, invokeCommand, NO_ARGUMENTS } from './ipc/dispatch'
 
-/**
- * Get a single setting value by key.
- * Returns null if the key doesn't exist.
- */
 export async function getSetting(key: string): Promise<string | null> {
-  return invoke<string | null>('get_setting', { key })
+  return invokeArgumentCommand({ command: 'get_setting', argument: { key } })
 }
 
-/**
- * Set a setting value (insert or replace).
- */
 export async function setSetting(key: string, value: string): Promise<void> {
-  return invoke<void>('set_setting', { key, value })
+  return invokeCommand({ command: 'set_setting', payload: { key, value } })
 }
 
-/**
- * Get all settings as a key-value record.
- */
 export async function getAllSettings(): Promise<Record<string, string>> {
-  return invoke<Record<string, string>>('get_all_settings')
+  return invokeArgumentCommand({ command: 'get_all_settings', argument: NO_ARGUMENTS })
 }
 
 const THEMES: ReadonlySet<string> = new Set<Theme>(['light', 'dark', 'system'])
@@ -36,7 +26,7 @@ export async function getThemeSetting(): Promise<Theme | null> {
   return null
 }
 
-function isTheme(value: string | null): value is Theme {
+export function isTheme(value: string | null): value is Theme {
   return value !== null && THEMES.has(value)
 }
 

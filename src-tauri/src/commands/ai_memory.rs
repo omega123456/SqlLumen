@@ -1,12 +1,15 @@
 use std::time::Instant;
 
 use super::helpers::resolve_session_profile;
-use crate::ai_memory::{read_embedding_config, storage, types::AiMemory, types::MemoryScope};
+use crate::ai_memory::reembed::ReembedTarget;
+use crate::ai_memory::types::{AiMemory, MemoryMove, MemoryOwner, MemoryScope, MemoryVector};
+use crate::ai_memory::{read_embedding_config, storage, EmbeddingConfig};
 #[cfg(not(coverage))]
 use crate::ai_memory::{reembed, search};
 use crate::db::{connection_groups, connections};
-use crate::schema_index::embeddings;
+use crate::schema_index::embeddings::{self, EmbeddingInput};
 use crate::state::AppState;
+use serde::Deserialize;
 
 #[cfg(not(coverage))]
 use tauri::{Emitter, State};
@@ -55,50 +58,119 @@ pub fn resolve_save_owner(
     }
 }
 
-// ── save_memory ─────────────────────────────────────────────────────────────
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveMemoryRequest {
+    pub session_id: String,
+    pub content: String,
+    pub scope: MemoryScope,
+}
 
-/// Synchronous part of save_memory: resolve owner, read embedding config,
-/// insert the row. Returns the inserted memory plus the data the async embed
-/// step needs (`owner_id`, endpoint, model).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteMemoryRequest {
+    pub scope: MemoryScope,
+    pub memory_id: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoveMemoryRequest {
+    pub memory_id: i64,
+    pub from_scope: MemoryScope,
+    pub to_scope: MemoryScope,
+    pub from_group_id: Option<String>,
+    pub from_connection_id: Option<String>,
+    pub to_group_id: Option<String>,
+    pub to_connection_id: Option<String>,
+}
+
+impl MoveMemoryRequest {
+    pub fn from_owner_id(&self) -> Option<&str> {
+        match self.from_scope {
+            MemoryScope::Connection => self.from_connection_id.as_deref(),
+            MemoryScope::Group => self.from_group_id.as_deref(),
+            MemoryScope::Global => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchMemoriesRequest {
+    pub session_id: String,
+    pub query: String,
+    pub limit: usize,
+}
+
+#[derive(Debug)]
+pub struct SavedMemory {
+    pub memory: AiMemory,
+    pub owner_id: Option<String>,
+    pub embedding: EmbeddingConfig,
+}
+
+#[derive(Debug)]
+pub struct MemoryMovePlan {
+    pub content: String,
+    pub to_owner_id: Option<String>,
+    pub embedding: EmbeddingConfig,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchOwners {
+    pub connection_id: String,
+    pub group_id: Option<String>,
+}
+
 pub fn save_memory_impl(
     state: &AppState,
-    session_id: &str,
-    content: &str,
-    scope: MemoryScope,
-) -> Result<(AiMemory, Option<String>, String, String), String> {
-    let owner_id = resolve_save_owner(state, session_id, scope)?;
+    request: &SaveMemoryRequest,
+) -> Result<SavedMemory, String> {
+    let scope = request.scope;
+    let owner_id = resolve_save_owner(state, &request.session_id, scope)?;
 
     let conn = state
         .db
         .lock()
         .map_err(|error| format!("DB lock: {error}"))?;
 
-    // Read embedding config — fail early if not configured.
-    let (endpoint, model) = read_embedding_config(&conn)?;
+    let embedding = read_embedding_config(&conn)?;
 
-    let id = storage::insert_memory_scoped(&conn, scope, owner_id.as_deref(), content)?;
+    let owner = MemoryOwner {
+        scope,
+        owner_id: owner_id.as_deref(),
+    };
+    let id = storage::insert_memory_scoped(&conn, owner, &request.content)?;
 
     let memory = storage::get_memory_by_id_scoped(&conn, scope, id)?
         .ok_or_else(|| "Failed to read back inserted memory".to_string())?;
 
-    Ok((memory, owner_id, endpoint, model))
+    Ok(SavedMemory {
+        memory,
+        owner_id,
+        embedding,
+    })
 }
 
-/// Complete save_memory with the async embedding step.
 pub async fn save_memory_full(
     state: &AppState,
-    session_id: &str,
-    content: &str,
-    scope: MemoryScope,
+    request: &SaveMemoryRequest,
 ) -> Result<AiMemory, String> {
+    let scope = request.scope;
+    let content = request.content.as_str();
     tracing::debug!(
-        session_id,
+        session_id = %request.session_id,
         scope = scope.as_str(),
         content_len = content.len(),
         "save_memory: start"
     );
 
-    let (memory, owner_id, endpoint, model) = save_memory_impl(state, session_id, content, scope)?;
+    let SavedMemory {
+        memory,
+        owner_id,
+        embedding: EmbeddingConfig { endpoint, model },
+    } = save_memory_impl(state, request)?;
 
     tracing::debug!(
         memory_id = memory.id,
@@ -119,18 +191,21 @@ pub async fn save_memory_full(
                 .db
                 .lock()
                 .map_err(|error| format!("DB lock: {error}"))?;
-            storage::ensure_vec_table_for_scope(&conn, scope, owner_id.as_deref(), dim)?
+            let owner = MemoryOwner {
+                scope,
+                owner_id: owner_id.as_deref(),
+            };
+            storage::ensure_vec_table_for_scope(&conn, owner, dim)?
         };
 
-        let vecs = embeddings::embed_texts(
-            &state.http_client,
-            &endpoint,
-            &model,
-            vec![content.to_string()],
-            None,
-        )
-        .await
-        .map_err(|error| error.to_string())?;
+        let embedding_model = embeddings::EmbeddingModel {
+            base_url: &endpoint,
+            model: &model,
+        };
+        let input = EmbeddingInput::texts(vec![content.to_string()]);
+        let vecs = embeddings::embed_texts(&state.http_client, embedding_model, input)
+            .await
+            .map_err(|error| error.to_string())?;
 
         let embedding_count = vecs.len();
         if embedding_count != 1 {
@@ -144,7 +219,11 @@ pub async fn save_memory_full(
             .db
             .lock()
             .map_err(|error| format!("DB lock: {error}"))?;
-        storage::insert_memory_vector(&conn, &table_name, memory.id, &embedding)
+        let vector = MemoryVector {
+            memory_id: memory.id,
+            embedding: &embedding,
+        };
+        storage::insert_memory_vector(&conn, &table_name, &vector)
             .map_err(|error| error.to_string())?;
 
         Ok::<(), String>(())
@@ -221,11 +300,9 @@ pub fn list_connection_memories_impl(
 
 // ── delete_memory ───────────────────────────────────────────────────────────
 
-pub fn delete_memory_impl(
-    state: &AppState,
-    scope: MemoryScope,
-    memory_id: i64,
-) -> Result<(), String> {
+pub fn delete_memory_impl(state: &AppState, request: &DeleteMemoryRequest) -> Result<(), String> {
+    let scope = request.scope;
+    let memory_id = request.memory_id;
     tracing::debug!(scope = scope.as_str(), memory_id, "delete_memory: start");
     let conn = state
         .db
@@ -248,7 +325,11 @@ pub fn delete_memory_impl(
         MemoryScope::Global => None,
     };
 
-    storage::delete_memory_vector_scoped(&conn, scope, owner_id.as_deref(), memory_id)?;
+    let owner = MemoryOwner {
+        scope,
+        owner_id: owner_id.as_deref(),
+    };
+    storage::delete_memory_vector_scoped(&conn, owner, memory_id)?;
     storage::delete_memory_scoped(&conn, scope, memory_id)?;
 
     tracing::debug!(
@@ -261,18 +342,15 @@ pub fn delete_memory_impl(
 
 // ── move_memory ─────────────────────────────────────────────────────────────
 
-/// Synchronous prelude for move: validate the target owner exists, read the
-/// source memory content, and read embedding config. Returns the data the
-/// async embed step needs.
-#[allow(clippy::too_many_arguments)]
 pub fn move_memory_prepare(
     state: &AppState,
-    memory_id: i64,
-    from_scope: MemoryScope,
-    to_scope: MemoryScope,
-    to_group_id: Option<&str>,
-    to_connection_id: Option<&str>,
-) -> Result<(String, Option<String>, String, String), String> {
+    request: &MoveMemoryRequest,
+) -> Result<MemoryMovePlan, String> {
+    let memory_id = request.memory_id;
+    let from_scope = request.from_scope;
+    let to_scope = request.to_scope;
+    let to_group_id = request.to_group_id.as_deref();
+    let to_connection_id = request.to_connection_id.as_deref();
     let conn = state
         .db
         .lock()
@@ -301,23 +379,22 @@ pub fn move_memory_prepare(
         }
     };
 
-    let (endpoint, model) = read_embedding_config(&conn)?;
+    let embedding = read_embedding_config(&conn)?;
 
-    Ok((source.content, to_owner_id, endpoint, model))
+    Ok(MemoryMovePlan {
+        content: source.content,
+        to_owner_id,
+        embedding,
+    })
 }
 
-/// Complete move_memory: re-embed the (unchanged) source content into the
-/// target vec table, then transfer the row + vector via the storage helper.
-#[allow(clippy::too_many_arguments)]
 pub async fn move_memory_full(
     state: &AppState,
-    memory_id: i64,
-    from_scope: MemoryScope,
-    to_scope: MemoryScope,
-    from_owner_id: Option<String>,
-    to_group_id: Option<String>,
-    to_connection_id: Option<String>,
+    request: &MoveMemoryRequest,
 ) -> Result<AiMemory, String> {
+    let memory_id = request.memory_id;
+    let from_scope = request.from_scope;
+    let to_scope = request.to_scope;
     tracing::debug!(
         memory_id,
         from = from_scope.as_str(),
@@ -325,29 +402,25 @@ pub async fn move_memory_full(
         "move_memory: start"
     );
 
-    let (content, to_owner_id, endpoint, model) = move_memory_prepare(
-        state,
-        memory_id,
-        from_scope,
-        to_scope,
-        to_group_id.as_deref(),
-        to_connection_id.as_deref(),
-    )?;
+    let MemoryMovePlan {
+        content,
+        to_owner_id,
+        embedding: EmbeddingConfig { endpoint, model },
+    } = move_memory_prepare(state, request)?;
 
     let dim = embeddings::detect_embedding_dimension(&state.http_client, &endpoint, &model)
         .await
         .map_err(|error| error.to_string())?;
     let _ = dim; // dimension is implied by the embedding length; kept for parity/logging.
 
-    let vecs = embeddings::embed_texts(
-        &state.http_client,
-        &endpoint,
-        &model,
-        vec![content.clone()],
-        None,
-    )
-    .await
-    .map_err(|error| error.to_string())?;
+    let embedding_model = embeddings::EmbeddingModel {
+        base_url: &endpoint,
+        model: &model,
+    };
+    let input = EmbeddingInput::texts(vec![content.clone()]);
+    let vecs = embeddings::embed_texts(&state.http_client, embedding_model, input)
+        .await
+        .map_err(|error| error.to_string())?;
 
     let embedding = vecs
         .into_iter()
@@ -359,15 +432,19 @@ pub async fn move_memory_full(
             .db
             .lock()
             .map_err(|error| format!("DB lock: {error}"))?;
-        storage::move_memory(
-            &mut conn,
-            from_scope,
-            from_owner_id.as_deref(),
+        let memory_move = MemoryMove {
             memory_id,
-            to_scope,
-            to_owner_id.as_deref(),
-            &embedding,
-        )?
+            from: MemoryOwner {
+                scope: from_scope,
+                owner_id: request.from_owner_id(),
+            },
+            to: MemoryOwner {
+                scope: to_scope,
+                owner_id: to_owner_id.as_deref(),
+            },
+            embedding: &embedding,
+        };
+        storage::move_memory(&mut conn, &memory_move)?
     };
 
     tracing::debug!(
@@ -382,12 +459,7 @@ pub async fn move_memory_full(
 
 // ── search_memories ─────────────────────────────────────────────────────────
 
-/// Resolve the (connection id, optional group id) for a session — used by the
-/// merged search.
-pub fn resolve_search_owners(
-    state: &AppState,
-    session_id: &str,
-) -> Result<(String, Option<String>), String> {
+pub fn resolve_search_owners(state: &AppState, session_id: &str) -> Result<SearchOwners, String> {
     let profile_id = resolve_session_profile(state, session_id)?;
     let conn = state
         .db
@@ -396,35 +468,43 @@ pub fn resolve_search_owners(
     let group_id = connections::get_connection(&conn, &profile_id)
         .map_err(|error| error.to_string())?
         .and_then(|record| record.group_id);
-    Ok((profile_id, group_id))
+    Ok(SearchOwners {
+        connection_id: profile_id,
+        group_id,
+    })
 }
 
 // ── reembed_all ─────────────────────────────────────────────────────────────
 
-/// Compute the (scope, owner_id, owner_key) re-embed targets across all levels:
-/// global, every group, and every connection.
-pub fn reembed_targets(
-    state: &AppState,
-) -> Result<Vec<(MemoryScope, Option<String>, String)>, String> {
+pub fn reembed_targets(state: &AppState) -> Result<Vec<ReembedTarget>, String> {
     let conn = state
         .db
         .lock()
         .map_err(|error| format!("DB lock: {error}"))?;
 
-    let mut targets: Vec<(MemoryScope, Option<String>, String)> = Vec::new();
+    let mut targets: Vec<ReembedTarget> = Vec::new();
 
-    // Global (always).
-    targets.push((MemoryScope::Global, None, "global".to_string()));
+    targets.push(ReembedTarget {
+        scope: MemoryScope::Global,
+        owner_id: None,
+        owner_key: "global".to_string(),
+    });
 
-    // Every group.
     for group in connection_groups::list_groups(&conn).map_err(|error| error.to_string())? {
         let owner_key = format!("group_{}", group.id);
-        targets.push((MemoryScope::Group, Some(group.id), owner_key));
+        targets.push(ReembedTarget {
+            scope: MemoryScope::Group,
+            owner_id: Some(group.id),
+            owner_key,
+        });
     }
 
-    // Every connection.
     for record in connections::list_connections(&conn).map_err(|error| error.to_string())? {
-        targets.push((MemoryScope::Connection, Some(record.id.clone()), record.id));
+        targets.push(ReembedTarget {
+            scope: MemoryScope::Connection,
+            owner_id: Some(record.id.clone()),
+            owner_key: record.id,
+        });
     }
 
     Ok(targets)
@@ -435,12 +515,10 @@ pub fn reembed_targets(
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn save_memory(
-    session_id: String,
-    content: String,
-    scope: MemoryScope,
+    payload: SaveMemoryRequest,
     state: State<'_, AppState>,
 ) -> Result<AiMemory, String> {
-    save_memory_full(&state, &session_id, &content, scope).await
+    save_memory_full(&state, &payload).await
 }
 
 #[cfg(not(coverage))]
@@ -469,56 +547,33 @@ pub fn list_connection_memories(
 
 #[cfg(not(coverage))]
 #[tauri::command]
-pub fn delete_memory(
-    scope: MemoryScope,
-    memory_id: i64,
-    state: State<AppState>,
-) -> Result<(), String> {
-    delete_memory_impl(&state, scope, memory_id)
+pub fn delete_memory(payload: DeleteMemoryRequest, state: State<AppState>) -> Result<(), String> {
+    delete_memory_impl(&state, &payload)
 }
 
 #[cfg(not(coverage))]
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn move_memory(
-    memory_id: i64,
-    from_scope: MemoryScope,
-    to_scope: MemoryScope,
-    from_group_id: Option<String>,
-    from_connection_id: Option<String>,
-    to_group_id: Option<String>,
-    to_connection_id: Option<String>,
+    payload: MoveMemoryRequest,
     state: State<'_, AppState>,
 ) -> Result<AiMemory, String> {
-    // The source owner is whichever of from_group_id / from_connection_id matches
-    // the source scope; global has no owner.
-    let from_owner_id = match from_scope {
-        MemoryScope::Connection => from_connection_id,
-        MemoryScope::Group => from_group_id,
-        MemoryScope::Global => None,
-    };
-    move_memory_full(
-        &state,
-        memory_id,
-        from_scope,
-        to_scope,
-        from_owner_id,
-        to_group_id,
-        to_connection_id,
-    )
-    .await
+    move_memory_full(&state, &payload).await
 }
 
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn search_memories(
-    session_id: String,
-    query: String,
-    limit: usize,
+    payload: SearchMemoriesRequest,
     state: State<'_, AppState>,
 ) -> Result<Vec<AiMemory>, String> {
-    let (connection_id, group_id) = resolve_search_owners(&state, &session_id)?;
-    search::search_memories_impl(&state, &connection_id, group_id.as_deref(), &query, limit).await
+    let owners = resolve_search_owners(&state, &payload.session_id)?;
+    let search = search::MemorySearch {
+        connection_id: &owners.connection_id,
+        group_id: owners.group_id.as_deref(),
+        query: &payload.query,
+        limit: payload.limit,
+    };
+    search::search_memories_impl(&state, &search).await
 }
 
 #[cfg(not(coverage))]
@@ -529,9 +584,9 @@ pub async fn reembed_all_memories(
 ) -> Result<(), String> {
     let targets = reembed_targets(&state)?;
 
-    for (scope, owner_id, owner_key) in targets {
+    for target in targets {
         let app = app_handle.clone();
-        reembed::reembed_scope_impl(&state, scope, owner_id, &owner_key, move |progress| {
+        reembed::reembed_scope_impl(&state, target, move |progress| {
             let _ = app.emit("ai-memory-reembed-progress", &progress);
         })
         .await?;

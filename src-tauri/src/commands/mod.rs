@@ -15,6 +15,7 @@ pub mod object_editor;
 pub mod processlist;
 pub mod query;
 pub mod query_history_bridge;
+pub mod requests;
 pub mod schema;
 pub mod schema_cache;
 pub mod schema_index;

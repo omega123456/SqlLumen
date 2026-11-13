@@ -9,6 +9,18 @@ use std::sync::Mutex;
 /// Default capacity of the embedding cache.
 const DEFAULT_CAPACITY: usize = 256;
 
+#[derive(Debug, Clone, Copy)]
+pub struct EmbeddingCacheKey<'a> {
+    pub model_id: &'a str,
+    pub text: &'a str,
+}
+
+impl<'a> EmbeddingCacheKey<'a> {
+    pub fn new(model_id: &'a str, text: &'a str) -> Self {
+        Self { model_id, text }
+    }
+}
+
 /// A simple LRU-like cache for embedding vectors.
 ///
 /// Uses a `HashMap` with a counter-based eviction: when the cache is full, the
@@ -70,15 +82,14 @@ impl EmbeddingCache {
         Some(entry.vec.clone())
     }
 
-    /// Insert an embedding vector into the cache, evicting the LRU entry if full.
-    pub fn insert(&self, model_id: &str, text: &str, vec: Vec<f32>) {
+    pub fn insert(&self, cache_key: EmbeddingCacheKey<'_>, vec: Vec<f32>) {
         let Ok(mut inner) = self.inner.lock() else {
             return;
         };
         inner.counter += 1;
         let counter = inner.counter;
 
-        let key = (model_id.to_string(), text.to_string());
+        let key = (cache_key.model_id.to_string(), cache_key.text.to_string());
         if inner.map.contains_key(&key) {
             inner.map.get_mut(&key).unwrap().vec = vec;
             inner.map.get_mut(&key).unwrap().last_used = counter;

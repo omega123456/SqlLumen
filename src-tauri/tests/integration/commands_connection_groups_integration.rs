@@ -32,7 +32,14 @@ fn test_update_connection_group_impl_modifies_name() {
     let state = common::test_app_state();
     let id = create_connection_group_impl(&state, "Old Name").expect("should create");
 
-    update_connection_group_impl(&state, &id, "New Name").expect("should update");
+    update_connection_group_impl(
+        &state,
+        &sqllumen_lib::commands::connection_groups::UpdateConnectionGroupRequest {
+            id: id.to_string(),
+            name: "New Name".to_string(),
+        },
+    )
+    .expect("should update");
 
     let list = list_connection_groups_impl(&state).expect("should list");
     assert_eq!(list.len(), 1);

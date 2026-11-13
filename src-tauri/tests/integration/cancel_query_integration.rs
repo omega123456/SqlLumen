@@ -17,7 +17,14 @@ use sqllumen_lib::state::AppState;
 async fn cancel_query_returns_false_when_no_running_query() {
     let state = common::test_app_state();
 
-    let result = cancel_query_impl(&state, "conn-1", "tab-1").await;
+    let result = cancel_query_impl(
+        &state,
+        &sqllumen_lib::commands::requests::ConnectionTabRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+        },
+    )
+    .await;
     assert_eq!(
         result,
         Ok(false),
@@ -36,7 +43,14 @@ async fn cancel_query_returns_false_for_wrong_connection_id() {
         .await
         .insert(("conn-other".to_string(), "tab-1".to_string()), 42u64);
 
-    let result = cancel_query_impl(&state, "conn-1", "tab-1").await;
+    let result = cancel_query_impl(
+        &state,
+        &sqllumen_lib::commands::requests::ConnectionTabRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+        },
+    )
+    .await;
     assert_eq!(
         result,
         Ok(false),
@@ -55,7 +69,14 @@ async fn cancel_query_returns_false_for_wrong_tab_id() {
         .await
         .insert(("conn-1".to_string(), "tab-other".to_string()), 42u64);
 
-    let result = cancel_query_impl(&state, "conn-1", "tab-1").await;
+    let result = cancel_query_impl(
+        &state,
+        &sqllumen_lib::commands::requests::ConnectionTabRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+        },
+    )
+    .await;
     assert_eq!(result, Ok(false), "should return Ok(false) for wrong tab");
 }
 
@@ -148,9 +169,18 @@ mod coverage_cancel {
         assert!(state.running_queries.read().await.is_empty());
 
         // Execute — the coverage stub inserts and removes dummy thread ID 42
-        let result = execute_query_impl(&state, "conn-cov", "tab-1", "SELECT 1", 100, None)
-            .await
-            .expect("coverage stub should succeed");
+        let result = execute_query_impl(
+            &state,
+            &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
+                connection_id: "conn-cov".to_string(),
+                tab_id: "tab-1".to_string(),
+                sql: "SELECT 1".to_string(),
+                row_limit: Some(100),
+                view_spec: None,
+            },
+        )
+        .await
+        .expect("coverage stub should succeed");
 
         assert!(!result.query_id.is_empty());
 
@@ -163,7 +193,14 @@ mod coverage_cancel {
         let state = common::test_app_state();
 
         // No running query → Ok(false)
-        let result = cancel_query_impl(&state, "conn-1", "tab-1").await;
+        let result = cancel_query_impl(
+            &state,
+            &sqllumen_lib::commands::requests::ConnectionTabRequest {
+                connection_id: "conn-1".to_string(),
+                tab_id: "tab-1".to_string(),
+            },
+        )
+        .await;
         assert_eq!(result, Ok(false));
     }
 
@@ -180,7 +217,14 @@ mod coverage_cancel {
             .insert(("conn-cancel".to_string(), "tab-1".to_string()), 999u64);
 
         // Coverage stub: thread ID found + connection exists → Ok(true)
-        let result = cancel_query_impl(&state, "conn-cancel", "tab-1").await;
+        let result = cancel_query_impl(
+            &state,
+            &sqllumen_lib::commands::requests::ConnectionTabRequest {
+                connection_id: "conn-cancel".to_string(),
+                tab_id: "tab-1".to_string(),
+            },
+        )
+        .await;
         assert_eq!(
             result,
             Ok(true),
@@ -200,7 +244,14 @@ mod coverage_cancel {
             .insert(("no-conn".to_string(), "tab-1".to_string()), 123u64);
 
         // Coverage stub: thread ID found but connection not in registry → Err
-        let result = cancel_query_impl(&state, "no-conn", "tab-1").await;
+        let result = cancel_query_impl(
+            &state,
+            &sqllumen_lib::commands::requests::ConnectionTabRequest {
+                connection_id: "no-conn".to_string(),
+                tab_id: "tab-1".to_string(),
+            },
+        )
+        .await;
         assert!(result.is_err(), "should error when connection not found");
         assert!(
             result.unwrap_err().contains("not found"),
@@ -301,7 +352,14 @@ mod mock_cancel {
 
         // cancel_query_impl should find the thread ID and issue KILL QUERY 12345
         // The mock server returns OK for unmatched queries (like KILL QUERY 12345)
-        let result = cancel_query_impl(&state, "conn-1", "tab-1").await;
+        let result = cancel_query_impl(
+            &state,
+            &sqllumen_lib::commands::requests::ConnectionTabRequest {
+                connection_id: "conn-1".to_string(),
+                tab_id: "tab-1".to_string(),
+            },
+        )
+        .await;
         assert_eq!(
             result,
             Ok(true),

@@ -38,13 +38,27 @@ const BODY_PREVIEW_MAX_CHARS: usize = 200;
 /// * `model` — model name for the chat completion
 ///
 /// Returns the candidates in re-ranked order, or the original order on failure.
+#[derive(Debug, Clone, Copy)]
+pub struct RerankBackend<'a> {
+    pub endpoint: &'a str,
+    pub model: &'a str,
+}
+
+pub struct RerankInput<'a> {
+    pub candidates: Vec<SearchResult>,
+    pub question: &'a str,
+}
+
 pub async fn rerank_with_llm(
-    candidates: Vec<SearchResult>,
-    question: &str,
     client: &reqwest::Client,
-    endpoint: &str,
-    model: &str,
+    backend: RerankBackend<'_>,
+    input: RerankInput<'_>,
 ) -> Vec<SearchResult> {
+    let RerankInput {
+        candidates,
+        question,
+    } = input;
+    let RerankBackend { endpoint, model } = backend;
     if candidates.is_empty() {
         return candidates;
     }

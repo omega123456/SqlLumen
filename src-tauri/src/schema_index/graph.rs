@@ -17,17 +17,23 @@ pub struct GraphNode {
     pub seed_index: usize,
 }
 
-/// BFS over `schema_index_fk_edges` starting from `seeds`.
-///
-/// Returns tables reachable within `depth` hops (excluding seeds themselves),
-/// capped at `edge_budget` total edges traversed.
+#[derive(Debug, Clone, Copy)]
+pub struct GraphWalk<'a> {
+    pub connection_id: &'a str,
+    pub depth: u32,
+    pub edge_budget: u32,
+}
+
 pub fn bfs_related(
     conn: &Connection,
-    connection_id: &str,
     seeds: &[(String, String)],
-    depth: u32,
-    edge_budget: u32,
+    walk: &GraphWalk<'_>,
 ) -> Result<Vec<GraphNode>> {
+    let GraphWalk {
+        connection_id,
+        depth,
+        edge_budget,
+    } = *walk;
     // Check table exists
     if conn
         .prepare("SELECT 1 FROM schema_index_fk_edges LIMIT 0")

@@ -8,7 +8,7 @@ import {
 
 describe('materializeRow', () => {
   it('builds a { __rowIdx, __baseIdx, col_N } object with null for missing cells', () => {
-    expect(materializeRow(4, 17, ['a'], 2)).toEqual({
+    expect(materializeRow({ position: 4, baseIndex: 17, row: ['a'], columnCount: 2 })).toEqual({
       __rowIdx: 4,
       __baseIdx: 17,
       col_0: 'a',

@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useShortcutStore, EDITOR_CONTEXT_ACTIONS, GLOBAL_ACTIONS } from '../stores/shortcut-store'
 import { bindingsMatch } from '../lib/shortcut-bindings'
 import type { ShortcutBinding } from '../types/schema'
+import { elementOf } from '../lib/input-events'
 
 /** Normalize a keyboard event into a ShortcutBinding for matching. */
 function eventToBinding(event: KeyboardEvent): ShortcutBinding {
@@ -42,7 +43,7 @@ const INPUT_TAG_NAMES = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
 export function useShortcut(): void {
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
-      const target = event.target as HTMLElement | null
+      const target = elementOf(event.target)
       const inMonaco = isInsideMonaco()
       const pressed = eventToBinding(event)
 

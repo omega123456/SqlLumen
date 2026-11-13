@@ -18,14 +18,14 @@ import { makeTabState } from '../../helpers/query-test-utils'
 import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
 import { ipc } from '../../ipc-mock'
 import * as ObjectActivationModule from '../../../lib/object-activation'
+import type { PaletteColumnTarget, PaletteObjectTarget } from '../../../lib/object-activation'
 
 // Use vi.spyOn (not vi.mock) to stub the shared object-activation module per-test, so the
 // palette's selection flow is exercised without driving the real tab-open + tree-reveal.
-const activateObjectFromPaletteMock = vi.fn<
-  (connectionId: string, database: string, objectType: string, name: string) => Promise<void>
->(() => Promise.resolve())
-const activateColumnFromPaletteMock =
-  vi.fn<(connectionId: string, database: string, table: string, columnName: string) => void>()
+const activateObjectFromPaletteMock = vi.fn<(target: PaletteObjectTarget) => Promise<void>>(() =>
+  Promise.resolve()
+)
+const activateColumnFromPaletteMock = vi.fn<(target: PaletteColumnTarget) => void>()
 
 function makeActiveConnection(): ActiveConnection {
   return {
@@ -100,8 +100,7 @@ describe('CommandPalette', () => {
     activateObjectFromPaletteMock.mockReset()
     activateColumnFromPaletteMock.mockReset()
     vi.spyOn(ObjectActivationModule, 'activateObjectFromPalette').mockImplementation(
-      (connectionId, database, objectType, name) =>
-        activateObjectFromPaletteMock(connectionId, database, objectType, name)
+      activateObjectFromPaletteMock
     )
     vi.spyOn(ObjectActivationModule, 'activateColumnFromPalette').mockImplementation(
       activateColumnFromPaletteMock
@@ -359,12 +358,12 @@ describe('CommandPalette', () => {
     await user.keyboard('{Enter}')
 
     await waitFor(() => {
-      expect(activateObjectFromPaletteMock).toHaveBeenCalledWith(
-        'session-1',
-        'analytics',
-        'table',
-        'users'
-      )
+      expect(activateObjectFromPaletteMock).toHaveBeenCalledWith({
+        connectionId: 'session-1',
+        database: 'analytics',
+        objectType: 'table',
+        name: 'users',
+      })
     })
 
     expect(useCommandPaletteRecentsStore.getState().getRecents('profile-1')[0]).toMatchObject({
@@ -447,12 +446,12 @@ describe('CommandPalette', () => {
     })
     await user.keyboard('{Enter}')
 
-    expect(activateColumnFromPaletteMock).toHaveBeenCalledWith(
-      'session-1',
-      'analytics',
-      'orders',
-      'shipping_amount'
-    )
+    expect(activateColumnFromPaletteMock).toHaveBeenCalledWith({
+      connectionId: 'session-1',
+      database: 'analytics',
+      table: 'orders',
+      columnName: 'shipping_amount',
+    })
     expect(useCommandPaletteRecentsStore.getState().getRecents('profile-1')).toEqual([])
   })
 

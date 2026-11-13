@@ -151,11 +151,13 @@ beforeEach(() => {
   ipc.override('ai_query_expand', (args) =>
     mockAiQueryExpand((args as Record<string, unknown>).req as Record<string, unknown>)
   )
-  ipc.override('semantic_search', (args) => {
+  ipc.overridePayload('semantic_search', (args) => {
     const payload = args as Record<string, unknown>
     return mockSemanticSearch(payload.sessionId, payload.queries, payload.hints)
   })
-  ipc.override('search_memories', (args) => mockSearchMemories(args as Record<string, unknown>))
+  ipc.overridePayload('search_memories', (args) =>
+    mockSearchMemories(args as Record<string, unknown>)
+  )
   ipc.override('get_all_settings', () => ({ ...mockSettings }))
   ipc.override('get_setting', (args) => {
     const key = (args as Record<string, unknown>).key as string
@@ -176,7 +178,9 @@ afterEach(() => {
 describe('useAiStore', () => {
   describe('sendMessage', () => {
     it('adds a user message to the conversation', () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello AI', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello AI', settings: {} })
       const tab = getTab('tab-1')!
       expect(tab.messages).toHaveLength(1)
       expect(tab.messages[0].role).toBe('user')
@@ -186,7 +190,9 @@ describe('useAiStore', () => {
     })
 
     it('sets isGenerating and activeStreamId immediately', () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
       const tab = getTab('tab-1')!
       expect(tab.isGenerating).toBe(true)
       expect(tab.activeStreamId).toBeTruthy()
@@ -196,16 +202,22 @@ describe('useAiStore', () => {
       useAiStore.getState().setError('tab-1', 'some error')
       expect(getTab('tab-1')!.error).toBe('some error')
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'retry', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'retry', settings: {} })
       expect(getTab('tab-1')!.error).toBeNull()
     })
 
     it('replaces a trailing failed user message instead of duplicating it on resend', () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello AI', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello AI', settings: {} })
       const streamId = getTab('tab-1')!.activeStreamId!
 
       useAiStore.getState().onStreamError('tab-1', streamId, 'Request failed')
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello AI', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello AI', settings: {} })
 
       const userMessages = getTab('tab-1')!.messages.filter((message) => message.role === 'user')
       expect(userMessages).toHaveLength(1)
@@ -213,7 +225,9 @@ describe('useAiStore', () => {
     })
 
     it('calls listenToAiStream and sendAiChat', async () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
 
       await vi.waitFor(() => {
         expect(getTab('tab-1')!._unlisten).toEqual(expect.any(Function))
@@ -233,10 +247,14 @@ describe('useAiStore', () => {
     })
 
     it('passes override settings when provided', async () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {
-        model: 'gpt-4',
-        temperature: 0.7,
-        maxTokens: 4096,
+      useAiStore.getState().sendMessage('tab-1', {
+        connectionId: 'conn-1',
+        message: 'Hello',
+        settings: {
+          model: 'gpt-4',
+          temperature: 0.7,
+          maxTokens: 4096,
+        },
       })
 
       await vi.waitFor(() => {
@@ -253,7 +271,9 @@ describe('useAiStore', () => {
       mockSettings['ai.enableReasoning'] = 'true'
       mockPendingChanges['ai.enableReasoning'] = 'false'
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
@@ -267,7 +287,9 @@ describe('useAiStore', () => {
       mockSettings['ai.preferResponsesApi'] = 'false'
       mockPendingChanges['ai.preferResponsesApi'] = 'true'
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
@@ -281,7 +303,9 @@ describe('useAiStore', () => {
       mockPendingChanges['ai.endpoint'] = 'http://pending.example/v1'
       mockPendingChanges['ai.model'] = 'gemma-pending'
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
@@ -293,7 +317,9 @@ describe('useAiStore', () => {
     })
 
     it('stores the unlisten function from listenToAiStream', async () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
 
       await vi.waitFor(() => {
         expect(getTab('tab-1')!._unlisten).toEqual(expect.any(Function))
@@ -301,7 +327,11 @@ describe('useAiStore', () => {
     })
 
     it('calls aiQueryExpand for query expansion before semantic search', async () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Show me all users', {})
+      useAiStore.getState().sendMessage('tab-1', {
+        connectionId: 'conn-1',
+        message: 'Show me all users',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockAiQueryExpand).toHaveBeenCalledTimes(1)
@@ -314,7 +344,11 @@ describe('useAiStore', () => {
     })
 
     it('calls semanticSearch with expanded queries including HyDE and entities', async () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Show me all users', {})
+      useAiStore.getState().sendMessage('tab-1', {
+        connectionId: 'conn-1',
+        message: 'Show me all users',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
@@ -340,7 +374,11 @@ describe('useAiStore', () => {
         range: { startLineNumber: 1, endLineNumber: 1, startColumn: 1, endColumn: 40 },
       })
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Explain this query', {})
+      useAiStore.getState().sendMessage('tab-1', {
+        connectionId: 'conn-1',
+        message: 'Explain this query',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
@@ -373,7 +411,11 @@ describe('useAiStore', () => {
         },
       }))
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Query about customers', {})
+      useAiStore.getState().sendMessage('tab-1', {
+        connectionId: 'conn-1',
+        message: 'Query about customers',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
@@ -391,7 +433,11 @@ describe('useAiStore', () => {
         text: '{"queries":["  Show me all users  ","search query 1","search query 1","   "],"hypotheticalSql":"","entities":[],"joins":[],"metrics":[]}',
       })
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Show me all users', {})
+      useAiStore.getState().sendMessage('tab-1', {
+        connectionId: 'conn-1',
+        message: 'Show me all users',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
@@ -404,7 +450,9 @@ describe('useAiStore', () => {
     it('falls back to original message when aiQueryExpand parse fails', async () => {
       mockAiQueryExpand.mockResolvedValueOnce({ text: 'not valid json' })
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Show me users', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Show me users', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
@@ -415,7 +463,9 @@ describe('useAiStore', () => {
     })
 
     it('injects system message with retrieved DDL from semantic search', async () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First message', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'First message', settings: {} })
 
       await vi.waitFor(() => {
         const tab = getTab('tab-1')!
@@ -448,14 +498,16 @@ describe('useAiStore', () => {
     })
 
     it('includes dbName in semantic search debug logging payload', async () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First message', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'First message', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
       expect(
-        ipc.calls('log_frontend').some((call) => {
+        ipc.payloads('log_frontend').some((call) => {
           const payload = call as Record<string, unknown>
           return (
             payload.level === 'debug' && String(payload.message ?? '').includes('"dbName":"testdb"')
@@ -465,7 +517,9 @@ describe('useAiStore', () => {
     })
 
     it('updates providedChunkKeys on the tab after retrieval', async () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First message', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'First message', settings: {} })
 
       await vi.waitFor(() => {
         const tab = getTab('tab-1')!
@@ -485,7 +539,9 @@ describe('useAiStore', () => {
         lastBuildTimestamp: 1234,
       })
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First message', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'First message', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
@@ -493,15 +549,18 @@ describe('useAiStore', () => {
 
       expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
 
-      useAiStore
-        .getState()
-        .onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Answer', 'content')
+      useAiStore.getState().onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, {
+        content: 'Answer',
+        kind: 'content',
+      })
       useAiStore.getState().onStreamDone('tab-1', getTab('tab-1')!.activeStreamId!, {
         transport: 'chat_completions',
       })
 
       // Second turn with same results — should still search but no new schema-context
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First message', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'First message', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
@@ -524,15 +583,18 @@ describe('useAiStore', () => {
         lastBuildTimestamp: 1234,
       })
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First message', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'First message', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
-      useAiStore
-        .getState()
-        .onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Answer', 'content')
+      useAiStore.getState().onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, {
+        content: 'Answer',
+        kind: 'content',
+      })
       useAiStore.getState().onStreamDone('tab-1', getTab('tab-1')!.activeStreamId!, {
         transport: 'chat_completions',
       })
@@ -551,7 +613,9 @@ describe('useAiStore', () => {
         },
       ])
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Show me orders', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Show me orders', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
@@ -574,7 +638,9 @@ describe('useAiStore', () => {
         lastBuildTimestamp: 1234,
       })
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First message', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'First message', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
@@ -582,9 +648,10 @@ describe('useAiStore', () => {
 
       expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
 
-      useAiStore
-        .getState()
-        .onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Answer', 'content')
+      useAiStore.getState().onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, {
+        content: 'Answer',
+        kind: 'content',
+      })
       useAiStore.getState().onStreamDone('tab-1', getTab('tab-1')!.activeStreamId!, {
         transport: 'chat_completions',
       })
@@ -607,7 +674,9 @@ describe('useAiStore', () => {
         },
       ])
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First message', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'First message', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
@@ -629,7 +698,9 @@ describe('useAiStore', () => {
         lastBuildTimestamp: 1234,
       })
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First message', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'First message', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
@@ -637,14 +708,19 @@ describe('useAiStore', () => {
 
       expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
 
-      useAiStore
-        .getState()
-        .onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Answer', 'content')
+      useAiStore.getState().onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, {
+        content: 'Answer',
+        kind: 'content',
+      })
       useAiStore.getState().onStreamDone('tab-1', getTab('tab-1')!.activeStreamId!, {
         transport: 'chat_completions',
       })
 
-      useAiStore.getState().sendMessage('tab-2', 'conn-1', 'Different request', {})
+      useAiStore.getState().sendMessage('tab-2', {
+        connectionId: 'conn-1',
+        message: 'Different request',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
@@ -654,14 +730,18 @@ describe('useAiStore', () => {
     })
 
     it('passes previousResponseId on follow-up messages after a responses-api completion', async () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
       const firstStreamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', firstStreamId, 'Hello back', 'content')
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-1', firstStreamId, { content: 'Hello back', kind: 'content' })
       useAiStore.getState().onStreamDone('tab-1', firstStreamId, {
         responseId: 'resp_abc',
         transport: 'responses',
@@ -669,7 +749,9 @@ describe('useAiStore', () => {
 
       expect(getTab('tab-1')!.previousResponseId).toBe('resp_abc')
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Follow up', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Follow up', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
@@ -679,7 +761,9 @@ describe('useAiStore', () => {
     })
 
     it('keeps the leading prompt prefix stable across follow-up messages with unchanged context', async () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
@@ -691,13 +775,17 @@ describe('useAiStore', () => {
       }>
 
       const firstStreamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', firstStreamId, 'Hello back', 'content')
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-1', firstStreamId, { content: 'Hello back', kind: 'content' })
       useAiStore.getState().onStreamDone('tab-1', firstStreamId, {
         responseId: 'resp_cache',
         transport: 'responses',
       })
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Follow up', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Follow up', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
@@ -724,15 +812,18 @@ describe('useAiStore', () => {
         lastBuildTimestamp: 1234,
       })
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
-      useAiStore
-        .getState()
-        .onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Hello back', 'content')
+      useAiStore.getState().onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, {
+        content: 'Hello back',
+        kind: 'content',
+      })
       useAiStore.getState().onStreamDone('tab-1', getTab('tab-1')!.activeStreamId!, {
         responseId: 'resp_abc',
         transport: 'responses',
@@ -752,7 +843,9 @@ describe('useAiStore', () => {
         },
       ])
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Show me orders', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Show me orders', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
@@ -764,23 +857,28 @@ describe('useAiStore', () => {
     })
 
     it('does not reuse previousResponseId when the model changes', async () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
-      useAiStore
-        .getState()
-        .onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Hello back', 'content')
+      useAiStore.getState().onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, {
+        content: 'Hello back',
+        kind: 'content',
+      })
       useAiStore.getState().onStreamDone('tab-1', getTab('tab-1')!.activeStreamId!, {
         responseId: 'resp_abc',
         transport: 'responses',
       })
 
-      useAiStore
-        .getState()
-        .sendMessage('tab-1', 'conn-1', 'Follow up', { model: 'different-model' })
+      useAiStore.getState().sendMessage('tab-1', {
+        connectionId: 'conn-1',
+        message: 'Follow up',
+        settings: { model: 'different-model' },
+      })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
@@ -790,15 +888,18 @@ describe('useAiStore', () => {
     })
 
     it('does not reuse previousResponseId when the endpoint changes', async () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
-      useAiStore
-        .getState()
-        .onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Hello back', 'content')
+      useAiStore.getState().onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, {
+        content: 'Hello back',
+        kind: 'content',
+      })
       useAiStore.getState().onStreamDone('tab-1', getTab('tab-1')!.activeStreamId!, {
         responseId: 'resp_abc',
         transport: 'responses',
@@ -806,7 +907,9 @@ describe('useAiStore', () => {
 
       mockSettings['ai.endpoint'] = 'http://localhost:8080/v1'
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Follow up', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Follow up', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
@@ -816,22 +919,27 @@ describe('useAiStore', () => {
     })
 
     it('clears previousResponseId when a new conversation is started', async () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
-      useAiStore
-        .getState()
-        .onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Hello back', 'content')
+      useAiStore.getState().onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, {
+        content: 'Hello back',
+        kind: 'content',
+      })
       useAiStore.getState().onStreamDone('tab-1', getTab('tab-1')!.activeStreamId!, {
         responseId: 'resp_conversation',
         transport: 'responses',
       })
 
       useAiStore.getState().clearConversation('tab-1')
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Fresh start', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Fresh start', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
@@ -842,13 +950,17 @@ describe('useAiStore', () => {
 
     it('system prompt is immutable — same content on turn 1 and turn 2', async () => {
       // First message
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'First', settings: {} })
       await vi.waitFor(() => {
         expect(getTab('tab-1')!.messages.length).toBe(3) // base system + schema context + user
       })
 
       // Second message — system message should never be modified after first turn
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Second', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Second', settings: {} })
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
       })
@@ -861,7 +973,9 @@ describe('useAiStore', () => {
     it('sends system prompt without schema when semantic search returns empty', async () => {
       mockSemanticSearch.mockResolvedValueOnce([])
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
 
       await vi.waitFor(() => {
         const tab = getTab('tab-1')!
@@ -883,14 +997,18 @@ describe('useAiStore', () => {
     })
 
     it('preserves old schema context and reuses response chain when follow-up retrieval returns empty', async () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
       const firstStreamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', firstStreamId, 'Hello back', 'content')
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-1', firstStreamId, { content: 'Hello back', kind: 'content' })
       useAiStore.getState().onStreamDone('tab-1', firstStreamId, {
         responseId: 'resp_schema_clear',
         transport: 'responses',
@@ -898,7 +1016,11 @@ describe('useAiStore', () => {
 
       mockSemanticSearch.mockResolvedValueOnce([])
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Unrelated follow up', {})
+      useAiStore.getState().sendMessage('tab-1', {
+        connectionId: 'conn-1',
+        message: 'Unrelated follow up',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
@@ -920,7 +1042,9 @@ describe('useAiStore', () => {
     it('sets error state when sendAiChat fails', async () => {
       mockSendAiChat.mockRejectedValueOnce(new Error('Network error'))
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
 
       await vi.waitFor(() => {
         const tab = getTab('tab-1')!
@@ -935,7 +1059,9 @@ describe('useAiStore', () => {
     it('calls unlisten and clears it when sendAiChat fails', async () => {
       mockSendAiChat.mockRejectedValueOnce(new Error('Network error'))
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
 
       // Wait for the error state to be set (async path completes)
       await vi.waitFor(() => {
@@ -948,7 +1074,9 @@ describe('useAiStore', () => {
     })
 
     it('stream listeners call store onStreamChunk/onDone/onError', async () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
       const streamId = getTab('tab-1')!.activeStreamId!
 
       await vi.waitFor(() => {
@@ -970,7 +1098,9 @@ describe('useAiStore', () => {
     })
 
     it('stream listeners continue to accumulate tokens when no UI is subscribed (store ownership)', async () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
       const streamId = getTab('tab-1')!.activeStreamId!
 
       await vi.waitFor(() => {
@@ -995,7 +1125,11 @@ describe('useAiStore', () => {
       }
       useAiStore.getState().setAttachedContext('tab-1', context)
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Explain this query', {})
+      useAiStore.getState().sendMessage('tab-1', {
+        connectionId: 'conn-1',
+        message: 'Explain this query',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
@@ -1025,7 +1159,9 @@ describe('useAiStore', () => {
       useAiStore.getState().setAttachedContext('tab-1', context)
       expect(getTab('tab-1')!.attachedContext).not.toBeNull()
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Explain', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Explain', settings: {} })
       // attachedContext must remain set so the "Review Diff" button stays
       // visible when the streaming response arrives.
       expect(getTab('tab-1')!.attachedContext).toEqual(context)
@@ -1037,7 +1173,9 @@ describe('useAiStore', () => {
         range: { startLineNumber: 1, endLineNumber: 1, startColumn: 1, endColumn: 8 },
       }
       useAiStore.getState().setAttachedContext('tab-1', context)
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Explain', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Explain', settings: {} })
       // Still set after sendMessage
       expect(getTab('tab-1')!.attachedContext).not.toBeNull()
 
@@ -1053,21 +1191,29 @@ describe('useAiStore', () => {
       }
       useAiStore.getState().setAttachedContext('tab-1', context)
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Explain this query', {})
+      useAiStore.getState().sendMessage('tab-1', {
+        connectionId: 'conn-1',
+        message: 'Explain this query',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
       const firstStreamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', firstStreamId, 'Sure', 'content')
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-1', firstStreamId, { content: 'Sure', kind: 'content' })
       useAiStore.getState().onStreamDone('tab-1', firstStreamId, {
         responseId: 'resp_attached_clear',
         transport: 'responses',
       })
 
       useAiStore.getState().clearAttachedContext('tab-1')
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Follow up', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Follow up', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
@@ -1087,7 +1233,9 @@ describe('useAiStore', () => {
     })
 
     it('does not inject context message when no context is attached', async () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'General question', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'General question', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
@@ -1107,7 +1255,9 @@ describe('useAiStore', () => {
         () => new Promise((r) => setTimeout(() => r([]), 50))
       )
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
 
       // Cancel immediately while schema is being retrieved
       useAiStore.getState().cancelStream('tab-1')
@@ -1138,7 +1288,9 @@ describe('useAiStore', () => {
         })
       }, 600)
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
 
       // The tab should initially be waiting for index
       await vi.waitFor(() => {
@@ -1161,7 +1313,9 @@ describe('useAiStore', () => {
       // Make semantic search throw an error
       mockSemanticSearch.mockRejectedValueOnce(new Error('Search engine unavailable'))
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
 
       // Should still proceed with sendAiChat (with empty schema context)
       await vi.waitFor(() => {
@@ -1181,7 +1335,9 @@ describe('useAiStore', () => {
   describe('cancelStream', () => {
     it('sets isGenerating to false and clears activeStreamId', () => {
       // Set up generating state via sendMessage
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
       expect(getTab('tab-1')!.isGenerating).toBe(true)
 
       useAiStore.getState().cancelStream('tab-1')
@@ -1191,16 +1347,21 @@ describe('useAiStore', () => {
     })
 
     it('clears previousResponseId when cancelling an in-flight stream', () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
       useAiStore
         .getState()
-        .onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Response', 'content')
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
+      useAiStore.getState().onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, {
+        content: 'Response',
+        kind: 'content',
+      })
       useAiStore.getState().onStreamDone('tab-1', getTab('tab-1')!.activeStreamId!, {
         responseId: 'resp_keep',
         transport: 'responses',
       })
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Follow up', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Follow up', settings: {} })
       useAiStore.getState().cancelStream('tab-1')
 
       expect(getTab('tab-1')!.previousResponseId).toBeNull()
@@ -1208,7 +1369,9 @@ describe('useAiStore', () => {
 
     it('calls cancelAiStream IPC with the active streamId', async () => {
       // Set up generating state via sendMessage
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
       const streamId = getTab('tab-1')!.activeStreamId!
 
       useAiStore.getState().cancelStream('tab-1')
@@ -1221,7 +1384,9 @@ describe('useAiStore', () => {
 
     it('calls and clears the unlisten function', () => {
       const unlisten = vi.fn()
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
       useAiStore.getState().setUnlisten('tab-1', unlisten)
 
       useAiStore.getState().cancelStream('tab-1')
@@ -1241,7 +1406,9 @@ describe('useAiStore', () => {
     it('handles cancelAiStream IPC failure gracefully', async () => {
       mockCancelAiStream.mockRejectedValueOnce(new Error('Cancel failed'))
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
       useAiStore.getState().cancelStream('tab-1')
 
       // Give the fire-and-forget promise a tick
@@ -1256,9 +1423,11 @@ describe('useAiStore', () => {
   describe('onStreamChunk', () => {
     it('creates a new assistant message when no assistant message exists', () => {
       // Set up a tab with an active stream so the chunk is not rejected
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
       const streamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', streamId, 'Hello', 'content')
+      useAiStore.getState().onStreamChunk('tab-1', streamId, { content: 'Hello', kind: 'content' })
       const tab = getTab('tab-1')!
       const assistantMsg = tab.messages.find((m) => m.role === 'assistant')
       expect(assistantMsg).toBeDefined()
@@ -1268,10 +1437,12 @@ describe('useAiStore', () => {
     })
 
     it('appends to existing assistant message', () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
       const streamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', streamId, 'Hello', 'content')
-      useAiStore.getState().onStreamChunk('tab-1', streamId, ' world', 'content')
+      useAiStore.getState().onStreamChunk('tab-1', streamId, { content: 'Hello', kind: 'content' })
+      useAiStore.getState().onStreamChunk('tab-1', streamId, { content: ' world', kind: 'content' })
       const tab = getTab('tab-1')!
       const assistantMsgs = tab.messages.filter((m) => m.role === 'assistant')
       expect(assistantMsgs).toHaveLength(1)
@@ -1279,9 +1450,13 @@ describe('useAiStore', () => {
     })
 
     it('creates new assistant message after a user message', () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
       const streamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', streamId, 'Response', 'content')
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-1', streamId, { content: 'Response', kind: 'content' })
       const tab = getTab('tab-1')!
       const userMsg = tab.messages.find((m) => m.role === 'user')
       const assistantMsg = tab.messages.find((m) => m.role === 'assistant')
@@ -1291,10 +1466,13 @@ describe('useAiStore', () => {
     })
 
     it('ignores chunks with a stale streamId', () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
       useAiStore
         .getState()
-        .onStreamChunk('tab-1', 'stale-stream-id', 'Should be ignored', 'content')
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
+      useAiStore.getState().onStreamChunk('tab-1', 'stale-stream-id', {
+        content: 'Should be ignored',
+        kind: 'content',
+      })
       const tab = getTab('tab-1')!
       const assistantMsg = tab.messages.find((m) => m.role === 'assistant')
       expect(assistantMsg).toBeUndefined()
@@ -1302,14 +1480,20 @@ describe('useAiStore', () => {
 
     it('ignores chunks for non-existent tab', () => {
       // Should not throw
-      useAiStore.getState().onStreamChunk('nonexistent', 'stream-1', 'chunk', 'content')
+      useAiStore
+        .getState()
+        .onStreamChunk('nonexistent', 'stream-1', { content: 'chunk', kind: 'content' })
       expect(getTab('nonexistent')).toBeUndefined()
     })
 
     it('routes thinking chunks to thinkingContent, not content', () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
       const streamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', streamId, 'reasoning...', 'thinking')
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-1', streamId, { content: 'reasoning...', kind: 'thinking' })
       const tab = getTab('tab-1')!
       const assistantMsg = tab.messages.find((m) => m.role === 'assistant')
       expect(assistantMsg).toBeDefined()
@@ -1318,11 +1502,19 @@ describe('useAiStore', () => {
     })
 
     it('appends thinking chunks to thinkingContent without affecting content', () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
       const streamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', streamId, 'think1', 'thinking')
-      useAiStore.getState().onStreamChunk('tab-1', streamId, 'think2', 'thinking')
-      useAiStore.getState().onStreamChunk('tab-1', streamId, 'visible', 'content')
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-1', streamId, { content: 'think1', kind: 'thinking' })
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-1', streamId, { content: 'think2', kind: 'thinking' })
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-1', streamId, { content: 'visible', kind: 'content' })
       const tab = getTab('tab-1')!
       const assistantMsg = tab.messages.find((m) => m.role === 'assistant')
       expect(assistantMsg!.thinkingContent).toBe('think1think2')
@@ -1330,10 +1522,12 @@ describe('useAiStore', () => {
     })
 
     it('content chunks do not affect thinkingContent', () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
       const streamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', streamId, 'hello', 'content')
-      useAiStore.getState().onStreamChunk('tab-1', streamId, ' world', 'content')
+      useAiStore.getState().onStreamChunk('tab-1', streamId, { content: 'hello', kind: 'content' })
+      useAiStore.getState().onStreamChunk('tab-1', streamId, { content: ' world', kind: 'content' })
       const tab = getTab('tab-1')!
       const assistantMsg = tab.messages.find((m) => m.role === 'assistant')
       expect(assistantMsg!.content).toBe('hello world')
@@ -1341,9 +1535,13 @@ describe('useAiStore', () => {
     })
 
     it('thinking chunk before any content creates assistant message with empty content and non-empty thinkingContent', () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
       const streamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', streamId, 'let me think', 'thinking')
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-1', streamId, { content: 'let me think', kind: 'thinking' })
       const tab = getTab('tab-1')!
       const assistantMsg = tab.messages.find((m) => m.role === 'assistant')
       expect(assistantMsg).toBeDefined()
@@ -1354,9 +1552,11 @@ describe('useAiStore', () => {
 
   describe('onStreamDone', () => {
     it('sets isGenerating to false and clears activeStreamId', () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
       const streamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', streamId, 'chunk', 'content')
+      useAiStore.getState().onStreamChunk('tab-1', streamId, { content: 'chunk', kind: 'content' })
       useAiStore.getState().onStreamDone('tab-1', streamId, { transport: 'chat_completions' })
       const tab = getTab('tab-1')!
       expect(tab.isGenerating).toBe(false)
@@ -1365,7 +1565,9 @@ describe('useAiStore', () => {
 
     it('calls and clears _unlisten on stream done', () => {
       const unlisten = vi.fn()
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
       const streamId = getTab('tab-1')!.activeStreamId!
       useAiStore.getState().setUnlisten('tab-1', unlisten)
 
@@ -1375,10 +1577,12 @@ describe('useAiStore', () => {
     })
 
     it('stores previousResponseId from responses transport', () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
       const streamId = getTab('tab-1')!.activeStreamId!
 
-      useAiStore.getState().onStreamChunk('tab-1', streamId, 'Answer', 'content')
+      useAiStore.getState().onStreamChunk('tab-1', streamId, { content: 'Answer', kind: 'content' })
 
       useAiStore.getState().onStreamDone('tab-1', streamId, {
         responseId: 'resp_999',
@@ -1389,7 +1593,9 @@ describe('useAiStore', () => {
     })
 
     it('does not store previousResponseId for a responses completion without assistant output', () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
       const streamId = getTab('tab-1')!.activeStreamId!
 
       useAiStore.getState().onStreamDone('tab-1', streamId, {
@@ -1404,16 +1610,22 @@ describe('useAiStore', () => {
     })
 
     it('clears previousResponseId after a non-responses completion', () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
       const firstStreamId = getTab('tab-1')!.activeStreamId!
 
-      useAiStore.getState().onStreamChunk('tab-1', firstStreamId, 'Answer', 'content')
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-1', firstStreamId, { content: 'Answer', kind: 'content' })
       useAiStore.getState().onStreamDone('tab-1', firstStreamId, {
         responseId: 'resp_999',
         transport: 'responses',
       })
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Second turn', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Second turn', settings: {} })
       const secondStreamId = getTab('tab-1')!.activeStreamId!
 
       useAiStore.getState().onStreamDone('tab-1', secondStreamId, {
@@ -1425,7 +1637,9 @@ describe('useAiStore', () => {
     })
 
     it('ignores done event with stale streamId', () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
       const streamId = getTab('tab-1')!.activeStreamId!
 
       // Call with a stale streamId
@@ -1442,9 +1656,11 @@ describe('useAiStore', () => {
 
   describe('onStreamError', () => {
     it('sets isGenerating to false, sets error, clears activeStreamId', () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
       const streamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', streamId, 'chunk', 'content')
+      useAiStore.getState().onStreamChunk('tab-1', streamId, { content: 'chunk', kind: 'content' })
       useAiStore.getState().onStreamError('tab-1', streamId, 'Connection failed')
       const tab = getTab('tab-1')!
       expect(tab.isGenerating).toBe(false)
@@ -1453,16 +1669,21 @@ describe('useAiStore', () => {
     })
 
     it('clears previousResponseId on stream error', () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
       useAiStore
         .getState()
-        .onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Answer', 'content')
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
+      useAiStore.getState().onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, {
+        content: 'Answer',
+        kind: 'content',
+      })
       useAiStore.getState().onStreamDone('tab-1', getTab('tab-1')!.activeStreamId!, {
         responseId: 'resp_previous',
         transport: 'responses',
       })
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Second turn', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Second turn', settings: {} })
       const streamId = getTab('tab-1')!.activeStreamId!
       useAiStore.getState().onStreamError('tab-1', streamId, 'Connection failed')
 
@@ -1471,7 +1692,9 @@ describe('useAiStore', () => {
 
     it('calls and clears _unlisten on stream error', () => {
       const unlisten = vi.fn()
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
       const streamId = getTab('tab-1')!.activeStreamId!
       useAiStore.getState().setUnlisten('tab-1', unlisten)
 
@@ -1481,7 +1704,9 @@ describe('useAiStore', () => {
     })
 
     it('ignores error event with stale streamId', () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
       const streamId = getTab('tab-1')!.activeStreamId!
 
       useAiStore.getState().onStreamError('tab-1', 'stale-stream-id', 'Should be ignored')
@@ -1549,7 +1774,9 @@ describe('useAiStore', () => {
   describe('clearConversation', () => {
     it('clears messages but preserves panel state', () => {
       useAiStore.getState().openPanel('tab-1')
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
       useAiStore.getState().setError('tab-1', 'some error')
       useAiStore.getState().onStreamDone('tab-1', getTab('tab-1')!.activeStreamId!, {
         responseId: 'resp_clear',
@@ -1571,12 +1798,14 @@ describe('useAiStore', () => {
       useQueryStore.getState().setTabStatus('tab-1', 'running')
       useAiStore.getState().setAiReviewing('tab-1')
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
       useAiStore.getState().clearConversation('tab-1')
       await vi.waitFor(() => {
         expect(mockCancelAiStream).toHaveBeenCalledTimes(1)
         expect(
-          ipc.calls('log_frontend').some((call) => {
+          ipc.payloads('log_frontend').some((call) => {
             const payload = call as Record<string, unknown>
             return (
               payload.level === 'warn' &&
@@ -1605,8 +1834,12 @@ describe('useAiStore', () => {
 
   describe('retryLastMessage', () => {
     it('re-sends the last user message', () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'World', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'World', settings: {} })
 
       // Simulate an error response after "World"
       const streamId = getTab('tab-1')!.activeStreamId!
@@ -1628,7 +1861,9 @@ describe('useAiStore', () => {
     })
 
     it('clears error when retrying', () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Msg', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Msg', settings: {} })
       useAiStore.getState().setError('tab-1', 'Network error')
 
       useAiStore.getState().retryLastMessage('tab-1', 'conn-1', {})
@@ -1643,7 +1878,9 @@ describe('useAiStore', () => {
 
   describe('cleanupTab', () => {
     it('removes all state for the tab', () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
       useAiStore.getState().openPanel('tab-1')
 
       useAiStore.getState().cleanupTab('tab-1')
@@ -1684,7 +1921,9 @@ describe('useAiStore', () => {
     })
 
     it('cancels in-flight AI request on cleanup', async () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
       const streamId = getTab('tab-1')!.activeStreamId!
       expect(streamId).toBeTruthy()
 
@@ -1710,7 +1949,9 @@ describe('useAiStore', () => {
     it('handles cancelAiStream failure during cleanup gracefully', async () => {
       mockCancelAiStream.mockRejectedValueOnce(new Error('Cancel failed'))
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
       useAiStore.getState().cleanupTab('tab-1')
 
       await new Promise((r) => setTimeout(r, 10))
@@ -1733,7 +1974,9 @@ describe('useAiStore', () => {
         range: originalRange,
       })
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Now add ORDER BY', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Now add ORDER BY', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
@@ -1756,7 +1999,9 @@ describe('useAiStore', () => {
         range: originalRange,
       })
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Now add ORDER BY', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Now add ORDER BY', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
@@ -1778,7 +2023,11 @@ describe('useAiStore', () => {
         range,
       })
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Explain this query', {})
+      useAiStore.getState().sendMessage('tab-1', {
+        connectionId: 'conn-1',
+        message: 'Explain this query',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
@@ -1790,13 +2039,17 @@ describe('useAiStore', () => {
       }>
 
       const firstStreamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', firstStreamId, 'Sure', 'content')
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-1', firstStreamId, { content: 'Sure', kind: 'content' })
       useAiStore.getState().onStreamDone('tab-1', firstStreamId, {
         responseId: 'resp_attached',
         transport: 'responses',
       })
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Add an ORDER BY', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Add an ORDER BY', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
@@ -1842,14 +2095,18 @@ describe('useAiStore', () => {
     }
 
     it('sendMessage stores connectionId in the AI tab state', () => {
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
       const tab = getTab('tab-1')!
       expect(tab.connectionId).toBe('conn-1')
     })
 
     it('sendMessage locks the editor with ai-pending', () => {
       ensureQueryTab('tab-lock')
-      useAiStore.getState().sendMessage('tab-lock', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-lock', { connectionId: 'conn-1', message: 'Hello', settings: {} })
       const queryTab = useQueryStore.getState().getTabState('tab-lock')
       expect(queryTab.tabStatus).toBe('ai-pending')
       expect(queryTab.prevTabStatus).toBe('idle')
@@ -1857,7 +2114,9 @@ describe('useAiStore', () => {
 
     it('sendMessage preserves prevTabStatus from success', () => {
       ensureQueryTab('tab-lock2', 'success')
-      useAiStore.getState().sendMessage('tab-lock2', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-lock2', { connectionId: 'conn-1', message: 'Hello', settings: {} })
       const queryTab = useQueryStore.getState().getTabState('tab-lock2')
       expect(queryTab.tabStatus).toBe('ai-pending')
       expect(queryTab.prevTabStatus).toBe('success')
@@ -1865,7 +2124,9 @@ describe('useAiStore', () => {
 
     it('onStreamDone restores the editor status', () => {
       ensureQueryTab('tab-done')
-      useAiStore.getState().sendMessage('tab-done', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-done', { connectionId: 'conn-1', message: 'Hello', settings: {} })
       expect(useQueryStore.getState().getTabState('tab-done').tabStatus).toBe('ai-pending')
 
       const streamId = getTab('tab-done')!.activeStreamId!
@@ -1875,7 +2136,9 @@ describe('useAiStore', () => {
 
     it('onStreamError restores the editor status', () => {
       ensureQueryTab('tab-err')
-      useAiStore.getState().sendMessage('tab-err', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-err', { connectionId: 'conn-1', message: 'Hello', settings: {} })
       expect(useQueryStore.getState().getTabState('tab-err').tabStatus).toBe('ai-pending')
 
       const streamId = getTab('tab-err')!.activeStreamId!
@@ -1885,7 +2148,9 @@ describe('useAiStore', () => {
 
     it('cancelStream restores the editor status', () => {
       ensureQueryTab('tab-cancel')
-      useAiStore.getState().sendMessage('tab-cancel', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-cancel', { connectionId: 'conn-1', message: 'Hello', settings: {} })
       expect(useQueryStore.getState().getTabState('tab-cancel').tabStatus).toBe('ai-pending')
 
       useAiStore.getState().cancelStream('tab-cancel')
@@ -1925,7 +2190,9 @@ describe('useAiStore', () => {
       ensureQueryTab('tab-fail')
       mockSendAiChat.mockRejectedValueOnce(new Error('Network error'))
 
-      useAiStore.getState().sendMessage('tab-fail', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-fail', { connectionId: 'conn-1', message: 'Hello', settings: {} })
       expect(useQueryStore.getState().getTabState('tab-fail').tabStatus).toBe('ai-pending')
 
       await vi.waitFor(() => {
@@ -1963,7 +2230,9 @@ describe('useAiStore', () => {
         },
       ])
 
-      useAiStore.getState().sendMessage('tab-hdr', 'conn-1', 'show tables', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-hdr', { connectionId: 'conn-1', message: 'show tables', settings: {} })
 
       await vi.waitFor(() => {
         const schemaMsg = getTab('tab-hdr')?.messages.find((m) => m.kind === 'schema-context')
@@ -2007,7 +2276,9 @@ describe('useAiStore', () => {
         },
       ])
 
-      useAiStore.getState().sendMessage('tab-budget', 'conn-1', 'show all', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-budget', { connectionId: 'conn-1', message: 'show all', settings: {} })
 
       await vi.waitFor(() => {
         const schemaMsg = getTab('tab-budget')?.messages.find((m) => m.kind === 'schema-context')
@@ -2058,7 +2329,9 @@ describe('useAiStore', () => {
         },
       ])
 
-      useAiStore.getState().sendMessage('tab-sort', 'conn-1', 'show', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-sort', { connectionId: 'conn-1', message: 'show', settings: {} })
 
       await vi.waitFor(() => {
         const schemaMsg = getTab('tab-sort')?.messages.find((m) => m.kind === 'schema-context')
@@ -2087,7 +2360,11 @@ describe('useAiStore', () => {
         }),
       })
 
-      useAiStore.getState().sendMessage('tab-struct', 'conn-1', 'revenue by user', {})
+      useAiStore.getState().sendMessage('tab-struct', {
+        connectionId: 'conn-1',
+        message: 'revenue by user',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
@@ -2107,7 +2384,9 @@ describe('useAiStore', () => {
         text: '{"queries":["flat query 1","flat query 2"]}',
       })
 
-      useAiStore.getState().sendMessage('tab-flat', 'conn-1', 'test', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-flat', { connectionId: 'conn-1', message: 'test', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
@@ -2122,7 +2401,9 @@ describe('useAiStore', () => {
     it('falls back to original message on malformed JSON', async () => {
       mockAiQueryExpand.mockResolvedValueOnce({ text: '{broken json' })
 
-      useAiStore.getState().sendMessage('tab-bad', 'conn-1', 'my question', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-bad', { connectionId: 'conn-1', message: 'my question', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
@@ -2143,7 +2424,11 @@ describe('useAiStore', () => {
         }),
       })
 
-      useAiStore.getState().sendMessage('tab-hyde-cache', 'conn-1', 'cacheable prompt', {})
+      useAiStore.getState().sendMessage('tab-hyde-cache', {
+        connectionId: 'conn-1',
+        message: 'cacheable prompt',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
@@ -2163,7 +2448,11 @@ describe('useAiStore', () => {
 
       mockSettings['ai.retrieval.hydeEnabled'] = 'false'
 
-      useAiStore.getState().sendMessage('tab-hyde-cache', 'conn-1', 'cacheable prompt', {})
+      useAiStore.getState().sendMessage('tab-hyde-cache', {
+        connectionId: 'conn-1',
+        message: 'cacheable prompt',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
@@ -2177,14 +2466,18 @@ describe('useAiStore', () => {
   describe('conversation history threading', () => {
     it('threads conversation context into expansion request', async () => {
       // First send to create a conversation
-      useAiStore.getState().sendMessage('tab-ctx', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-ctx', { connectionId: 'conn-1', message: 'Hello', settings: {} })
       await vi.waitFor(() => {
         expect(mockAiQueryExpand).toHaveBeenCalledTimes(1)
       })
 
       // Simulate an assistant response
       const streamId = getTab('tab-ctx')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-ctx', streamId, 'Hi there!', 'content')
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-ctx', streamId, { content: 'Hi there!', kind: 'content' })
       useAiStore.getState().onStreamDone('tab-ctx', streamId, {
         transport: 'chat_completions',
       })
@@ -2193,7 +2486,11 @@ describe('useAiStore', () => {
       mockAiQueryExpand.mockClear()
       mockSemanticSearch.mockClear()
 
-      useAiStore.getState().sendMessage('tab-ctx', 'conn-1', 'Now show me orders', {})
+      useAiStore.getState().sendMessage('tab-ctx', {
+        connectionId: 'conn-1',
+        message: 'Now show me orders',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockAiQueryExpand).toHaveBeenCalledTimes(1)
@@ -2210,7 +2507,9 @@ describe('useAiStore', () => {
         range: { startLineNumber: 1, endLineNumber: 1, startColumn: 1, endColumn: 26 },
       })
 
-      useAiStore.getState().sendMessage('tab-sql', 'conn-1', 'Explain this', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-sql', { connectionId: 'conn-1', message: 'Explain this', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockAiQueryExpand).toHaveBeenCalledTimes(1)
@@ -2224,7 +2523,9 @@ describe('useAiStore', () => {
   describe('expansion cache', () => {
     it('cache hit skips the IPC call on second identical message with same context', async () => {
       // First call — should invoke aiQueryExpand
-      useAiStore.getState().sendMessage('tab-cache', 'conn-1', 'cache test', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-cache', { connectionId: 'conn-1', message: 'cache test', settings: {} })
       await vi.waitFor(() => {
         expect(mockAiQueryExpand).toHaveBeenCalledTimes(1)
       })
@@ -2249,7 +2550,9 @@ describe('useAiStore', () => {
       mockSendAiChat.mockClear()
 
       // Second call with same message and same (empty) context — should skip aiQueryExpand (cache hit)
-      useAiStore.getState().sendMessage('tab-cache', 'conn-1', 'cache test', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-cache', { connectionId: 'conn-1', message: 'cache test', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
@@ -2260,7 +2563,9 @@ describe('useAiStore', () => {
     })
 
     it('cache is cleared on cleanupTab', async () => {
-      useAiStore.getState().sendMessage('tab-cleanup-cache', 'conn-1', 'test', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-cleanup-cache', { connectionId: 'conn-1', message: 'test', settings: {} })
       await vi.waitFor(() => {
         expect(mockAiQueryExpand).toHaveBeenCalledTimes(1)
       })
@@ -2269,7 +2574,9 @@ describe('useAiStore', () => {
 
       // Re-create the tab and send same message — should call aiQueryExpand again
       mockAiQueryExpand.mockClear()
-      useAiStore.getState().sendMessage('tab-cleanup-cache', 'conn-1', 'test', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-cleanup-cache', { connectionId: 'conn-1', message: 'test', settings: {} })
       await vi.waitFor(() => {
         expect(mockAiQueryExpand).toHaveBeenCalledTimes(1)
       })
@@ -2278,7 +2585,11 @@ describe('useAiStore', () => {
     it('does not cache malformed expansion fallbacks and retries expansion on the next identical prompt', async () => {
       mockAiQueryExpand.mockResolvedValueOnce({ text: '{broken json' })
 
-      useAiStore.getState().sendMessage('tab-bad-cache', 'conn-1', 'same prompt', {})
+      useAiStore.getState().sendMessage('tab-bad-cache', {
+        connectionId: 'conn-1',
+        message: 'same prompt',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
@@ -2306,7 +2617,11 @@ describe('useAiStore', () => {
         }),
       })
 
-      useAiStore.getState().sendMessage('tab-bad-cache', 'conn-1', 'same prompt', {})
+      useAiStore.getState().sendMessage('tab-bad-cache', {
+        connectionId: 'conn-1',
+        message: 'same prompt',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
@@ -2319,7 +2634,11 @@ describe('useAiStore', () => {
     it('does not cache JSON-valid but invalid-shaped expansion responses', async () => {
       mockAiQueryExpand.mockResolvedValueOnce({ text: '{}' })
 
-      useAiStore.getState().sendMessage('tab-invalid-shape-cache', 'conn-1', 'same prompt', {})
+      useAiStore.getState().sendMessage('tab-invalid-shape-cache', {
+        connectionId: 'conn-1',
+        message: 'same prompt',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
@@ -2351,7 +2670,11 @@ describe('useAiStore', () => {
         }),
       })
 
-      useAiStore.getState().sendMessage('tab-invalid-shape-cache', 'conn-1', 'same prompt', {})
+      useAiStore.getState().sendMessage('tab-invalid-shape-cache', {
+        connectionId: 'conn-1',
+        message: 'same prompt',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
@@ -2362,7 +2685,11 @@ describe('useAiStore', () => {
     })
 
     it('treats endpoint changes as a cache miss', async () => {
-      useAiStore.getState().sendMessage('tab-endpoint-cache', 'conn-1', 'cache test', {})
+      useAiStore.getState().sendMessage('tab-endpoint-cache', {
+        connectionId: 'conn-1',
+        message: 'cache test',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockAiQueryExpand).toHaveBeenCalledTimes(1)
@@ -2380,7 +2707,11 @@ describe('useAiStore', () => {
       mockAiQueryExpand.mockClear()
       mockSemanticSearch.mockClear()
 
-      useAiStore.getState().sendMessage('tab-endpoint-cache', 'conn-1', 'cache test', {})
+      useAiStore.getState().sendMessage('tab-endpoint-cache', {
+        connectionId: 'conn-1',
+        message: 'cache test',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
@@ -2402,7 +2733,9 @@ describe('useAiStore', () => {
         },
       ])
 
-      useAiStore.getState().sendMessage('tab-mem', 'conn-1', 'Show users', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-mem', { connectionId: 'conn-1', message: 'Show users', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSearchMemories).toHaveBeenCalledTimes(1)
@@ -2411,7 +2744,7 @@ describe('useAiStore', () => {
       expect(mockSearchMemories).toHaveBeenCalledWith({
         sessionId: 'conn-1',
         query: 'Show users',
-        k: 5,
+        limit: 5,
       })
 
       await vi.waitFor(() => {
@@ -2442,7 +2775,11 @@ describe('useAiStore', () => {
         },
       ])
 
-      useAiStore.getState().sendMessage('tab-mem-prompt', 'conn-1', 'Show users', {})
+      useAiStore.getState().sendMessage('tab-mem-prompt', {
+        connectionId: 'conn-1',
+        message: 'Show users',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
@@ -2471,7 +2808,11 @@ describe('useAiStore', () => {
         },
       ])
 
-      useAiStore.getState().sendMessage('tab-mem-order', 'conn-1', 'Show users', {})
+      useAiStore.getState().sendMessage('tab-mem-order', {
+        connectionId: 'conn-1',
+        message: 'Show users',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
@@ -2488,7 +2829,11 @@ describe('useAiStore', () => {
     it('failed memory retrieval does not prevent message sending', async () => {
       mockSearchMemories.mockRejectedValueOnce(new Error('Memory search failed'))
 
-      useAiStore.getState().sendMessage('tab-mem-fail', 'conn-1', 'Show users', {})
+      useAiStore.getState().sendMessage('tab-mem-fail', {
+        connectionId: 'conn-1',
+        message: 'Show users',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
@@ -2503,7 +2848,11 @@ describe('useAiStore', () => {
     it('no memory-context message when no memories exist', async () => {
       mockSearchMemories.mockResolvedValueOnce([])
 
-      useAiStore.getState().sendMessage('tab-mem-empty', 'conn-1', 'Show users', {})
+      useAiStore.getState().sendMessage('tab-mem-empty', {
+        connectionId: 'conn-1',
+        message: 'Show users',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
@@ -2525,7 +2874,11 @@ describe('useAiStore', () => {
         },
       ])
 
-      useAiStore.getState().sendMessage('tab-mem-cache', 'conn-1', 'Show users', {})
+      useAiStore.getState().sendMessage('tab-mem-cache', {
+        connectionId: 'conn-1',
+        message: 'Show users',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
@@ -2553,7 +2906,11 @@ describe('useAiStore', () => {
         },
       ])
 
-      useAiStore.getState().sendMessage('tab-mem-expand', 'conn-1', 'Show customers', {})
+      useAiStore.getState().sendMessage('tab-mem-expand', {
+        connectionId: 'conn-1',
+        message: 'Show customers',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockAiQueryExpand).toHaveBeenCalledTimes(1)
@@ -2583,7 +2940,9 @@ describe('useAiStore', () => {
         },
       ])
 
-      useAiStore.getState().sendMessage('tab-cum', 'conn-1', 'Turn 1', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-cum', { connectionId: 'conn-1', message: 'Turn 1', settings: {} })
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
@@ -2592,7 +2951,9 @@ describe('useAiStore', () => {
       expect(tab1.cumulativeSchemaTokens).toBeGreaterThan(0)
       expect(tab1.messages.filter((m) => m.kind === 'schema-context')).toHaveLength(1)
 
-      useAiStore.getState().onStreamChunk('tab-cum', tab1.activeStreamId!, 'Answer', 'content')
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-cum', tab1.activeStreamId!, { content: 'Answer', kind: 'content' })
       useAiStore.getState().onStreamDone('tab-cum', tab1.activeStreamId!, {
         transport: 'chat_completions',
       })
@@ -2611,14 +2972,17 @@ describe('useAiStore', () => {
         },
       ])
 
-      useAiStore.getState().sendMessage('tab-cum', 'conn-1', 'Turn 2', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-cum', { connectionId: 'conn-1', message: 'Turn 2', settings: {} })
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
       })
 
-      useAiStore
-        .getState()
-        .onStreamChunk('tab-cum', getTab('tab-cum')!.activeStreamId!, 'Answer', 'content')
+      useAiStore.getState().onStreamChunk('tab-cum', getTab('tab-cum')!.activeStreamId!, {
+        content: 'Answer',
+        kind: 'content',
+      })
       useAiStore.getState().onStreamDone('tab-cum', getTab('tab-cum')!.activeStreamId!, {
         transport: 'chat_completions',
       })
@@ -2637,7 +3001,9 @@ describe('useAiStore', () => {
         },
       ])
 
-      useAiStore.getState().sendMessage('tab-cum', 'conn-1', 'Turn 3', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-cum', { connectionId: 'conn-1', message: 'Turn 3', settings: {} })
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(3)
       })
@@ -2661,7 +3027,9 @@ describe('useAiStore', () => {
         },
       ])
 
-      useAiStore.getState().sendMessage('tab-clr', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-clr', { connectionId: 'conn-1', message: 'Hello', settings: {} })
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
@@ -2705,14 +3073,17 @@ describe('useAiStore', () => {
         },
       ])
 
-      useAiStore.getState().sendMessage('tab-retry2', 'conn-1', 'Turn 1', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-retry2', { connectionId: 'conn-1', message: 'Turn 1', settings: {} })
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
-      useAiStore
-        .getState()
-        .onStreamChunk('tab-retry2', getTab('tab-retry2')!.activeStreamId!, 'A1', 'content')
+      useAiStore.getState().onStreamChunk('tab-retry2', getTab('tab-retry2')!.activeStreamId!, {
+        content: 'A1',
+        kind: 'content',
+      })
       useAiStore.getState().onStreamDone('tab-retry2', getTab('tab-retry2')!.activeStreamId!, {
         transport: 'chat_completions',
       })
@@ -2743,7 +3114,9 @@ describe('useAiStore', () => {
         },
       ])
 
-      useAiStore.getState().sendMessage('tab-retry2', 'conn-1', 'Turn 2', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-retry2', { connectionId: 'conn-1', message: 'Turn 2', settings: {} })
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
       })
@@ -2852,14 +3225,17 @@ describe('useAiStore', () => {
       ]
 
       mockSearchMemories.mockResolvedValueOnce(memories)
-      useAiStore.getState().sendMessage('tab-md', 'conn-1', 'Turn 1', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-md', { connectionId: 'conn-1', message: 'Turn 1', settings: {} })
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
-      useAiStore
-        .getState()
-        .onStreamChunk('tab-md', getTab('tab-md')!.activeStreamId!, 'A1', 'content')
+      useAiStore.getState().onStreamChunk('tab-md', getTab('tab-md')!.activeStreamId!, {
+        content: 'A1',
+        kind: 'content',
+      })
       useAiStore.getState().onStreamDone('tab-md', getTab('tab-md')!.activeStreamId!, {
         transport: 'chat_completions',
       })
@@ -2870,16 +3246,19 @@ describe('useAiStore', () => {
 
       // Turn 2: same IDs — no new memory-context
       mockSearchMemories.mockResolvedValueOnce(memories)
-      useAiStore.getState().sendMessage('tab-md', 'conn-1', 'Turn 2', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-md', { connectionId: 'conn-1', message: 'Turn 2', settings: {} })
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
       })
 
       expect(getTab('tab-md')!.messages.filter((m) => m.kind === 'memory-context')).toHaveLength(1)
 
-      useAiStore
-        .getState()
-        .onStreamChunk('tab-md', getTab('tab-md')!.activeStreamId!, 'A2', 'content')
+      useAiStore.getState().onStreamChunk('tab-md', getTab('tab-md')!.activeStreamId!, {
+        content: 'A2',
+        kind: 'content',
+      })
       useAiStore.getState().onStreamDone('tab-md', getTab('tab-md')!.activeStreamId!, {
         transport: 'chat_completions',
       })
@@ -2897,7 +3276,9 @@ describe('useAiStore', () => {
           source: 'manual',
         },
       ])
-      useAiStore.getState().sendMessage('tab-md', 'conn-1', 'Turn 3', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-md', { connectionId: 'conn-1', message: 'Turn 3', settings: {} })
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(3)
       })
@@ -2941,7 +3322,9 @@ describe('useAiStore', () => {
         },
       ])
 
-      useAiStore.getState().sendMessage('tab-order', 'conn-1', 'Show users', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-order', { connectionId: 'conn-1', message: 'Show users', settings: {} })
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
@@ -2978,7 +3361,9 @@ describe('useAiStore', () => {
         },
       ])
 
-      useAiStore.getState().sendMessage('tab-dedup', 'conn-1', 'Show users', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-dedup', { connectionId: 'conn-1', message: 'Show users', settings: {} })
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
@@ -3004,7 +3389,7 @@ describe('useAiStore', () => {
     ): void {
       const tab = getTab(tabId)!
       const streamId = tab.activeStreamId!
-      useAiStore.getState().onStreamChunk(tabId, streamId, content, 'content')
+      useAiStore.getState().onStreamChunk(tabId, streamId, { content: content, kind: 'content' })
       useAiStore.getState().onStreamDone(tabId, streamId, { transport })
     }
 
@@ -3017,7 +3402,9 @@ describe('useAiStore', () => {
       })
 
       // ── Turn 1 ──
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
@@ -3033,7 +3420,9 @@ describe('useAiStore', () => {
 
       // ── Turn 2: same chunk key returned by semantic search ──
       // Default mock already returns testdb.users:table (same as turn 1)
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Follow up', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Follow up', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
@@ -3074,7 +3463,9 @@ describe('useAiStore', () => {
       })
 
       // ── Turn 1 ──
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
@@ -3102,7 +3493,9 @@ describe('useAiStore', () => {
         },
       ])
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Show me orders', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Show me orders', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
@@ -3153,7 +3546,9 @@ describe('useAiStore', () => {
 
       // ── Turn 1: no memories ──
       mockSearchMemories.mockResolvedValueOnce([])
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
@@ -3177,7 +3572,9 @@ describe('useAiStore', () => {
         },
       ])
 
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Follow up', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Follow up', settings: {} })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
@@ -3223,7 +3620,11 @@ describe('useAiStore', () => {
         range: { startLineNumber: 1, endLineNumber: 1, startColumn: 1, endColumn: 38 },
       })
 
-      useAiStore.getState().sendMessage('tab-vllm', 'conn-1', 'Explain this query', {})
+      useAiStore.getState().sendMessage('tab-vllm', {
+        connectionId: 'conn-1',
+        message: 'Explain this query',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
@@ -3273,7 +3674,11 @@ describe('useAiStore', () => {
         },
       ])
 
-      useAiStore.getState().sendMessage('tab-vllm', 'conn-1', 'How should I optimize it?', {})
+      useAiStore.getState().sendMessage('tab-vllm', {
+        connectionId: 'conn-1',
+        message: 'How should I optimize it?',
+        settings: {},
+      })
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
@@ -3312,7 +3717,9 @@ describe('useAiStore', () => {
 
   describe('system prompt immutability across turns', () => {
     it('system prompt is byte-for-byte identical and never duplicated across 3 turns', async () => {
-      useAiStore.getState().sendMessage('tab-spi', 'conn-1', 'Turn 1', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-spi', { connectionId: 'conn-1', message: 'Turn 1', settings: {} })
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
@@ -3321,14 +3728,17 @@ describe('useAiStore', () => {
       expect(sysContent).toHaveLength(1)
       const content1 = sysContent[0].content
 
-      useAiStore
-        .getState()
-        .onStreamChunk('tab-spi', getTab('tab-spi')!.activeStreamId!, 'A', 'content')
+      useAiStore.getState().onStreamChunk('tab-spi', getTab('tab-spi')!.activeStreamId!, {
+        content: 'A',
+        kind: 'content',
+      })
       useAiStore.getState().onStreamDone('tab-spi', getTab('tab-spi')!.activeStreamId!, {
         transport: 'chat_completions',
       })
 
-      useAiStore.getState().sendMessage('tab-spi', 'conn-1', 'Turn 2', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-spi', { connectionId: 'conn-1', message: 'Turn 2', settings: {} })
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
       })
@@ -3337,14 +3747,17 @@ describe('useAiStore', () => {
       expect(sys2).toHaveLength(1)
       expect(sys2[0].content).toBe(content1)
 
-      useAiStore
-        .getState()
-        .onStreamChunk('tab-spi', getTab('tab-spi')!.activeStreamId!, 'B', 'content')
+      useAiStore.getState().onStreamChunk('tab-spi', getTab('tab-spi')!.activeStreamId!, {
+        content: 'B',
+        kind: 'content',
+      })
       useAiStore.getState().onStreamDone('tab-spi', getTab('tab-spi')!.activeStreamId!, {
         transport: 'chat_completions',
       })
 
-      useAiStore.getState().sendMessage('tab-spi', 'conn-1', 'Turn 3', {})
+      useAiStore
+        .getState()
+        .sendMessage('tab-spi', { connectionId: 'conn-1', message: 'Turn 3', settings: {} })
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(3)
       })

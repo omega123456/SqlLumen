@@ -29,7 +29,7 @@ describe('saveSessionState', () => {
 
     await saveSessionState(state)
 
-    const args = ipc.calls('set_setting')[0] as { key: string; value: string }
+    const args = ipc.payloads('set_setting')[0] as { key: string; value: string }
     expect(args.key).toBe('session.state')
     expect(args.value).not.toBeNull()
     const parsed = JSON.parse(args.value)
@@ -43,7 +43,7 @@ describe('saveSessionState', () => {
     const state: SessionState = { version: 1, connections: [] }
     await saveSessionState(state)
 
-    const args = ipc.calls('set_setting')[0] as { key: string; value: string }
+    const args = ipc.payloads('set_setting')[0] as { key: string; value: string }
     expect(args.key).toBe('session.state')
     const parsed = JSON.parse(args.value)
     expect(parsed.connections).toHaveLength(0)

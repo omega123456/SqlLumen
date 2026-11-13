@@ -27,7 +27,7 @@ function makeMemory(overrides: Partial<AiMemory> = {}): AiMemory {
 }
 
 beforeEach(() => {
-  ipc.override('save_memory', (args) =>
+  ipc.overridePayload('save_memory', (args) =>
     makeMemory({
       scope: (args?.scope as AiMemory['scope']) ?? 'connection',
       content: (args?.content as string) ?? '',
@@ -49,7 +49,7 @@ beforeEach(() => {
     makeMemory({ id: 30, content: 'connection note' }),
   ])
   ipc.override('delete_memory', () => undefined)
-  ipc.override('move_memory', (args) =>
+  ipc.overridePayload('move_memory', (args) =>
     makeMemory({
       id: 99,
       scope: (args?.toScope as AiMemory['scope']) ?? 'global',
@@ -69,7 +69,7 @@ describe('ai-memory-commands', () => {
         content: 'hello world',
         scope: 'global',
       })
-      expect(ipc.calls('save_memory')).toEqual([
+      expect(ipc.payloads('save_memory')).toEqual([
         { sessionId: 'session-1', content: 'hello world', scope: 'global' },
       ])
       expect(result.scope).toBe('global')
@@ -107,7 +107,7 @@ describe('ai-memory-commands', () => {
   describe('deleteMemory', () => {
     it('invokes delete_memory with scope and memoryId', async () => {
       await deleteMemory({ scope: 'group', memoryId: 42 })
-      expect(ipc.calls('delete_memory')).toEqual([{ scope: 'group', memoryId: 42 }])
+      expect(ipc.payloads('delete_memory')).toEqual([{ scope: 'group', memoryId: 42 }])
     })
   })
 
@@ -119,7 +119,7 @@ describe('ai-memory-commands', () => {
         toScope: 'global',
         fromConnectionId: 'conn-1',
       })
-      expect(ipc.calls('move_memory')).toEqual([
+      expect(ipc.payloads('move_memory')).toEqual([
         { memoryId: 5, fromScope: 'connection', toScope: 'global', fromConnectionId: 'conn-1' },
       ])
       expect(result.scope).toBe('global')
@@ -132,7 +132,7 @@ describe('ai-memory-commands', () => {
         toScope: 'group',
         toGroupId: 'grp-2',
       })
-      expect(ipc.calls('move_memory')).toEqual([
+      expect(ipc.payloads('move_memory')).toEqual([
         { memoryId: 7, fromScope: 'global', toScope: 'group', toGroupId: 'grp-2' },
       ])
     })
@@ -140,9 +140,9 @@ describe('ai-memory-commands', () => {
 
   describe('searchMemories', () => {
     it('invokes search_memories with correct args and returns results', async () => {
-      const result = await searchMemories({ sessionId: 'session-1', query: 'test', k: 5 })
-      expect(ipc.calls('search_memories')).toEqual([
-        { sessionId: 'session-1', query: 'test', k: 5 },
+      const result = await searchMemories({ sessionId: 'session-1', query: 'test', limit: 5 })
+      expect(ipc.payloads('search_memories')).toEqual([
+        { sessionId: 'session-1', query: 'test', limit: 5 },
       ])
       expect(result).toHaveLength(1)
       expect(result[0].content).toBe('search result')

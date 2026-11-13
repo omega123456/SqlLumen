@@ -135,7 +135,7 @@ describe('ForeignKeyEditor', () => {
     useTableDesignerStore.setState({ tabs: {} })
     ipc.override('list_databases', () => ['app_db', 'audit_db'])
     ipc.override('list_schema_objects', () => ['roles', 'teams'])
-    ipc.override('list_columns', (args) => {
+    ipc.overridePayload('list_columns', (args) => {
       const database = (args as { database?: string })?.database
       const table = (args as { table?: string })?.table
       if (database === 'audit_db' && table === 'audit_roles') {
@@ -298,7 +298,7 @@ describe('ForeignKeyEditor', () => {
 
   it('changing referenced database clears table and column and loads tables from that database', async () => {
     const user = userEvent.setup()
-    ipc.override('list_schema_objects', (args) => {
+    ipc.overridePayload('list_schema_objects', (args) => {
       const database = (args as { database?: string })?.database
       if (database === 'audit_db') {
         return ['audit_roles']
@@ -322,7 +322,7 @@ describe('ForeignKeyEditor', () => {
     })
 
     await waitFor(() => {
-      expect(ipc.calls('list_schema_objects')).toContainEqual({
+      expect(ipc.payloads('list_schema_objects')).toContainEqual({
         connectionId: 'conn-1',
         database: 'audit_db',
         objectType: 'table',
@@ -356,7 +356,7 @@ describe('ForeignKeyEditor', () => {
     render(<ForeignKeyEditor tabId="tab-1" />)
 
     await waitFor(() => {
-      expect(ipc.calls('list_columns')).toContainEqual({
+      expect(ipc.payloads('list_columns')).toContainEqual({
         connectionId: 'conn-1',
         database: 'app_db',
         table: 'roles',
@@ -371,7 +371,7 @@ describe('ForeignKeyEditor', () => {
 
   it('loads referenced columns from the selected database', async () => {
     const user = userEvent.setup()
-    ipc.override('list_schema_objects', (args) => {
+    ipc.overridePayload('list_schema_objects', (args) => {
       const database = (args as { database?: string })?.database
       if (database === 'audit_db') {
         return ['audit_roles']
@@ -400,7 +400,7 @@ describe('ForeignKeyEditor', () => {
     render(<ForeignKeyEditor tabId="tab-1" />)
 
     await waitFor(() => {
-      expect(ipc.calls('list_columns')).toContainEqual({
+      expect(ipc.payloads('list_columns')).toContainEqual({
         connectionId: 'conn-1',
         database: 'audit_db',
         table: 'audit_roles',

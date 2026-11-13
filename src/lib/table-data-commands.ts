@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeArgumentCommand, invokeCommand } from './ipc/dispatch'
 import type {
   TableDataResponse,
   PrimaryKeyInfo,
@@ -8,6 +8,7 @@ import type {
   TableDataCacheSyncResult,
   BlobValueResponse,
 } from '../types/schema'
+import type { ConnectionTabRequest, TableRequest } from './ipc/requests'
 
 export type TableDataTouchStatus = 'available' | 'expired' | 'missing'
 
@@ -15,12 +16,123 @@ export interface TableDataTouchResult {
   status: TableDataTouchStatus
 }
 
-/** Backend filter condition — matches the Rust `FilterCondition` struct. */
 type BackendFilterCondition = {
   column: string
   operator: string
   value: string
 }
+
+export interface FetchTableDataParams {
+  connectionId: string
+  tabId: string
+  database: string
+  table: string
+  page: number
+  pageSize: number
+  sortColumn?: string
+  sortDirection?: string
+  filterModel?: FilterCondition[]
+}
+
+export interface FetchTableDataRequest {
+  connectionId: string
+  tabId: string
+  database: string
+  table: string
+  page: number
+  pageSize: number
+  sortColumn: string | null
+  sortDirection: string | null
+  filterModel: BackendFilterCondition[] | null
+}
+
+export interface SyncTableDataCacheRequest {
+  connectionId: string
+  tabId: string
+  database: string
+  table: string
+  columns: TableDataColumnMeta[]
+  rows: unknown[][]
+  currentPage: number
+  pageSize: number
+  primaryKey: PrimaryKeyInfo | null
+  executionTimeMs: number
+}
+
+export interface UpdateTableRowRequest {
+  connectionId: string
+  database: string
+  table: string
+  primaryKeyColumns: string[]
+  originalPrimaryKeyValues: Record<string, unknown>
+  updatedValues: Record<string, unknown>
+}
+
+export interface InsertTableRowRequest {
+  connectionId: string
+  database: string
+  table: string
+  values: Record<string, unknown>
+  primaryKeyInfo: PrimaryKeyInfo
+}
+
+export type InsertedColumnValue = [columnName: string, value: unknown]
+
+export interface DeleteTableRowRequest {
+  connectionId: string
+  database: string
+  table: string
+  primaryKeyColumns: string[]
+  primaryKeyValues: Record<string, unknown>
+}
+
+export type PrimaryKeyPair = [columnName: string, value: unknown]
+
+export interface FetchBlobValueRequest {
+  connectionId: string
+  database: string
+  table: string
+  column: string
+  primaryKeyPairs: PrimaryKeyPair[]
+}
+
+export interface ExportTableDataParams {
+  connectionId: string
+  database: string
+  table: string
+  format: string
+  filePath: string
+  includeHeaders: boolean
+  tableNameForSql: string
+  filterModel?: FilterCondition[]
+  sortColumn?: string
+  sortDirection?: string
+  page?: number
+  pageSize?: number
+}
+
+export interface ExportTableDataRequest {
+  connectionId: string
+  database: string
+  table: string
+  format: string
+  filePath: string
+  includeHeaders: boolean
+  tableNameForSql: string
+  filterModel: BackendFilterCondition[] | null
+  sortColumn: string | null
+  sortDirection: string | null
+  page: number | null
+  pageSize: number | null
+}
+
+type SyncTableDataCacheCommand =
+  | 'sync_table_data_cache_after_insert'
+  | 'sync_table_data_cache_after_update'
+  | 'sync_table_data_cache_after_delete'
+
+const SQL_INSERT_EXPORT_FORMAT = 'sql-insert'
+const BACKEND_SQL_EXPORT_FORMAT = 'sql'
 
 const BOOLEAN_CHARACTER_CODES: ReadonlySet<number> = new Set([0, 1])
 
@@ -74,11 +186,6 @@ export function normalizeTinyIntRows(
   return mappedRows.some((row, index) => row !== rows[index]) ? mappedRows : rows
 }
 
-/**
- * Convert frontend `FilterCondition[]` to the shape expected by the Rust backend.
- * The types are structurally identical, but this function provides an explicit
- * mapping boundary and ensures the backend only receives the expected fields.
- */
 function mapFilterConditions(conditions: FilterCondition[]): BackendFilterCondition[] {
   return conditions.map((condition) => ({
     column: condition.column,
@@ -87,233 +194,161 @@ function mapFilterConditions(conditions: FilterCondition[]): BackendFilterCondit
   }))
 }
 
-export async function fetchTableData(params: {
-  connectionId: string
-  tabId: string
-  database: string
-  table: string
-  page: number
-  pageSize: number
-  sortColumn?: string
-  sortDirection?: string
-  filterModel?: FilterCondition[]
-}): Promise<TableDataResponse> {
-  const response = await invoke<TableDataResponse>('fetch_table_data', {
-    payload: {
-      connectionId: params.connectionId,
-      tabId: params.tabId,
-      database: params.database,
-      table: params.table,
-      page: params.page,
-      pageSize: params.pageSize,
-      sortColumn: params.sortColumn ?? null,
-      sortDirection: params.sortDirection ?? null,
-      filterModel: params.filterModel ? mapFilterConditions(params.filterModel) : null,
-    },
+function toBackendFilterModel(
+  filterModel: FilterCondition[] | undefined
+): BackendFilterCondition[] | null {
+  if (!filterModel) return null
+  return mapFilterConditions(filterModel)
+}
+
+function toFetchTableDataRequest(params: FetchTableDataParams): FetchTableDataRequest {
+  return {
+    connectionId: params.connectionId,
+    tabId: params.tabId,
+    database: params.database,
+    table: params.table,
+    page: params.page,
+    pageSize: params.pageSize,
+    sortColumn: params.sortColumn ?? null,
+    sortDirection: params.sortDirection ?? null,
+    filterModel: toBackendFilterModel(params.filterModel),
+  }
+}
+
+export async function fetchTableData(params: FetchTableDataParams): Promise<TableDataResponse> {
+  const response = await invokeCommand({
+    command: 'fetch_table_data',
+    payload: toFetchTableDataRequest(params),
   })
   return { ...response, rows: normalizeTinyIntRows(response.columns, response.rows) }
 }
 
-export async function touchTableData(params: {
-  connectionId: string
+export async function touchTableData(request: ConnectionTabRequest): Promise<TableDataTouchResult> {
+  return invokeCommand({ command: 'touch_table_data', payload: toConnectionTabRequest(request) })
+}
+
+export async function evictTableData(request: ConnectionTabRequest): Promise<void> {
+  return invokeCommand({ command: 'evict_table_data', payload: toConnectionTabRequest(request) })
+}
+
+function toConnectionTabRequest(request: ConnectionTabRequest): ConnectionTabRequest {
+  return { connectionId: request.connectionId, tabId: request.tabId }
+}
+
+export interface RestoreTableDataCacheRequest extends TableRequest {
   tabId: string
-}): Promise<TableDataTouchResult> {
-  return invoke<TableDataTouchResult>('touch_table_data', {
-    connectionId: params.connectionId,
-    tabId: params.tabId,
+}
+
+function toRestoreTableDataCacheRequest(
+  request: RestoreTableDataCacheRequest
+): RestoreTableDataCacheRequest {
+  return {
+    connectionId: request.connectionId,
+    tabId: request.tabId,
+    database: request.database,
+    table: request.table,
+  }
+}
+
+export async function restoreTableDataCache(
+  request: RestoreTableDataCacheRequest
+): Promise<TableDataCacheRestoreResult> {
+  return invokeCommand({
+    command: 'restore_table_data_cache',
+    payload: toRestoreTableDataCacheRequest(request),
   })
 }
 
-export async function evictTableData(params: {
-  connectionId: string
-  tabId: string
-}): Promise<void> {
-  return invoke<void>('evict_table_data', {
-    connectionId: params.connectionId,
-    tabId: params.tabId,
-  })
-}
-
-type SyncTableDataCacheParams = {
-  connectionId: string
-  tabId: string
-  database: string
-  table: string
-  columns: TableDataColumnMeta[]
-  rows: unknown[][]
-  currentPage: number
-  pageSize: number
-  primaryKey: PrimaryKeyInfo | null
-  executionTimeMs: number
-}
-
-export async function restoreTableDataCache(params: {
-  connectionId: string
-  tabId: string
-  database: string
-  table: string
-}): Promise<TableDataCacheRestoreResult> {
-  return invoke<TableDataCacheRestoreResult>('restore_table_data_cache', {
-    connectionId: params.connectionId,
-    tabId: params.tabId,
-    database: params.database,
-    table: params.table,
-  })
+function toSyncTableDataCacheRequest(
+  request: SyncTableDataCacheRequest
+): SyncTableDataCacheRequest {
+  return {
+    connectionId: request.connectionId,
+    tabId: request.tabId,
+    database: request.database,
+    table: request.table,
+    columns: request.columns,
+    rows: request.rows,
+    currentPage: request.currentPage,
+    pageSize: request.pageSize,
+    primaryKey: request.primaryKey,
+    executionTimeMs: request.executionTimeMs,
+  }
 }
 
 async function syncTableDataCache(
-  command: string,
-  params: SyncTableDataCacheParams
+  command: SyncTableDataCacheCommand,
+  request: SyncTableDataCacheRequest
 ): Promise<TableDataCacheSyncResult> {
-  return invoke<TableDataCacheSyncResult>(command, {
-    payload: {
-      connectionId: params.connectionId,
-      tabId: params.tabId,
-      database: params.database,
-      table: params.table,
-      columns: params.columns,
-      rows: params.rows,
-      currentPage: params.currentPage,
-      pageSize: params.pageSize,
-      primaryKey: params.primaryKey,
-      executionTimeMs: params.executionTimeMs,
-    },
-  })
+  return invokeCommand({ command: command, payload: toSyncTableDataCacheRequest(request) })
 }
 
 export async function syncTableDataCacheAfterInsert(
-  params: SyncTableDataCacheParams
+  request: SyncTableDataCacheRequest
 ): Promise<TableDataCacheSyncResult> {
-  return syncTableDataCache('sync_table_data_cache_after_insert', params)
+  return syncTableDataCache('sync_table_data_cache_after_insert', request)
 }
 
 export async function syncTableDataCacheAfterUpdate(
-  params: SyncTableDataCacheParams
+  request: SyncTableDataCacheRequest
 ): Promise<TableDataCacheSyncResult> {
-  return syncTableDataCache('sync_table_data_cache_after_update', params)
+  return syncTableDataCache('sync_table_data_cache_after_update', request)
 }
 
 export async function syncTableDataCacheAfterDelete(
-  params: SyncTableDataCacheParams
+  request: SyncTableDataCacheRequest
 ): Promise<TableDataCacheSyncResult> {
-  return syncTableDataCache('sync_table_data_cache_after_delete', params)
+  return syncTableDataCache('sync_table_data_cache_after_delete', request)
 }
 
-export async function updateTableRow(params: {
-  connectionId: string
-  database: string
-  table: string
-  primaryKeyColumns: string[]
-  originalPkValues: Record<string, unknown>
-  updatedValues: Record<string, unknown>
-}): Promise<void> {
-  return invoke<void>('update_table_row', {
-    connectionId: params.connectionId,
-    database: params.database,
-    table: params.table,
-    primaryKeyColumns: params.primaryKeyColumns,
-    originalPkValues: params.originalPkValues,
-    updatedValues: params.updatedValues,
-  })
+export async function updateTableRow(request: UpdateTableRowRequest): Promise<void> {
+  return invokeCommand({ command: 'update_table_row', payload: request })
 }
 
-export async function insertTableRow(params: {
-  connectionId: string
-  database: string
-  table: string
-  values: Record<string, unknown>
-  pkInfo: PrimaryKeyInfo
-}): Promise<[string, unknown][]> {
-  return invoke<[string, unknown][]>('insert_table_row', {
-    connectionId: params.connectionId,
-    database: params.database,
-    table: params.table,
-    values: params.values,
-    pkInfo: params.pkInfo,
-  })
+export async function insertTableRow(
+  request: InsertTableRowRequest
+): Promise<InsertedColumnValue[]> {
+  return invokeCommand({ command: 'insert_table_row', payload: request })
 }
 
-export async function deleteTableRow(params: {
-  connectionId: string
-  database: string
-  table: string
-  pkColumns: string[]
-  pkValues: Record<string, unknown>
-}): Promise<void> {
-  return invoke<void>('delete_table_row', {
-    connectionId: params.connectionId,
-    database: params.database,
-    table: params.table,
-    pkColumns: params.pkColumns,
-    pkValues: params.pkValues,
-  })
+export async function deleteTableRow(request: DeleteTableRowRequest): Promise<void> {
+  return invokeCommand({ command: 'delete_table_row', payload: request })
 }
 
-/**
- * Fetch the raw bytes of a single binary cell, identified by table + target
- * column + the row's primary-key column/value pairs.
- *
- * `pkPairs` is an ORDERED array of `[name, value]` tuples (matching the Rust
- * `Vec<(String, serde_json::Value)>` signature), NOT a map — the backend
- * preserves pair order when building the WHERE clause.
- */
-export async function fetchBlobValue(
-  connectionId: string,
-  database: string,
-  table: string,
-  column: string,
-  primaryKeyPairs: [string, unknown][]
-): Promise<BlobValueResponse> {
-  return invoke<BlobValueResponse>('fetch_blob_value', {
-    connectionId: connectionId,
-    database: database,
-    table: table,
-    column: column,
-    pkPairs: primaryKeyPairs,
-  })
+export async function fetchBlobValue(request: FetchBlobValueRequest): Promise<BlobValueResponse> {
+  return invokeCommand({ command: 'fetch_blob_value', payload: request })
 }
 
-/** Read an arbitrary file's bytes from disk, returned as a base64 string. */
 export async function readFileBytes(path: string): Promise<string> {
-  return invoke<string>('read_file_bytes', { path })
+  return invokeArgumentCommand({ command: 'read_file_bytes', argument: { path } })
 }
 
-/** Write base64-decoded bytes to a file on disk. */
 export async function writeFileBytes(path: string, base64: string): Promise<void> {
-  return invoke<void>('write_file_bytes', { path, base64 })
+  return invokeCommand({ command: 'write_file_bytes', payload: { path, base64 } })
 }
 
-export async function exportTableData(params: {
-  connectionId: string
-  database: string
-  table: string
-  format: string
-  filePath: string
-  includeHeaders: boolean
-  tableNameForSql: string
-  filterModel?: FilterCondition[]
-  sortColumn?: string
-  sortDirection?: string
-  page?: number
-  pageSize?: number
-}): Promise<void> {
-  // Map 'sql-insert' -> 'sql' for the Rust backend which uses 'sql' as the format key
-  const backendFormat = params.format === 'sql-insert' ? 'sql' : params.format
+function toBackendExportFormat(format: string): string {
+  if (format === SQL_INSERT_EXPORT_FORMAT) return BACKEND_SQL_EXPORT_FORMAT
+  return format
+}
 
-  return invoke<void>('export_table_data', {
-    payload: {
-      connectionId: params.connectionId,
-      database: params.database,
-      table: params.table,
-      format: backendFormat,
-      filePath: params.filePath,
-      includeHeaders: params.includeHeaders,
-      tableNameForSql: params.tableNameForSql,
-      filterModel: params.filterModel ? mapFilterConditions(params.filterModel) : null,
-      sortColumn: params.sortColumn ?? null,
-      sortDirection: params.sortDirection ?? null,
-      page: params.page ?? null,
-      pageSize: params.pageSize ?? null,
-    },
-  })
+function toExportTableDataRequest(params: ExportTableDataParams): ExportTableDataRequest {
+  return {
+    connectionId: params.connectionId,
+    database: params.database,
+    table: params.table,
+    format: toBackendExportFormat(params.format),
+    filePath: params.filePath,
+    includeHeaders: params.includeHeaders,
+    tableNameForSql: params.tableNameForSql,
+    filterModel: toBackendFilterModel(params.filterModel),
+    sortColumn: params.sortColumn ?? null,
+    sortDirection: params.sortDirection ?? null,
+    page: params.page ?? null,
+    pageSize: params.pageSize ?? null,
+  }
+}
+
+export async function exportTableData(params: ExportTableDataParams): Promise<void> {
+  return invokeCommand({ command: 'export_table_data', payload: toExportTableDataRequest(params) })
 }

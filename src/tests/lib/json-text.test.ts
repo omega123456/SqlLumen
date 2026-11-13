@@ -4,7 +4,7 @@ import { ipc } from '../ipc-mock'
 
 async function expectDebugLogStartingWith(prefix: string): Promise<void> {
   await vi.waitFor(() => {
-    expect(ipc.calls('log_frontend')).toContainEqual({
+    expect(ipc.payloads('log_frontend')).toContainEqual({
       level: 'debug',
       message: expect.stringContaining(prefix),
     })

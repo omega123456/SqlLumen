@@ -12,15 +12,42 @@ import {
 
 describe('clampContextMenuPosition', () => {
   it('keeps position when menu fits', () => {
-    expect(clampContextMenuPosition(10, 20, 100, 50, 800, 600)).toEqual({ x: 10, y: 20 })
+    expect(
+      clampContextMenuPosition({
+        requestedX: 10,
+        requestedY: 20,
+        menuWidth: 100,
+        menuHeight: 50,
+        viewportWidth: 800,
+        viewportHeight: 600,
+      })
+    ).toEqual({ x: 10, y: 20 })
   })
 
   it('shifts left when overflowing viewport width', () => {
-    expect(clampContextMenuPosition(300, 10, 200, 40, 320, 240)).toEqual({ x: 116, y: 10 })
+    expect(
+      clampContextMenuPosition({
+        requestedX: 300,
+        requestedY: 10,
+        menuWidth: 200,
+        menuHeight: 40,
+        viewportWidth: 320,
+        viewportHeight: 240,
+      })
+    ).toEqual({ x: 116, y: 10 })
   })
 
   it('shifts up when overflowing viewport height', () => {
-    expect(clampContextMenuPosition(10, 220, 100, 40, 320, 240)).toEqual({ x: 10, y: 196 })
+    expect(
+      clampContextMenuPosition({
+        requestedX: 10,
+        requestedY: 220,
+        menuWidth: 100,
+        menuHeight: 40,
+        viewportWidth: 320,
+        viewportHeight: 240,
+      })
+    ).toEqual({ x: 10, y: 196 })
   })
 })
 
@@ -102,7 +129,15 @@ describe('positionContextMenuInPortal', () => {
   it('uses viewport clamping when portal is document.body', () => {
     const innerWidth = vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(320)
     const innerHeight = vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(240)
-    expect(positionContextMenuInPortal(document.body, 300, 200, 280, 40)).toEqual({ x: 36, y: 196 })
+    expect(
+      positionContextMenuInPortal({
+        portalRoot: document.body,
+        clientX: 300,
+        clientY: 200,
+        menuWidth: 280,
+        menuHeight: 40,
+      })
+    ).toEqual({ x: 36, y: 196 })
     innerWidth.mockRestore()
     innerHeight.mockRestore()
   })
@@ -122,7 +157,15 @@ describe('positionContextMenuInPortal', () => {
     } as DOMRect)
 
     // Viewport click (250, 200) → local (150, 120); menu 100×40 fits without clamp shift
-    expect(positionContextMenuInPortal(dlg, 250, 200, 100, 40)).toEqual({ x: 150, y: 120 })
+    expect(
+      positionContextMenuInPortal({
+        portalRoot: dlg,
+        clientX: 250,
+        clientY: 200,
+        menuWidth: 100,
+        menuHeight: 40,
+      })
+    ).toEqual({ x: 150, y: 120 })
   })
 })
 

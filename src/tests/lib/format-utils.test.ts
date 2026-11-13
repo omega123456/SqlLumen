@@ -12,7 +12,7 @@ function throwOnDateConstruction(this: unknown): Date {
 
 async function expectParseFallbackLogged(source: string): Promise<void> {
   await vi.waitFor(() => {
-    expect(ipc.calls('log_frontend')).toContainEqual({
+    expect(ipc.payloads('log_frontend')).toContainEqual({
       level: 'debug',
       message: `${source} could not parse its input, using the fallback: RangeError: Invalid time value`,
     })

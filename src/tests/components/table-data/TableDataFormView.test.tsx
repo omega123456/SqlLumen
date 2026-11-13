@@ -911,7 +911,7 @@ describe('TableDataFormView', () => {
     expect(saveBtn).not.toBeDisabled()
     fireEvent.click(saveBtn)
     await waitFor(() => {
-      expect(ipc.calls('update_table_row').length).toBeGreaterThan(0)
+      expect(ipc.payloads('update_table_row').length).toBeGreaterThan(0)
     })
   })
 

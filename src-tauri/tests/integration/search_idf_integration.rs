@@ -8,9 +8,9 @@ use rusqlite::Connection;
 use sqllumen_lib::init_sqlite_vec;
 use sqllumen_lib::schema_index::search::{multi_query_search_configured, SearchConfig};
 use sqllumen_lib::schema_index::storage;
-use sqllumen_lib::schema_index::types::{ChunkInsert, ChunkType};
 
 use crate::common;
+use crate::common::schema_index_chunks::{insert_table_chunk, TestTableChunk};
 
 const DIM: usize = 4;
 
@@ -27,25 +27,6 @@ fn unit_vec(axis: usize) -> Vec<f32> {
         v[axis] = 1.0;
     }
     v
-}
-
-fn insert_table_chunk(conn: &Connection, db_name: &str, table_name: &str, embedding: Vec<f32>) {
-    let chunk = ChunkInsert {
-        connection_id: "conn-1".to_string(),
-        chunk_key: format!("table:{db_name}.{table_name}"),
-        db_name: db_name.to_string(),
-        table_name: table_name.to_string(),
-        chunk_type: ChunkType::Table,
-        ddl_text: format!("CREATE TABLE `{table_name}` (id INT PRIMARY KEY)"),
-        ddl_hash: format!("hash_{table_name}"),
-        model_id: "test-model".to_string(),
-        ref_db_name: None,
-        ref_table_name: None,
-        embedding,
-        text_for_embedding: None,
-        row_count_approx: None,
-    };
-    storage::insert_chunk(conn, &chunk).expect("insert table chunk");
 }
 
 #[test]
@@ -75,13 +56,53 @@ fn test_idf_downweights_universal_segments() {
 
     // Many tables with "date" segment, few with "itinerary" segment
     // order_date, created_date, update_date — "date" appears in 3 tables
-    insert_table_chunk(&conn, "testdb", "order_date", unit_vec(2));
-    insert_table_chunk(&conn, "testdb", "created_date", unit_vec(2));
-    insert_table_chunk(&conn, "testdb", "update_date", unit_vec(2));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "order_date",
+            embedding: unit_vec(2),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "created_date",
+            embedding: unit_vec(2),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "update_date",
+            embedding: unit_vec(2),
+        },
+    );
     // itinerary_schedule — "itinerary" appears in 1 table
-    insert_table_chunk(&conn, "testdb", "itinerary_schedule", unit_vec(2));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "itinerary_schedule",
+            embedding: unit_vec(2),
+        },
+    );
     // target table near query
-    insert_table_chunk(&conn, "testdb", "products", unit_vec(0));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "products",
+            embedding: unit_vec(0),
+        },
+    );
 
     // Populate segment DF: "date" is common (df=3), "itinerary" is rare (df=1)
     let entries = vec![
@@ -107,9 +128,16 @@ fn test_idf_downweights_universal_segments() {
         lexical_weight: 1.0, // high weight to see lexical differences
     };
 
-    let results =
-        multi_query_search_configured(&conn, "conn-1", &query_texts, &query_vectors, &config)
-            .expect("search");
+    let results = multi_query_search_configured(
+        &conn,
+        &sqllumen_lib::schema_index::search::SearchQueries {
+            connection_id: "conn-1",
+            query_texts: &query_texts,
+            query_vectors: &query_vectors,
+        },
+        &config,
+    )
+    .expect("search");
 
     // Find itinerary_schedule and order_date in results
     let itinerary_result = results
@@ -153,8 +181,24 @@ fn test_count_table_chunks() {
 
     assert_eq!(storage::count_table_chunks(&conn, "conn-1").unwrap(), 0);
 
-    insert_table_chunk(&conn, "testdb", "users", unit_vec(0));
-    insert_table_chunk(&conn, "testdb", "orders", unit_vec(1));
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "users",
+            embedding: unit_vec(0),
+        },
+    );
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "orders",
+            embedding: unit_vec(1),
+        },
+    );
 
     assert_eq!(storage::count_table_chunks(&conn, "conn-1").unwrap(), 2);
 }

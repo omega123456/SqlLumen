@@ -78,15 +78,15 @@ const CONFORMANCE_RULE_SCOPES = [
     rules: { 'local/named-conditions': 'error' },
   },
   {
-    files: [],
+    files: PRODUCTION_SOURCE_FILES,
     rules: { 'max-params': ['error', MAXIMUM_PARAMETERS] },
   },
   {
-    files: [],
+    files: PRODUCTION_SOURCE_FILES,
     rules: { '@typescript-eslint/no-unnecessary-type-assertion': 'error' },
   },
   {
-    files: [],
+    files: PRODUCTION_SOURCE_FILES,
     rules: { '@typescript-eslint/no-non-null-assertion': 'error' },
   },
   {

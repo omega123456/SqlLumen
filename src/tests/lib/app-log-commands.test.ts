@@ -22,7 +22,7 @@ describe('logFrontend', () => {
   it('calls invoke with level and message', async () => {
     logFrontend('error', 'Something went wrong')
     await Promise.resolve()
-    expect(ipc.calls('log_frontend')).toContainEqual({
+    expect(ipc.payloads('log_frontend')).toContainEqual({
       level: 'error',
       message: 'Something went wrong',
     })
@@ -45,7 +45,7 @@ describe('logFrontendError', () => {
   it('logs the message followed by the stringified error at error level', async () => {
     logFrontendError('[store] Load failed:', new Error('disk full'))
     await Promise.resolve()
-    expect(ipc.calls('log_frontend')).toContainEqual({
+    expect(ipc.payloads('log_frontend')).toContainEqual({
       level: 'error',
       message: '[store] Load failed: Error: disk full',
     })
@@ -56,7 +56,7 @@ describe('logFrontendWarning', () => {
   it('logs the message followed by the stringified error at warn level', async () => {
     logFrontendWarning('[store] Refresh failed:', 'timeout')
     await Promise.resolve()
-    expect(ipc.calls('log_frontend')).toContainEqual({
+    expect(ipc.payloads('log_frontend')).toContainEqual({
       level: 'warn',
       message: '[store] Refresh failed: timeout',
     })
@@ -67,7 +67,7 @@ describe('logParseFallback', () => {
   it('logs the source and the parse error at debug level', async () => {
     logParseFallback('[format-utils] formatShortDate', new RangeError('Invalid time value'))
     await Promise.resolve()
-    expect(ipc.calls('log_frontend')).toContainEqual({
+    expect(ipc.payloads('log_frontend')).toContainEqual({
       level: 'debug',
       message:
         '[format-utils] formatShortDate could not parse its input, using the fallback: RangeError: Invalid time value',
@@ -83,6 +83,6 @@ describe('logBootstrapFailure', () => {
     logBootstrapFailure(bootstrapError)
 
     expect(consoleSpy).toHaveBeenCalledWith('[bootstrap]', bootstrapError)
-    expect(ipc.calls('log_frontend')).toHaveLength(0)
+    expect(ipc.payloads('log_frontend')).toHaveLength(0)
   })
 })

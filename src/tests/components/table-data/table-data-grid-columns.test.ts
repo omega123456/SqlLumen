@@ -20,16 +20,20 @@ function makeColumn(overrides: Partial<TableDataColumnMeta> = {}): TableDataColu
 
 describe('buildColumnDescriptors', () => {
   it('marks JSON columns with the json editor type', () => {
-    const [descriptor] = buildColumnDescriptors([makeColumn()], false, true)
+    const [descriptor] = buildColumnDescriptors({
+      columns: [makeColumn()],
+      isReadOnly: false,
+      hasPrimaryKey: true,
+    })
     expect(descriptor.editorType).toBe('json')
   })
 
   it('keeps binary columns non-editable even if the data type text contains JSON elsewhere', () => {
-    const [descriptor] = buildColumnDescriptors(
-      [makeColumn({ dataType: 'BLOB', isBinary: true })],
-      false,
-      true
-    )
+    const [descriptor] = buildColumnDescriptors({
+      columns: [makeColumn({ dataType: 'BLOB', isBinary: true })],
+      isReadOnly: false,
+      hasPrimaryKey: true,
+    })
     expect(descriptor.editorType).toBe('none')
   })
 })

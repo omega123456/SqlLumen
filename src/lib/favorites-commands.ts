@@ -1,18 +1,18 @@
-import { invoke } from '@tauri-apps/api/core'
 import type { FavoriteEntry, CreateFavoriteInput, UpdateFavoriteInput } from '../types/schema'
+import { invokeArgumentCommand, invokeCommand } from './ipc/dispatch'
 
 export async function createFavorite(input: CreateFavoriteInput): Promise<number> {
-  return invoke<number>('create_favorite', { input })
+  return invokeArgumentCommand({ command: 'create_favorite', argument: { input } })
 }
 
 export async function listFavorites(connectionId: string): Promise<FavoriteEntry[]> {
-  return invoke<FavoriteEntry[]>('list_favorites', { connectionId })
+  return invokeArgumentCommand({ command: 'list_favorites', argument: { connectionId } })
 }
 
 export async function updateFavorite(id: number, input: UpdateFavoriteInput): Promise<boolean> {
-  return invoke<boolean>('update_favorite', { id, input })
+  return invokeCommand({ command: 'update_favorite', payload: { id, input } })
 }
 
 export async function deleteFavorite(id: number): Promise<boolean> {
-  return invoke<boolean>('delete_favorite', { id })
+  return invokeArgumentCommand({ command: 'delete_favorite', argument: { id } })
 }

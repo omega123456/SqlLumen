@@ -1,26 +1,40 @@
-import { invoke } from '@tauri-apps/api/core'
 import type { HistoryPage } from '../types/schema'
+import { invokeArgumentCommand, invokeCommand } from './ipc/dispatch'
 
-export async function listHistory(
-  connectionId: string,
-  page: number,
-  pageSize: number,
-  search?: string | null,
+export interface ListHistoryRequest {
+  connectionId: string
+  page: number
+  pageSize: number
+  search?: string
+  since?: string
+}
+
+export interface ListHistoryParams {
+  connectionId: string
+  page: number
+  pageSize: number
+  search?: string | null
   since?: string | null
-): Promise<HistoryPage> {
-  return invoke<HistoryPage>('list_history', {
-    connectionId,
-    page,
-    pageSize,
-    ...(search ? { search } : {}),
-    ...(since ? { since } : {}),
-  })
+}
+
+function toListHistoryRequest(params: ListHistoryParams): ListHistoryRequest {
+  return {
+    connectionId: params.connectionId,
+    page: params.page,
+    pageSize: params.pageSize,
+    search: params.search || undefined,
+    since: params.since || undefined,
+  }
+}
+
+export async function listHistory(params: ListHistoryParams): Promise<HistoryPage> {
+  return invokeCommand({ command: 'list_history', payload: toListHistoryRequest(params) })
 }
 
 export async function deleteHistoryEntry(id: number): Promise<boolean> {
-  return invoke<boolean>('delete_history_entry', { id })
+  return invokeArgumentCommand({ command: 'delete_history_entry', argument: { id } })
 }
 
 export async function clearHistory(connectionId: string): Promise<number> {
-  return invoke<number>('clear_history', { connectionId })
+  return invokeArgumentCommand({ command: 'clear_history', argument: { connectionId } })
 }

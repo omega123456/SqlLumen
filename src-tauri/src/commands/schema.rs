@@ -1,18 +1,12 @@
-//! Schema enumeration and DDL commands for MySQL connections.
-//!
-//! Each public `*_impl` function is the testable core logic, and the
-//! `#[tauri::command]` wrappers are thin delegates.
-
 #[cfg(not(coverage))]
-use crate::commands::query_history_bridge::{
-    log_batch_entries, log_single_entry_if_resolved, resolve_connection_context,
-};
+use crate::commands::query_history_bridge::{log_batch_entries, resolve_connection_context};
+use crate::commands::requests::{DatabaseRequest, SchemaObjectRequest, TableRequest};
 #[cfg(not(coverage))]
 use crate::db::history::NewHistoryEntry;
 use crate::mysql::metadata_cache::evict_metadata_cache_for_connection;
 #[cfg(not(coverage))]
 use crate::mysql::metadata_cache::{
-    evict_metadata_cache_for_database, evict_metadata_cache_for_tables,
+    evict_metadata_cache_for_database, evict_metadata_cache_for_tables, TableEviction,
 };
 #[cfg(not(coverage))]
 use crate::mysql::query_log;
@@ -21,12 +15,105 @@ use crate::mysql::schema_queries::{
     SchemaInfoResponse,
 };
 use crate::state::AppState;
+use serde::Deserialize;
+#[cfg(not(coverage))]
+use std::time::Instant;
 #[cfg(not(coverage))]
 use tauri::State;
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListSchemaObjectsRequest {
+    pub connection_id: String,
+    pub database: String,
+    pub object_type: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DatabaseEncodingRequest {
+    pub connection_id: String,
+    pub name: String,
+    pub charset: Option<String>,
+    pub collation: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DropDatabaseRequest {
+    pub connection_id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameDatabaseRequest {
+    pub connection_id: String,
+    pub old_name: String,
+    pub new_name: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameTableRequest {
+    pub connection_id: String,
+    pub database: String,
+    pub old_name: String,
+    pub new_name: String,
+}
+
+#[cfg(not(coverage))]
+#[derive(Clone)]
+struct SchemaStatementHistory {
+    sql_text: String,
+    duration_ms: i64,
+    error_message: Option<String>,
+}
+
+#[cfg(not(coverage))]
+impl SchemaStatementHistory {
+    fn new<T>(sql_text: String, started_at: Instant, result: &Result<T, String>) -> Self {
+        Self {
+            sql_text,
+            duration_ms: started_at.elapsed().as_millis() as i64,
+            error_message: result.as_ref().err().cloned(),
+        }
+    }
+
+    fn into_entry(self, connection_id: String, database_name: Option<String>) -> NewHistoryEntry {
+        NewHistoryEntry {
+            connection_id,
+            database_name,
+            sql_text: self.sql_text,
+            duration_ms: Some(self.duration_ms),
+            row_count: Some(0),
+            affected_rows: Some(0),
+            success: self.error_message.is_none(),
+            error_message: self.error_message,
+        }
+    }
+}
+
+#[cfg(not(coverage))]
+fn log_schema_statement(state: &AppState, session_id: &str, statement: SchemaStatementHistory) {
+    resolve_connection_context(state, session_id)
+        .log_single_entry_if_resolved(&state.db, |connection_id, database_name| {
+            statement.into_entry(connection_id, database_name)
+        });
+}
+
+#[cfg(not(coverage))]
+fn encoding_history_sql(statement_prefix: &str, request: &DatabaseEncodingRequest) -> String {
+    let name = &request.name;
+    let mut sql_text = format!("{statement_prefix} `{name}`");
+    if let Some(charset) = &request.charset {
+        sql_text.push_str(&format!(" CHARACTER SET `{charset}`"));
+    }
+    if let Some(collation) = &request.collation {
+        sql_text.push_str(&format!(" COLLATE `{collation}`"));
+    }
+    sql_text
+}
 
 #[cfg(not(coverage))]
 fn get_pool(state: &AppState, connection_id: &str) -> Result<sqlx::MySqlPool, String> {
@@ -43,16 +130,13 @@ fn check_not_read_only(state: &AppState, connection_id: &str) -> Result<(), Stri
     Ok(())
 }
 
-/// Validates optional charset and collation values against the server's lists.
-/// Returns the SQL clause to append (e.g., " CHARACTER SET `utf8mb4` COLLATE `utf8mb4_unicode_ci`")
-/// or empty string if neither is specified.
 #[cfg(not(coverage))]
 async fn build_encoding_clause(
     pool: &sqlx::MySqlPool,
-    charset: Option<&str>,
-    collation: Option<&str>,
+    request: &DatabaseEncodingRequest,
 ) -> Result<String, String> {
-    // Validate charset/collation against server-provided lists
+    let charset = request.charset.as_deref();
+    let collation = request.collation.as_deref();
     if let Some(cs) = charset {
         schema_queries::validate_charset(pool, cs).await?;
     }
@@ -60,7 +144,6 @@ async fn build_encoding_clause(
         schema_queries::validate_collation(pool, coll, charset).await?;
     }
 
-    // Build the SQL clause
     let mut clause = String::new();
     if let Some(cs) = charset {
         let safe_cs = schema_queries::safe_identifier(cs)?;
@@ -73,26 +156,16 @@ async fn build_encoding_clause(
     Ok(clause)
 }
 
-/// Coverage-mode helper: validates identifier safety for charset/collation without a pool.
 #[cfg(coverage)]
-fn validate_encoding_identifiers(
-    charset: Option<&str>,
-    collation: Option<&str>,
-) -> Result<(), String> {
-    if let Some(cs) = charset {
+fn validate_encoding_identifiers(request: &DatabaseEncodingRequest) -> Result<(), String> {
+    if let Some(cs) = request.charset.as_deref() {
         let _ = schema_queries::safe_identifier(cs)?;
     }
-    if let Some(coll) = collation {
+    if let Some(coll) = request.collation.as_deref() {
         let _ = schema_queries::safe_identifier(coll)?;
     }
     Ok(())
 }
-
-// ---------------------------------------------------------------------------
-// Read-only query commands — _impl + wrapper
-// ---------------------------------------------------------------------------
-
-// ---- list_databases ----
 
 #[cfg(not(coverage))]
 pub async fn list_databases_impl(
@@ -114,100 +187,74 @@ pub async fn list_databases_impl(
     Ok(vec![])
 }
 
-// ---- list_schema_objects ----
-
 #[cfg(not(coverage))]
 pub async fn list_schema_objects_impl(
     state: &AppState,
-    connection_id: &str,
-    database: &str,
-    object_type: &str,
+    request: &ListSchemaObjectsRequest,
 ) -> Result<Vec<String>, String> {
-    let pool = get_pool(state, connection_id)?;
-    schema_queries::query_list_schema_objects(&pool, database, object_type).await
+    let pool = get_pool(state, &request.connection_id)?;
+    schema_queries::query_list_schema_objects(&pool, &request.database, &request.object_type).await
 }
 
 #[cfg(coverage)]
 pub async fn list_schema_objects_impl(
     _state: &AppState,
-    _connection_id: &str,
-    _database: &str,
-    object_type: &str,
+    request: &ListSchemaObjectsRequest,
 ) -> Result<Vec<String>, String> {
-    // Validate object_type even in coverage stubs
+    let object_type = request.object_type.as_str();
     match object_type {
         "table" | "view" | "procedure" | "function" | "trigger" | "event" => Ok(vec![]),
         _ => Err(format!("Unknown object type: '{object_type}'")),
     }
 }
 
-// ---- list_columns ----
-
 #[cfg(not(coverage))]
 pub async fn list_columns_impl(
     state: &AppState,
-    connection_id: &str,
-    database: &str,
-    table: &str,
+    request: &TableRequest,
 ) -> Result<Vec<ColumnInfo>, String> {
-    let pool = get_pool(state, connection_id)?;
-    schema_queries::query_list_columns(&pool, database, table).await
+    let pool = get_pool(state, &request.connection_id)?;
+    schema_queries::query_list_columns(&pool, &request.database, &request.table).await
 }
 
 #[cfg(coverage)]
 pub async fn list_columns_impl(
     _state: &AppState,
-    _connection_id: &str,
-    _database: &str,
-    _table: &str,
+    _request: &TableRequest,
 ) -> Result<Vec<ColumnInfo>, String> {
     Ok(vec![])
 }
 
-// ---- get_table_foreign_keys ----
-
 #[cfg(not(coverage))]
 pub async fn get_table_foreign_keys_impl(
     state: &AppState,
-    connection_id: &str,
-    database: &str,
-    table: &str,
+    request: &TableRequest,
 ) -> Result<Vec<ForeignKeyInfo>, String> {
-    let pool = get_pool(state, connection_id)?;
-    schema_queries::query_foreign_keys(&pool, database, table).await
+    let pool = get_pool(state, &request.connection_id)?;
+    schema_queries::query_foreign_keys(&pool, &request.database, &request.table).await
 }
 
 #[cfg(coverage)]
 pub async fn get_table_foreign_keys_impl(
     _state: &AppState,
-    _connection_id: &str,
-    _database: &str,
-    _table: &str,
+    _request: &TableRequest,
 ) -> Result<Vec<ForeignKeyInfo>, String> {
     Ok(vec![])
 }
-
-// ---- get_schema_info ----
 
 #[cfg(not(coverage))]
 pub async fn get_schema_info_impl(
     state: &AppState,
-    connection_id: &str,
-    database: &str,
-    object_name: &str,
-    object_type: &str,
+    request: &SchemaObjectRequest,
 ) -> Result<SchemaInfoResponse, String> {
-    let pool = get_pool(state, connection_id)?;
-    schema_queries::query_schema_info(&pool, database, object_name, object_type).await
+    let pool = get_pool(state, &request.connection_id)?;
+    schema_queries::query_schema_info(&pool, request.object_ref()).await
 }
 
 #[cfg(coverage)]
 pub async fn get_schema_info_impl(
     _state: &AppState,
-    _connection_id: &str,
-    _database: &str,
-    _object_name: &str,
-    _object_type: &str,
+    _request: &SchemaObjectRequest,
 ) -> Result<SchemaInfoResponse, String> {
     Ok(SchemaInfoResponse {
         columns: vec![],
@@ -218,32 +265,26 @@ pub async fn get_schema_info_impl(
     })
 }
 
-// ---- get_database_details ----
-
 #[cfg(not(coverage))]
 pub async fn get_database_details_impl(
     state: &AppState,
-    connection_id: &str,
-    database: &str,
+    request: &DatabaseRequest,
 ) -> Result<DatabaseDetails, String> {
-    let pool = get_pool(state, connection_id)?;
-    schema_queries::query_database_details(&pool, database).await
+    let pool = get_pool(state, &request.connection_id)?;
+    schema_queries::query_database_details(&pool, &request.database).await
 }
 
 #[cfg(coverage)]
 pub async fn get_database_details_impl(
     _state: &AppState,
-    _connection_id: &str,
-    database: &str,
+    request: &DatabaseRequest,
 ) -> Result<DatabaseDetails, String> {
     Ok(DatabaseDetails {
-        name: database.to_string(),
+        name: request.database.clone(),
         default_character_set: String::new(),
         default_collation: String::new(),
     })
 }
-
-// ---- list_charsets ----
 
 #[cfg(not(coverage))]
 pub async fn list_charsets_impl(
@@ -262,8 +303,6 @@ pub async fn list_charsets_impl(
     Ok(vec![])
 }
 
-// ---- list_collations ----
-
 #[cfg(not(coverage))]
 pub async fn list_collations_impl(
     state: &AppState,
@@ -281,158 +320,115 @@ pub async fn list_collations_impl(
     Ok(vec![])
 }
 
-// ---------------------------------------------------------------------------
-// Mutating commands — check read-only before proceeding
-// ---------------------------------------------------------------------------
-
-// ---- create_database ----
+#[cfg(not(coverage))]
+async fn execute_schema_statement(pool: &sqlx::MySqlPool, sql: &str) -> Result<(), sqlx::Error> {
+    query_log::log_outgoing_sql(sql);
+    let result = sqlx::query(sqlx::AssertSqlSafe(sql)).execute(pool).await?;
+    query_log::log_execute_result(&result);
+    Ok(())
+}
 
 #[cfg(not(coverage))]
 pub async fn create_database_impl(
     state: &AppState,
-    connection_id: &str,
-    name: &str,
-    charset: Option<&str>,
-    collation: Option<&str>,
+    request: &DatabaseEncodingRequest,
 ) -> Result<(), String> {
-    check_not_read_only(state, connection_id)?;
-    let pool = get_pool(state, connection_id)?;
-
-    let encoding_clause = build_encoding_clause(&pool, charset, collation).await?;
-
+    check_not_read_only(state, &request.connection_id)?;
+    let pool = get_pool(state, &request.connection_id)?;
+    let encoding_clause = build_encoding_clause(&pool, request).await?;
+    let name = &request.name;
     let safe_name = schema_queries::safe_identifier(name)?;
     let sql = format!("CREATE DATABASE {safe_name}{encoding_clause}");
-
-    query_log::log_outgoing_sql(&sql);
-    let result = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
-        .execute(&pool)
+    execute_schema_statement(&pool, &sql)
         .await
-        .map_err(|error| format!("Failed to create database '{name}': {error}"))?;
-    query_log::log_execute_result(&result);
-
-    Ok(())
+        .map_err(|error| format!("Failed to create database '{name}': {error}"))
 }
 
 #[cfg(coverage)]
 pub async fn create_database_impl(
     state: &AppState,
-    connection_id: &str,
-    name: &str,
-    charset: Option<&str>,
-    collation: Option<&str>,
+    request: &DatabaseEncodingRequest,
 ) -> Result<(), String> {
-    check_not_read_only(state, connection_id)?;
-    let _ = schema_queries::safe_identifier(name)?;
-    validate_encoding_identifiers(charset, collation)?;
+    check_not_read_only(state, &request.connection_id)?;
+    let _ = schema_queries::safe_identifier(&request.name)?;
+    validate_encoding_identifiers(request)?;
     Ok(())
 }
-
-// ---- drop_database ----
 
 #[cfg(not(coverage))]
 pub async fn drop_database_impl(
     state: &AppState,
-    connection_id: &str,
-    name: &str,
+    request: &DropDatabaseRequest,
 ) -> Result<(), String> {
-    check_not_read_only(state, connection_id)?;
-    let pool = get_pool(state, connection_id)?;
+    check_not_read_only(state, &request.connection_id)?;
+    let pool = get_pool(state, &request.connection_id)?;
+    let name = &request.name;
     let safe_name = schema_queries::safe_identifier(name)?;
     let sql = format!("DROP DATABASE {safe_name}");
-    query_log::log_outgoing_sql(&sql);
-    let result = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
-        .execute(&pool)
+    execute_schema_statement(&pool, &sql)
         .await
-        .map_err(|error| format!("Failed to drop database '{name}': {error}"))?;
-    query_log::log_execute_result(&result);
-
-    Ok(())
+        .map_err(|error| format!("Failed to drop database '{name}': {error}"))
 }
 
 #[cfg(coverage)]
 pub async fn drop_database_impl(
     state: &AppState,
-    connection_id: &str,
-    name: &str,
+    request: &DropDatabaseRequest,
 ) -> Result<(), String> {
-    check_not_read_only(state, connection_id)?;
-    let _ = schema_queries::safe_identifier(name)?;
+    check_not_read_only(state, &request.connection_id)?;
+    let _ = schema_queries::safe_identifier(&request.name)?;
     Ok(())
 }
-
-// ---- alter_database ----
 
 #[cfg(not(coverage))]
 pub async fn alter_database_impl(
     state: &AppState,
-    connection_id: &str,
-    name: &str,
-    charset: Option<&str>,
-    collation: Option<&str>,
+    request: &DatabaseEncodingRequest,
 ) -> Result<(), String> {
-    check_not_read_only(state, connection_id)?;
-    let pool = get_pool(state, connection_id)?;
-
-    let encoding_clause = build_encoding_clause(&pool, charset, collation).await?;
-
+    check_not_read_only(state, &request.connection_id)?;
+    let pool = get_pool(state, &request.connection_id)?;
+    let encoding_clause = build_encoding_clause(&pool, request).await?;
+    let name = &request.name;
     let safe_name = schema_queries::safe_identifier(name)?;
     let sql = format!("ALTER DATABASE {safe_name}{encoding_clause}");
-
-    query_log::log_outgoing_sql(&sql);
-    let result = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
-        .execute(&pool)
+    execute_schema_statement(&pool, &sql)
         .await
-        .map_err(|error| format!("Failed to alter database '{name}': {error}"))?;
-    query_log::log_execute_result(&result);
-
-    Ok(())
+        .map_err(|error| format!("Failed to alter database '{name}': {error}"))
 }
 
 #[cfg(coverage)]
 pub async fn alter_database_impl(
     state: &AppState,
-    connection_id: &str,
-    name: &str,
-    charset: Option<&str>,
-    collation: Option<&str>,
+    request: &DatabaseEncodingRequest,
 ) -> Result<(), String> {
-    check_not_read_only(state, connection_id)?;
-    let _ = schema_queries::safe_identifier(name)?;
-    validate_encoding_identifiers(charset, collation)?;
+    check_not_read_only(state, &request.connection_id)?;
+    let _ = schema_queries::safe_identifier(&request.name)?;
+    validate_encoding_identifiers(request)?;
     Ok(())
 }
-
-// ---- rename_database ----
 
 #[cfg(not(coverage))]
 pub async fn rename_database_impl(
     state: &AppState,
-    connection_id: &str,
-    old_name: &str,
-    new_name: &str,
+    request: &RenameDatabaseRequest,
 ) -> Result<(), String> {
-    check_not_read_only(state, connection_id)?;
-    let pool = get_pool(state, connection_id)?;
+    check_not_read_only(state, &request.connection_id)?;
+    let pool = get_pool(state, &request.connection_id)?;
+    let old_name = &request.old_name;
+    let new_name = &request.new_name;
 
-    // Preflight: reject if database has non-table objects
     schema_queries::check_rename_safe(&pool, old_name).await?;
 
     let safe_old = schema_queries::safe_identifier(old_name)?;
     let safe_new = schema_queries::safe_identifier(new_name)?;
 
-    // 1. Get all table names before creating the new database
     let tables = schema_queries::query_table_names(&pool, old_name).await?;
 
-    // 2. Create new database
     let create_sql = format!("CREATE DATABASE {safe_new}");
-    query_log::log_outgoing_sql(&create_sql);
-    let create_result = sqlx::query(sqlx::AssertSqlSafe(create_sql.as_str()))
-        .execute(&pool)
+    execute_schema_statement(&pool, &create_sql)
         .await
         .map_err(|error| format!("Failed to create target database '{new_name}': {error}"))?;
-    query_log::log_execute_result(&create_result);
 
-    // 3. Move all tables atomically with a single RENAME TABLE statement
     if !tables.is_empty() {
         let mut rename_pairs = Vec::with_capacity(tables.len());
         for table in &tables {
@@ -442,153 +438,101 @@ pub async fn rename_database_impl(
             ));
         }
         let sql = format!("RENAME TABLE {}", rename_pairs.join(", "));
-        query_log::log_outgoing_sql(&sql);
-        let result = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
-            .execute(&pool)
+        execute_schema_statement(&pool, &sql)
             .await
             .map_err(|error| {
                 format!("Failed to move tables from '{old_name}' to '{new_name}': {error}")
             })?;
-        query_log::log_execute_result(&result);
     }
 
-    // 4. Drop old database
     let drop_sql = format!("DROP DATABASE {safe_old}");
-    query_log::log_outgoing_sql(&drop_sql);
-    let result = sqlx::query(sqlx::AssertSqlSafe(drop_sql.as_str()))
-        .execute(&pool)
+    execute_schema_statement(&pool, &drop_sql)
         .await
-        .map_err(|error| format!("Failed to drop source database '{old_name}': {error}"))?;
-    query_log::log_execute_result(&result);
-
-    Ok(())
+        .map_err(|error| format!("Failed to drop source database '{old_name}': {error}"))
 }
 
 #[cfg(coverage)]
 pub async fn rename_database_impl(
     state: &AppState,
-    connection_id: &str,
-    old_name: &str,
-    new_name: &str,
+    request: &RenameDatabaseRequest,
 ) -> Result<(), String> {
-    check_not_read_only(state, connection_id)?;
-    let _ = schema_queries::safe_identifier(old_name)?;
-    let _ = schema_queries::safe_identifier(new_name)?;
+    check_not_read_only(state, &request.connection_id)?;
+    let _ = schema_queries::safe_identifier(&request.old_name)?;
+    let _ = schema_queries::safe_identifier(&request.new_name)?;
     Ok(())
 }
 
-// ---- drop_table ----
-
 #[cfg(not(coverage))]
-pub async fn drop_table_impl(
-    state: &AppState,
-    connection_id: &str,
-    database: &str,
-    table: &str,
-) -> Result<(), String> {
-    check_not_read_only(state, connection_id)?;
-    let pool = get_pool(state, connection_id)?;
+pub async fn drop_table_impl(state: &AppState, request: &TableRequest) -> Result<(), String> {
+    check_not_read_only(state, &request.connection_id)?;
+    let pool = get_pool(state, &request.connection_id)?;
+    let database = &request.database;
+    let table = &request.table;
     let safe_db = schema_queries::safe_identifier(database)?;
     let safe_table = schema_queries::safe_identifier(table)?;
     let sql = format!("DROP TABLE {safe_db}.{safe_table}");
-    query_log::log_outgoing_sql(&sql);
-    let result = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
-        .execute(&pool)
+    execute_schema_statement(&pool, &sql)
         .await
-        .map_err(|error| format!("Failed to drop table '{database}'.'{table}': {error}"))?;
-    query_log::log_execute_result(&result);
-
-    Ok(())
+        .map_err(|error| format!("Failed to drop table '{database}'.'{table}': {error}"))
 }
 
 #[cfg(coverage)]
-pub async fn drop_table_impl(
-    state: &AppState,
-    connection_id: &str,
-    database: &str,
-    table: &str,
-) -> Result<(), String> {
-    check_not_read_only(state, connection_id)?;
-    let _ = schema_queries::safe_identifier(database)?;
-    let _ = schema_queries::safe_identifier(table)?;
+pub async fn drop_table_impl(state: &AppState, request: &TableRequest) -> Result<(), String> {
+    check_not_read_only(state, &request.connection_id)?;
+    let _ = schema_queries::safe_identifier(&request.database)?;
+    let _ = schema_queries::safe_identifier(&request.table)?;
     Ok(())
 }
 
-// ---- truncate_table ----
-
 #[cfg(not(coverage))]
-pub async fn truncate_table_impl(
-    state: &AppState,
-    connection_id: &str,
-    database: &str,
-    table: &str,
-) -> Result<(), String> {
-    check_not_read_only(state, connection_id)?;
-    let pool = get_pool(state, connection_id)?;
+pub async fn truncate_table_impl(state: &AppState, request: &TableRequest) -> Result<(), String> {
+    check_not_read_only(state, &request.connection_id)?;
+    let pool = get_pool(state, &request.connection_id)?;
+    let database = &request.database;
+    let table = &request.table;
     let safe_db = schema_queries::safe_identifier(database)?;
     let safe_table = schema_queries::safe_identifier(table)?;
     let sql = format!("TRUNCATE TABLE {safe_db}.{safe_table}");
-    query_log::log_outgoing_sql(&sql);
-    let result = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
-        .execute(&pool)
+    execute_schema_statement(&pool, &sql)
         .await
-        .map_err(|error| format!("Failed to truncate table '{database}'.'{table}': {error}"))?;
-    query_log::log_execute_result(&result);
-
-    Ok(())
+        .map_err(|error| format!("Failed to truncate table '{database}'.'{table}': {error}"))
 }
 
 #[cfg(coverage)]
-pub async fn truncate_table_impl(
-    state: &AppState,
-    connection_id: &str,
-    database: &str,
-    table: &str,
-) -> Result<(), String> {
-    check_not_read_only(state, connection_id)?;
-    let _ = schema_queries::safe_identifier(database)?;
-    let _ = schema_queries::safe_identifier(table)?;
+pub async fn truncate_table_impl(state: &AppState, request: &TableRequest) -> Result<(), String> {
+    check_not_read_only(state, &request.connection_id)?;
+    let _ = schema_queries::safe_identifier(&request.database)?;
+    let _ = schema_queries::safe_identifier(&request.table)?;
     Ok(())
 }
-
-// ---- rename_table ----
 
 #[cfg(not(coverage))]
 pub async fn rename_table_impl(
     state: &AppState,
-    connection_id: &str,
-    database: &str,
-    old_name: &str,
-    new_name: &str,
+    request: &RenameTableRequest,
 ) -> Result<(), String> {
-    check_not_read_only(state, connection_id)?;
-    let pool = get_pool(state, connection_id)?;
-    let safe_db = schema_queries::safe_identifier(database)?;
+    check_not_read_only(state, &request.connection_id)?;
+    let pool = get_pool(state, &request.connection_id)?;
+    let old_name = &request.old_name;
+    let new_name = &request.new_name;
+    let safe_db = schema_queries::safe_identifier(&request.database)?;
     let safe_old = schema_queries::safe_identifier(old_name)?;
     let safe_new = schema_queries::safe_identifier(new_name)?;
     let sql = format!("RENAME TABLE {safe_db}.{safe_old} TO {safe_db}.{safe_new}");
-    query_log::log_outgoing_sql(&sql);
-    let result = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
-        .execute(&pool)
+    execute_schema_statement(&pool, &sql)
         .await
-        .map_err(|error| format!("Failed to rename table '{old_name}' to '{new_name}': {error}"))?;
-    query_log::log_execute_result(&result);
-
-    Ok(())
+        .map_err(|error| format!("Failed to rename table '{old_name}' to '{new_name}': {error}"))
 }
 
 #[cfg(coverage)]
 pub async fn rename_table_impl(
     state: &AppState,
-    connection_id: &str,
-    database: &str,
-    old_name: &str,
-    new_name: &str,
+    request: &RenameTableRequest,
 ) -> Result<(), String> {
-    check_not_read_only(state, connection_id)?;
-    let _ = schema_queries::safe_identifier(database)?;
-    let _ = schema_queries::safe_identifier(old_name)?;
-    let _ = schema_queries::safe_identifier(new_name)?;
+    check_not_read_only(state, &request.connection_id)?;
+    let _ = schema_queries::safe_identifier(&request.database)?;
+    let _ = schema_queries::safe_identifier(&request.old_name)?;
+    let _ = schema_queries::safe_identifier(&request.new_name)?;
     Ok(())
 }
 
@@ -600,10 +544,6 @@ pub fn invalidate_metadata_cache_impl(state: &AppState, connection_id: &str) -> 
     evict_metadata_cache_for_connection(state, connection_id);
     Ok(())
 }
-
-// ---------------------------------------------------------------------------
-// Thin Tauri command wrappers
-// ---------------------------------------------------------------------------
 
 #[cfg(not(coverage))]
 #[tauri::command]
@@ -617,78 +557,47 @@ pub async fn list_databases(
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn list_schema_objects(
-    connection_id: String,
-    database: String,
-    object_type: String,
+    payload: ListSchemaObjectsRequest,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, String> {
-    list_schema_objects_impl(&state, &connection_id, &database, &object_type).await
+    list_schema_objects_impl(&state, &payload).await
 }
 
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn list_columns(
-    connection_id: String,
-    database: String,
-    table: String,
+    payload: TableRequest,
     state: State<'_, AppState>,
 ) -> Result<Vec<ColumnInfo>, String> {
-    list_columns_impl(&state, &connection_id, &database, &table).await
+    list_columns_impl(&state, &payload).await
 }
 
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn get_table_foreign_keys(
-    connection_id: String,
-    database: String,
-    table: String,
+    payload: TableRequest,
     state: State<'_, AppState>,
 ) -> Result<Vec<ForeignKeyInfo>, String> {
-    get_table_foreign_keys_impl(&state, &connection_id, &database, &table).await
+    get_table_foreign_keys_impl(&state, &payload).await
 }
 
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn get_schema_info(
-    connection_id: String,
-    database: String,
-    object_name: String,
-    object_type: String,
+    payload: SchemaObjectRequest,
     state: State<'_, AppState>,
 ) -> Result<SchemaInfoResponse, String> {
-    let start = std::time::Instant::now();
-    let result = get_schema_info_impl(
-        &state,
-        &connection_id,
-        &database,
-        &object_name,
-        &object_type,
-    )
-    .await;
+    let started_at = Instant::now();
+    let result = get_schema_info_impl(&state, &payload).await;
 
-    let duration_ms = start.elapsed().as_millis() as i64;
-    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
-    let type_upper = object_type.to_uppercase();
+    let type_upper = payload.object_type.to_uppercase();
+    let database = &payload.database;
+    let object_name = &payload.object_name;
     let sql_text = format!(
         "/* schema info */ SELECT ... FROM INFORMATION_SCHEMA FOR {type_upper} `{database}`.`{object_name}`"
     );
-
-    log_single_entry_if_resolved(
-        &state.db,
-        conn_id,
-        database_name,
-        &connection_id,
-        |conn_id, database_name| NewHistoryEntry {
-            connection_id: conn_id,
-            database_name,
-            sql_text,
-            duration_ms: Some(duration_ms),
-            row_count: Some(0),
-            affected_rows: Some(0),
-            success: result.is_ok(),
-            error_message: result.as_ref().err().cloned(),
-        },
-    );
+    let statement = SchemaStatementHistory::new(sql_text, started_at, &result);
+    log_schema_statement(&state, &payload.connection_id, statement);
 
     result
 }
@@ -696,11 +605,10 @@ pub async fn get_schema_info(
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn get_database_details(
-    connection_id: String,
-    database: String,
+    payload: DatabaseRequest,
     state: State<'_, AppState>,
 ) -> Result<DatabaseDetails, String> {
-    get_database_details_impl(&state, &connection_id, &database).await
+    get_database_details_impl(&state, &payload).await
 }
 
 #[cfg(not(coverage))]
@@ -724,49 +632,15 @@ pub async fn list_collations(
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn create_database(
-    connection_id: String,
-    name: String,
-    charset: Option<String>,
-    collation: Option<String>,
+    payload: DatabaseEncodingRequest,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let start = std::time::Instant::now();
-    let result = create_database_impl(
-        &state,
-        &connection_id,
-        &name,
-        charset.as_deref(),
-        collation.as_deref(),
-    )
-    .await;
+    let started_at = Instant::now();
+    let result = create_database_impl(&state, &payload).await;
 
-    let duration_ms = start.elapsed().as_millis() as i64;
-    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
-
-    let mut sql_text = format!("CREATE DATABASE `{name}`");
-    if let Some(ref cs) = charset {
-        sql_text.push_str(&format!(" CHARACTER SET `{cs}`"));
-    }
-    if let Some(ref coll) = collation {
-        sql_text.push_str(&format!(" COLLATE `{coll}`"));
-    }
-
-    log_single_entry_if_resolved(
-        &state.db,
-        conn_id,
-        database_name,
-        &connection_id,
-        |conn_id, database_name| NewHistoryEntry {
-            connection_id: conn_id,
-            database_name,
-            sql_text,
-            duration_ms: Some(duration_ms),
-            row_count: Some(0),
-            affected_rows: Some(0),
-            success: result.is_ok(),
-            error_message: result.as_ref().err().cloned(),
-        },
-    );
+    let sql_text = encoding_history_sql("CREATE DATABASE", &payload);
+    let statement = SchemaStatementHistory::new(sql_text, started_at, &result);
+    log_schema_statement(&state, &payload.connection_id, statement);
 
     result
 }
@@ -774,36 +648,19 @@ pub async fn create_database(
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn drop_database(
-    connection_id: String,
-    name: String,
+    payload: DropDatabaseRequest,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let start = std::time::Instant::now();
-    let result = drop_database_impl(&state, &connection_id, &name).await;
+    let started_at = Instant::now();
+    let result = drop_database_impl(&state, &payload).await;
 
-    let duration_ms = start.elapsed().as_millis() as i64;
-    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
+    let name = &payload.name;
     let sql_text = format!("DROP DATABASE `{name}`");
-
-    log_single_entry_if_resolved(
-        &state.db,
-        conn_id,
-        database_name,
-        &connection_id,
-        |conn_id, database_name| NewHistoryEntry {
-            connection_id: conn_id,
-            database_name,
-            sql_text,
-            duration_ms: Some(duration_ms),
-            row_count: Some(0),
-            affected_rows: Some(0),
-            success: result.is_ok(),
-            error_message: result.as_ref().err().cloned(),
-        },
-    );
+    let statement = SchemaStatementHistory::new(sql_text, started_at, &result);
+    log_schema_statement(&state, &payload.connection_id, statement);
 
     if result.is_ok() {
-        evict_metadata_cache_for_database(&state, &connection_id, &name);
+        evict_metadata_cache_for_database(&state, &payload.connection_id, name);
     }
 
     result
@@ -812,91 +669,56 @@ pub async fn drop_database(
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn alter_database(
-    connection_id: String,
-    name: String,
-    charset: Option<String>,
-    collation: Option<String>,
+    payload: DatabaseEncodingRequest,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let start = std::time::Instant::now();
-    let result = alter_database_impl(
-        &state,
-        &connection_id,
-        &name,
-        charset.as_deref(),
-        collation.as_deref(),
-    )
-    .await;
+    let started_at = Instant::now();
+    let result = alter_database_impl(&state, &payload).await;
 
-    let duration_ms = start.elapsed().as_millis() as i64;
-    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
-
-    let mut sql_text = format!("ALTER DATABASE `{name}`");
-    if let Some(ref cs) = charset {
-        sql_text.push_str(&format!(" CHARACTER SET `{cs}`"));
-    }
-    if let Some(ref coll) = collation {
-        sql_text.push_str(&format!(" COLLATE `{coll}`"));
-    }
-
-    log_single_entry_if_resolved(
-        &state.db,
-        conn_id,
-        database_name,
-        &connection_id,
-        |conn_id, database_name| NewHistoryEntry {
-            connection_id: conn_id,
-            database_name,
-            sql_text,
-            duration_ms: Some(duration_ms),
-            row_count: Some(0),
-            affected_rows: Some(0),
-            success: result.is_ok(),
-            error_message: result.as_ref().err().cloned(),
-        },
-    );
+    let sql_text = encoding_history_sql("ALTER DATABASE", &payload);
+    let statement = SchemaStatementHistory::new(sql_text, started_at, &result);
+    log_schema_statement(&state, &payload.connection_id, statement);
 
     result
 }
 
 #[cfg(not(coverage))]
+fn rename_database_history_statements(request: &RenameDatabaseRequest) -> Vec<String> {
+    let old_name = &request.old_name;
+    let new_name = &request.new_name;
+    vec![
+        format!("CREATE DATABASE `{new_name}`"),
+        format!("RENAME TABLE ... (from `{old_name}` to `{new_name}`)"),
+        format!("DROP DATABASE `{old_name}`"),
+    ]
+}
+
+#[cfg(not(coverage))]
 #[tauri::command]
 pub async fn rename_database(
-    connection_id: String,
-    old_name: String,
-    new_name: String,
+    payload: RenameDatabaseRequest,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let start = std::time::Instant::now();
-    let result = rename_database_impl(&state, &connection_id, &old_name, &new_name).await;
+    let started_at = Instant::now();
+    let result = rename_database_impl(&state, &payload).await;
 
-    let duration_ms = start.elapsed().as_millis() as i64;
-    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
-
-    let Some(conn_id) = conn_id else {
+    let context = resolve_connection_context(&state, &payload.connection_id);
+    let Some(connection_id) = context.connection_id else {
         tracing::warn!(
-            session_id = %connection_id,
+            session_id = %payload.connection_id,
             "skipping query history logging: no saved connection id resolved for session"
         );
         return result;
     };
-    // Rename database involves CREATE + RENAME TABLE(s) + DROP — log as a batch
-    let stmts = vec![
-        format!("CREATE DATABASE `{new_name}`"),
-        format!("RENAME TABLE ... (from `{old_name}` to `{new_name}`)"),
-        format!("DROP DATABASE `{old_name}`"),
-    ];
-    let entries: Vec<NewHistoryEntry> = stmts
+    let batch_history = SchemaStatementHistory::new(String::new(), started_at, &result);
+    let entries: Vec<NewHistoryEntry> = rename_database_history_statements(&payload)
         .into_iter()
-        .map(|sql_text| NewHistoryEntry {
-            connection_id: conn_id.clone(),
-            database_name: database_name.clone(),
-            sql_text,
-            duration_ms: Some(duration_ms),
-            row_count: Some(0),
-            affected_rows: Some(0),
-            success: result.is_ok(),
-            error_message: result.as_ref().err().cloned(),
+        .map(|sql_text| {
+            let statement = SchemaStatementHistory {
+                sql_text,
+                ..batch_history.clone()
+            };
+            statement.into_entry(connection_id.clone(), context.database_name.clone())
         })
         .collect();
 
@@ -907,43 +729,24 @@ pub async fn rename_database(
 
 #[cfg(not(coverage))]
 #[tauri::command]
-pub async fn drop_table(
-    connection_id: String,
-    database: String,
-    table: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let start = std::time::Instant::now();
-    let result = drop_table_impl(&state, &connection_id, &database, &table).await;
+pub async fn drop_table(payload: TableRequest, state: State<'_, AppState>) -> Result<(), String> {
+    let started_at = Instant::now();
+    let result = drop_table_impl(&state, &payload).await;
 
-    let duration_ms = start.elapsed().as_millis() as i64;
-    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
+    let database = &payload.database;
+    let table = &payload.table;
     let sql_text = format!("DROP TABLE `{database}`.`{table}`");
-
-    log_single_entry_if_resolved(
-        &state.db,
-        conn_id,
-        database_name,
-        &connection_id,
-        |conn_id, database_name| NewHistoryEntry {
-            connection_id: conn_id,
-            database_name,
-            sql_text,
-            duration_ms: Some(duration_ms),
-            row_count: Some(0),
-            affected_rows: Some(0),
-            success: result.is_ok(),
-            error_message: result.as_ref().err().cloned(),
-        },
-    );
+    let statement = SchemaStatementHistory::new(sql_text, started_at, &result);
+    log_schema_statement(&state, &payload.connection_id, statement);
 
     if result.is_ok() {
-        evict_metadata_cache_for_tables(
-            &state,
-            &connection_id,
-            &[(Some(database.clone()), table.clone())],
-            None,
-        );
+        let affected_tables = [(Some(database.clone()), table.clone())];
+        let eviction = TableEviction {
+            connection_id: &payload.connection_id,
+            affected_tables: &affected_tables,
+            default_database: None,
+        };
+        evict_metadata_cache_for_tables(&state, &eviction);
     }
 
     result
@@ -952,34 +755,17 @@ pub async fn drop_table(
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn truncate_table(
-    connection_id: String,
-    database: String,
-    table: String,
+    payload: TableRequest,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let start = std::time::Instant::now();
-    let result = truncate_table_impl(&state, &connection_id, &database, &table).await;
+    let started_at = Instant::now();
+    let result = truncate_table_impl(&state, &payload).await;
 
-    let duration_ms = start.elapsed().as_millis() as i64;
-    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
+    let database = &payload.database;
+    let table = &payload.table;
     let sql_text = format!("TRUNCATE TABLE `{database}`.`{table}`");
-
-    log_single_entry_if_resolved(
-        &state.db,
-        conn_id,
-        database_name,
-        &connection_id,
-        |conn_id, database_name| NewHistoryEntry {
-            connection_id: conn_id,
-            database_name,
-            sql_text,
-            duration_ms: Some(duration_ms),
-            row_count: Some(0),
-            affected_rows: Some(0),
-            success: result.is_ok(),
-            error_message: result.as_ref().err().cloned(),
-        },
-    );
+    let statement = SchemaStatementHistory::new(sql_text, started_at, &result);
+    log_schema_statement(&state, &payload.connection_id, statement);
 
     result
 }
@@ -987,46 +773,30 @@ pub async fn truncate_table(
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn rename_table(
-    connection_id: String,
-    database: String,
-    old_name: String,
-    new_name: String,
+    payload: RenameTableRequest,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let start = std::time::Instant::now();
-    let result = rename_table_impl(&state, &connection_id, &database, &old_name, &new_name).await;
+    let started_at = Instant::now();
+    let result = rename_table_impl(&state, &payload).await;
 
-    let duration_ms = start.elapsed().as_millis() as i64;
-    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
+    let database = &payload.database;
+    let old_name = &payload.old_name;
+    let new_name = &payload.new_name;
     let sql_text = format!("RENAME TABLE `{database}`.`{old_name}` TO `{database}`.`{new_name}`");
-
-    log_single_entry_if_resolved(
-        &state.db,
-        conn_id,
-        database_name,
-        &connection_id,
-        |conn_id, database_name| NewHistoryEntry {
-            connection_id: conn_id,
-            database_name,
-            sql_text,
-            duration_ms: Some(duration_ms),
-            row_count: Some(0),
-            affected_rows: Some(0),
-            success: result.is_ok(),
-            error_message: result.as_ref().err().cloned(),
-        },
-    );
+    let statement = SchemaStatementHistory::new(sql_text, started_at, &result);
+    log_schema_statement(&state, &payload.connection_id, statement);
 
     if result.is_ok() {
-        evict_metadata_cache_for_tables(
-            &state,
-            &connection_id,
-            &[
-                (Some(database.clone()), old_name.clone()),
-                (Some(database.clone()), new_name.clone()),
-            ],
-            None,
-        );
+        let affected_tables = [
+            (Some(database.clone()), old_name.clone()),
+            (Some(database.clone()), new_name.clone()),
+        ];
+        let eviction = TableEviction {
+            connection_id: &payload.connection_id,
+            affected_tables: &affected_tables,
+            default_database: None,
+        };
+        evict_metadata_cache_for_tables(&state, &eviction);
     }
 
     result

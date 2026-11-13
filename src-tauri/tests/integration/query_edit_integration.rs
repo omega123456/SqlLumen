@@ -15,40 +15,41 @@ fn update_result_cell_successful() {
 
     // Insert a stored result
     state.result_cache.insert(
-        "conn-1",
-        "tab-1",
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "tab-1"),
         vec![StoredResult::new(
-            "q1".to_string(),
-            vec![
-                ColumnMeta {
-                    name: "id".to_string(),
-                    data_type: "INT".to_string(),
-                },
-                ColumnMeta {
-                    name: "name".to_string(),
-                    data_type: "VARCHAR".to_string(),
-                },
-                ColumnMeta {
-                    name: "email".to_string(),
-                    data_type: "VARCHAR".to_string(),
-                },
-            ],
-            crate::common::shared_rows(vec![
-                vec![
-                    serde_json::json!(1),
-                    serde_json::json!("Alice"),
-                    serde_json::json!("alice@example.com"),
+            sqllumen_lib::mysql::query_executor::StoredResultParts {
+                query_id: "q1".to_string(),
+                columns: vec![
+                    ColumnMeta {
+                        name: "id".to_string(),
+                        data_type: "INT".to_string(),
+                    },
+                    ColumnMeta {
+                        name: "name".to_string(),
+                        data_type: "VARCHAR".to_string(),
+                    },
+                    ColumnMeta {
+                        name: "email".to_string(),
+                        data_type: "VARCHAR".to_string(),
+                    },
                 ],
-                vec![
-                    serde_json::json!(2),
-                    serde_json::json!("Bob"),
-                    serde_json::json!("bob@example.com"),
-                ],
-            ]),
-            10,
-            10,
-            0,
-            false,
+                rows: crate::common::shared_rows(vec![
+                    vec![
+                        serde_json::json!(1),
+                        serde_json::json!("Alice"),
+                        serde_json::json!("alice@example.com"),
+                    ],
+                    vec![
+                        serde_json::json!(2),
+                        serde_json::json!("Bob"),
+                        serde_json::json!("bob@example.com"),
+                    ],
+                ]),
+                execution_time_ms: 10,
+                total_time_ms: 10,
+                affected_rows: 0,
+                auto_limit_applied: false,
+            },
         )],
     );
 
@@ -56,7 +57,17 @@ fn update_result_cell_successful() {
     let mut updates = HashMap::new();
     updates.insert(1, serde_json::json!("Alice Updated"));
 
-    let result = update_result_cell_impl(&state, "conn-1", "tab-1", 0, updates, None, "q1");
+    let result = update_result_cell_impl(
+        &state,
+        sqllumen_lib::mysql::query_executor::UpdateResultCellRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+            row_index: 0,
+            updates,
+            result_index: None,
+            query_id: "q1".to_string(),
+        },
+    );
     assert!(result.is_ok());
 
     // Verify the update
@@ -79,8 +90,17 @@ fn update_result_cell_result_not_found() {
     let state = test_app_state();
 
     let updates = HashMap::new();
-    let result =
-        update_result_cell_impl(&state, "conn-1", "nonexistent-tab", 0, updates, None, "q1");
+    let result = update_result_cell_impl(
+        &state,
+        sqllumen_lib::mysql::query_executor::UpdateResultCellRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "nonexistent-tab".to_string(),
+            row_index: 0,
+            updates,
+            result_index: None,
+            query_id: "q1".to_string(),
+        },
+    );
     assert!(result.is_err());
     assert!(result
         .unwrap_err()
@@ -93,24 +113,35 @@ fn update_result_cell_row_index_out_of_bounds() {
 
     // Insert a stored result with 1 row
     state.result_cache.insert(
-        "conn-1",
-        "tab-1",
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "tab-1"),
         vec![StoredResult::new(
-            "q1".to_string(),
-            vec![ColumnMeta {
-                name: "id".to_string(),
-                data_type: "INT".to_string(),
-            }],
-            crate::common::shared_rows(vec![vec![serde_json::json!(1)]]),
-            5,
-            5,
-            0,
-            false,
+            sqllumen_lib::mysql::query_executor::StoredResultParts {
+                query_id: "q1".to_string(),
+                columns: vec![ColumnMeta {
+                    name: "id".to_string(),
+                    data_type: "INT".to_string(),
+                }],
+                rows: crate::common::shared_rows(vec![vec![serde_json::json!(1)]]),
+                execution_time_ms: 5,
+                total_time_ms: 5,
+                affected_rows: 0,
+                auto_limit_applied: false,
+            },
         )],
     );
 
     let updates = HashMap::new();
-    let result = update_result_cell_impl(&state, "conn-1", "tab-1", 5, updates, None, "q1");
+    let result = update_result_cell_impl(
+        &state,
+        sqllumen_lib::mysql::query_executor::UpdateResultCellRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+            row_index: 5,
+            updates,
+            result_index: None,
+            query_id: "q1".to_string(),
+        },
+    );
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Row index 5 out of bounds"));
 }
@@ -121,33 +152,34 @@ fn update_result_cell_multiple_columns() {
 
     // Insert a stored result
     state.result_cache.insert(
-        "conn-1",
-        "tab-1",
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "tab-1"),
         vec![StoredResult::new(
-            "q1".to_string(),
-            vec![
-                ColumnMeta {
-                    name: "id".to_string(),
-                    data_type: "INT".to_string(),
-                },
-                ColumnMeta {
-                    name: "name".to_string(),
-                    data_type: "VARCHAR".to_string(),
-                },
-                ColumnMeta {
-                    name: "email".to_string(),
-                    data_type: "VARCHAR".to_string(),
-                },
-            ],
-            crate::common::shared_rows(vec![vec![
-                serde_json::json!(1),
-                serde_json::json!("Alice"),
-                serde_json::json!("alice@example.com"),
-            ]]),
-            10,
-            10,
-            0,
-            false,
+            sqllumen_lib::mysql::query_executor::StoredResultParts {
+                query_id: "q1".to_string(),
+                columns: vec![
+                    ColumnMeta {
+                        name: "id".to_string(),
+                        data_type: "INT".to_string(),
+                    },
+                    ColumnMeta {
+                        name: "name".to_string(),
+                        data_type: "VARCHAR".to_string(),
+                    },
+                    ColumnMeta {
+                        name: "email".to_string(),
+                        data_type: "VARCHAR".to_string(),
+                    },
+                ],
+                rows: crate::common::shared_rows(vec![vec![
+                    serde_json::json!(1),
+                    serde_json::json!("Alice"),
+                    serde_json::json!("alice@example.com"),
+                ]]),
+                execution_time_ms: 10,
+                total_time_ms: 10,
+                affected_rows: 0,
+                auto_limit_applied: false,
+            },
         )],
     );
 
@@ -156,7 +188,17 @@ fn update_result_cell_multiple_columns() {
     updates.insert(1, serde_json::json!("Alice New"));
     updates.insert(2, serde_json::json!("alice.new@example.com"));
 
-    let result = update_result_cell_impl(&state, "conn-1", "tab-1", 0, updates, None, "q1");
+    let result = update_result_cell_impl(
+        &state,
+        sqllumen_lib::mysql::query_executor::UpdateResultCellRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+            row_index: 0,
+            updates,
+            result_index: None,
+            query_id: "q1".to_string(),
+        },
+    );
     assert!(result.is_ok());
 
     // Verify both updates
@@ -180,8 +222,14 @@ fn update_result_cell_multiple_columns() {
 async fn analyze_query_for_edit_connection_not_found() {
     let state = test_app_state();
 
-    let result =
-        analyze_query_for_edit_impl(&state, "nonexistent-conn", "SELECT * FROM users").await;
+    let result = analyze_query_for_edit_impl(
+        &state,
+        &sqllumen_lib::mysql::query_executor::AnalyzeQueryForEditRequest {
+            connection_id: "nonexistent-conn".to_string(),
+            sql: "SELECT * FROM users".to_string(),
+        },
+    )
+    .await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("not found"));
 }
@@ -191,8 +239,14 @@ async fn analyze_query_for_edit_non_select() {
     let state = test_app_state();
 
     // Non-SELECT statements return empty vec without needing a connection
-    let result =
-        analyze_query_for_edit_impl(&state, "conn-1", "INSERT INTO users VALUES (1)").await;
+    let result = analyze_query_for_edit_impl(
+        &state,
+        &sqllumen_lib::mysql::query_executor::AnalyzeQueryForEditRequest {
+            connection_id: "conn-1".to_string(),
+            sql: "INSERT INTO users VALUES (1)".to_string(),
+        },
+    )
+    .await;
     // Under coverage: extract_tables returns empty → Ok(vec![])
     // Under real: extract_tables returns empty → Ok(vec![])
     assert!(result.is_ok());
@@ -203,7 +257,14 @@ async fn analyze_query_for_edit_non_select() {
 async fn analyze_query_for_edit_empty_sql() {
     let state = test_app_state();
 
-    let result = analyze_query_for_edit_impl(&state, "conn-1", "").await;
+    let result = analyze_query_for_edit_impl(
+        &state,
+        &sqllumen_lib::mysql::query_executor::AnalyzeQueryForEditRequest {
+            connection_id: "conn-1".to_string(),
+            sql: "".to_string(),
+        },
+    )
+    .await;
     assert!(result.is_ok());
     assert!(result.unwrap().is_empty());
 }
@@ -212,29 +273,30 @@ async fn analyze_query_for_edit_empty_sql() {
 
 fn insert_three_row_result(state: &sqllumen_lib::state::AppState) {
     state.result_cache.insert(
-        "conn-1",
-        "tab-1",
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "tab-1"),
         vec![StoredResult::new(
-            "q1".to_string(),
-            vec![
-                ColumnMeta {
-                    name: "id".to_string(),
-                    data_type: "INT".to_string(),
-                },
-                ColumnMeta {
-                    name: "name".to_string(),
-                    data_type: "VARCHAR".to_string(),
-                },
-            ],
-            crate::common::shared_rows(vec![
-                vec![serde_json::json!(1), serde_json::json!("Alice")],
-                vec![serde_json::json!(2), serde_json::json!("Bob")],
-                vec![serde_json::json!(3), serde_json::json!("Cara")],
-            ]),
-            1,
-            1,
-            0,
-            false,
+            sqllumen_lib::mysql::query_executor::StoredResultParts {
+                query_id: "q1".to_string(),
+                columns: vec![
+                    ColumnMeta {
+                        name: "id".to_string(),
+                        data_type: "INT".to_string(),
+                    },
+                    ColumnMeta {
+                        name: "name".to_string(),
+                        data_type: "VARCHAR".to_string(),
+                    },
+                ],
+                rows: crate::common::shared_rows(vec![
+                    vec![serde_json::json!(1), serde_json::json!("Alice")],
+                    vec![serde_json::json!(2), serde_json::json!("Bob")],
+                    vec![serde_json::json!(3), serde_json::json!("Cara")],
+                ]),
+                execution_time_ms: 1,
+                total_time_ms: 1,
+                affected_rows: 0,
+                auto_limit_applied: false,
+            },
         )],
     );
 }
@@ -260,8 +322,18 @@ fn update_result_cell_leaves_previously_fetched_rows_untouched_and_shares_other_
 
     let mut updates = HashMap::new();
     updates.insert(1, serde_json::json!("Bobby"));
-    update_result_cell_impl(&state, "conn-1", "tab-1", 1, updates, None, "q1")
-        .expect("edit succeeds");
+    update_result_cell_impl(
+        &state,
+        sqllumen_lib::mysql::query_executor::UpdateResultCellRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+            row_index: 1,
+            updates,
+            result_index: None,
+            query_id: "q1".to_string(),
+        },
+    )
+    .expect("edit succeeds");
 
     // The Arc handed out before the edit still holds the old value.
     assert_eq!(before[1][1], serde_json::json!("Bob"));
@@ -285,8 +357,18 @@ fn update_result_cell_result_index_out_of_range_error_unchanged() {
     let state = test_app_state();
     insert_three_row_result(&state);
 
-    let err = update_result_cell_impl(&state, "conn-1", "tab-1", 0, HashMap::new(), Some(3), "q1")
-        .expect_err("result index 3 does not exist");
+    let err = update_result_cell_impl(
+        &state,
+        sqllumen_lib::mysql::query_executor::UpdateResultCellRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+            row_index: 0,
+            updates: HashMap::new(),
+            result_index: Some(3),
+            query_id: "q1".to_string(),
+        },
+    )
+    .expect_err("result index 3 does not exist");
     assert_eq!(err, "Result index 3 out of range (total: 1)");
 }
 
@@ -298,8 +380,18 @@ fn update_result_cell_row_index_out_of_bounds_leaves_cache_unchanged() {
 
     let mut updates = HashMap::new();
     updates.insert(1, serde_json::json!("ignored"));
-    let err = update_result_cell_impl(&state, "conn-1", "tab-1", 3, updates, None, "q1")
-        .expect_err("row 3 does not exist");
+    let err = update_result_cell_impl(
+        &state,
+        sqllumen_lib::mysql::query_executor::UpdateResultCellRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+            row_index: 3,
+            updates,
+            result_index: None,
+            query_id: "q1".to_string(),
+        },
+    )
+    .expect_err("row 3 does not exist");
     assert_eq!(err, "Row index 3 out of bounds (total rows: 3)");
 
     let after = cached_rows(&state);
@@ -312,8 +404,18 @@ fn update_result_cell_expired_results_error_unchanged() {
     insert_three_row_result(&state);
     state.result_cache.remove("conn-1", "tab-1");
 
-    let err = update_result_cell_impl(&state, "conn-1", "tab-1", 0, HashMap::new(), None, "q1")
-        .expect_err("removed results are expired");
+    let err = update_result_cell_impl(
+        &state,
+        sqllumen_lib::mysql::query_executor::UpdateResultCellRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+            row_index: 0,
+            updates: HashMap::new(),
+            result_index: None,
+            query_id: "q1".to_string(),
+        },
+    )
+    .expect_err("removed results are expired");
     assert!(err.starts_with("results_expired:"), "{err}");
 }
 
@@ -324,36 +426,47 @@ fn update_result_cell_refuses_a_save_for_a_replaced_query() {
     // A re-run replaces the slot with a new query id; insert does not bump the
     // invalidation version, so only the query-id check can catch the race.
     state.result_cache.insert(
-        "conn-1",
-        "tab-1",
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "tab-1"),
         vec![StoredResult::new(
-            "q2".to_string(),
-            vec![
-                ColumnMeta {
-                    name: "id".to_string(),
-                    data_type: "INT".to_string(),
-                },
-                ColumnMeta {
-                    name: "name".to_string(),
-                    data_type: "VARCHAR".to_string(),
-                },
-            ],
-            crate::common::shared_rows(vec![
-                vec![serde_json::json!(7), serde_json::json!("Zed")],
-                vec![serde_json::json!(8), serde_json::json!("Yan")],
-            ]),
-            1,
-            1,
-            0,
-            false,
+            sqllumen_lib::mysql::query_executor::StoredResultParts {
+                query_id: "q2".to_string(),
+                columns: vec![
+                    ColumnMeta {
+                        name: "id".to_string(),
+                        data_type: "INT".to_string(),
+                    },
+                    ColumnMeta {
+                        name: "name".to_string(),
+                        data_type: "VARCHAR".to_string(),
+                    },
+                ],
+                rows: crate::common::shared_rows(vec![
+                    vec![serde_json::json!(7), serde_json::json!("Zed")],
+                    vec![serde_json::json!(8), serde_json::json!("Yan")],
+                ]),
+                execution_time_ms: 1,
+                total_time_ms: 1,
+                affected_rows: 0,
+                auto_limit_applied: false,
+            },
         )],
     );
     let before = cached_rows(&state);
 
     let mut updates = HashMap::new();
     updates.insert(1, serde_json::json!("Bobby"));
-    let err = update_result_cell_impl(&state, "conn-1", "tab-1", 1, updates, None, "q1")
-        .expect_err("the save belongs to the replaced query");
+    let err = update_result_cell_impl(
+        &state,
+        sqllumen_lib::mysql::query_executor::UpdateResultCellRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+            row_index: 1,
+            updates,
+            result_index: None,
+            query_id: "q1".to_string(),
+        },
+    )
+    .expect_err("the save belongs to the replaced query");
     assert_eq!(err, "Results were refreshed during edit");
 
     let after = cached_rows(&state);

@@ -1,8 +1,17 @@
-//! Frontend-originated log lines (application logger / tracing), not toast-specific.
+use serde::Deserialize;
 
 const TARGET: &str = "sqllumen_lib::frontend";
 
-pub fn log_frontend_impl(level: &str, message: &str) -> Result<(), String> {
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogFrontendRequest {
+    pub level: String,
+    pub message: String,
+}
+
+pub fn log_frontend_impl(request: &LogFrontendRequest) -> Result<(), String> {
+    let level = request.level.as_str();
+    let message = request.message.as_str();
     let level_norm = level.trim().to_ascii_lowercase();
     match level_norm.as_str() {
         "error" => {
@@ -31,6 +40,6 @@ pub fn log_frontend_impl(level: &str, message: &str) -> Result<(), String> {
 
 #[cfg(not(coverage))]
 #[tauri::command]
-pub fn log_frontend(level: String, message: String) -> Result<(), String> {
-    log_frontend_impl(&level, &message)
+pub fn log_frontend(payload: LogFrontendRequest) -> Result<(), String> {
+    log_frontend_impl(&payload)
 }

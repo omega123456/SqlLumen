@@ -1,3 +1,4 @@
+use crate::export::ExportRows;
 use std::io::{self, Write};
 
 /// Escape a SQL identifier by doubling any embedded backtick characters.
@@ -12,31 +13,9 @@ fn escape_string_value(text: &str) -> String {
     text.replace('\\', "\\\\").replace('\'', "''")
 }
 
-/// Write query results as SQL INSERT statements to the given writer.
-///
-/// Format (one statement per row):
-/// ```sql
-/// INSERT INTO `table_name` (`col1`, `col2`) VALUES ('value1', 123);
-/// ```
-///
-/// - `columns`: column names for the INSERT column list
-/// - `rows`: data rows (each row is a slice of `serde_json::Value`)
-/// - `_include_headers`: ignored for SQL (column names always appear in INSERT)
-/// - `table_name`: the table name used in the INSERT statement (must not be empty)
-///
-/// Value escaping:
-/// - String: wrapped in single quotes, backslashes escaped, single quotes doubled
-/// - Number: written as-is
-/// - Boolean: written as 1 or 0
-/// - NULL: written as SQL `NULL` keyword (no quotes)
-///
-/// Identifier escaping:
-/// - Table name and column names have backtick characters doubled inside `` `…` `` delimiters
 pub fn write_sql<W: Write, R: AsRef<[serde_json::Value]>>(
     writer: &mut W,
-    columns: &[String],
-    rows: &[R],
-    _include_headers: bool,
+    table: &ExportRows<'_, R>,
     table_name: &str,
 ) -> io::Result<()> {
     if table_name.is_empty() {
@@ -46,8 +25,8 @@ pub fn write_sql<W: Write, R: AsRef<[serde_json::Value]>>(
         ));
     }
 
-    let prefix = sql_insert_prefix(table_name, columns);
-    for row in rows.iter().map(AsRef::as_ref) {
+    let prefix = sql_insert_prefix(table_name, table.columns);
+    for row in table.rows.iter().map(AsRef::as_ref) {
         write_sql_row(writer, &prefix, row)?;
     }
 

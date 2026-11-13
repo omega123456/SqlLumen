@@ -21,8 +21,9 @@ use sqllumen_lib::export::copy_to_host::{
     mark_failed, new_running_progress, plan_batches, qualified_drop_if_exists_statement,
     qualify_table_ddl_schema, render_row, rewrite_non_table_ddl_schema, should_cancel,
     strip_definer, validate_cross_database_non_table_copy, validate_mysql_identifier_token,
-    validate_selection_for_options, CopyObjectType, CopyOptions, CopySelection, InsertMode,
-    COPY_BATCH_ROW_CAP, FALLBACK_PACKET_BYTES, FK_CHECKS_DISABLE, FK_CHECKS_ENABLE,
+    validate_selection_for_options, BatchLimits, CopyObjectType, CopyOptions, CopySelection,
+    InsertMode, RenderedRow, COPY_BATCH_ROW_CAP, FALLBACK_PACKET_BYTES, FK_CHECKS_DISABLE,
+    FK_CHECKS_ENABLE,
 };
 use sqllumen_lib::export::sql_dump::{value_byte_len, value_to_literal, SqlDumpValue};
 use sqllumen_lib::state::CopyJobStatus;
@@ -191,11 +192,12 @@ fn test_rewrite_non_table_ddl_schema_procedure_header_only() {
     let ddl =
         "CREATE PROCEDURE `shop`.`sp_recalc`() BEGIN SELECT '`shop`.`sp_recalc` literal'; END";
     let out = rewrite_non_table_ddl_schema(
-        CopyObjectType::Procedure,
         ddl,
-        "shop",
-        "shop_copy",
-        "sp_recalc",
+        sqllumen_lib::export::copy_to_host::TargetObject {
+            object_type: CopyObjectType::Procedure,
+            target_database: "shop_copy",
+            object_name: "sp_recalc",
+        },
     );
     assert!(out.starts_with("CREATE PROCEDURE `shop_copy`.`sp_recalc`()"));
     assert!(out.contains("'`shop`.`sp_recalc` literal'"));
@@ -205,11 +207,12 @@ fn test_rewrite_non_table_ddl_schema_procedure_header_only() {
 fn test_rewrite_non_table_ddl_schema_function_header_only() {
     let ddl = "CREATE FUNCTION `shop`.`fn_total`() RETURNS INT RETURN 1";
     let out = rewrite_non_table_ddl_schema(
-        CopyObjectType::Function,
         ddl,
-        "shop",
-        "target_db",
-        "fn_total",
+        sqllumen_lib::export::copy_to_host::TargetObject {
+            object_type: CopyObjectType::Function,
+            target_database: "target_db",
+            object_name: "fn_total",
+        },
     );
     assert_eq!(
         out,
@@ -221,11 +224,12 @@ fn test_rewrite_non_table_ddl_schema_function_header_only() {
 fn test_rewrite_non_table_ddl_schema_trigger_header_only() {
     let ddl = "CREATE TRIGGER `shop`.`trg_audit` AFTER INSERT ON `users` FOR EACH ROW SET @note = '-- `shop`.`trg_audit` comment-like literal'";
     let out = rewrite_non_table_ddl_schema(
-        CopyObjectType::Trigger,
         ddl,
-        "shop",
-        "audit_copy",
-        "trg_audit",
+        sqllumen_lib::export::copy_to_host::TargetObject {
+            object_type: CopyObjectType::Trigger,
+            target_database: "audit_copy",
+            object_name: "trg_audit",
+        },
     );
     assert!(out.starts_with("CREATE TRIGGER `audit_copy`.`trg_audit`"));
     assert!(out.contains("'-- `shop`.`trg_audit` comment-like literal'"));
@@ -234,8 +238,14 @@ fn test_rewrite_non_table_ddl_schema_trigger_header_only() {
 #[test]
 fn test_rewrite_non_table_ddl_schema_event_header_only() {
     let ddl = "CREATE EVENT `shop`.`ev_nightly` ON SCHEDULE EVERY 1 DAY DO SELECT 'keep `shop`.`ev_nightly`'";
-    let out =
-        rewrite_non_table_ddl_schema(CopyObjectType::Event, ddl, "shop", "archive", "ev_nightly");
+    let out = rewrite_non_table_ddl_schema(
+        ddl,
+        sqllumen_lib::export::copy_to_host::TargetObject {
+            object_type: CopyObjectType::Event,
+            target_database: "archive",
+            object_name: "ev_nightly",
+        },
+    );
     assert!(out.starts_with("CREATE EVENT `archive`.`ev_nightly`"));
     assert!(out.contains("'keep `shop`.`ev_nightly`'"));
 }
@@ -244,11 +254,12 @@ fn test_rewrite_non_table_ddl_schema_event_header_only() {
 fn test_rewrite_non_table_ddl_schema_qualifies_unqualified_procedure() {
     let ddl = "CREATE PROCEDURE `sp_recalc`() BEGIN SELECT '`sp_recalc` literal'; END";
     let out = rewrite_non_table_ddl_schema(
-        CopyObjectType::Procedure,
         ddl,
-        "shop",
-        "shop_copy",
-        "sp_recalc",
+        sqllumen_lib::export::copy_to_host::TargetObject {
+            object_type: CopyObjectType::Procedure,
+            target_database: "shop_copy",
+            object_name: "sp_recalc",
+        },
     );
     assert!(out.starts_with("CREATE PROCEDURE `shop_copy`.`sp_recalc`()"));
     assert!(out.contains("'`sp_recalc` literal'"));
@@ -257,8 +268,14 @@ fn test_rewrite_non_table_ddl_schema_qualifies_unqualified_procedure() {
 #[test]
 fn test_rewrite_non_table_ddl_schema_qualifies_unqualified_function_same_db_name() {
     let ddl = "CREATE FUNCTION fn_total() RETURNS INT RETURN 1";
-    let out =
-        rewrite_non_table_ddl_schema(CopyObjectType::Function, ddl, "shop", "shop", "fn_total");
+    let out = rewrite_non_table_ddl_schema(
+        ddl,
+        sqllumen_lib::export::copy_to_host::TargetObject {
+            object_type: CopyObjectType::Function,
+            target_database: "shop",
+            object_name: "fn_total",
+        },
+    );
     assert_eq!(
         out,
         "CREATE FUNCTION `shop`.`fn_total`() RETURNS INT RETURN 1"
@@ -269,11 +286,12 @@ fn test_rewrite_non_table_ddl_schema_qualifies_unqualified_function_same_db_name
 fn test_rewrite_non_table_ddl_schema_qualifies_unqualified_trigger_name_only() {
     let ddl = "CREATE TRIGGER trg_audit AFTER INSERT ON `users` FOR EACH ROW SET @note = 'ON `users` literal'";
     let out = rewrite_non_table_ddl_schema(
-        CopyObjectType::Trigger,
         ddl,
-        "shop",
-        "audit_copy",
-        "trg_audit",
+        sqllumen_lib::export::copy_to_host::TargetObject {
+            object_type: CopyObjectType::Trigger,
+            target_database: "audit_copy",
+            object_name: "trg_audit",
+        },
     );
     assert!(out.starts_with("CREATE TRIGGER `audit_copy`.`trg_audit` AFTER INSERT ON `users`"));
     assert!(out.contains("'ON `users` literal'"));
@@ -282,8 +300,14 @@ fn test_rewrite_non_table_ddl_schema_qualifies_unqualified_trigger_name_only() {
 #[test]
 fn test_rewrite_non_table_ddl_schema_qualifies_unqualified_event() {
     let ddl = "CREATE EVENT ev_nightly ON SCHEDULE EVERY 1 DAY DO SELECT 'ev_nightly'";
-    let out =
-        rewrite_non_table_ddl_schema(CopyObjectType::Event, ddl, "shop", "archive", "ev_nightly");
+    let out = rewrite_non_table_ddl_schema(
+        ddl,
+        sqllumen_lib::export::copy_to_host::TargetObject {
+            object_type: CopyObjectType::Event,
+            target_database: "archive",
+            object_name: "ev_nightly",
+        },
+    );
     assert!(out.starts_with("CREATE EVENT `archive`.`ev_nightly` ON SCHEDULE"));
     assert!(out.contains("'ev_nightly'"));
 }
@@ -312,7 +336,14 @@ fn test_qualified_drop_if_exists_statement_per_non_table_type() {
 fn test_rewrite_non_table_ddl_schema_leaves_tables_unchanged() {
     let ddl = "CREATE TABLE `shop`.`users` (`id` INT)";
     assert_eq!(
-        rewrite_non_table_ddl_schema(CopyObjectType::Table, ddl, "shop", "shop_copy", "users"),
+        rewrite_non_table_ddl_schema(
+            ddl,
+            sqllumen_lib::export::copy_to_host::TargetObject {
+                object_type: CopyObjectType::Table,
+                target_database: "shop_copy",
+                object_name: "users"
+            }
+        ),
         ddl
     );
 }
@@ -387,7 +418,10 @@ fn test_render_row_matches_value_literals() {
         SqlDumpValue::QuotedString("ab".to_string()),
         SqlDumpValue::Null,
     ];
-    let (tuple, len) = render_row(&row);
+    let RenderedRow {
+        tuple,
+        byte_len: len,
+    } = render_row(&row);
     assert_eq!(tuple, "(7, 'ab', NULL)");
     assert_eq!(len, tuple.len());
     // The per-cell building is the shared sql_dump helper.
@@ -397,63 +431,67 @@ fn test_render_row_matches_value_literals() {
 
 // ── Adaptive batching ─────────────────────────────────────────────────────
 
+fn rendered(tuple: &str, byte_len: usize) -> RenderedRow {
+    RenderedRow {
+        tuple: tuple.to_string(),
+        byte_len,
+    }
+}
+
+fn batch_limits(byte_budget: usize, row_cap: usize) -> BatchLimits {
+    BatchLimits {
+        byte_budget,
+        row_cap,
+    }
+}
+
 #[test]
 fn test_plan_batches_small_rows_single_batch_under_cap() {
-    // 5 small rows, generous budget, no cap pressure → one batch.
-    let rows: Vec<(String, usize)> = (0..5).map(|_| ("(1)".to_string(), 3)).collect();
-    let batches = plan_batches(&rows, 1_000_000, 20, 1000);
-    assert_eq!(batches, vec![(0, 5)]);
+    let rows: Vec<RenderedRow> = (0..5).map(|_| rendered("(1)", 3)).collect();
+    let batches = plan_batches(&rows, batch_limits(1_000_000, 1000), 20);
+    assert_eq!(batches, vec![0..5]);
 }
 
 #[test]
 fn test_plan_batches_respects_row_cap() {
-    // 2500 tiny rows, cap 1000 → 3 batches (1000, 1000, 500).
-    let rows: Vec<(String, usize)> = (0..2500).map(|_| ("(1)".to_string(), 3)).collect();
-    let batches = plan_batches(&rows, u64::MAX, 20, COPY_BATCH_ROW_CAP);
-    assert_eq!(batches, vec![(0, 1000), (1000, 2000), (2000, 2500)]);
-    for (s, e) in &batches {
-        assert!(e - s <= COPY_BATCH_ROW_CAP);
+    let rows: Vec<RenderedRow> = (0..2500).map(|_| rendered("(1)", 3)).collect();
+    let batches = plan_batches(&rows, batch_limits(usize::MAX, COPY_BATCH_ROW_CAP), 20);
+    assert_eq!(batches, vec![0..1000, 1000..2000, 2000..2500]);
+    for batch in &batches {
+        assert!(batch.len() <= COPY_BATCH_ROW_CAP);
     }
 }
 
 #[test]
 fn test_plan_batches_splits_on_byte_budget() {
-    // Each row is 100 bytes; budget 250 incl. prefix 10 → ~2 rows/batch.
-    // prefix=10, row1: 10+100=110, row2: 110+2+100=212 (<=250 ok),
-    // row3: 212+2+100=314 (>250) → close, new batch.
-    let rows: Vec<(String, usize)> = (0..5).map(|_| ("x".repeat(100), 100usize)).collect();
-    let batches = plan_batches(&rows, 250, 10, 1000);
-    assert_eq!(batches, vec![(0, 2), (2, 4), (4, 5)]);
+    let rows: Vec<RenderedRow> = (0..5).map(|_| rendered(&"x".repeat(100), 100)).collect();
+    let batches = plan_batches(&rows, batch_limits(250, 1000), 10);
+    assert_eq!(batches, vec![0..2, 2..4, 4..5]);
 }
 
 #[test]
 fn test_plan_batches_single_oversized_row_emitted_alone() {
-    // One row exceeds the whole budget → still emitted as its own batch.
-    let rows = vec![("big".to_string(), 10_000usize)];
-    let batches = plan_batches(&rows, 100, 10, 1000);
-    assert_eq!(batches, vec![(0, 1)]);
+    let rows = vec![rendered("big", 10_000)];
+    let batches = plan_batches(&rows, batch_limits(100, 1000), 10);
+    assert_eq!(batches, vec![0..1]);
 }
 
 #[test]
 fn test_plan_batches_oversized_row_among_small_rows() {
-    // small(10), small(10), HUGE(5000), small(10) with budget 100, prefix 10.
-    // batch0: rows 0,1 (10+10+10+2=32 <=100; next +2+5000 over) → close [0,2)
-    // batch1: huge alone [2,3)
-    // batch2: last small [3,4)
     let rows = vec![
-        ("a".to_string(), 10usize),
-        ("b".to_string(), 10usize),
-        ("h".to_string(), 5000usize),
-        ("c".to_string(), 10usize),
+        rendered("a", 10),
+        rendered("b", 10),
+        rendered("h", 5000),
+        rendered("c", 10),
     ];
-    let batches = plan_batches(&rows, 100, 10, 1000);
-    assert_eq!(batches, vec![(0, 2), (2, 3), (3, 4)]);
+    let batches = plan_batches(&rows, batch_limits(100, 1000), 10);
+    assert_eq!(batches, vec![0..2, 2..3, 3..4]);
 }
 
 #[test]
 fn test_plan_batches_empty_input() {
-    let rows: Vec<(String, usize)> = vec![];
-    assert!(plan_batches(&rows, 1000, 10, 1000).is_empty());
+    let rows: Vec<RenderedRow> = vec![];
+    assert!(plan_batches(&rows, batch_limits(1000, 1000), 10).is_empty());
 }
 
 // ── FK-check statements ───────────────────────────────────────────────────
@@ -620,7 +658,14 @@ fn test_progress_running_to_completed() {
     assert_eq!(p.objects_total, 3);
     assert_eq!(p.objects_done, 0);
 
-    begin_object(&mut p, CopyObjectType::Table, "users", Some(50));
+    begin_object(
+        &mut p,
+        sqllumen_lib::export::copy_to_host::CopyObject {
+            object_type: CopyObjectType::Table,
+            name: "users",
+        },
+        Some(50),
+    );
     assert_eq!(p.current_object.as_deref(), Some("users"));
     assert_eq!(p.current_object_type.as_deref(), Some("table"));
     assert_eq!(p.rows_total, Some(50));
@@ -643,7 +688,14 @@ fn test_progress_running_to_completed() {
 #[test]
 fn test_progress_running_to_failed_stops_with_message() {
     let mut p = new_running_progress("job-2".into(), 5);
-    begin_object(&mut p, CopyObjectType::Trigger, "trg_audit", None);
+    begin_object(
+        &mut p,
+        sqllumen_lib::export::copy_to_host::CopyObject {
+            object_type: CopyObjectType::Trigger,
+            name: "trg_audit",
+        },
+        None,
+    );
     complete_object(&mut p); // 1 of 5 done before failure
     mark_failed(&mut p, "ER_NO_SUCH_TABLE: missing privilege");
     assert_eq!(p.status, CopyJobStatus::Failed);
@@ -669,7 +721,14 @@ fn test_progress_running_to_cancelled() {
 #[test]
 fn test_begin_object_non_table_has_no_row_counters() {
     let mut p = new_running_progress("job-4".into(), 1);
-    begin_object(&mut p, CopyObjectType::Procedure, "sp_x", None);
+    begin_object(
+        &mut p,
+        sqllumen_lib::export::copy_to_host::CopyObject {
+            object_type: CopyObjectType::Procedure,
+            name: "sp_x",
+        },
+        None,
+    );
     assert_eq!(p.current_object_type.as_deref(), Some("procedure"));
     assert!(p.rows_total.is_none());
     assert!(p.rows_done.is_none());
@@ -683,7 +742,7 @@ fn test_table_copy_source_counts_rows_for_live_progress_totals() {
         "table copy should count exact source rows for rowsTotal progress"
     );
     assert!(
-        source.contains("begin_object(progress, object_type, &name, rows_total);"),
+        source.contains("begin_object(progress, object, rows_total);"),
         "table copy should pass the counted rows_total into progress when object work begins"
     );
 }

@@ -47,12 +47,22 @@ describe('glide-drawers', () => {
   })
   it('draws modified indicators', () => {
     const c = ctx()
-    drawModifiedCellIndicator(c, { x: 0, y: 0, width: 30, height: 20 }, '#f00', false)
+    drawModifiedCellIndicator({
+      context: c,
+      rect: { x: 0, y: 0, width: 30, height: 20 },
+      color: '#f00',
+      isDark: false,
+    })
     expect(c.arc).toHaveBeenCalled()
   })
   it('draws dark modified indicators', () => {
     const c = ctx()
-    drawModifiedCellIndicator(c, { x: 0, y: 0, width: 30, height: 20 }, '#f00', true)
+    drawModifiedCellIndicator({
+      context: c,
+      rect: { x: 0, y: 0, width: 30, height: 20 },
+      color: '#f00',
+      isDark: true,
+    })
     expect(c.moveTo).toHaveBeenCalledWith(0, 6)
     expect(c.lineTo).toHaveBeenCalledWith(0, 0)
     expect(c.lineTo).toHaveBeenCalledWith(6, 0)
@@ -75,7 +85,12 @@ describe('glide-drawers', () => {
   })
   it('draws blob text', () => {
     const c = ctx()
-    drawBlobText(c, { x: 0, y: 0, width: 30, height: 20 }, '[blob]', theme)
+    drawBlobText({
+      context: c,
+      rect: { x: 0, y: 0, width: 30, height: 20 },
+      text: '[blob]',
+      theme: theme,
+    })
     expect(c.fillText).toHaveBeenCalledWith('[blob]', 10, 14)
   })
   it('draws info affordance', () => {
@@ -93,13 +108,13 @@ describe('glide-drawers', () => {
 describe('drawSkeletonCell', () => {
   it('fills one flat bar inset by the cell padding and centred vertically', () => {
     const c = { fillRect: vi.fn(), save: vi.fn(), restore: vi.fn(), fillStyle: '' }
-    drawSkeletonCell(
-      c as unknown as CanvasRenderingContext2D,
-      { x: 10, y: 20, width: 120, height: 28 },
-      'rgba(0, 0, 0, 0.06)',
-      10,
-      13
-    )
+    drawSkeletonCell({
+      context: c as unknown as CanvasRenderingContext2D,
+      rect: { x: 10, y: 20, width: 120, height: 28 },
+      color: 'rgba(0, 0, 0, 0.06)',
+      horizontalPadding: 10,
+      lineHeight: 13,
+    })
     expect(c.fillStyle).toBe('rgba(0, 0, 0, 0.06)')
     expect(c.fillRect).toHaveBeenCalledTimes(1)
     expect(c.fillRect).toHaveBeenCalledWith(20, 28, 100, 13)
@@ -109,23 +124,23 @@ describe('drawSkeletonCell', () => {
 
   it('caps the bar height to the cell and draws nothing for collapsed cells', () => {
     const c = { fillRect: vi.fn(), save: vi.fn(), restore: vi.fn(), fillStyle: '' }
-    drawSkeletonCell(
-      c as unknown as CanvasRenderingContext2D,
-      { x: 0, y: 0, width: 50, height: 10 },
-      'red',
-      4,
-      20
-    )
+    drawSkeletonCell({
+      context: c as unknown as CanvasRenderingContext2D,
+      rect: { x: 0, y: 0, width: 50, height: 10 },
+      color: 'red',
+      horizontalPadding: 4,
+      lineHeight: 20,
+    })
     expect(c.fillRect).toHaveBeenCalledWith(4, 2, 42, 6)
 
     c.fillRect.mockClear()
-    drawSkeletonCell(
-      c as unknown as CanvasRenderingContext2D,
-      { x: 0, y: 0, width: 8, height: 28 },
-      'red',
-      4,
-      13
-    )
+    drawSkeletonCell({
+      context: c as unknown as CanvasRenderingContext2D,
+      rect: { x: 0, y: 0, width: 8, height: 28 },
+      color: 'red',
+      horizontalPadding: 4,
+      lineHeight: 13,
+    })
     expect(c.fillRect).not.toHaveBeenCalled()
   })
 })

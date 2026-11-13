@@ -56,7 +56,7 @@ describe('ApplySchemaChangesDialog', () => {
     await user.click(screen.getByTestId('apply-schema-confirm'))
 
     await waitFor(() => {
-      expect(ipc.calls('apply_table_ddl')).toContainEqual({
+      expect(ipc.payloads('apply_table_ddl')).toContainEqual({
         connectionId: 'conn-1',
         database: 'app_db',
         ddl: 'ALTER TABLE `users` ADD COLUMN `nickname` VARCHAR(64);',

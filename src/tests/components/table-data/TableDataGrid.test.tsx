@@ -310,7 +310,13 @@ describe('TableDataGrid', () => {
       }
     }
 
-    const expectedWidth = getAutoSizedColumnWidth(columns[1], 0, [['Ada']], 'name', 0)
+    const expectedWidth = getAutoSizedColumnWidth({
+      column: columns[1],
+      columnIndex: 0,
+      rows: [['Ada']],
+      displayName: 'name',
+      headerIconWidthPx: 0,
+    })
     expect(props.autoSizeConfig.computeWidth(props.columns[1])).toBe(expectedWidth)
   })
 
@@ -344,13 +350,12 @@ describe('TableDataGrid', () => {
         column: { key: 'name' },
       })
     })
-    expect(syncCellValue).toHaveBeenCalledWith(
-      't1',
-      expect.objectContaining({ name: 'Grace' }),
-      'name',
-      'Grace',
-      { id: 1 }
-    )
+    expect(syncCellValue).toHaveBeenCalledWith('t1', {
+      rowData: expect.objectContaining({ name: 'Grace' }),
+      column: 'name',
+      value: 'Grace',
+      rowKeyOverride: { id: 1 },
+    })
   })
 
   it('no-op row cleanup does not mark table-data cells dirty', () => {
@@ -386,13 +391,12 @@ describe('TableDataGrid', () => {
       })
     )
 
-    expect(syncCellValue).toHaveBeenCalledWith(
-      't1',
-      expect.objectContaining({ name: 'Ada' }),
-      'name',
-      'Ada',
-      { id: 1 }
-    )
+    expect(syncCellValue).toHaveBeenCalledWith('t1', {
+      rowData: expect.objectContaining({ name: 'Ada' }),
+      column: 'name',
+      value: 'Ada',
+      rowKeyOverride: { id: 1 },
+    })
     expect(useTableDataStore.getState().tabs.t1.editState).toBeNull()
   })
 
@@ -429,13 +433,12 @@ describe('TableDataGrid', () => {
       })
     )
 
-    expect(syncCellValue).toHaveBeenCalledWith(
-      't1',
-      expect.objectContaining({ name: 'Grace' }),
-      'name',
-      'Grace',
-      { id: 1 }
-    )
+    expect(syncCellValue).toHaveBeenCalledWith('t1', {
+      rowData: expect.objectContaining({ name: 'Grace' }),
+      column: 'name',
+      value: 'Grace',
+      rowKeyOverride: { id: 1 },
+    })
   })
 
   it('row selection works through cell click guard', async () => {
@@ -809,6 +812,10 @@ describe('TableDataGrid', () => {
     act(() => {
       ;(capturedBlobDialogProps?.onApply as (e: unknown) => void)(envelope)
     })
-    expect(stageBlobEnvelope).toHaveBeenCalledWith('t1', row, 'data', envelope)
+    expect(stageBlobEnvelope).toHaveBeenCalledWith('t1', {
+      rowData: row,
+      column: 'data',
+      envelope: envelope,
+    })
   })
 })

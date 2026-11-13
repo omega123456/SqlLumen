@@ -256,11 +256,22 @@ describe('schema-metadata-cache', () => {
 
     await loadCache('conn-1')
 
-    expect(filterColumns('conn-1', 'db1', 'users', 'i')).toHaveLength(1)
-    expect(filterColumns('conn-1', 'db1', 'users', 'i')[0].name).toBe('id')
-    expect(filterColumns('conn-1', 'db1', 'users', '')).toHaveLength(3)
-    expect(filterColumns('conn-1', 'db1', 'users', 'E')).toHaveLength(1) // case-insensitive
-    expect(filterColumns('conn-1', 'db1', 'nonexistent', '')).toEqual([])
+    expect(
+      filterColumns({ connectionId: 'conn-1', database: 'db1', table: 'users', prefix: 'i' })
+    ).toHaveLength(1)
+    expect(
+      filterColumns({ connectionId: 'conn-1', database: 'db1', table: 'users', prefix: 'i' })[0]
+        .name
+    ).toBe('id')
+    expect(
+      filterColumns({ connectionId: 'conn-1', database: 'db1', table: 'users', prefix: '' })
+    ).toHaveLength(3)
+    expect(
+      filterColumns({ connectionId: 'conn-1', database: 'db1', table: 'users', prefix: 'E' })
+    ).toHaveLength(1) // case-insensitive
+    expect(
+      filterColumns({ connectionId: 'conn-1', database: 'db1', table: 'nonexistent', prefix: '' })
+    ).toEqual([])
   })
 
   it('filterRoutines returns routines for a database', async () => {

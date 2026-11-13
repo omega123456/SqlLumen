@@ -340,7 +340,15 @@ describe('ResultGridView editing', () => {
     )
 
     const sampled = rows.slice(0, AUTO_SIZE_SAMPLE_LIMIT).map((row) => [row[0]])
-    expect(width).toBe(getAutoSizedColumnWidth(tableColumns[0], 0, sampled, 'name', 0))
+    expect(width).toBe(
+      getAutoSizedColumnWidth({
+        column: tableColumns[0],
+        columnIndex: 0,
+        rows: sampled,
+        displayName: 'name',
+        headerIconWidthPx: 0,
+      })
+    )
   })
 
   it('marks modified cells only for the active editing row and bound column', () => {

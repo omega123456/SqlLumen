@@ -277,7 +277,7 @@ describe('ConnectionDialog', () => {
       await waitFor(() => {
         expect(ipc.calls('save_connection')).toHaveLength(1)
       })
-      expect(ipc.calls('update_connection')).toHaveLength(0)
+      expect(ipc.payloads('update_connection')).toHaveLength(0)
     })
 
     it('selecting another connection clears the duplicate seed', async () => {

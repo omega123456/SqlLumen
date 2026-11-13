@@ -459,7 +459,12 @@ describe('WorkspaceTabs', () => {
     })
 
     const tabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
-    useTableDesignerStore.getState().initTab(tabId, 'alter', 'conn-1', 'mydb', 'users')
+    useTableDesignerStore.getState().initTab(tabId, {
+      mode: 'alter',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'users',
+    })
     useTableDesignerStore.setState((state) => ({
       tabs: {
         ...state.tabs,

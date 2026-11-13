@@ -22,7 +22,7 @@ describe('quoteIdentifier', () => {
 
 describe('compactSchemaDdl', () => {
   it('returns empty DDL and 0 tokens for empty input', () => {
-    const result = compactSchemaDdl({}, {}, {}, {})
+    const result = compactSchemaDdl({ tables: {}, columns: {}, foreignKeys: {}, indexes: {} })
     expect(result.ddl).toBe('')
     expect(result.estimatedTokens).toBe(0)
     expect(result.warning).toBe(false)
@@ -42,7 +42,12 @@ describe('compactSchemaDdl', () => {
       ],
     }
 
-    const result = compactSchemaDdl(tables, columns, {}, {})
+    const result = compactSchemaDdl({
+      tables: tables,
+      columns: columns,
+      foreignKeys: {},
+      indexes: {},
+    })
     expect(result.ddl).toBe(
       'CREATE TABLE `mydb`.`users` (`id` INT, `name` VARCHAR(255), `email` VARCHAR(255));'
     )
@@ -69,7 +74,12 @@ describe('compactSchemaDdl', () => {
       ],
     }
 
-    const result = compactSchemaDdl(tables, columns, {}, {})
+    const result = compactSchemaDdl({
+      tables: tables,
+      columns: columns,
+      foreignKeys: {},
+      indexes: {},
+    })
     const lines = result.ddl.split('\n')
     expect(lines).toHaveLength(2)
     expect(lines[0]).toBe('CREATE TABLE `shop`.`users` (`id` INT, `name` VARCHAR(255));')
@@ -99,7 +109,12 @@ describe('compactSchemaDdl', () => {
       ],
     }
 
-    const result = compactSchemaDdl(tables, columns, {}, {})
+    const result = compactSchemaDdl({
+      tables: tables,
+      columns: columns,
+      foreignKeys: {},
+      indexes: {},
+    })
     const lines = result.ddl.split('\n')
     expect(lines).toHaveLength(2)
     expect(lines[0]).toBe('CREATE TABLE `app_db`.`accounts` (`id` INT, `email` VARCHAR(255));')
@@ -124,7 +139,12 @@ describe('compactSchemaDdl', () => {
       'testdb.empty_table': [],
     }
 
-    const result = compactSchemaDdl(tables, columns, {}, {})
+    const result = compactSchemaDdl({
+      tables: tables,
+      columns: columns,
+      foreignKeys: {},
+      indexes: {},
+    })
     expect(result.ddl).toBe('CREATE TABLE `testdb`.`empty_table` ();')
   })
 
@@ -135,7 +155,12 @@ describe('compactSchemaDdl', () => {
     // No column entry for testdb.missing
     const columns: Record<string, ColumnMeta[]> = {}
 
-    const result = compactSchemaDdl(tables, columns, {}, {})
+    const result = compactSchemaDdl({
+      tables: tables,
+      columns: columns,
+      foreignKeys: {},
+      indexes: {},
+    })
     expect(result.ddl).toBe('CREATE TABLE `testdb`.`missing` ();')
   })
 
@@ -147,7 +172,12 @@ describe('compactSchemaDdl', () => {
       'db.test': [{ name: 'id', dataType: 'INT' }],
     }
 
-    const result = compactSchemaDdl(tables, columns, {}, {})
+    const result = compactSchemaDdl({
+      tables: tables,
+      columns: columns,
+      foreignKeys: {},
+      indexes: {},
+    })
     expect(result.ddl).toBe('CREATE TABLE `db`.`test` (`id` INT);')
     expect(result.estimatedTokens).toBe(Math.ceil(result.ddl.length / 4))
   })
@@ -176,7 +206,12 @@ describe('compactSchemaDdl', () => {
       columns[`big_db.${tableName}`] = tableCols
     }
 
-    const result = compactSchemaDdl(tables, columns, {}, {})
+    const result = compactSchemaDdl({
+      tables: tables,
+      columns: columns,
+      foreignKeys: {},
+      indexes: {},
+    })
     expect(result.estimatedTokens).toBeGreaterThan(8000)
     expect(result.warning).toBe(true)
   })
@@ -189,7 +224,12 @@ describe('compactSchemaDdl', () => {
       'db.small': [{ name: 'id', dataType: 'INT' }],
     }
 
-    const result = compactSchemaDdl(tables, columns, {}, {})
+    const result = compactSchemaDdl({
+      tables: tables,
+      columns: columns,
+      foreignKeys: {},
+      indexes: {},
+    })
     expect(result.estimatedTokens).toBeLessThanOrEqual(8000)
     expect(result.warning).toBe(false)
   })
@@ -207,7 +247,12 @@ describe('compactSchemaDdl', () => {
       ],
     }
 
-    const result = compactSchemaDdl(tables, columns, {}, {})
+    const result = compactSchemaDdl({
+      tables: tables,
+      columns: columns,
+      foreignKeys: {},
+      indexes: {},
+    })
     expect(result.ddl).toContain('`id` BIGINT UNSIGNED')
     expect(result.ddl).toContain('`price` DECIMAL(10,2)')
     expect(result.ddl).toContain('`created_at` TIMESTAMP')
@@ -225,7 +270,12 @@ describe('compactSchemaDdl', () => {
       ],
     }
 
-    const result = compactSchemaDdl(tables, columns, {}, {})
+    const result = compactSchemaDdl({
+      tables: tables,
+      columns: columns,
+      foreignKeys: {},
+      indexes: {},
+    })
     // Each table is a single line — no newlines within a statement
     const lines = result.ddl.split('\n')
     expect(lines).toHaveLength(1)
@@ -243,7 +293,12 @@ describe('compactSchemaDdl', () => {
       'populated_db.users': [{ name: 'id', dataType: 'INT' }],
     }
 
-    const result = compactSchemaDdl(tables, columns, {}, {})
+    const result = compactSchemaDdl({
+      tables: tables,
+      columns: columns,
+      foreignKeys: {},
+      indexes: {},
+    })
     // Only the populated database's table appears
     expect(result.ddl).toBe('CREATE TABLE `populated_db`.`users` (`id` INT);')
   })
@@ -262,7 +317,12 @@ describe('compactSchemaDdl', () => {
       ],
     }
 
-    const result = compactSchemaDdl(tables, columns, {}, {})
+    const result = compactSchemaDdl({
+      tables: tables,
+      columns: columns,
+      foreignKeys: {},
+      indexes: {},
+    })
     expect(result.ddl).toContain('`order` INT')
     expect(result.ddl).toContain('`select` VARCHAR(100)')
     expect(result.ddl).toContain('`key` INT')
@@ -276,7 +336,12 @@ describe('compactSchemaDdl', () => {
       'my`db.tbl': [{ name: 'id', dataType: 'INT' }],
     }
 
-    const result = compactSchemaDdl(tables, columns, {}, {})
+    const result = compactSchemaDdl({
+      tables: tables,
+      columns: columns,
+      foreignKeys: {},
+      indexes: {},
+    })
     expect(result.ddl).toContain('`my``db`')
   })
 
@@ -288,7 +353,12 @@ describe('compactSchemaDdl', () => {
       'mydb.my table': [{ name: 'id', dataType: 'INT' }],
     }
 
-    const result = compactSchemaDdl(tables, columns, {}, {})
+    const result = compactSchemaDdl({
+      tables: tables,
+      columns: columns,
+      foreignKeys: {},
+      indexes: {},
+    })
     expect(result.ddl).toContain('`my table`')
   })
 
@@ -319,7 +389,12 @@ describe('compactSchemaDdl', () => {
       ],
     }
 
-    const result = compactSchemaDdl(tables, columns, {}, indexes)
+    const result = compactSchemaDdl({
+      tables: tables,
+      columns: columns,
+      foreignKeys: {},
+      indexes: indexes,
+    })
     expect(result.ddl).toContain('INDEX `idx_email` (`email`)')
   })
 
@@ -348,7 +423,12 @@ describe('compactSchemaDdl', () => {
       ],
     }
 
-    const result = compactSchemaDdl(tables, columns, {}, indexes)
+    const result = compactSchemaDdl({
+      tables: tables,
+      columns: columns,
+      foreignKeys: {},
+      indexes: indexes,
+    })
     expect(result.ddl).toContain('UNIQUE INDEX `uk_email` (`email`)')
   })
 
@@ -374,7 +454,12 @@ describe('compactSchemaDdl', () => {
       ],
     }
 
-    const result = compactSchemaDdl(tables, columns, {}, indexes)
+    const result = compactSchemaDdl({
+      tables: tables,
+      columns: columns,
+      foreignKeys: {},
+      indexes: indexes,
+    })
     expect(result.ddl).not.toContain('PRIMARY')
     expect(result.ddl).toBe('CREATE TABLE `mydb`.`users` (`id` INT);')
   })
@@ -402,7 +487,12 @@ describe('compactSchemaDdl', () => {
       ],
     }
 
-    const result = compactSchemaDdl(tables, columns, {}, indexes)
+    const result = compactSchemaDdl({
+      tables: tables,
+      columns: columns,
+      foreignKeys: {},
+      indexes: indexes,
+    })
     expect(result.ddl).toContain('INDEX `idx_user_date` (`user_id`, `event_date`)')
   })
 
@@ -434,7 +524,12 @@ describe('compactSchemaDdl', () => {
       ],
     }
 
-    const result = compactSchemaDdl(tables, columns, foreignKeys, {})
+    const result = compactSchemaDdl({
+      tables: tables,
+      columns: columns,
+      foreignKeys: foreignKeys,
+      indexes: {},
+    })
     expect(result.ddl).toContain(
       'CONSTRAINT `fk_user` FOREIGN KEY (`user_id`) REFERENCES `mydb`.`users`(`id`) ON DELETE CASCADE ON UPDATE NO ACTION'
     )
@@ -476,7 +571,12 @@ describe('compactSchemaDdl', () => {
       ],
     }
 
-    const result = compactSchemaDdl(tables, columns, foreignKeys, indexes)
+    const result = compactSchemaDdl({
+      tables: tables,
+      columns: columns,
+      foreignKeys: foreignKeys,
+      indexes: indexes,
+    })
     const ddl = result.ddl
     const idxPos = ddl.indexOf('INDEX `idx_user_id`')
     const fkPos = ddl.indexOf('CONSTRAINT `fk_user`')
@@ -493,7 +593,12 @@ describe('compactSchemaDdl', () => {
       'db.t': [{ name: 'id', dataType: 'INT' }],
     }
 
-    const result = compactSchemaDdl(tables, columns, {}, {})
+    const result = compactSchemaDdl({
+      tables: tables,
+      columns: columns,
+      foreignKeys: {},
+      indexes: {},
+    })
     expect(result.ddl).toBe('CREATE TABLE `db`.`t` (`id` INT);')
   })
 
@@ -505,7 +610,7 @@ describe('compactSchemaDdl', () => {
       'db.t': [{ name: 'id', dataType: 'INT' }],
     }
 
-    const result = compactSchemaDdl(tables, columns)
+    const result = compactSchemaDdl({ tables: tables, columns: columns })
     expect(result.ddl).toBe('CREATE TABLE `db`.`t` (`id` INT);')
   })
 })

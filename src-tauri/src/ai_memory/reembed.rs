@@ -1,28 +1,33 @@
 use std::time::Instant;
 
-use crate::schema_index::embeddings;
+use crate::schema_index::embeddings::{self, EmbeddingInput};
 use crate::state::AppState;
 
-use super::read_embedding_config;
 use super::storage;
-use super::types::{MemoryReembedProgress, MemoryScope};
+use super::types::{MemoryReembedProgress, MemoryScope, MemoryVector};
+use super::{read_embedding_config, EmbeddingConfig};
 
-/// Re-embed all memories for a given scope + owner.
-///
-/// `owner_key` is the generic identifier reported in progress events
-/// (`"global"`, `"group_{id}"`, or a connection id). `owner_id` is the actual
-/// owner id used to target the row/vec tables (`None` for global). Behaviour is
-/// identical to the previous per-connection re-embed for the connection scope.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReembedTarget {
+    pub scope: MemoryScope,
+    pub owner_id: Option<String>,
+    pub owner_key: String,
+}
+
 pub async fn reembed_scope_impl<F>(
     state: &AppState,
-    scope: MemoryScope,
-    owner_id: Option<String>,
-    owner_key: &str,
+    target: ReembedTarget,
     progress_callback: F,
 ) -> Result<(), String>
 where
     F: Fn(MemoryReembedProgress) + Send + 'static,
 {
+    let ReembedTarget {
+        scope,
+        owner_id,
+        owner_key,
+    } = target;
+    let owner_key = owner_key.as_str();
     let owner_key_owned = owner_key.to_string();
     let make_progress = move |phase: &str, done: usize, total: usize, error: Option<String>| {
         MemoryReembedProgress {
@@ -59,7 +64,7 @@ where
     tracing::debug!(owner_key, total, "reembed_memories: loaded memory texts");
 
     // Read embedding config.
-    let (endpoint, model) = {
+    let EmbeddingConfig { endpoint, model } = {
         let conn = state
             .db
             .lock()
@@ -93,14 +98,13 @@ where
     // Embed all texts BEFORE touching the vec table.
     let embed_started = Instant::now();
     let content_strings: Vec<String> = texts.iter().map(|(_, content)| content.clone()).collect();
-    let all_embeddings = embeddings::embed_texts(
-        &state.http_client,
-        &endpoint,
-        &model,
-        content_strings,
-        None,
-    )
-    .await
+    let embedding_model = embeddings::EmbeddingModel {
+        base_url: &endpoint,
+        model: &model,
+    };
+    let input = EmbeddingInput::texts(content_strings);
+    let all_embeddings = embeddings::embed_texts(&state.http_client, embedding_model, input)
+        .await
     .map_err(|error| {
         let message = error.to_string();
         tracing::error!(owner_key, model = %model, error = %message, "reembed_memories: embed_texts failed");
@@ -151,7 +155,11 @@ where
         for (text_index, ((id, _), embedding)) in
             texts.iter().zip(all_embeddings.iter()).enumerate()
         {
-            storage::insert_memory_vector(&conn, &table_name, *id, embedding)
+            let vector = MemoryVector {
+                memory_id: *id,
+                embedding,
+            };
+            storage::insert_memory_vector(&conn, &table_name, &vector)
                 .map_err(|error| {
                     let message = error.to_string();
                     tracing::error!(owner_key, memory_id = id, error = %message, "reembed_memories: failed to insert vector");
@@ -184,12 +192,10 @@ pub async fn reembed_memories_impl<F>(
 where
     F: Fn(MemoryReembedProgress) + Send + 'static,
 {
-    reembed_scope_impl(
-        state,
-        MemoryScope::Connection,
-        Some(connection_id.to_string()),
-        connection_id,
-        progress_callback,
-    )
-    .await
+    let target = ReembedTarget {
+        scope: MemoryScope::Connection,
+        owner_id: Some(connection_id.to_string()),
+        owner_key: connection_id.to_string(),
+    };
+    reembed_scope_impl(state, target, progress_callback).await
 }

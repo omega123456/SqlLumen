@@ -2,6 +2,14 @@ use crate::credentials;
 use crate::mysql::pool;
 use crate::mysql::schema_queries::safe_identifier;
 use crate::state::AppState;
+use serde::Deserialize;
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectDatabaseRequest {
+    pub connection_id: String,
+    pub database_name: String,
+}
 
 #[cfg(any(test, feature = "test-utils"))]
 type SelectDatabaseHook = fn(&str, &str) -> Result<(), String>;
@@ -20,9 +28,10 @@ pub fn set_test_select_database_hook(hook: Option<SelectDatabaseHook>) {
 
 pub async fn select_database_impl(
     state: &AppState,
-    connection_id: &str,
-    database_name: &str,
+    request: &SelectDatabaseRequest,
 ) -> Result<(), String> {
+    let connection_id = request.connection_id.as_str();
+    let database_name = request.database_name.as_str();
     let mut stored_params = state
         .registry
         .get_connection_params(connection_id)
@@ -69,9 +78,8 @@ pub async fn select_database_impl(
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn select_database(
-    connection_id: String,
-    database_name: String,
+    payload: SelectDatabaseRequest,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-    select_database_impl(&state, &connection_id, &database_name).await
+    select_database_impl(&state, &payload).await
 }

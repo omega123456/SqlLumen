@@ -604,7 +604,12 @@ describe('provideSignatureHelp — built-in functions', () => {
     // Should NOT return the built-in ABS — it's database-qualified
     expect(result).toBeUndefined()
     // Should have attempted a database-qualified routine lookup
-    expect(mockGetRoutineParameters()).toHaveBeenCalledWith('conn-1', 'mydb', 'abs', 'FUNCTION')
+    expect(mockGetRoutineParameters()).toHaveBeenCalledWith({
+      connectionId: 'conn-1',
+      database: 'mydb',
+      routineName: 'abs',
+      routineType: 'FUNCTION',
+    })
   })
 })
 
@@ -710,7 +715,12 @@ describe('provideSignatureHelp — database-qualified stored routine', () => {
     expect(result).not.toBeNull()
     expect(result!.value.signatures[0].label).toContain('my_func')
     expect(result!.value.signatures[0].label).toContain('IN val INT')
-    expect(mockGetRoutineParameters()).toHaveBeenCalledWith('conn-1', 'mydb', 'my_func', 'FUNCTION')
+    expect(mockGetRoutineParameters()).toHaveBeenCalledWith({
+      connectionId: 'conn-1',
+      database: 'mydb',
+      routineName: 'my_func',
+      routineType: 'FUNCTION',
+    })
   })
 
   it('returns undefined when database-qualified routine is not found', async () => {
@@ -807,12 +817,12 @@ describe('provideSignatureHelp — unqualified stored routine via cache', () => 
     expect(result!.value.signatures[0].parameters).toHaveLength(2)
     expect(result!.value.signatures[0].parameters[0].label).toBe('IN p1 VARCHAR(255)')
     expect(result!.value.signatures[0].parameters[1].label).toBe('OUT p2 INT')
-    expect(mockGetRoutineParameters()).toHaveBeenCalledWith(
-      'conn-1',
-      'testdb',
-      'my_proc',
-      'PROCEDURE'
-    )
+    expect(mockGetRoutineParameters()).toHaveBeenCalledWith({
+      connectionId: 'conn-1',
+      database: 'testdb',
+      routineName: 'my_proc',
+      routineType: 'PROCEDURE',
+    })
   })
 
   it('awaits cache load on first use and returns result after loading', async () => {
@@ -964,12 +974,12 @@ describe('provideSignatureHelp — unqualified stored routine via cache', () => 
 
     expect(result).not.toBeNull()
     expect(result!.value.signatures[0].label).toContain('tree_func')
-    expect(mockGetRoutineParameters()).toHaveBeenCalledWith(
-      'conn-1',
-      'schemadb',
-      'tree_func',
-      'FUNCTION'
-    )
+    expect(mockGetRoutineParameters()).toHaveBeenCalledWith({
+      connectionId: 'conn-1',
+      database: 'schemadb',
+      routineName: 'tree_func',
+      routineType: 'FUNCTION',
+    })
   })
 
   it('handles getSelectedDatabase returning null gracefully', async () => {
@@ -1034,12 +1044,12 @@ describe('provideSignatureHelp — qualified CALL should look up procedure', () 
     expect(result!.value.signatures[0].label).toContain('my_proc')
     expect(result!.value.signatures[0].parameters).toHaveLength(2)
     // Must have called with procedure type (not function)
-    expect(mockGetRoutineParameters()).toHaveBeenCalledWith(
-      'conn-1',
-      'mydb',
-      'my_proc',
-      'PROCEDURE'
-    )
+    expect(mockGetRoutineParameters()).toHaveBeenCalledWith({
+      connectionId: 'conn-1',
+      database: 'mydb',
+      routineName: 'my_proc',
+      routineType: 'PROCEDURE',
+    })
   })
 })
 
@@ -1093,7 +1103,12 @@ describe('provideSignatureHelp — same-name disambiguation', () => {
 
     expect(result).not.toBeNull()
     // Should have looked up procedure, not returned the built-in
-    expect(mockGetRoutineParameters()).toHaveBeenCalledWith('conn-1', 'testdb', 'abs', 'PROCEDURE')
+    expect(mockGetRoutineParameters()).toHaveBeenCalledWith({
+      connectionId: 'conn-1',
+      database: 'testdb',
+      routineName: 'abs',
+      routineType: 'PROCEDURE',
+    })
   })
 })
 

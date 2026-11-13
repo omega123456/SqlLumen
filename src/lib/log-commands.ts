@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeCommand } from './ipc/dispatch'
 
 export type LogLevelFilter = 'all' | 'error' | 'warn' | 'info' | 'debug' | 'trace'
 
@@ -18,7 +18,7 @@ export interface LogPage {
 }
 
 export async function listLogs(page: number, level: LogLevelFilter): Promise<LogPage> {
-  return invoke<LogPage>('list_logs', { page, level })
+  return invokeCommand({ command: 'list_logs', payload: { page, level } })
 }
 
 export async function exportLogs(
@@ -26,5 +26,8 @@ export async function exportLogs(
   endTimestamp: string,
   filePath: string
 ): Promise<number> {
-  return invoke<number>('export_logs', { startTimestamp, endTimestamp, filePath })
+  return invokeCommand({
+    command: 'export_logs',
+    payload: { startTimestamp, endTimestamp, filePath },
+  })
 }

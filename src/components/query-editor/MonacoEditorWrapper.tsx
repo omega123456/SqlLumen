@@ -323,7 +323,12 @@ export function MonacoEditorWrapper({
     if (!editorRef.current) return unregisterOnCleanup
     if (!connectionId) return unregisterOnCleanup
     if (!modelUri) return unregisterOnCleanup
-    registerModelConnection(modelUri, connectionId, tabId, tabType)
+    registerModelConnection({
+      uri: modelUri,
+      connectionId: connectionId,
+      tabId: tabId,
+      tabType: tabType,
+    })
     return unregisterOnCleanup
   }, [connectionId, tabId, tabType])
 
@@ -350,7 +355,12 @@ export function MonacoEditorWrapper({
 
     // Register model-connection mapping on mount
     if (connectionId && modelUriRef.current) {
-      registerModelConnection(modelUriRef.current, connectionId, tabId, tabType)
+      registerModelConnection({
+        uri: modelUriRef.current,
+        connectionId: connectionId,
+        tabId: tabId,
+        tabType: tabType,
+      })
     }
 
     // Register themes if not already done

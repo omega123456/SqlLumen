@@ -18,7 +18,14 @@ fn test_get_setting_impl_returns_none_for_missing() {
 #[test]
 fn test_set_and_get_setting_impl() {
     let state = common::test_app_state();
-    set_setting_impl(&state, "theme", "dark").expect("should set");
+    set_setting_impl(
+        &state,
+        &sqllumen_lib::commands::settings::SetSettingRequest {
+            key: "theme".to_string(),
+            value: "dark".to_string(),
+        },
+    )
+    .expect("should set");
     let result = get_setting_impl(&state, "theme").expect("should get");
     assert_eq!(result, Some("dark".to_string()));
 }
@@ -26,8 +33,22 @@ fn test_set_and_get_setting_impl() {
 #[test]
 fn test_set_setting_impl_upserts() {
     let state = common::test_app_state();
-    set_setting_impl(&state, "theme", "light").expect("should set");
-    set_setting_impl(&state, "theme", "dark").expect("should upsert");
+    set_setting_impl(
+        &state,
+        &sqllumen_lib::commands::settings::SetSettingRequest {
+            key: "theme".to_string(),
+            value: "light".to_string(),
+        },
+    )
+    .expect("should set");
+    set_setting_impl(
+        &state,
+        &sqllumen_lib::commands::settings::SetSettingRequest {
+            key: "theme".to_string(),
+            value: "dark".to_string(),
+        },
+    )
+    .expect("should upsert");
     let result = get_setting_impl(&state, "theme").expect("should get");
     assert_eq!(result, Some("dark".to_string()));
 }
@@ -42,8 +63,22 @@ fn test_get_all_settings_impl_empty() {
 #[test]
 fn test_get_all_settings_impl_with_values() {
     let state = common::test_app_state();
-    set_setting_impl(&state, "theme", "dark").expect("set theme");
-    set_setting_impl(&state, "font", "mono").expect("set font");
+    set_setting_impl(
+        &state,
+        &sqllumen_lib::commands::settings::SetSettingRequest {
+            key: "theme".to_string(),
+            value: "dark".to_string(),
+        },
+    )
+    .expect("set theme");
+    set_setting_impl(
+        &state,
+        &sqllumen_lib::commands::settings::SetSettingRequest {
+            key: "font".to_string(),
+            value: "mono".to_string(),
+        },
+    )
+    .expect("set font");
     let all = get_all_settings_impl(&state).expect("should get all");
     assert_eq!(all.len(), 2);
     assert_eq!(all.get("theme"), Some(&"dark".to_string()));
@@ -56,8 +91,10 @@ fn test_set_setting_impl_handles_log_level_key() {
 
     set_setting_impl(
         &state,
-        sqllumen_lib::logging::LOG_LEVEL_SETTING_KEY,
-        "debug",
+        &sqllumen_lib::commands::settings::SetSettingRequest {
+            key: sqllumen_lib::logging::LOG_LEVEL_SETTING_KEY.to_string(),
+            value: "debug".to_string(),
+        },
     )
     .expect("should set log level");
 
@@ -117,7 +154,14 @@ fn test_settings_impls_surface_poisoned_db_lock_errors() {
         "unexpected error: {get_error}"
     );
 
-    let set_error = set_setting_impl(&state, "theme", "dark").expect_err("set should fail");
+    let set_error = set_setting_impl(
+        &state,
+        &sqllumen_lib::commands::settings::SetSettingRequest {
+            key: "theme".to_string(),
+            value: "dark".to_string(),
+        },
+    )
+    .expect_err("set should fail");
     assert!(
         set_error.contains("poison"),
         "unexpected error: {set_error}"
@@ -178,7 +222,13 @@ fn test_set_setting_impl_ignores_poisoned_log_reload_mutex() {
         );
     });
 
-    let result = set_setting_impl(&state, sqllumen_lib::logging::LOG_LEVEL_SETTING_KEY, "info");
+    let result = set_setting_impl(
+        &state,
+        &sqllumen_lib::commands::settings::SetSettingRequest {
+            key: sqllumen_lib::logging::LOG_LEVEL_SETTING_KEY.to_string(),
+            value: "info".to_string(),
+        },
+    );
     assert!(result.is_ok(), "set should ignore poisoned reload path");
 }
 
@@ -189,7 +239,14 @@ fn test_set_setting_impl_updates_result_cache_ttl() {
     assert_eq!(state.result_cache.ttl_seconds(), 1800);
     assert_eq!(state.table_data_cache.ttl_seconds(), 1800);
 
-    set_setting_impl(&state, "results.cacheTTL", "900").expect("should set ttl");
+    set_setting_impl(
+        &state,
+        &sqllumen_lib::commands::settings::SetSettingRequest {
+            key: "results.cacheTTL".to_string(),
+            value: "900".to_string(),
+        },
+    )
+    .expect("should set ttl");
 
     assert_eq!(state.result_cache.ttl_seconds(), 900);
     assert_eq!(state.table_data_cache.ttl_seconds(), 900);
@@ -204,8 +261,14 @@ fn test_set_setting_impl_ignores_unparseable_result_cache_ttl() {
     assert_eq!(state.result_cache.ttl_seconds(), 1800);
     assert_eq!(state.table_data_cache.ttl_seconds(), 1800);
 
-    set_setting_impl(&state, "results.cacheTTL", "not-a-number")
-        .expect("should persist invalid ttl string");
+    set_setting_impl(
+        &state,
+        &sqllumen_lib::commands::settings::SetSettingRequest {
+            key: "results.cacheTTL".to_string(),
+            value: "not-a-number".to_string(),
+        },
+    )
+    .expect("should persist invalid ttl string");
 
     assert_eq!(state.result_cache.ttl_seconds(), 1800);
     assert_eq!(state.table_data_cache.ttl_seconds(), 1800);
@@ -218,16 +281,44 @@ fn test_set_setting_impl_updates_result_row_ceiling_with_clamping() {
     let state = common::test_app_state();
     assert_eq!(state.result_cache.row_ceiling(), 100_000);
 
-    set_setting_impl(&state, "results.maxRows", "250000").expect("valid value");
+    set_setting_impl(
+        &state,
+        &sqllumen_lib::commands::settings::SetSettingRequest {
+            key: "results.maxRows".to_string(),
+            value: "250000".to_string(),
+        },
+    )
+    .expect("valid value");
     assert_eq!(state.result_cache.row_ceiling(), 250_000);
 
-    set_setting_impl(&state, "results.maxRows", "10").expect("too low is clamped");
+    set_setting_impl(
+        &state,
+        &sqllumen_lib::commands::settings::SetSettingRequest {
+            key: "results.maxRows".to_string(),
+            value: "10".to_string(),
+        },
+    )
+    .expect("too low is clamped");
     assert_eq!(state.result_cache.row_ceiling(), 1_000);
 
-    set_setting_impl(&state, "results.maxRows", "9000000").expect("too high is clamped");
+    set_setting_impl(
+        &state,
+        &sqllumen_lib::commands::settings::SetSettingRequest {
+            key: "results.maxRows".to_string(),
+            value: "9000000".to_string(),
+        },
+    )
+    .expect("too high is clamped");
     assert_eq!(state.result_cache.row_ceiling(), 1_000_000);
 
-    set_setting_impl(&state, "results.maxRows", "lots").expect("unparseable is persisted");
+    set_setting_impl(
+        &state,
+        &sqllumen_lib::commands::settings::SetSettingRequest {
+            key: "results.maxRows".to_string(),
+            value: "lots".to_string(),
+        },
+    )
+    .expect("unparseable is persisted");
     assert_eq!(
         state.result_cache.row_ceiling(),
         1_000_000,

@@ -207,7 +207,11 @@ function useFormCurrentRow(props: ResultFormViewProps, position: FormRowPosition
     if (!needsFetch) return
     if (fetched?.key === fetchKey) return
     let cancelled = false
-    readViewRange(tabId, resultIndex, [clampedIndex, clampedIndex + 1])
+    readViewRange({
+      tabId: tabId,
+      resultIndex: resultIndex,
+      range: [clampedIndex, clampedIndex + 1],
+    })
       .then((rows) => {
         const firstRow = rows[0]
         if (cancelled) return

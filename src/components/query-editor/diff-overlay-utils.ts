@@ -202,6 +202,13 @@ export function computeUpdatedRange(originalRange: PlainRange, finalSql: string)
   }
 }
 
+export interface DiffApplication {
+  editor: MonacoType.editor.IStandaloneCodeEditor | null
+  state: DiffOverlayState
+  finalSql: string
+  tabId?: string
+}
+
 /**
  * Apply the given SQL to the editor, replacing the original range.
  * Returns true if the replacement was applied, false if the editor model
@@ -212,12 +219,7 @@ export function computeUpdatedRange(originalRange: PlainRange, finalSql: string)
  * the context is updated to reflect the new SQL and recalculated range
  * so that followup AI prompts reference the current editor content.
  */
-export function applyDiff(
-  editor: MonacoType.editor.IStandaloneCodeEditor | null,
-  state: DiffOverlayState,
-  finalSql: string,
-  tabId?: string
-): boolean {
+export function applyDiff({ editor, state, finalSql, tabId }: DiffApplication): boolean {
   const { originalRange } = state
   const model = editor?.getModel()
 

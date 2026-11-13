@@ -211,7 +211,15 @@ fn test_delete_chunks_by_table_removes_source_and_reference() {
     storage::insert_chunk(&conn, &other_chunk).expect("insert other chunk");
 
     // Delete chunks for the "users" table — should remove both the source and FK reference
-    storage::delete_chunks_by_table(&conn, "conn-1", "testdb", "users").expect("delete by table");
+    storage::delete_chunks_by_table(
+        &conn,
+        &sqllumen_lib::schema_index::storage::IndexedTableRef {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "users",
+        },
+    )
+    .expect("delete by table");
 
     let remaining = storage::list_chunks(&conn, "conn-1").expect("list remaining");
     assert_eq!(remaining.len(), 1, "only the products chunk should remain");
@@ -853,7 +861,15 @@ fn test_delete_signature_targets_single_row() {
     )
     .expect("upsert");
 
-    storage::delete_signature(&conn, "conn-1", "db", "a").expect("delete a");
+    storage::delete_signature(
+        &conn,
+        &sqllumen_lib::schema_index::storage::IndexedTableRef {
+            connection_id: "conn-1",
+            db_name: "db",
+            table_name: "a",
+        },
+    )
+    .expect("delete a");
 
     let remaining = storage::get_signatures_for_connection(&conn, "conn-1").expect("read");
     assert_eq!(remaining.len(), 1);
@@ -871,8 +887,15 @@ fn test_delete_signature_is_noop_when_missing() {
     )
     .expect("upsert");
 
-    storage::delete_signature(&conn, "conn-1", "db", "nonexistent")
-        .expect("delete missing row should succeed");
+    storage::delete_signature(
+        &conn,
+        &sqllumen_lib::schema_index::storage::IndexedTableRef {
+            connection_id: "conn-1",
+            db_name: "db",
+            table_name: "nonexistent",
+        },
+    )
+    .expect("delete missing row should succeed");
 
     let remaining = storage::get_signatures_for_connection(&conn, "conn-1").expect("read");
     assert_eq!(remaining.len(), 1);

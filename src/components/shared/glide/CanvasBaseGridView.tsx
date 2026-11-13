@@ -91,6 +91,7 @@ import {
 import { Button } from '../../common/Button'
 import { toErrorMessage } from '../../../lib/error-message'
 import { isPresentIndex } from '../../../lib/value-checks'
+import { elementOf } from '../../../lib/input-events'
 
 const LAST_ASCII_CONTROL_CODE = 0x1f
 const FOREIGN_KEY_AFFORDANCE_WIDTH_PX = 28
@@ -1055,7 +1056,12 @@ function drawCellContent(args: CellDrawArgs, state: CellDrawState, drawContent: 
 
 function drawCellOverlays(args: CellDrawArgs, state: CellDrawState): void {
   if (state.isModified) {
-    drawModifiedCellIndicator(args.ctx, args.rect, args.theme.accentColor, false)
+    drawModifiedCellIndicator({
+      context: args.ctx,
+      rect: args.rect,
+      color: args.theme.accentColor,
+      isDark: false,
+    })
   }
   if (state.hasInfoAffordance) {
     drawInfoAffordance(args.ctx, args.rect, args.theme.linkColor)
@@ -1094,6 +1100,13 @@ function drawContentBesideInfoGutter(args: CellDrawArgs, drawContent: () => void
 
 function skeletonLineHeight(theme: CellDrawArgs['theme']): number {
   return parseFloat(theme.editorFontSize) || SKELETON_FALLBACK_LINE_PX
+}
+
+interface RowPasteLine {
+  rowIndex: number
+  row: GridRow
+  targetColumn: number
+  line: readonly string[]
 }
 
 interface GridClipboardMenuProps {
@@ -1715,12 +1728,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
    * Read-only cells are skipped, and the line is clipped to the grid.
    */
   const pasteLineIntoRow = useCallback(
-    async (
-      rowIndex: number,
-      row: GridRow,
-      targetColumn: number,
-      line: readonly string[]
-    ): Promise<boolean> => {
+    async ({ rowIndex, row, targetColumn, line }: RowPasteLine): Promise<boolean> => {
       const isPasteTarget = (columnIndex: number): boolean => {
         const column = gridColumns[columnIndex]
         if (!column) return false
@@ -1775,7 +1783,12 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       void runRowAction('Pasting', [[rowIndex, rowIndex + 1]], async (rowAt) => {
         const row = rowAt(rowIndex)
         if (!row) return false
-        const pasted = await pasteLineIntoRow(rowIndex, row, columnIndex, line)
+        const pasted = await pasteLineIntoRow({
+          rowIndex: rowIndex,
+          row: row,
+          targetColumn: columnIndex,
+          line: line,
+        })
         const hasSkippedLines = values.length > 1
         if (pasted && hasSkippedLines) {
           showWarningToast(
@@ -1939,13 +1952,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       if (!column) return undefined
       const isEditableColumn = editableColumnKeys?.has(column.key) === true
       if (!isEditableColumn) return undefined
-      return (
-        getGlideEditor(
-          column as GridColumn<unknown>,
-          (column.editorType as
-            'text' | 'enum' | 'set' | 'datetime' | 'fk' | 'json' | 'none' | undefined) ?? 'text'
-        ) ?? undefined
-      )
+      return getGlideEditor(column as GridColumn<unknown>, column.editorType ?? 'text') ?? undefined
     },
     [editableColumnKeys, gridColumns]
   )
@@ -2433,7 +2440,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     setContextMenu({
       x: event.clientX,
       y: event.clientY,
-      portalRoot: getContextMenuPortalRoot(event.target as Element | null),
+      portalRoot: getContextMenuPortalRoot(elementOf(event.target)),
     })
   }, [])
 
@@ -2446,13 +2453,13 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     if (!contextMenu) return
     if (!element) return
     const rect = element.getBoundingClientRect()
-    const position = positionContextMenuInPortal(
-      contextMenu.portalRoot,
-      contextMenu.x,
-      contextMenu.y,
-      rect.width,
-      rect.height
-    )
+    const position = positionContextMenuInPortal({
+      portalRoot: contextMenu.portalRoot,
+      clientX: contextMenu.x,
+      clientY: contextMenu.y,
+      menuWidth: rect.width,
+      menuHeight: rect.height,
+    })
     element.style.left = `${position.x}px`
     element.style.top = `${position.y}px`
   }, [contextMenu])
@@ -2497,13 +2504,13 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       const column = gridColumns[args.col]
       const isUnloadedWindowRow = row === undefined && isWindowed
       if (isUnloadedWindowRow) {
-        drawSkeletonCell(
-          args.ctx,
-          args.rect,
-          skeletonColor,
-          args.theme.cellHorizontalPadding,
-          skeletonLineHeight(args.theme)
-        )
+        drawSkeletonCell({
+          context: args.ctx,
+          rect: args.rect,
+          color: skeletonColor,
+          horizontalPadding: args.theme.cellHorizontalPadding,
+          lineHeight: skeletonLineHeight(args.theme),
+        })
         return
       }
       const isSelected = row != null && (activeSelectedRowIndex === args.row || isRowSelected(row))
@@ -2549,17 +2556,17 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         drawContent()
         return
       }
-      drawCustomHeader(
-        args.ctx,
-        args,
-        {
+      drawCustomHeader({
+        context: args.ctx,
+        args: args,
+        meta: {
           sortDirection: sortColumns.find((sort) => sort.columnKey === column.key)?.direction,
           isReadOnly: column.editable !== true && column.blobViewerEditable !== true,
           hasFkLink: column.foreignKey != null && !isListSelectionColumn(column),
           isHighlighted: highlightColumnKey === column.key,
         },
-        args.theme
-      )
+        theme: args.theme,
+      })
     },
     [gridColumns, highlightColumnKey, sortColumns]
   )

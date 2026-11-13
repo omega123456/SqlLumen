@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeArgumentCommand, invokeCommand, NO_ARGUMENTS } from './ipc/dispatch'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,35 +30,18 @@ export interface MemoryReembedProgress {
   error?: string
 }
 
-// ---------------------------------------------------------------------------
-// IPC wrappers
-// ---------------------------------------------------------------------------
-
-export async function saveMemory(args: {
+export interface SaveMemoryRequest {
   sessionId: string
   content: string
   scope: MemoryScope
-}): Promise<AiMemory> {
-  return invoke('save_memory', args)
 }
 
-export async function listGlobalMemories(): Promise<AiMemory[]> {
-  return invoke('list_global_memories')
+export interface DeleteMemoryRequest {
+  scope: MemoryScope
+  memoryId: number
 }
 
-export async function listGroupMemories(args: { groupId: string }): Promise<AiMemory[]> {
-  return invoke('list_group_memories', args)
-}
-
-export async function listConnectionMemories(args: { connectionId: string }): Promise<AiMemory[]> {
-  return invoke('list_connection_memories', args)
-}
-
-export async function deleteMemory(args: { scope: MemoryScope; memoryId: number }): Promise<void> {
-  return invoke('delete_memory', args)
-}
-
-export async function moveMemory(args: {
+export interface MoveMemoryRequest {
   memoryId: number
   fromScope: MemoryScope
   toScope: MemoryScope
@@ -66,18 +49,44 @@ export async function moveMemory(args: {
   toConnectionId?: string
   fromGroupId?: string
   fromConnectionId?: string
-}): Promise<AiMemory> {
-  return invoke('move_memory', args)
 }
 
-export async function searchMemories(args: {
+export interface SearchMemoriesRequest {
   sessionId: string
   query: string
-  k: number
+  limit: number
+}
+
+export async function saveMemory(request: SaveMemoryRequest): Promise<AiMemory> {
+  return invokeCommand({ command: 'save_memory', payload: request })
+}
+
+export async function listGlobalMemories(): Promise<AiMemory[]> {
+  return invokeArgumentCommand({ command: 'list_global_memories', argument: NO_ARGUMENTS })
+}
+
+export async function listGroupMemories(argument: { groupId: string }): Promise<AiMemory[]> {
+  return invokeArgumentCommand({ command: 'list_group_memories', argument: argument })
+}
+
+export async function listConnectionMemories(argument: {
+  connectionId: string
 }): Promise<AiMemory[]> {
-  return invoke('search_memories', args)
+  return invokeArgumentCommand({ command: 'list_connection_memories', argument: argument })
+}
+
+export async function deleteMemory(request: DeleteMemoryRequest): Promise<void> {
+  return invokeCommand({ command: 'delete_memory', payload: request })
+}
+
+export async function moveMemory(request: MoveMemoryRequest): Promise<AiMemory> {
+  return invokeCommand({ command: 'move_memory', payload: request })
+}
+
+export async function searchMemories(request: SearchMemoriesRequest): Promise<AiMemory[]> {
+  return invokeCommand({ command: 'search_memories', payload: request })
 }
 
 export async function reembedAllMemories(): Promise<void> {
-  return invoke('reembed_all_memories')
+  return invokeArgumentCommand({ command: 'reembed_all_memories', argument: NO_ARGUMENTS })
 }

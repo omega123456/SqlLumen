@@ -80,7 +80,11 @@ fn log_frontend_impl_dispatches_each_tracing_level() {
             ("debug", "d"),
             ("trace", "t"),
         ] {
-            log_frontend_impl(lvl, text).unwrap();
+            log_frontend_impl(&sqllumen_lib::commands::frontend_log::LogFrontendRequest {
+                level: lvl.to_string(),
+                message: text.to_string(),
+            })
+            .unwrap();
         }
     });
 
@@ -96,8 +100,16 @@ fn log_frontend_impl_dispatches_each_tracing_level() {
 #[test]
 fn log_frontend_impl_normalizes_level_case_and_whitespace() {
     let recorded = with_capture(|| {
-        log_frontend_impl("  ERROR  ", "x").unwrap();
-        log_frontend_impl("InFo", "y").unwrap();
+        log_frontend_impl(&sqllumen_lib::commands::frontend_log::LogFrontendRequest {
+            level: "  ERROR  ".to_string(),
+            message: "x".to_string(),
+        })
+        .unwrap();
+        log_frontend_impl(&sqllumen_lib::commands::frontend_log::LogFrontendRequest {
+            level: "InFo".to_string(),
+            message: "y".to_string(),
+        })
+        .unwrap();
     });
 
     assert_eq!(recorded.len(), 2);
@@ -110,7 +122,11 @@ fn log_frontend_impl_normalizes_level_case_and_whitespace() {
 #[test]
 fn log_frontend_impl_unknown_level_returns_err_and_emits_no_event() {
     let recorded = with_capture(|| {
-        let err = log_frontend_impl("bogus", "nope").unwrap_err();
+        let err = log_frontend_impl(&sqllumen_lib::commands::frontend_log::LogFrontendRequest {
+            level: "bogus".to_string(),
+            message: "nope".to_string(),
+        })
+        .unwrap_err();
         assert!(err.contains("unknown"), "err={err}");
     });
 

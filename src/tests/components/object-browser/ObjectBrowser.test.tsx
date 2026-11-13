@@ -1392,7 +1392,7 @@ describe('ObjectBrowser', () => {
       await user.click(screen.getByTestId('confirm-confirm-button'))
 
       await waitFor(() => {
-        expect(ipc.calls('drop_database')).toContainEqual({
+        expect(ipc.payloads('drop_database')).toContainEqual({
           connectionId: CONN_ID,
           name: 'ecommerce_db',
         })
@@ -1471,7 +1471,7 @@ describe('ObjectBrowser', () => {
       await user.click(screen.getByTestId('confirm-confirm-button'))
 
       await waitFor(() => {
-        expect(ipc.calls('drop_table')).toContainEqual({
+        expect(ipc.payloads('drop_table')).toContainEqual({
           connectionId: CONN_ID,
           database: 'ecommerce_db',
           table: 'users',
@@ -1522,7 +1522,7 @@ describe('ObjectBrowser', () => {
       await user.click(screen.getByTestId('confirm-confirm-button'))
 
       await waitFor(() => {
-        expect(ipc.calls('truncate_table')).toContainEqual({
+        expect(ipc.payloads('truncate_table')).toContainEqual({
           connectionId: CONN_ID,
           database: 'ecommerce_db',
           table: 'users',
@@ -1576,7 +1576,7 @@ describe('ObjectBrowser', () => {
       await user.click(screen.getByTestId('rename-confirm-button'))
 
       await waitFor(() => {
-        expect(ipc.calls('rename_table')).toContainEqual({
+        expect(ipc.payloads('rename_table')).toContainEqual({
           connectionId: CONN_ID,
           database: 'ecommerce_db',
           oldName: 'users',
@@ -1740,7 +1740,7 @@ describe('ObjectBrowser', () => {
       await user.click(screen.getByTestId('rename-confirm-button'))
 
       await waitFor(() => {
-        expect(ipc.calls('rename_database')).toContainEqual({
+        expect(ipc.payloads('rename_database')).toContainEqual({
           connectionId: CONN_ID,
           oldName: 'ecommerce_db',
           newName: 'production_db',
@@ -1777,7 +1777,11 @@ describe('ObjectBrowser', () => {
       })
 
       // Call closeTabsByObject with objectType 'view' — as handleDropObjectConfirm does
-      useWorkspaceStore.getState().closeTabsByObject(CONN_ID, 'ecommerce_db', 'user_stats', 'view')
+      useWorkspaceStore.getState().closeTabsByObject(CONN_ID, {
+        databaseName: 'ecommerce_db',
+        objectName: 'user_stats',
+        objectType: 'view',
+      })
 
       const tabs = useWorkspaceStore.getState().tabsByConnection[CONN_ID]
       expect(tabs).toHaveLength(0)
@@ -1807,7 +1811,11 @@ describe('ObjectBrowser', () => {
       })
 
       // Dropping a VIEW named 'shared_name' should NOT close the table's tab
-      useWorkspaceStore.getState().closeTabsByObject(CONN_ID, 'ecommerce_db', 'shared_name', 'view')
+      useWorkspaceStore.getState().closeTabsByObject(CONN_ID, {
+        databaseName: 'ecommerce_db',
+        objectName: 'shared_name',
+        objectType: 'view',
+      })
 
       const tabs = useWorkspaceStore.getState().tabsByConnection[CONN_ID]
       expect(tabs).toHaveLength(1)

@@ -8,16 +8,16 @@ use sqllumen_lib::db::migrations::run_log_migrations;
 use sqllumen_lib::logging::log_store::{insert_log_entries, NewLogEntry, LOG_PAGE_SIZE};
 use tempfile::tempdir;
 
-fn seed_log(
-    timestamp: chrono::DateTime<Utc>,
-    level: &str,
-    level_num: i64,
-    message: &str,
-) -> NewLogEntry {
+struct TestLevel<'a> {
+    name: &'a str,
+    num: i64,
+}
+
+fn seed_log(timestamp: chrono::DateTime<Utc>, level: TestLevel<'_>, message: &str) -> NewLogEntry {
     NewLogEntry {
         timestamp: timestamp.to_rfc3339(),
-        level: level.to_string(),
-        level_num,
+        level: level.name.to_string(),
+        level_num: level.num,
         target: "sqllumen_lib::tests".to_string(),
         message: message.to_string(),
     }
@@ -47,8 +47,10 @@ fn list_logs_impl_applies_threshold_and_paging() {
         };
         rows.push(seed_log(
             timestamp,
-            level,
-            level_num,
+            TestLevel {
+                name: level,
+                num: level_num,
+            },
             &format!("message-{index:03}"),
         ));
     }
@@ -58,7 +60,14 @@ fn list_logs_impl_applies_threshold_and_paging() {
         insert_log_entries(&mut conn, &rows).expect("seed logs");
     }
 
-    let first_page = list_logs_impl(&state, 1, "warn").expect("list logs");
+    let first_page = list_logs_impl(
+        &state,
+        &sqllumen_lib::commands::logs::ListLogsRequest {
+            page: 1,
+            level: "warn".to_string(),
+        },
+    )
+    .expect("list logs");
     assert_eq!(first_page.page, 1);
     assert_eq!(first_page.page_size, LOG_PAGE_SIZE);
     assert_eq!(first_page.total, 65);
@@ -75,7 +84,14 @@ fn list_logs_impl_applies_threshold_and_paging() {
         Some("message-000")
     );
 
-    let last_page = list_logs_impl(&state, 4, "warn").expect("list page 4");
+    let last_page = list_logs_impl(
+        &state,
+        &sqllumen_lib::commands::logs::ListLogsRequest {
+            page: 4,
+            level: "warn".to_string(),
+        },
+    )
+    .expect("list page 4");
     assert_eq!(last_page.entries.len(), 5);
     assert_eq!(
         last_page.entries.last().map(|entry| entry.message.as_str()),
@@ -93,9 +109,30 @@ fn export_logs_impl_writes_csv_in_oldest_first_order() {
         insert_log_entries(
             &mut conn,
             &[
-                seed_log(now - Duration::days(2), "INFO", 30, "older"),
-                seed_log(now - Duration::days(1), "WARN", 40, "middle"),
-                seed_log(now, "ERROR", 50, "newer"),
+                seed_log(
+                    now - Duration::days(2),
+                    TestLevel {
+                        name: "INFO",
+                        num: 30,
+                    },
+                    "older",
+                ),
+                seed_log(
+                    now - Duration::days(1),
+                    TestLevel {
+                        name: "WARN",
+                        num: 40,
+                    },
+                    "middle",
+                ),
+                seed_log(
+                    now,
+                    TestLevel {
+                        name: "ERROR",
+                        num: 50,
+                    },
+                    "newer",
+                ),
             ],
         )
         .expect("seed export logs");
@@ -105,9 +142,14 @@ fn export_logs_impl_writes_csv_in_oldest_first_order() {
     let export_path = export_dir.path().join("logs.csv");
     let exported_rows = export_logs_impl(
         &state,
-        "2026-06-04",
-        "2026-06-05",
-        export_path.to_str().expect("path should be valid utf-8"),
+        &sqllumen_lib::commands::logs::ExportLogsRequest {
+            start_timestamp: "2026-06-04".to_string(),
+            end_timestamp: "2026-06-05".to_string(),
+            file_path: export_path
+                .to_str()
+                .expect("path should be valid utf-8")
+                .to_string(),
+        },
     )
     .expect("export logs");
 
@@ -128,17 +170,32 @@ fn export_logs_impl_sanitizes_formula_like_string_cells() {
 
     {
         let mut conn = state.logs_db.lock().expect("lock logs db");
-        insert_log_entries(&mut conn, &[seed_log(timestamp, "INFO", 30, "=SUM(A1:A2)")])
-            .expect("seed export logs");
+        insert_log_entries(
+            &mut conn,
+            &[seed_log(
+                timestamp,
+                TestLevel {
+                    name: "INFO",
+                    num: 30,
+                },
+                "=SUM(A1:A2)",
+            )],
+        )
+        .expect("seed export logs");
     }
 
     let export_dir = tempdir().expect("create tempdir");
     let export_path = export_dir.path().join("sanitized-logs.csv");
     export_logs_impl(
         &state,
-        "2026-06-06",
-        "2026-06-06",
-        export_path.to_str().expect("path should be valid utf-8"),
+        &sqllumen_lib::commands::logs::ExportLogsRequest {
+            start_timestamp: "2026-06-06".to_string(),
+            end_timestamp: "2026-06-06".to_string(),
+            file_path: export_path
+                .to_str()
+                .expect("path should be valid utf-8")
+                .to_string(),
+        },
     )
     .expect("export logs");
 
@@ -160,14 +217,18 @@ fn export_logs_impl_honors_local_day_timestamps_near_utc_boundaries() {
             &[
                 seed_log(
                     Utc.with_ymd_and_hms(2026, 6, 1, 3, 30, 0).unwrap(),
-                    "INFO",
-                    30,
+                    TestLevel {
+                        name: "INFO",
+                        num: 30,
+                    },
                     "inside-local-day",
                 ),
                 seed_log(
                     Utc.with_ymd_and_hms(2026, 6, 2, 4, 30, 0).unwrap(),
-                    "INFO",
-                    30,
+                    TestLevel {
+                        name: "INFO",
+                        num: 30,
+                    },
                     "outside-local-day",
                 ),
             ],
@@ -179,9 +240,14 @@ fn export_logs_impl_honors_local_day_timestamps_near_utc_boundaries() {
     let export_path = export_dir.path().join("timezone-logs.csv");
     let exported_rows = export_logs_impl(
         &state,
-        "2026-05-31T04:00:00.000-04:00",
-        "2026-06-01T03:59:59.999-04:00",
-        export_path.to_str().expect("path should be valid utf-8"),
+        &sqllumen_lib::commands::logs::ExportLogsRequest {
+            start_timestamp: "2026-05-31T04:00:00.000-04:00".to_string(),
+            end_timestamp: "2026-06-01T03:59:59.999-04:00".to_string(),
+            file_path: export_path
+                .to_str()
+                .expect("path should be valid utf-8")
+                .to_string(),
+        },
     )
     .expect("export logs");
 
@@ -203,14 +269,18 @@ fn export_logs_impl_accepts_seven_inclusive_local_days_for_non_utc_offsets() {
             &[
                 seed_log(
                     Utc.with_ymd_and_hms(2026, 6, 1, 4, 0, 1).unwrap(),
-                    "INFO",
-                    30,
+                    TestLevel {
+                        name: "INFO",
+                        num: 30,
+                    },
                     "range-start",
                 ),
                 seed_log(
                     Utc.with_ymd_and_hms(2026, 6, 8, 3, 0, 0).unwrap(),
-                    "INFO",
-                    30,
+                    TestLevel {
+                        name: "INFO",
+                        num: 30,
+                    },
                     "range-end",
                 ),
             ],
@@ -222,9 +292,14 @@ fn export_logs_impl_accepts_seven_inclusive_local_days_for_non_utc_offsets() {
     let export_path = export_dir.path().join("seven-days-offset.csv");
     let exported_rows = export_logs_impl(
         &state,
-        "2026-06-01T00:00:00.000-04:00",
-        "2026-06-07T23:59:59.999-04:00",
-        export_path.to_str().expect("path should be valid utf-8"),
+        &sqllumen_lib::commands::logs::ExportLogsRequest {
+            start_timestamp: "2026-06-01T00:00:00.000-04:00".to_string(),
+            end_timestamp: "2026-06-07T23:59:59.999-04:00".to_string(),
+            file_path: export_path
+                .to_str()
+                .expect("path should be valid utf-8")
+                .to_string(),
+        },
     )
     .expect("export logs");
 
@@ -243,9 +318,14 @@ fn export_logs_impl_rejects_ranges_longer_than_seven_days() {
 
     let error = export_logs_impl(
         &state,
-        "2026-06-01",
-        "2026-06-08",
-        export_path.to_str().expect("path should be valid utf-8"),
+        &sqllumen_lib::commands::logs::ExportLogsRequest {
+            start_timestamp: "2026-06-01".to_string(),
+            end_timestamp: "2026-06-08".to_string(),
+            file_path: export_path
+                .to_str()
+                .expect("path should be valid utf-8")
+                .to_string(),
+        },
     )
     .expect_err("range should be rejected");
 
@@ -263,9 +343,14 @@ fn export_logs_impl_rejects_descending_ranges() {
 
     let error = export_logs_impl(
         &state,
-        "2026-06-06",
-        "2026-06-05",
-        export_path.to_str().expect("path should be valid utf-8"),
+        &sqllumen_lib::commands::logs::ExportLogsRequest {
+            start_timestamp: "2026-06-06".to_string(),
+            end_timestamp: "2026-06-05".to_string(),
+            file_path: export_path
+                .to_str()
+                .expect("path should be valid utf-8")
+                .to_string(),
+        },
     )
     .expect_err("descending range should be rejected");
 
@@ -275,7 +360,14 @@ fn export_logs_impl_rejects_descending_ranges() {
 #[test]
 fn list_logs_impl_rejects_invalid_level() {
     let state = prepare_logs_state();
-    let error = list_logs_impl(&state, 1, "bogus").expect_err("invalid level should be rejected");
+    let error = list_logs_impl(
+        &state,
+        &sqllumen_lib::commands::logs::ListLogsRequest {
+            page: 1,
+            level: "bogus".to_string(),
+        },
+    )
+    .expect_err("invalid level should be rejected");
     assert!(
         error.contains("invalid log level filter"),
         "unexpected error: {error}"
@@ -286,7 +378,14 @@ fn list_logs_impl_rejects_invalid_level() {
 fn list_logs_impl_surfaces_query_errors() {
     // No schema initialized, so the underlying query fails and is mapped to a String.
     let state = common::test_app_state();
-    let error = list_logs_impl(&state, 1, "all").expect_err("query should fail without schema");
+    let error = list_logs_impl(
+        &state,
+        &sqllumen_lib::commands::logs::ListLogsRequest {
+            page: 1,
+            level: "all".to_string(),
+        },
+    )
+    .expect_err("query should fail without schema");
     assert!(!error.is_empty(), "expected a non-empty error message");
 }
 
@@ -297,9 +396,14 @@ fn export_logs_impl_surfaces_query_errors() {
     let export_path = export_dir.path().join("missing-schema.csv");
     let error = export_logs_impl(
         &state,
-        "2026-06-06",
-        "2026-06-06",
-        export_path.to_str().expect("path should be valid utf-8"),
+        &sqllumen_lib::commands::logs::ExportLogsRequest {
+            start_timestamp: "2026-06-06".to_string(),
+            end_timestamp: "2026-06-06".to_string(),
+            file_path: export_path
+                .to_str()
+                .expect("path should be valid utf-8")
+                .to_string(),
+        },
     )
     .expect_err("query should fail without schema");
     assert!(!error.is_empty(), "expected a non-empty error message");
@@ -314,8 +418,10 @@ fn export_logs_impl_errors_when_output_path_is_unwritable() {
             &mut conn,
             &[seed_log(
                 Utc.with_ymd_and_hms(2026, 6, 6, 12, 0, 0).unwrap(),
-                "INFO",
-                30,
+                TestLevel {
+                    name: "INFO",
+                    num: 30,
+                },
                 "row",
             )],
         )
@@ -327,9 +433,14 @@ fn export_logs_impl_errors_when_output_path_is_unwritable() {
     let export_path = export_dir.path().join("missing-subdir").join("out.csv");
     let error = export_logs_impl(
         &state,
-        "2026-06-06",
-        "2026-06-06",
-        export_path.to_str().expect("path should be valid utf-8"),
+        &sqllumen_lib::commands::logs::ExportLogsRequest {
+            start_timestamp: "2026-06-06".to_string(),
+            end_timestamp: "2026-06-06".to_string(),
+            file_path: export_path
+                .to_str()
+                .expect("path should be valid utf-8")
+                .to_string(),
+        },
     )
     .expect_err("unwritable path should fail");
     assert!(!error.is_empty(), "expected a non-empty error message");
@@ -342,9 +453,14 @@ fn export_logs_impl_rejects_invalid_timestamps() {
     let export_path = export_dir.path().join("invalid-ts.csv");
     let error = export_logs_impl(
         &state,
-        "not-a-date",
-        "2026-06-06",
-        export_path.to_str().expect("path should be valid utf-8"),
+        &sqllumen_lib::commands::logs::ExportLogsRequest {
+            start_timestamp: "not-a-date".to_string(),
+            end_timestamp: "2026-06-06".to_string(),
+            file_path: export_path
+                .to_str()
+                .expect("path should be valid utf-8")
+                .to_string(),
+        },
     )
     .expect_err("invalid timestamp should be rejected");
     assert!(

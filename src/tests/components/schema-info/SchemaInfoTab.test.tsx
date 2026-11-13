@@ -278,7 +278,7 @@ describe('SchemaInfoTab', () => {
     render(<SchemaInfoTab tab={tab} />)
 
     await waitFor(() => {
-      expect(ipc.calls('get_schema_info')).toContainEqual({
+      expect(ipc.payloads('get_schema_info')).toContainEqual({
         connectionId: 'conn-2',
         database: 'testdb',
         objectName: 'orders',

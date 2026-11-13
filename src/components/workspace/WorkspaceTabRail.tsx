@@ -46,6 +46,7 @@ import {
 } from '../../lib/object-activation'
 import { shortcutLabelParts } from '../../lib/shortcut-labels'
 import { getContextMenuPortalRoot } from '../../lib/context-menu-utils'
+import type { ContextMenuOpenPoint } from '../../lib/context-menu-utils'
 import { getWorkspaceTabIconDescriptor } from './workspace-tab-icons'
 import styles from './WorkspaceTabs.module.css'
 import { isPinnedWorkspaceTab } from '../../lib/workspace-tab-stacks'
@@ -471,20 +472,14 @@ export function WorkspaceTabRail({
   // Context menu
   // ---------------------------------------------------------------------------
 
-  const openTabContextMenu = (
-    tabId: string,
-    pointerX: number,
-    pointerY: number,
-    anchor: Element | null,
-    invokerTabId: string
-  ) => {
+  const openTabContextMenu = (tabId: string, { x, y, anchor }: ContextMenuOpenPoint) => {
     dispatchDismissAll()
     setContextMenu({
       tabId: tabId,
-      x: pointerX,
-      y: pointerY,
+      x: x,
+      y: y,
       portalRoot: getContextMenuPortalRoot(anchor),
-      invokerTabId: invokerTabId,
+      invokerTabId: tabId,
     })
   }
 
@@ -543,7 +538,11 @@ export function WorkspaceTabRail({
         onPointerDown={(event) => startTabPointerDrag(tab.id, isPinned, event)}
         onContextMenu={(event) => {
           event.preventDefault()
-          openTabContextMenu(tab.id, event.clientX, event.clientY, event.currentTarget, tab.id)
+          openTabContextMenu(tab.id, {
+            x: event.clientX,
+            y: event.clientY,
+            anchor: event.currentTarget,
+          })
         }}
         onKeyDown={(event) => {
           if (event.key === 'ArrowUp') {
@@ -562,8 +561,12 @@ export function WorkspaceTabRail({
             return
           }
           event.preventDefault()
-          const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-          openTabContextMenu(tab.id, rect.left, rect.bottom, event.currentTarget, tab.id)
+          const rect = event.currentTarget.getBoundingClientRect()
+          openTabContextMenu(tab.id, {
+            x: rect.left,
+            y: rect.bottom,
+            anchor: event.currentTarget,
+          })
         }}
         dragging={isDragSource}
         dropIndicator={dropIndicator}

@@ -512,15 +512,12 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
       }
 
       updateCellValue(tabId, foreignKeyLookupTarget.columnKey, selectedValue)
-      useTableDataStore
-        .getState()
-        .syncCellValue(
-          tabId,
-          currentRowData,
-          foreignKeyLookupTarget.columnKey,
-          selectedValue,
-          currentRowKey
-        )
+      useTableDataStore.getState().syncCellValue(tabId, {
+        rowData: currentRowData,
+        column: foreignKeyLookupTarget.columnKey,
+        value: selectedValue,
+        rowKeyOverride: currentRowKey,
+      })
       closeForeignKeyLookup()
     },
     [

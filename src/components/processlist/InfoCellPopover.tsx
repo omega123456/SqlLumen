@@ -39,7 +39,12 @@ export function InfoCellPopover({ sql, anchorEl, anchorRect, onClose }: InfoCell
   }, [anchorEl, anchorRect])
 
   const isOpen = (anchorEl != null || anchorRect != null) && sql != null
-  useDismissOnOutsideClick(popoverRef, isOpen, onClose, { closeOnEscape: true })
+  useDismissOnOutsideClick({
+    ref: popoverRef,
+    active: isOpen,
+    onDismiss: onClose,
+    options: { closeOnEscape: true },
+  })
 
   const handleCopy = useCallback(async () => {
     if (!sql) return

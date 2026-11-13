@@ -38,7 +38,12 @@ export function TabContextMenu({ visible, x, y, portalRoot, items, onClose }: Ta
     onClose()
   }, [onClose])
 
-  useDismissOnOutsideClick(menuRef, visible, closeMenu, { closeOnEscape: true })
+  useDismissOnOutsideClick({
+    ref: menuRef,
+    active: visible,
+    onDismiss: closeMenu,
+    options: { closeOnEscape: true },
+  })
 
   useEffect(() => {
     if (!visible) return
@@ -54,7 +59,13 @@ export function TabContextMenu({ visible, x, y, portalRoot, items, onClose }: Ta
     if (!visible) return
     if (!menu) return
     const rect = menu.getBoundingClientRect()
-    const position = positionContextMenuInPortal(portalRoot, x, y, rect.width, rect.height)
+    const position = positionContextMenuInPortal({
+      portalRoot: portalRoot,
+      clientX: x,
+      clientY: y,
+      menuWidth: rect.width,
+      menuHeight: rect.height,
+    })
     menu.style.left = `${position.x}px`
     menu.style.top = `${position.y}px`
   }, [visible, x, y, portalRoot])

@@ -200,7 +200,12 @@ export function ObjectBrowserContextMenu({
     onClose()
   }, [onClose])
 
-  useDismissOnOutsideClick(menuRef, visible, closeMenu, { closeOnEscape: true })
+  useDismissOnOutsideClick({
+    ref: menuRef,
+    active: visible,
+    onDismiss: closeMenu,
+    options: { closeOnEscape: true },
+  })
 
   // Listen for dismiss-all events from other context menus
   useEffect(() => {
@@ -220,14 +225,14 @@ export function ObjectBrowserContextMenu({
     if (!visible) return
     if (!element) return
     const rect = element.getBoundingClientRect()
-    const position = clampContextMenuPosition(
-      x,
-      y,
-      rect.width,
-      rect.height,
-      window.innerWidth,
-      window.innerHeight
-    )
+    const position = clampContextMenuPosition({
+      requestedX: x,
+      requestedY: y,
+      menuWidth: rect.width,
+      menuHeight: rect.height,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    })
     element.style.left = `${position.x}px`
     element.style.top = `${position.y}px`
   }, [visible, x, y])

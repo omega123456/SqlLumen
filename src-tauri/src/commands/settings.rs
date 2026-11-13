@@ -2,6 +2,7 @@ use crate::commands::helpers::lock_db;
 use crate::db::settings;
 use crate::state::AppState;
 use rusqlite::Connection;
+use serde::Deserialize;
 use std::collections::HashMap;
 #[cfg(not(coverage))]
 use tauri::State;
@@ -57,7 +58,16 @@ pub fn get_setting_impl(state: &AppState, key: &str) -> Result<Option<String>, S
     }
 }
 
-pub fn set_setting_impl(state: &AppState, key: &str, value: &str) -> Result<(), String> {
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetSettingRequest {
+    pub key: String,
+    pub value: String,
+}
+
+pub fn set_setting_impl(state: &AppState, request: &SetSettingRequest) -> Result<(), String> {
+    let key = request.key.as_str();
+    let value = request.value.as_str();
     let conn = lock_db(state)?;
     match settings::set_setting(&conn, key, value) {
         Ok(()) => {
@@ -114,8 +124,8 @@ pub fn get_setting(key: String, state: State<AppState>) -> Result<Option<String>
 
 #[cfg(not(coverage))]
 #[tauri::command]
-pub fn set_setting(key: String, value: String, state: State<AppState>) -> Result<(), String> {
-    set_setting_impl(&state, &key, &value)
+pub fn set_setting(payload: SetSettingRequest, state: State<AppState>) -> Result<(), String> {
+    set_setting_impl(&state, &payload)
 }
 
 #[cfg(not(coverage))]

@@ -1,5 +1,5 @@
 import Fuse from 'fuse.js'
-import type { FuseResult, RangeTuple } from 'fuse.js'
+import type { FuseResult } from 'fuse.js'
 import type { CommandPaletteRecentEntry } from '../stores/command-palette-recents-store'
 import type { PaletteTypeFilter, SearchableObject } from '../types/schema'
 
@@ -127,7 +127,7 @@ function getMatchIndices(
   result: FuseResult<SearchableObject>
 ): ReadonlyArray<readonly [number, number]> {
   const nameMatch = result.matches?.find((match) => match.key === 'name')
-  return (nameMatch?.indices ?? []) as ReadonlyArray<RangeTuple>
+  return nameMatch?.indices ?? []
 }
 
 function sortByRecencyThenName(

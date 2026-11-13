@@ -74,7 +74,7 @@ describe('updateFavorite', () => {
     const result = await updateFavorite(1, input)
     expect(result).toBe(true)
 
-    const calls = ipc.calls('update_favorite')
+    const calls = ipc.payloads('update_favorite')
     expect(calls).toHaveLength(1)
     const capturedArgs = calls[0] as Record<string, unknown>
     expect(capturedArgs.id).toBe(1)

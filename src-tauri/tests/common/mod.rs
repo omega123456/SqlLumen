@@ -6,6 +6,7 @@ pub mod blob_step_helpers;
 pub mod fake_credentials;
 pub mod log_capture;
 pub mod mock_mysql_server;
+pub mod schema_index_chunks;
 
 use rusqlite::Connection;
 use sqllumen_lib::commands::connections::SaveConnectionInput;

@@ -108,7 +108,7 @@ function executeQueryAtCursor(): void {
     tabState.cursorPosition
   )
   if (!plan) return
-  runExecuteQueryPlan(useQueryStore.getState(), queryTab.connectionId, queryTab.tabId, plan)
+  runExecuteQueryPlan(useQueryStore.getState(), queryTab, plan)
 }
 
 function executeAllStatements(): void {

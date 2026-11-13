@@ -15,7 +15,12 @@ describe('buildExecuteTemplate', () => {
       { name: 'p_total', dataType: 'DECIMAL(10,2)', mode: 'INOUT', ordinalPosition: 4 },
     ]
 
-    const result = buildExecuteTemplate('mydb', 'my_proc', 'procedure', params)
+    const result = buildExecuteTemplate({
+      databaseName: 'mydb',
+      routineName: 'my_proc',
+      routineType: 'procedure',
+      parameters: params,
+    })
 
     expect(result).toBe(
       'CALL `mydb`.`my_proc`(\n' +
@@ -28,7 +33,12 @@ describe('buildExecuteTemplate', () => {
   })
 
   it('builds CALL template for procedure with no parameters', () => {
-    const result = buildExecuteTemplate('mydb', 'no_params', 'procedure', [])
+    const result = buildExecuteTemplate({
+      databaseName: 'mydb',
+      routineName: 'no_params',
+      routineType: 'procedure',
+      parameters: [],
+    })
 
     expect(result).toBe('CALL `mydb`.`no_params`();')
   })
@@ -38,7 +48,12 @@ describe('buildExecuteTemplate', () => {
       { name: 'p_result', dataType: 'INT', mode: 'OUT', ordinalPosition: 1 },
     ]
 
-    const result = buildExecuteTemplate('testdb', 'sp_get', 'procedure', params)
+    const result = buildExecuteTemplate({
+      databaseName: 'testdb',
+      routineName: 'sp_get',
+      routineType: 'procedure',
+      parameters: params,
+    })
 
     expect(result).toContain('@p_result')
     expect(result).not.toContain('NULL')
@@ -49,7 +64,12 @@ describe('buildExecuteTemplate', () => {
       { name: 'p_counter', dataType: 'BIGINT', mode: 'INOUT', ordinalPosition: 1 },
     ]
 
-    const result = buildExecuteTemplate('testdb', 'sp_inc', 'procedure', params)
+    const result = buildExecuteTemplate({
+      databaseName: 'testdb',
+      routineName: 'sp_inc',
+      routineType: 'procedure',
+      parameters: params,
+    })
 
     expect(result).toContain('@p_counter')
     expect(result).not.toContain('NULL')
@@ -60,7 +80,12 @@ describe('buildExecuteTemplate', () => {
       { name: 'p_input', dataType: 'VARCHAR(100)', mode: 'IN', ordinalPosition: 1 },
     ]
 
-    const result = buildExecuteTemplate('testdb', 'sp_test', 'procedure', params)
+    const result = buildExecuteTemplate({
+      databaseName: 'testdb',
+      routineName: 'sp_test',
+      routineType: 'procedure',
+      parameters: params,
+    })
 
     expect(result).toContain('NULL')
     expect(result).not.toContain('@p_input')
@@ -72,7 +97,12 @@ describe('buildExecuteTemplate', () => {
       { name: 'p_name', dataType: 'VARCHAR(255)', mode: 'IN', ordinalPosition: 2 },
     ]
 
-    const result = buildExecuteTemplate('db', 'proc', 'procedure', params)
+    const result = buildExecuteTemplate({
+      databaseName: 'db',
+      routineName: 'proc',
+      routineType: 'procedure',
+      parameters: params,
+    })
 
     expect(result).toContain('bigint')
     expect(result).toContain('varchar(255)')
@@ -87,7 +117,12 @@ describe('buildExecuteTemplate', () => {
       { name: 'p_second', dataType: 'INT', mode: 'IN', ordinalPosition: 2 },
     ]
 
-    const result = buildExecuteTemplate('db', 'proc', 'procedure', params)
+    const result = buildExecuteTemplate({
+      databaseName: 'db',
+      routineName: 'proc',
+      routineType: 'procedure',
+      parameters: params,
+    })
 
     const lines = result.split('\n')
     expect(lines[1]).toContain('p_first')
@@ -96,7 +131,12 @@ describe('buildExecuteTemplate', () => {
   })
 
   it('backtick-quotes database and routine names', () => {
-    const result = buildExecuteTemplate('my-db', 'my-proc', 'procedure', [])
+    const result = buildExecuteTemplate({
+      databaseName: 'my-db',
+      routineName: 'my-proc',
+      routineType: 'procedure',
+      parameters: [],
+    })
 
     expect(result).toBe('CALL `my-db`.`my-proc`();')
   })
@@ -110,13 +150,23 @@ describe('buildExecuteTemplate', () => {
       { name: 'p_input', dataType: 'VARCHAR(100)', mode: '', ordinalPosition: 1 },
     ]
 
-    const result = buildExecuteTemplate('mydb', 'my_func', 'function', params)
+    const result = buildExecuteTemplate({
+      databaseName: 'mydb',
+      routineName: 'my_func',
+      routineType: 'function',
+      parameters: params,
+    })
 
     expect(result).toBe('SELECT `mydb`.`my_func`(\n' + '  /* p_input varchar(100) */ NULL\n' + ');')
   })
 
   it('builds SELECT template for function with no parameters', () => {
-    const result = buildExecuteTemplate('mydb', 'no_params_func', 'function', [])
+    const result = buildExecuteTemplate({
+      databaseName: 'mydb',
+      routineName: 'no_params_func',
+      routineType: 'function',
+      parameters: [],
+    })
 
     expect(result).toBe('SELECT `mydb`.`no_params_func`();')
   })
@@ -127,7 +177,12 @@ describe('buildExecuteTemplate', () => {
       { name: 'p_b', dataType: 'INT', mode: '', ordinalPosition: 2 },
     ]
 
-    const result = buildExecuteTemplate('db', 'func', 'function', params)
+    const result = buildExecuteTemplate({
+      databaseName: 'db',
+      routineName: 'func',
+      routineType: 'function',
+      parameters: params,
+    })
 
     // Should NOT contain IN/OUT/INOUT mode prefixes
     expect(result).not.toMatch(/\/\* (IN|OUT|INOUT) /)
@@ -142,7 +197,12 @@ describe('buildExecuteTemplate', () => {
       { name: 'p_val', dataType: 'INT', mode: 'IN', ordinalPosition: 1 },
     ]
 
-    const result = buildExecuteTemplate('db', 'func', 'function', params)
+    const result = buildExecuteTemplate({
+      databaseName: 'db',
+      routineName: 'func',
+      routineType: 'function',
+      parameters: params,
+    })
 
     // Function template overrides — no mode prefix, just name+type
     expect(result).toContain('/* p_val int */ NULL')
@@ -155,7 +215,12 @@ describe('buildExecuteTemplate', () => {
       { name: 'p_a', dataType: 'INT', mode: '', ordinalPosition: 1 },
     ]
 
-    const result = buildExecuteTemplate('db', 'func', 'function', params)
+    const result = buildExecuteTemplate({
+      databaseName: 'db',
+      routineName: 'func',
+      routineType: 'function',
+      parameters: params,
+    })
 
     const lines = result.split('\n')
     expect(lines[1]).toContain('p_a')
@@ -171,7 +236,12 @@ describe('buildExecuteTemplate', () => {
       { name: 'p_val', dataType: 'TEXT', mode: '', ordinalPosition: 1 },
     ]
 
-    const result = buildExecuteTemplate('db', 'proc', 'procedure', params)
+    const result = buildExecuteTemplate({
+      databaseName: 'db',
+      routineName: 'proc',
+      routineType: 'procedure',
+      parameters: params,
+    })
 
     // Empty mode → no prefix, defaults to NULL
     expect(result).toContain('/* p_val text */ NULL')
@@ -182,7 +252,12 @@ describe('buildExecuteTemplate', () => {
       { name: 'p_id', dataType: 'INT', mode: 'IN', ordinalPosition: 1 },
     ]
 
-    const result = buildExecuteTemplate('db', 'sp', 'procedure', params)
+    const result = buildExecuteTemplate({
+      databaseName: 'db',
+      routineName: 'sp',
+      routineType: 'procedure',
+      parameters: params,
+    })
 
     expect(result).toBe('CALL `db`.`sp`(\n  /* IN p_id int */ NULL\n);')
   })
@@ -194,7 +269,12 @@ describe('buildExecuteTemplate', () => {
       { name: 'p_inout', dataType: 'DECIMAL(5,2)', mode: 'INOUT', ordinalPosition: 3 },
     ]
 
-    const result = buildExecuteTemplate('app', 'sp_mixed', 'procedure', params)
+    const result = buildExecuteTemplate({
+      databaseName: 'app',
+      routineName: 'sp_mixed',
+      routineType: 'procedure',
+      parameters: params,
+    })
 
     expect(result).toBe(
       'CALL `app`.`sp_mixed`(\n' +
@@ -214,7 +294,12 @@ describe('buildExecuteTemplate', () => {
     // Copy for comparison
     const originalOrder = params.map((p) => p.name)
 
-    buildExecuteTemplate('db', 'proc', 'procedure', params)
+    buildExecuteTemplate({
+      databaseName: 'db',
+      routineName: 'proc',
+      routineType: 'procedure',
+      parameters: params,
+    })
 
     // Original array should not be reordered
     expect(params.map((p) => p.name)).toEqual(originalOrder)

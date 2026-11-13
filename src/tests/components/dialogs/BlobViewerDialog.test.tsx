@@ -244,7 +244,7 @@ describe('BlobViewerDialog', () => {
       return '/tmp/out.png'
     })
     const writeCalls: unknown[] = []
-    ipc.override('write_file_bytes', (args) => {
+    ipc.overridePayload('write_file_bytes', (args) => {
       writeCalls.push(args)
       return null
     })

@@ -120,7 +120,12 @@ describe('TableDesignerTab', () => {
   })
 
   it('renders alter mode header with table name as read-only label', () => {
-    useTableDesignerStore.getState().initTab('tab-1', 'alter', 'conn-1', 'app_db', 'users')
+    useTableDesignerStore.getState().initTab('tab-1', {
+      mode: 'alter',
+      connectionId: 'conn-1',
+      databaseName: 'app_db',
+      objectName: 'users',
+    })
     useTableDesignerStore.setState((state) => ({
       tabs: {
         ...state.tabs,
@@ -140,7 +145,12 @@ describe('TableDesignerTab', () => {
   })
 
   it('renders create mode header with table name text input', () => {
-    useTableDesignerStore.getState().initTab('tab-1', 'create', 'conn-1', 'app_db', '__new_table__')
+    useTableDesignerStore.getState().initTab('tab-1', {
+      mode: 'create',
+      connectionId: 'conn-1',
+      databaseName: 'app_db',
+      objectName: '__new_table__',
+    })
     render(<TableDesignerTab tab={makeTab({ mode: 'create', objectName: '__new_table__' })} />)
 
     expect(screen.getByText('Create table')).toBeInTheDocument()
@@ -148,7 +158,12 @@ describe('TableDesignerTab', () => {
   })
 
   it('renders a plain page header with the database and column count caption', () => {
-    useTableDesignerStore.getState().initTab('tab-1', 'alter', 'conn-1', 'app_db', 'users')
+    useTableDesignerStore.getState().initTab('tab-1', {
+      mode: 'alter',
+      connectionId: 'conn-1',
+      databaseName: 'app_db',
+      objectName: 'users',
+    })
     useTableDesignerStore.setState((state) => ({
       tabs: {
         ...state.tabs,
@@ -172,7 +187,12 @@ describe('TableDesignerTab', () => {
 
   it('typing in create mode table name input calls store.updateTableName', async () => {
     const user = userEvent.setup()
-    useTableDesignerStore.getState().initTab('tab-1', 'create', 'conn-1', 'app_db', '__new_table__')
+    useTableDesignerStore.getState().initTab('tab-1', {
+      mode: 'create',
+      connectionId: 'conn-1',
+      databaseName: 'app_db',
+      objectName: '__new_table__',
+    })
     render(<TableDesignerTab tab={makeTab({ mode: 'create', objectName: '__new_table__' })} />)
 
     const input = screen.getByTestId('table-designer-name-input')
@@ -184,13 +204,23 @@ describe('TableDesignerTab', () => {
   })
 
   it('Apply Changes button disabled when isDirty is false', () => {
-    useTableDesignerStore.getState().initTab('tab-1', 'alter', 'conn-1', 'app_db', 'users')
+    useTableDesignerStore.getState().initTab('tab-1', {
+      mode: 'alter',
+      connectionId: 'conn-1',
+      databaseName: 'app_db',
+      objectName: 'users',
+    })
     render(<TableDesignerTab tab={makeTab()} />)
     expect(screen.getByTestId('table-designer-apply')).toBeDisabled()
   })
 
   it('Apply Changes button disabled when validationErrors is non-empty', () => {
-    useTableDesignerStore.getState().initTab('tab-1', 'alter', 'conn-1', 'app_db', 'users')
+    useTableDesignerStore.getState().initTab('tab-1', {
+      mode: 'alter',
+      connectionId: 'conn-1',
+      databaseName: 'app_db',
+      objectName: 'users',
+    })
     useTableDesignerStore.setState((state) => ({
       tabs: {
         ...state.tabs,
@@ -207,7 +237,12 @@ describe('TableDesignerTab', () => {
   })
 
   it('Apply Changes button disabled when isDdlLoading is true', () => {
-    useTableDesignerStore.getState().initTab('tab-1', 'alter', 'conn-1', 'app_db', 'users')
+    useTableDesignerStore.getState().initTab('tab-1', {
+      mode: 'alter',
+      connectionId: 'conn-1',
+      databaseName: 'app_db',
+      objectName: 'users',
+    })
     useTableDesignerStore.setState((state) => ({
       tabs: {
         ...state.tabs,
@@ -224,7 +259,12 @@ describe('TableDesignerTab', () => {
   })
 
   it('Apply Changes button disabled when in create mode and tableName is empty', () => {
-    useTableDesignerStore.getState().initTab('tab-1', 'create', 'conn-1', 'app_db', '__new_table__')
+    useTableDesignerStore.getState().initTab('tab-1', {
+      mode: 'create',
+      connectionId: 'conn-1',
+      databaseName: 'app_db',
+      objectName: '__new_table__',
+    })
     useTableDesignerStore.setState((state) => ({
       tabs: {
         ...state.tabs,
@@ -241,7 +281,12 @@ describe('TableDesignerTab', () => {
 
   it('Discard button calls store.discardChanges', async () => {
     const user = userEvent.setup()
-    useTableDesignerStore.getState().initTab('tab-1', 'create', 'conn-1', 'app_db', '__new_table__')
+    useTableDesignerStore.getState().initTab('tab-1', {
+      mode: 'create',
+      connectionId: 'conn-1',
+      databaseName: 'app_db',
+      objectName: '__new_table__',
+    })
     useTableDesignerStore.getState().updateTableName('tab-1', 'audit_log')
     render(<TableDesignerTab tab={makeTab({ mode: 'create', objectName: '__new_table__' })} />)
 
@@ -251,7 +296,12 @@ describe('TableDesignerTab', () => {
   })
 
   it('remount does not re-initialise store when state already exists', () => {
-    useTableDesignerStore.getState().initTab('tab-1', 'create', 'conn-1', 'app_db', '__new_table__')
+    useTableDesignerStore.getState().initTab('tab-1', {
+      mode: 'create',
+      connectionId: 'conn-1',
+      databaseName: 'app_db',
+      objectName: '__new_table__',
+    })
     useTableDesignerStore.getState().updateTableName('tab-1', 'draft_users')
 
     const { rerender } = render(
@@ -265,7 +315,12 @@ describe('TableDesignerTab', () => {
   })
 
   it('sub-tab bar renders 5 tabs', async () => {
-    useTableDesignerStore.getState().initTab('tab-1', 'alter', 'conn-1', 'app_db', 'users')
+    useTableDesignerStore.getState().initTab('tab-1', {
+      mode: 'alter',
+      connectionId: 'conn-1',
+      databaseName: 'app_db',
+      objectName: 'users',
+    })
     render(<TableDesignerTab tab={makeTab()} />)
 
     await waitFor(() => {
@@ -279,7 +334,12 @@ describe('TableDesignerTab', () => {
   })
 
   it('renders error state when loadError is set', () => {
-    useTableDesignerStore.getState().initTab('tab-1', 'alter', 'conn-1', 'app_db', 'users')
+    useTableDesignerStore.getState().initTab('tab-1', {
+      mode: 'alter',
+      connectionId: 'conn-1',
+      databaseName: 'app_db',
+      objectName: 'users',
+    })
     useTableDesignerStore.setState((state) => ({
       tabs: {
         ...state.tabs,
@@ -297,7 +357,12 @@ describe('TableDesignerTab', () => {
 
   it('shows unsaved changes through the enabled Discard and Apply buttons in both themes', () => {
     useThemeStore.setState({ theme: 'light', resolvedTheme: 'light' })
-    useTableDesignerStore.getState().initTab('tab-1', 'alter', 'conn-1', 'app_db', 'users')
+    useTableDesignerStore.getState().initTab('tab-1', {
+      mode: 'alter',
+      connectionId: 'conn-1',
+      databaseName: 'app_db',
+      objectName: 'users',
+    })
     useTableDesignerStore.setState((state) => ({
       tabs: {
         ...state.tabs,
@@ -320,7 +385,12 @@ describe('TableDesignerTab', () => {
 
   it('clicking the indexes sub-tab shows IndexEditor content', async () => {
     const user = userEvent.setup()
-    useTableDesignerStore.getState().initTab('tab-1', 'alter', 'conn-1', 'app_db', 'users')
+    useTableDesignerStore.getState().initTab('tab-1', {
+      mode: 'alter',
+      connectionId: 'conn-1',
+      databaseName: 'app_db',
+      objectName: 'users',
+    })
     render(<TableDesignerTab tab={makeTab()} />)
 
     await user.click(screen.getByRole('button', { name: 'Indexes' }))
@@ -331,7 +401,12 @@ describe('TableDesignerTab', () => {
 
   it('clicking the foreign keys sub-tab shows ForeignKeyEditor content', async () => {
     const user = userEvent.setup()
-    useTableDesignerStore.getState().initTab('tab-1', 'alter', 'conn-1', 'app_db', 'users')
+    useTableDesignerStore.getState().initTab('tab-1', {
+      mode: 'alter',
+      connectionId: 'conn-1',
+      databaseName: 'app_db',
+      objectName: 'users',
+    })
     render(<TableDesignerTab tab={makeTab()} />)
 
     await user.click(screen.getByRole('button', { name: 'Foreign keys' }))
@@ -342,7 +417,12 @@ describe('TableDesignerTab', () => {
 
   it('clicking the table properties sub-tab shows TablePropertiesEditor content', async () => {
     const user = userEvent.setup()
-    useTableDesignerStore.getState().initTab('tab-1', 'alter', 'conn-1', 'app_db', 'users')
+    useTableDesignerStore.getState().initTab('tab-1', {
+      mode: 'alter',
+      connectionId: 'conn-1',
+      databaseName: 'app_db',
+      objectName: 'users',
+    })
     render(<TableDesignerTab tab={makeTab()} />)
 
     await user.click(screen.getByRole('button', { name: 'Table properties' }))
@@ -353,7 +433,12 @@ describe('TableDesignerTab', () => {
 
   it('clicking the DDL Preview sub-tab shows DdlPreviewTab content', async () => {
     const user = userEvent.setup()
-    useTableDesignerStore.getState().initTab('tab-1', 'alter', 'conn-1', 'app_db', 'users')
+    useTableDesignerStore.getState().initTab('tab-1', {
+      mode: 'alter',
+      connectionId: 'conn-1',
+      databaseName: 'app_db',
+      objectName: 'users',
+    })
     render(<TableDesignerTab tab={makeTab()} />)
 
     await user.click(screen.getByRole('button', { name: 'DDL preview' }))
@@ -364,7 +449,12 @@ describe('TableDesignerTab', () => {
 
   it('clicking Apply Changes opens dialog after regenerate completes', async () => {
     const user = userEvent.setup()
-    useTableDesignerStore.getState().initTab('tab-1', 'alter', 'conn-1', 'app_db', 'users')
+    useTableDesignerStore.getState().initTab('tab-1', {
+      mode: 'alter',
+      connectionId: 'conn-1',
+      databaseName: 'app_db',
+      objectName: 'users',
+    })
     useTableDesignerStore.setState((state) => ({
       tabs: {
         ...state.tabs,
@@ -405,9 +495,12 @@ describe('TableDesignerTab', () => {
     const workspaceTab = useWorkspaceStore.getState().tabsByConnection[
       'conn-1'
     ][0] as TableDesignerTabType
-    useTableDesignerStore
-      .getState()
-      .initTab(workspaceTab.id, 'create', 'conn-1', 'app_db', '__new_table__')
+    useTableDesignerStore.getState().initTab(workspaceTab.id, {
+      mode: 'create',
+      connectionId: 'conn-1',
+      databaseName: 'app_db',
+      objectName: '__new_table__',
+    })
     useTableDesignerStore.getState().updateTableName(workspaceTab.id, 'audit_log')
     useTableDesignerStore.setState((state) => ({
       tabs: {
@@ -442,7 +535,12 @@ describe('TableDesignerTab', () => {
   it('unsaved schema changes dialog supports discard and cancel flows', async () => {
     const user = userEvent.setup()
     const action = vi.fn()
-    useTableDesignerStore.getState().initTab('tab-1', 'alter', 'conn-1', 'app_db', 'users')
+    useTableDesignerStore.getState().initTab('tab-1', {
+      mode: 'alter',
+      connectionId: 'conn-1',
+      databaseName: 'app_db',
+      objectName: 'users',
+    })
     useTableDesignerStore.setState((state) => ({
       tabs: {
         ...state.tabs,

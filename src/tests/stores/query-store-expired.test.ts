@@ -287,8 +287,8 @@ describe('query-store expired result handling', () => {
     expect(result?.rowsEvictedAt).toBeNull()
     expect(rowsOf(TAB_ID)).toEqual([[2]])
     expect(result?.filterModel).toEqual(FILTER_EQ_ID_2)
-    expect(ipc.calls('touch_results')).toHaveLength(1)
-    expect(ipc.calls('fetch_result_window')[0]).toMatchObject({
+    expect(ipc.payloads('touch_results')).toHaveLength(1)
+    expect(ipc.payloads('fetch_result_window')[0]).toMatchObject({
       connectionId: CONN_ID,
       tabId: TAB_ID,
       queryId: 'q-test-1',
@@ -297,8 +297,8 @@ describe('query-store expired result handling', () => {
       offset: 0,
       limit: 1000,
     })
-    expect(ipc.calls('execute_query')).toHaveLength(0)
-    expect(ipc.calls('set_result_view')).toHaveLength(0)
+    expect(ipc.payloads('execute_query')).toHaveLength(0)
+    expect(ipc.payloads('set_result_view')).toHaveLength(0)
   })
 
   it('preserves the latest inactive visibility state when restore finishes after switching away', async () => {
@@ -338,7 +338,7 @@ describe('query-store expired result handling', () => {
 
     const restorePromise = useQueryStore.getState().markResultSurfaceActive(TAB_ID, 1)
     await waitFor(() => {
-      expect(ipc.calls('fetch_result_window')).toHaveLength(1)
+      expect(ipc.payloads('fetch_result_window')).toHaveLength(1)
     })
     act(() => {
       useQueryStore.getState().markResultSurfaceInactive(TAB_ID, 1)
@@ -401,7 +401,7 @@ describe('query-store expired result handling', () => {
 
     const restorePromise = useQueryStore.getState().markResultSurfaceActive(TAB_ID, 1)
     await waitFor(() => {
-      expect(ipc.calls('fetch_result_window')).toHaveLength(1)
+      expect(ipc.payloads('fetch_result_window')).toHaveLength(1)
     })
 
     act(() => {
@@ -461,7 +461,7 @@ describe('query-store expired result handling', () => {
     const result = useQueryStore.getState().tabs[TAB_ID]?.results[0]
     expect(result?.isExpired).toBe(true)
     expect(result?.rowResidency.status).toBe('evicted')
-    expect(ipc.calls('fetch_result_window')).toHaveLength(0)
+    expect(ipc.payloads('fetch_result_window')).toHaveLength(0)
   })
 
   it('resets restoring status back to evicted when restore fetch throws', async () => {
@@ -648,7 +648,7 @@ describe('query-store expired result handling', () => {
 
     const tab = useQueryStore.getState().tabs[TAB_ID]
     expect(executeQuerySpy).toHaveBeenCalledTimes(1)
-    expect(ipc.calls('execute_query')[0]).toMatchObject({
+    expect(ipc.payloads('execute_query')[0]).toMatchObject({
       sql: 'SELECT * FROM orders WHERE id = 9',
     })
     expect(tab?.results[0]?.isExpired).toBe(false)
@@ -676,7 +676,7 @@ describe('query-store expired result handling', () => {
       await useQueryStore.getState().retryExpiredResult(TAB_ID)
     })
 
-    expect(ipc.calls('execute_query')).toHaveLength(0)
+    expect(ipc.payloads('execute_query')).toHaveLength(0)
     expect(useQueryStore.getState().tabs[TAB_ID]?.results[0]?.isExpired).toBe(true)
   })
 
@@ -760,7 +760,7 @@ describe('query-store expired result handling', () => {
       await retryPromise
     })
 
-    expect(ipc.calls('reexecute_single_result')[0]).toMatchObject({
+    expect(ipc.payloads('reexecute_single_result')[0]).toMatchObject({
       sql: 'SELECT * FROM users',
       resultIndex: 0,
     })
@@ -775,7 +775,7 @@ describe('query-store expired result handling', () => {
     })
 
     await act(async () => {
-      await useQueryStore.getState().sortResults(CONN_ID, TAB_ID, 'id', 'asc')
+      await useQueryStore.getState().sortResults(TAB_ID, 'id', 'asc')
     })
 
     const tab = useQueryStore.getState().tabs[TAB_ID]

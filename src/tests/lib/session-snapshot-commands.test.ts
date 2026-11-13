@@ -25,7 +25,7 @@ describe('createSessionSnapshot', () => {
     const id = await createSessionSnapshot(args)
 
     expect(id).toBe(42)
-    expect(ipc.calls('create_session_snapshot')).toEqual([
+    expect(ipc.payloads('create_session_snapshot')).toEqual([
       {
         triggerType: 'manual',
         connectionCount: 2,

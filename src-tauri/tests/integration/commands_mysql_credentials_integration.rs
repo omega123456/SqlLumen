@@ -182,7 +182,13 @@ fn update_connection(
     data: UpdateConnectionInput,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-    update_connection_impl(&state, &id, data)
+    update_connection_impl(
+        &state,
+        sqllumen_lib::commands::connections::UpdateConnectionRequest {
+            id: id.to_string(),
+            data,
+        },
+    )
 }
 
 #[tauri::command]
@@ -508,25 +514,27 @@ fn update_connection_impl_surfaces_password_update_errors() {
     common::fake_credentials::queue_fake_credential_error("update failed");
     let error = sqllumen_lib::commands::connections::update_connection_impl(
         &state,
-        &connection_id,
-        sqllumen_lib::commands::connections::UpdateConnectionInput {
-            name: "Updated".to_string(),
-            host: "localhost".to_string(),
-            port: 3306,
-            username: "root".to_string(),
-            password: Some("secret".to_string()),
-            clear_password: false,
-            default_database: None,
-            ssl_enabled: false,
-            ssl_ca_path: None,
-            ssl_cert_path: None,
-            ssl_key_path: None,
-            color: None,
-            group_id: None,
-            read_only: false,
-            sort_order: 0,
-            connect_timeout_secs: Some(10),
-            keepalive_interval_secs: Some(0),
+        sqllumen_lib::commands::connections::UpdateConnectionRequest {
+            id: connection_id.to_string(),
+            data: sqllumen_lib::commands::connections::UpdateConnectionInput {
+                name: "Updated".to_string(),
+                host: "localhost".to_string(),
+                port: 3306,
+                username: "root".to_string(),
+                password: Some("secret".to_string()),
+                clear_password: false,
+                default_database: None,
+                ssl_enabled: false,
+                ssl_ca_path: None,
+                ssl_cert_path: None,
+                ssl_key_path: None,
+                color: None,
+                group_id: None,
+                read_only: false,
+                sort_order: 0,
+                connect_timeout_secs: Some(10),
+                keepalive_interval_secs: Some(0),
+            },
         },
     )
     .expect_err("update should fail when keychain update fails");
@@ -537,7 +545,14 @@ fn update_connection_impl_surfaces_password_update_errors() {
 fn settings_impls_surface_poisoned_lock_errors() {
     let state = poisoned_state();
     assert!(get_setting_impl(&state, "theme").is_err());
-    assert!(set_setting_impl(&state, "theme", "dark").is_err());
+    assert!(set_setting_impl(
+        &state,
+        &sqllumen_lib::commands::settings::SetSettingRequest {
+            key: "theme".to_string(),
+            value: "dark".to_string()
+        }
+    )
+    .is_err());
     assert!(get_all_settings_impl(&state).is_err());
 }
 
@@ -551,7 +566,14 @@ fn settings_impls_surface_database_errors() {
     }
 
     assert!(get_setting_impl(&state, "theme").is_err());
-    assert!(set_setting_impl(&state, "theme", "dark").is_err());
+    assert!(set_setting_impl(
+        &state,
+        &sqllumen_lib::commands::settings::SetSettingRequest {
+            key: "theme".to_string(),
+            value: "dark".to_string()
+        }
+    )
+    .is_err());
     assert!(get_all_settings_impl(&state).is_err());
 }
 
@@ -566,12 +588,24 @@ fn connection_group_impls_cover_success_and_missing_errors() {
             .len(),
         1
     );
-    update_connection_group_impl(&state, &group_id, "Renamed")
-        .expect("update group should succeed");
+    update_connection_group_impl(
+        &state,
+        &sqllumen_lib::commands::connection_groups::UpdateConnectionGroupRequest {
+            id: group_id.to_string(),
+            name: "Renamed".to_string(),
+        },
+    )
+    .expect("update group should succeed");
     delete_connection_group_impl(&state, &group_id).expect("delete group should succeed");
 
-    let missing_update = update_connection_group_impl(&state, "missing", "Nope")
-        .expect_err("missing update should fail");
+    let missing_update = update_connection_group_impl(
+        &state,
+        &sqllumen_lib::commands::connection_groups::UpdateConnectionGroupRequest {
+            id: "missing".to_string(),
+            name: "Nope".to_string(),
+        },
+    )
+    .expect_err("missing update should fail");
     let missing_delete =
         delete_connection_group_impl(&state, "missing").expect_err("missing delete should fail");
     assert!(missing_update.contains("Query returned no rows"));
@@ -591,7 +625,14 @@ fn connection_group_impls_surface_poisoned_lock_errors() {
     let state = poisoned_state();
     assert!(create_connection_group_impl(&state, "Group").is_err());
     assert!(list_connection_groups_impl(&state).is_err());
-    assert!(update_connection_group_impl(&state, "id", "Group").is_err());
+    assert!(update_connection_group_impl(
+        &state,
+        &sqllumen_lib::commands::connection_groups::UpdateConnectionGroupRequest {
+            id: "id".to_string(),
+            name: "Group".to_string()
+        }
+    )
+    .is_err());
     assert!(delete_connection_group_impl(&state, "id").is_err());
 }
 
@@ -600,8 +641,14 @@ fn connection_impls_cover_missing_row_and_lock_errors() {
     let state = test_state();
     let missing_get = get_connection_impl(&state, "missing").expect("get should not error");
     assert!(missing_get.is_none());
-    let missing_update = update_connection_impl(&state, "missing", update_input(None))
-        .expect_err("missing update should fail");
+    let missing_update = update_connection_impl(
+        &state,
+        sqllumen_lib::commands::connections::UpdateConnectionRequest {
+            id: "missing".to_string(),
+            data: update_input(None),
+        },
+    )
+    .expect_err("missing update should fail");
     let missing_delete =
         delete_connection_impl(&state, "missing").expect_err("missing delete should fail");
     assert!(missing_update.contains("Query returned no rows"));
@@ -611,7 +658,14 @@ fn connection_impls_cover_missing_row_and_lock_errors() {
     assert!(save_connection_impl(&poisoned, sample_save_input(None)).is_err());
     assert!(get_connection_impl(&poisoned, "id").is_err());
     assert!(list_connections_impl(&poisoned).is_err());
-    assert!(update_connection_impl(&poisoned, "id", update_input(None)).is_err());
+    assert!(update_connection_impl(
+        &poisoned,
+        sqllumen_lib::commands::connections::UpdateConnectionRequest {
+            id: "id".to_string(),
+            data: update_input(None)
+        }
+    )
+    .is_err());
     assert!(delete_connection_impl(&poisoned, "id").is_err());
 
     let broken_state = test_state();
@@ -631,8 +685,14 @@ fn update_connection_without_password_preserves_absent_keychain_ref() {
     let connection_id =
         save_connection_impl(&state, sample_save_input(None)).expect("save should succeed");
 
-    update_connection_impl(&state, &connection_id, update_input(None))
-        .expect("update should succeed without password");
+    update_connection_impl(
+        &state,
+        sqllumen_lib::commands::connections::UpdateConnectionRequest {
+            id: connection_id.to_string(),
+            data: update_input(None),
+        },
+    )
+    .expect("update should succeed without password");
 
     let record = get_connection_impl(&state, &connection_id)
         .expect("get should succeed")
@@ -647,8 +707,14 @@ fn update_connection_with_password_sets_keychain_ref() {
     let connection_id =
         save_connection_impl(&state, sample_save_input(None)).expect("save should succeed");
 
-    update_connection_impl(&state, &connection_id, update_input(Some("secret")))
-        .expect("update with password should succeed");
+    update_connection_impl(
+        &state,
+        sqllumen_lib::commands::connections::UpdateConnectionRequest {
+            id: connection_id.to_string(),
+            data: update_input(Some("secret")),
+        },
+    )
+    .expect("update with password should succeed");
 
     let record = get_connection_impl(&state, &connection_id)
         .expect("get should succeed")
@@ -668,8 +734,14 @@ fn update_connection_with_password_surfaces_sqlite_write_errors() {
             .expect("drop table should succeed");
     }
 
-    let error = update_connection_impl(&state, &connection_id, update_input(Some("secret")))
-        .expect_err("sqlite write error should be surfaced");
+    let error = update_connection_impl(
+        &state,
+        sqllumen_lib::commands::connections::UpdateConnectionRequest {
+            id: connection_id.to_string(),
+            data: update_input(Some("secret")),
+        },
+    )
+    .expect_err("sqlite write error should be surfaced");
     assert!(error.contains("no such table") || error.contains("Query returned no rows"));
 }
 
@@ -682,8 +754,14 @@ fn update_connection_clear_password_removes_current_credential_and_marker() {
 
     let mut clear_input = update_input(None);
     clear_input.clear_password = true;
-    update_connection_impl(&state, &connection_id, clear_input)
-        .expect("clear password should succeed");
+    update_connection_impl(
+        &state,
+        sqllumen_lib::commands::connections::UpdateConnectionRequest {
+            id: connection_id.to_string(),
+            data: clear_input,
+        },
+    )
+    .expect("clear password should succeed");
 
     let record = get_connection_impl(&state, &connection_id)
         .expect("get should succeed")
@@ -934,12 +1012,20 @@ async fn close_connection_impl_evicts_metadata_cache_for_closed_connection() {
         read_only: false,
     };
     state.registry.insert("conn-1".to_string(), entry);
-    state
-        .metadata_cache
-        .insert("conn-1", "test_db", "users", None, Vec::new());
-    state
-        .metadata_cache
-        .insert("conn-2", "test_db", "users", None, Vec::new());
+    state.metadata_cache.insert(
+        sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new("conn-1", "test_db", "users"),
+        sqllumen_lib::mysql::metadata_cache::TableKeyMetadata {
+            primary_key: None,
+            columns: Vec::new(),
+        },
+    );
+    state.metadata_cache.insert(
+        sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new("conn-2", "test_db", "users"),
+        sqllumen_lib::mysql::metadata_cache::TableKeyMetadata {
+            primary_key: None,
+            columns: Vec::new(),
+        },
+    );
 
     close_connection_impl(&state, "conn-1")
         .await
@@ -947,11 +1033,15 @@ async fn close_connection_impl_evicts_metadata_cache_for_closed_connection() {
 
     assert!(state
         .metadata_cache
-        .get("conn-1", "test_db", "users")
+        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+            "conn-1", "test_db", "users"
+        ))
         .is_none());
     assert!(state
         .metadata_cache
-        .get("conn-2", "test_db", "users")
+        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+            "conn-2", "test_db", "users"
+        ))
         .is_some());
 }
 
@@ -1581,7 +1671,7 @@ fn health_monitor_coverage_stub_returns_token() {
         .manage(test_state())
         .build(tauri::test::mock_context(tauri::test::noop_assets()))
         .expect("should build app");
-    let token = spawn_health_monitor("conn-1".to_string(), 1, AppHandle::clone(&app.handle()));
+    let token = spawn_health_monitor("conn-1".to_string(), 1, AppHandle::clone(app.handle()));
     assert!(!token.is_cancelled());
     token.cancel();
     assert!(token.is_cancelled());
@@ -1590,8 +1680,14 @@ fn health_monitor_coverage_stub_returns_token() {
 #[test]
 fn settings_command_wrappers_work_via_ipc() {
     let state = test_state();
-    sqllumen_lib::commands::settings::set_setting_impl(&state, "theme", "dark")
-        .expect("set should succeed");
+    sqllumen_lib::commands::settings::set_setting_impl(
+        &state,
+        &sqllumen_lib::commands::settings::SetSettingRequest {
+            key: "theme".to_string(),
+            value: "dark".to_string(),
+        },
+    )
+    .expect("set should succeed");
     assert_eq!(
         sqllumen_lib::commands::settings::get_setting_impl(&state, "theme")
             .expect("get should succeed"),
@@ -1607,8 +1703,14 @@ fn connection_group_command_wrappers_work_via_ipc() {
         "Production",
     )
     .expect("create should succeed");
-    sqllumen_lib::commands::connection_groups::update_connection_group_impl(&state, &id, "Renamed")
-        .expect("update should succeed");
+    sqllumen_lib::commands::connection_groups::update_connection_group_impl(
+        &state,
+        &sqllumen_lib::commands::connection_groups::UpdateConnectionGroupRequest {
+            id: id.to_string(),
+            name: "Renamed".to_string(),
+        },
+    )
+    .expect("update should succeed");
     let groups = sqllumen_lib::commands::connection_groups::list_connection_groups_impl(&state)
         .expect("list should succeed");
     assert_eq!(groups[0].name, "Renamed");

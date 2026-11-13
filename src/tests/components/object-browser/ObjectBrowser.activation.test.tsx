@@ -140,13 +140,13 @@ describe('ObjectBrowser activation delegation', () => {
       await user.click(screen.getByRole('treeitem', { name: 'user_stats' }))
     })
 
-    expect(openObjectDefaultTab).toHaveBeenCalledWith(
-      CONNECTION_ID,
-      'ecommerce_db',
-      'view',
-      'user_stats',
-      'user_stats'
-    )
+    expect(openObjectDefaultTab).toHaveBeenCalledWith({
+      connectionId: CONNECTION_ID,
+      database: 'ecommerce_db',
+      objectType: 'view',
+      name: 'user_stats',
+      label: 'user_stats',
+    })
     expect(loadDatabases).toHaveBeenCalledWith(CONNECTION_ID)
   })
 })

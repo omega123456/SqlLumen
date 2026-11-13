@@ -41,7 +41,12 @@ async function primeOldDbCaches(): Promise<void> {
     found: true,
     parameters: [{ name: '', dataType: 'INT', mode: '', ordinalPosition: 0 }],
   }))
-  await getRoutineParametersCache(CONN_ID, OLD_DB_NAME, OLD_ROUTINE_NAME, 'function')
+  await getRoutineParametersCache({
+    connectionId: CONN_ID,
+    database: OLD_DB_NAME,
+    routineName: OLD_ROUTINE_NAME,
+    routineType: 'function',
+  })
   hydrateFromSnapshot(buildOldDbSchemaSnapshot(), CONN_ID)
 }
 
@@ -250,7 +255,7 @@ describe('useObjectBrowserActions — object editor actions', () => {
       await user.click(confirmButton)
 
       await waitFor(() => {
-        expect(ipc.calls('drop_object')).toContainEqual({
+        expect(ipc.payloads('drop_object')).toContainEqual({
           connectionId: CONN_ID,
           database: 'testdb',
           objectName: 'my_view',
@@ -258,7 +263,11 @@ describe('useObjectBrowserActions — object editor actions', () => {
         })
       })
 
-      expect(closeTabsByObject).toHaveBeenCalledWith(CONN_ID, 'testdb', 'my_view', 'view')
+      expect(closeTabsByObject).toHaveBeenCalledWith(CONN_ID, {
+        databaseName: 'testdb',
+        objectName: 'my_view',
+        objectType: 'view',
+      })
 
       const refreshCategory = useSchemaStore.getState().refreshCategory
       expect(refreshCategory).toHaveBeenCalledWith(CONN_ID, 'testdb', 'view')
@@ -345,7 +354,7 @@ describe('useObjectBrowserActions — object editor actions', () => {
         result.onExecuteRoutine('testdb', 'my_proc', 'procedure')
       })
 
-      expect(ipc.calls('get_routine_parameters')).toContainEqual({
+      expect(ipc.payloads('get_routine_parameters')).toContainEqual({
         connectionId: CONN_ID,
         database: 'testdb',
         routineName: 'my_proc',
@@ -381,7 +390,7 @@ describe('useObjectBrowserActions — object editor actions', () => {
         result.onExecuteRoutine('testdb', 'my_func', 'function')
       })
 
-      expect(ipc.calls('get_routine_parameters')).toContainEqual({
+      expect(ipc.payloads('get_routine_parameters')).toContainEqual({
         connectionId: CONN_ID,
         database: 'testdb',
         routineName: 'my_func',
@@ -478,7 +487,7 @@ describe('useObjectBrowserActions — object editor actions', () => {
       await user.click(confirmButton)
 
       await waitFor(() => {
-        expect(ipc.calls('drop_database')).toContainEqual({
+        expect(ipc.payloads('drop_database')).toContainEqual({
           connectionId: CONN_ID,
           name: OLD_DB_NAME,
         })
@@ -531,7 +540,7 @@ describe('useObjectBrowserActions — object editor actions', () => {
       await user.click(confirmButton)
 
       await waitFor(() => {
-        expect(ipc.calls('rename_database')).toContainEqual({
+        expect(ipc.payloads('rename_database')).toContainEqual({
           connectionId: CONN_ID,
           oldName: OLD_DB_NAME,
           newName: 'new_db',

@@ -32,7 +32,7 @@ const COLUMNS: ColumnMeta[] = [{ name: 'id', dataType: 'INT' }]
 
 /** A virtual result of `total` rows: row i is [i], base index = i. */
 function serveWindows(total: number, viewVersion = 1) {
-  ipc.override('fetch_result_window', (args) => {
+  ipc.overridePayload('fetch_result_window', (args) => {
     const offset = Math.min(Number(args?.offset), total)
     const limit = Math.min(Number(args?.limit), 2000)
     const end = Math.min(total, offset + limit)
@@ -70,7 +70,7 @@ function loadedPositions(): number[] {
 }
 
 function windowCalls(): Array<Record<string, unknown>> {
-  return ipc.calls('fetch_result_window') as Array<Record<string, unknown>>
+  return ipc.payloads('fetch_result_window') as Array<Record<string, unknown>>
 }
 
 afterEach(() => {
@@ -159,7 +159,13 @@ describe('seeding and reading loaded rows', () => {
     })
     const listener = vi.fn()
     subscribeToResultWindow(TAB, 0, listener)
-    applySavedRowValues(TAB, 0, 'q-1', 1, { 1: true })
+    applySavedRowValues({
+      tabId: TAB,
+      resultIndex: 0,
+      queryId: 'q-1',
+      baseIndex: 1,
+      updates: { 1: true },
+    })
     // Other columns are kept; the saved value is normalized like loaded rows.
     expect(getLoadedRow(TAB, 0, 1)?.row).toEqual([2, 1])
     expect(listener).toHaveBeenCalledWith([1, 2])
@@ -169,8 +175,20 @@ describe('seeding and reading loaded rows', () => {
     seed(10)
     const patches = vi.fn()
     subscribeToRowPatches(TAB, 0, patches)
-    applySavedRowValues(TAB, 0, 'q-old', 4, { 0: 44 })
-    applySavedRowValues('nope', 0, 'q-1', 4, { 0: 44 })
+    applySavedRowValues({
+      tabId: TAB,
+      resultIndex: 0,
+      queryId: 'q-old',
+      baseIndex: 4,
+      updates: { 0: 44 },
+    })
+    applySavedRowValues({
+      tabId: 'nope',
+      resultIndex: 0,
+      queryId: 'q-1',
+      baseIndex: 4,
+      updates: { 0: 44 },
+    })
     expect(getLoadedRow(TAB, 0, 4)?.row).toEqual([4])
     expect(patches).not.toHaveBeenCalled()
   })
@@ -179,14 +197,26 @@ describe('seeding and reading loaded rows', () => {
     seed(5000)
     const patches = vi.fn()
     const unsubscribe = subscribeToRowPatches(TAB, 0, patches)
-    applySavedRowValues(TAB, 0, 'q-1', 4321, { 0: 'new' })
+    applySavedRowValues({
+      tabId: TAB,
+      resultIndex: 0,
+      queryId: 'q-1',
+      baseIndex: 4321,
+      updates: { 0: 'new' },
+    })
     expect(patches).toHaveBeenCalledWith(4321, expect.any(Function))
     const apply = patches.mock.calls[0][1] as (row: unknown[]) => unknown[]
     expect(apply([4321])).toEqual(['new'])
     // Row-patch listeners survive a re-seed, until unsubscribed.
     seed(5000)
     unsubscribe()
-    applySavedRowValues(TAB, 0, 'q-1', 1, { 0: 'x' })
+    applySavedRowValues({
+      tabId: TAB,
+      resultIndex: 0,
+      queryId: 'q-1',
+      baseIndex: 1,
+      updates: { 0: 'x' },
+    })
     expect(patches).toHaveBeenCalledTimes(1)
   })
 
@@ -315,9 +345,11 @@ describe('visible-range loading', () => {
     // Page 5 only: the view ends at 3,000 rows.
     await vi.waitFor(() => expect(windowCalls()).toHaveLength(3))
     await Promise.resolve()
-    expect(status).not.toHaveBeenCalledWith(TAB, 0, expect.anything(), expect.anything())
+    expect(status).not.toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: TAB, resultIndex: 0, failure: expect.anything() })
+    )
     await vi.waitFor(() =>
-      expect(ipc.calls('log_frontend')).toContainEqual({
+      expect(ipc.payloads('log_frontend')).toContainEqual({
         level: 'debug',
         message: expect.stringContaining('discarding a stale window'),
       })
@@ -326,7 +358,7 @@ describe('visible-range loading', () => {
 
   it('keeps a newer fetch of the same page in flight when an older fetch settles', async () => {
     const releases = new Map<number, Array<() => void>>()
-    ipc.override(
+    ipc.overridePayload(
       'fetch_result_window',
       (args) =>
         new Promise((resolve) => {
@@ -383,17 +415,22 @@ describe('visible-range loading', () => {
     seed(3000)
     requestVisibleRange(TAB, 0, [2100, 2120])
     await vi.waitFor(() =>
-      expect(status).toHaveBeenCalledWith(
-        TAB,
-        0,
-        { failedWindowRange: [2100, 2120] },
-        { message: 'connection reset' }
-      )
+      expect(status).toHaveBeenCalledWith({
+        tabId: TAB,
+        resultIndex: 0,
+        patch: { failedWindowRange: [2100, 2120] },
+        failure: { message: 'connection reset' },
+      })
     )
 
     serveWindows(3000)
     retryFailedWindow(TAB, 0)
-    expect(status).toHaveBeenCalledWith(TAB, 0, { failedWindowRange: null }, undefined)
+    expect(status).toHaveBeenCalledWith({
+      tabId: TAB,
+      resultIndex: 0,
+      patch: { failedWindowRange: null },
+      failure: undefined,
+    })
     await vi.waitFor(() => expect(getLoadedRow(TAB, 0, 2100)).toBeDefined())
     retryFailedWindow('nope', 0)
   })
@@ -403,7 +440,7 @@ describe('visible-range loading', () => {
     const status = vi.fn()
     setWindowStatusHandler(status)
     const releases: Array<() => void> = []
-    ipc.override(
+    ipc.overridePayload(
       'fetch_result_window',
       (args) =>
         new Promise((resolve) => {
@@ -423,10 +460,20 @@ describe('visible-range loading', () => {
     vi.advanceTimersByTime(RESULT_LOADING_STATUS_DELAY_MS - 1)
     expect(status).not.toHaveBeenCalled()
     vi.advanceTimersByTime(1)
-    expect(status).toHaveBeenCalledWith(TAB, 0, { pendingWindowRange: [2100, 2110] }, undefined)
+    expect(status).toHaveBeenCalledWith({
+      tabId: TAB,
+      resultIndex: 0,
+      patch: { pendingWindowRange: [2100, 2110] },
+      failure: undefined,
+    })
     releases.forEach((release) => release())
     await vi.waitFor(() =>
-      expect(status).toHaveBeenCalledWith(TAB, 0, { pendingWindowRange: null }, undefined)
+      expect(status).toHaveBeenCalledWith({
+        tabId: TAB,
+        resultIndex: 0,
+        patch: { pendingWindowRange: null },
+        failure: undefined,
+      })
     )
   })
 
@@ -472,7 +519,12 @@ describe('off-window reads', () => {
     serveWindows(5000)
     seed(5000)
     const progress = vi.fn()
-    const rows = await readViewRange(TAB, 0, [500, 4500], { onProgress: progress })
+    const rows = await readViewRange({
+      tabId: TAB,
+      resultIndex: 0,
+      range: [500, 4500],
+      options: { onProgress: progress },
+    })
     expect(rows).toHaveLength(4000)
     expect(rows[0]).toEqual({ row: [500], baseIndex: 500 })
     expect(rows[3999]).toEqual({ row: [4499], baseIndex: 4499 })
@@ -485,7 +537,7 @@ describe('off-window reads', () => {
 
   it('readViewRange serves a fully loaded range without IPC', async () => {
     seed(100)
-    await expect(readViewRange(TAB, 0, [10, 12])).resolves.toEqual([
+    await expect(readViewRange({ tabId: TAB, resultIndex: 0, range: [10, 12] })).resolves.toEqual([
       { row: [10], baseIndex: 10 },
       { row: [11], baseIndex: 11 },
     ])
@@ -495,21 +547,30 @@ describe('off-window reads', () => {
   it('readViewRange fails with view_stale when the view changes mid-read', async () => {
     serveWindows(5000, 2)
     seed(5000)
-    await expect(readViewRange(TAB, 0, [2000, 2100])).rejects.toThrow(/view_stale/)
+    await expect(
+      readViewRange({ tabId: TAB, resultIndex: 0, range: [2000, 2100] })
+    ).rejects.toThrow(/view_stale/)
   })
 
   it('readViewRange aborts between chunks', async () => {
     serveWindows(9000)
     seed(9000)
     const controller = new AbortController()
-    const read = readViewRange(TAB, 0, [1000, 9000], {
-      signal: controller.signal,
-      onProgress: () => controller.abort(),
+    const read = readViewRange({
+      tabId: TAB,
+      resultIndex: 0,
+      range: [1000, 9000],
+      options: {
+        signal: controller.signal,
+        onProgress: () => controller.abort(),
+      },
     })
     await expect(read).rejects.toMatchObject({ name: 'AbortError' })
   })
 
   it('readViewRange fails for unknown surfaces', async () => {
-    await expect(readViewRange('nope', 0, [0, 1])).rejects.toThrow(/not available/)
+    await expect(readViewRange({ tabId: 'nope', resultIndex: 0, range: [0, 1] })).rejects.toThrow(
+      /not available/
+    )
   })
 })

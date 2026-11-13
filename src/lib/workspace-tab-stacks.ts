@@ -138,12 +138,19 @@ export function getWorkspaceStackMemberIds(
   }
 }
 
-export function getWorkspaceStackActivationTarget(
-  stackKey: WorkspaceTabStackKey,
-  tabs: WorkspaceTab[],
-  recentTabId: string | null | undefined,
-  options: WorkspaceTabStackResolutionOptions = {}
-): WorkspaceTab | null {
+export interface StackActivationQuery {
+  stackKey: WorkspaceTabStackKey
+  tabs: WorkspaceTab[]
+  recentTabId: string | null | undefined
+  options?: WorkspaceTabStackResolutionOptions
+}
+
+export function getWorkspaceStackActivationTarget({
+  stackKey,
+  tabs,
+  recentTabId,
+  options = {},
+}: StackActivationQuery): WorkspaceTab | null {
   const members = tabs.filter((tab) => isTabInStack(tab, stackKey, options))
   if (members.length === 0) {
     return null

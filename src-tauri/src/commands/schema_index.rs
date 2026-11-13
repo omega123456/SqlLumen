@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 
 #[cfg(not(coverage))]
+use crate::schema_index::embeddings_cache::EmbeddingCacheKey;
+#[cfg(not(coverage))]
 use crate::schema_index::search;
 #[cfg(not(coverage))]
 use crate::schema_index::search::SearchConfigExt;
@@ -26,6 +28,21 @@ use tauri::{Emitter, State};
 /// Re-export `SearchResult` from the search module so existing consumers
 /// (Tauri commands, tests) can keep using `commands::schema_index::SearchResult`.
 pub use crate::schema_index::search::SearchResult;
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticSearchRequest {
+    pub session_id: String,
+    pub queries: Vec<String>,
+    pub hints: Option<RetrievalHints>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvalidateSchemaIndexRequest {
+    pub session_id: String,
+    pub tables: Vec<String>,
+}
 
 /// Status response for a schema index.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -221,15 +238,13 @@ pub async fn force_rebuild_schema_index_impl(
                 let _ = app_handle_progress.emit("schema-index-progress", &progress);
             });
 
-        let result = builder::build_index(
-            &config,
-            &db,
-            &pool,
-            &http_client,
-            Some(&on_progress),
-            &token,
-        )
-        .await;
+        let resources = builder::IndexBuildResources {
+            sqlite_conn: &db,
+            mysql_pool: &pool,
+            http_client: &http_client,
+            cancellation: &token,
+        };
+        let result = builder::build_index(&config, &resources, Some(&on_progress)).await;
 
         match result {
             Ok(build_result) => {
@@ -441,15 +456,13 @@ pub async fn build_schema_index_impl(
                 let _ = app_handle_progress.emit("schema-index-progress", &progress);
             });
 
-        let result = builder::build_index(
-            &config,
-            &db,
-            &pool,
-            &http_client,
-            Some(&on_progress),
-            &token,
-        )
-        .await;
+        let resources = builder::IndexBuildResources {
+            sqlite_conn: &db,
+            mysql_pool: &pool,
+            http_client: &http_client,
+            cancellation: &token,
+        };
+        let result = builder::build_index(&config, &resources, Some(&on_progress)).await;
 
         match result {
             Ok(build_result) => {
@@ -562,10 +575,13 @@ pub async fn build_schema_index_impl(state: &AppState, session_id: String) -> Re
 #[cfg(not(coverage))]
 pub async fn semantic_search_impl(
     state: &AppState,
-    session_id: String,
-    queries: Vec<String>,
-    hints: Option<RetrievalHints>,
+    request: SemanticSearchRequest,
 ) -> Result<Vec<SearchResult>, String> {
+    let SemanticSearchRequest {
+        session_id,
+        queries,
+        hints,
+    } = request;
     let profile_id = resolve_session_profile(state, &session_id)?;
 
     tracing::debug!(
@@ -655,23 +671,21 @@ pub async fn semantic_search_impl(
 
     // Embed only cache misses
     if !uncached_texts.is_empty() {
-        let new_embeddings = embeddings::embed_texts(
-            &state.http_client,
-            &embedding_endpoint,
-            &embedding_model,
-            uncached_texts.clone(),
-            None,
-        )
-        .await
-        .map_err(|error| format!("Embedding failed: {error}"))?;
+        let embedding_target = embeddings::EmbeddingModel {
+            base_url: &embedding_endpoint,
+            model: &embedding_model,
+        };
+        let input = embeddings::EmbeddingInput::texts(uncached_texts.clone());
+        let new_embeddings = embeddings::embed_texts(&state.http_client, embedding_target, input)
+            .await
+            .map_err(|error| format!("Embedding failed: {error}"))?;
 
         for (uncached_position, index) in uncached_indices.iter().enumerate() {
             query_vectors[*index] = new_embeddings[uncached_position].clone();
-            state.embedding_cache.insert(
-                &embedding_model,
-                &queries[*index],
-                new_embeddings[uncached_position].clone(),
-            );
+            let cache_key = EmbeddingCacheKey::new(&embedding_model, &queries[*index]);
+            state
+                .embedding_cache
+                .insert(cache_key, new_embeddings[uncached_position].clone());
         }
     }
 
@@ -709,14 +723,13 @@ pub async fn semantic_search_impl(
         );
 
         // Run base search + hint boosts (no graph yet)
-        search::multi_query_search_with_hints(
-            &conn,
-            &profile_id,
-            &queries,
-            &query_vectors,
-            &search_config,
-        )
-        .map_err(|error| format!("Search failed: {error}"))?
+        let search_queries = search::SearchQueries {
+            connection_id: &profile_id,
+            query_texts: &queries,
+            query_vectors: &query_vectors,
+        };
+        search::multi_query_search_with_hints(&conn, &search_queries, &search_config)
+            .map_err(|error| format!("Search failed: {error}"))?
     };
 
     // Re-rank BEFORE graph expansion (if enabled)
@@ -731,14 +744,15 @@ pub async fn semantic_search_impl(
                 candidate_count = results.len(),
                 "semantic_search: invoking LLM re-rank (before graph expansion)"
             );
-            results = rerank::rerank_with_llm(
-                results,
-                &original_query,
-                &state.http_client,
-                &chat_endpoint,
-                &chat_model,
-            )
-            .await;
+            let backend = rerank::RerankBackend {
+                endpoint: &chat_endpoint,
+                model: &chat_model,
+            };
+            let input = rerank::RerankInput {
+                candidates: results,
+                question: &original_query,
+            };
+            results = rerank::rerank_with_llm(&state.http_client, backend, input).await;
         }
     }
 
@@ -749,14 +763,13 @@ pub async fn semantic_search_impl(
             .db
             .lock()
             .map_err(|error| format!("DB lock error: {error}"))?;
-        results = search::apply_graph_expansion(
-            &conn,
-            &profile_id,
-            results,
+        let expansion = search::GraphExpansion {
+            connection_id: &profile_id,
             graph_depth,
-            foreign_key_fanout_cap as u32,
-        )
-        .map_err(|error| format!("Graph expansion failed: {error}"))?;
+            max_foreign_key_chunks: foreign_key_fanout_cap as u32,
+        };
+        results = search::apply_graph_expansion(&conn, results, &expansion)
+            .map_err(|error| format!("Graph expansion failed: {error}"))?;
     }
 
     tracing::debug!(
@@ -772,12 +785,14 @@ pub async fn semantic_search_impl(
 #[cfg(coverage)]
 pub async fn semantic_search_impl(
     state: &AppState,
-    session_id: String,
-    queries: Vec<String>,
-    hints: Option<RetrievalHints>,
+    request: SemanticSearchRequest,
 ) -> Result<Vec<SearchResult>, String> {
+    let SemanticSearchRequest {
+        session_id,
+        queries,
+        ..
+    } = request;
     let _profile_id = resolve_session_profile(state, &session_id)?;
-    let _ = hints;
 
     tracing::debug!(
         session_id = %session_id,
@@ -909,9 +924,9 @@ pub fn get_index_status_impl(
 pub async fn invalidate_schema_index_impl(
     app_handle: tauri::AppHandle,
     state: &AppState,
-    session_id: String,
-    tables: Vec<String>,
+    request: InvalidateSchemaIndexRequest,
 ) -> Result<(), String> {
+    let InvalidateSchemaIndexRequest { session_id, tables } = request;
     let profile_id = resolve_session_profile(state, &session_id)?;
 
     let embedding_model = read_setting(&state.db, "ai.embeddingModel")?;
@@ -971,9 +986,13 @@ pub async fn invalidate_schema_index_impl(
             "schema_index invalidate: background task started"
         );
 
-        match builder::rebuild_tables(&config, &parsed_tables, &db, &pool, &http_client, &token)
-            .await
-        {
+        let resources = builder::IndexBuildResources {
+            sqlite_conn: &db,
+            mysql_pool: &pool,
+            http_client: &http_client,
+            cancellation: &token,
+        };
+        match builder::rebuild_tables(&config, &parsed_tables, &resources).await {
             Ok(()) => {
                 tracing::info!(
                     profile_id = %profile_id,
@@ -1006,11 +1025,9 @@ pub async fn invalidate_schema_index_impl(
 #[cfg(coverage)]
 pub async fn invalidate_schema_index_impl(
     state: &AppState,
-    session_id: String,
-    tables: Vec<String>,
+    request: InvalidateSchemaIndexRequest,
 ) -> Result<(), String> {
-    let _profile_id = resolve_session_profile(state, &session_id)?;
-    let _ = tables;
+    let _profile_id = resolve_session_profile(state, &request.session_id)?;
     Ok(())
 }
 
@@ -1069,11 +1086,9 @@ pub async fn force_rebuild_schema_index(
 #[tauri::command]
 pub async fn semantic_search(
     state: State<'_, AppState>,
-    session_id: String,
-    queries: Vec<String>,
-    hints: Option<RetrievalHints>,
+    payload: SemanticSearchRequest,
 ) -> Result<Vec<SearchResult>, String> {
-    semantic_search_impl(&state, session_id, queries, hints).await
+    semantic_search_impl(&state, payload).await
 }
 
 #[cfg(not(coverage))]
@@ -1090,10 +1105,9 @@ pub fn get_index_status(
 pub async fn invalidate_schema_index(
     app_handle: tauri::AppHandle,
     state: State<'_, AppState>,
-    session_id: String,
-    tables: Vec<String>,
+    payload: InvalidateSchemaIndexRequest,
 ) -> Result<(), String> {
-    invalidate_schema_index_impl(app_handle, &state, session_id, tables).await
+    invalidate_schema_index_impl(app_handle, &state, payload).await
 }
 
 #[cfg(not(coverage))]

@@ -58,11 +58,18 @@ pub fn list_favorites(
 
 // ── update_favorite ──────────────────────────────────────────────────────────
 
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateFavoriteRequest {
+    pub id: i64,
+    pub input: UpdateFavoriteInput,
+}
+
 pub fn update_favorite_impl(
     state: &AppState,
-    id: i64,
-    mut input: UpdateFavoriteInput,
+    request: UpdateFavoriteRequest,
 ) -> Result<bool, String> {
+    let UpdateFavoriteRequest { id, mut input } = request;
     if let Some(ref cid) = input.connection_id {
         let resolved = state
             .registry
@@ -77,11 +84,10 @@ pub fn update_favorite_impl(
 #[cfg(not(coverage))]
 #[tauri::command]
 pub fn update_favorite(
-    id: i64,
-    input: UpdateFavoriteInput,
+    payload: UpdateFavoriteRequest,
     state: tauri::State<'_, AppState>,
 ) -> Result<bool, String> {
-    update_favorite_impl(&state, id, input)
+    update_favorite_impl(&state, payload)
 }
 
 // ── delete_favorite ──────────────────────────────────────────────────────────

@@ -1,8 +1,8 @@
-import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 
 import { logFrontend } from './app-log-commands'
 import { toErrorMessage } from './error-message'
+import { invokeArgumentCommand } from './ipc/dispatch'
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -12,6 +12,18 @@ export type AiChunkKind = 'content' | 'thinking'
 export interface AiMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
+}
+
+export interface AiChatRequest {
+  messages: AiMessage[]
+  endpoint: string
+  model: string
+  temperature: number
+  maxTokens: number
+  streamId: string
+  previousResponseId: string | null
+  preferResponsesApi: boolean
+  enableReasoning: boolean
 }
 
 export interface AiChatParams {
@@ -68,31 +80,29 @@ interface StreamErrorPayload {
 // IPC wrappers
 // ---------------------------------------------------------------------------
 
-/**
- * Invoke the `ai_chat` Tauri command to start a streaming AI chat completion.
- * The command returns immediately; results arrive via events.
- */
+function toAiChatRequest(params: AiChatParams): AiChatRequest {
+  return {
+    messages: params.messages,
+    endpoint: params.endpoint,
+    model: params.model,
+    temperature: params.temperature,
+    maxTokens: params.maxTokens,
+    streamId: params.streamId,
+    previousResponseId: params.previousResponseId ?? null,
+    preferResponsesApi: params.preferResponsesApi ?? false,
+    enableReasoning: params.enableReasoning ?? true,
+  }
+}
+
 export async function sendAiChat(params: AiChatParams): Promise<void> {
-  return invoke<void>('ai_chat', {
-    request: {
-      messages: params.messages,
-      endpoint: params.endpoint,
-      model: params.model,
-      temperature: params.temperature,
-      maxTokens: params.maxTokens,
-      streamId: params.streamId,
-      previousResponseId: params.previousResponseId ?? null,
-      preferResponsesApi: params.preferResponsesApi ?? false,
-      enableReasoning: params.enableReasoning ?? true,
-    },
+  return invokeArgumentCommand({
+    command: 'ai_chat',
+    argument: { request: toAiChatRequest(params) },
   })
 }
 
-/**
- * Invoke the `ai_cancel` Tauri command to cancel an in-progress AI stream.
- */
 export async function cancelAiStream(streamId: string): Promise<void> {
-  return invoke<void>('ai_cancel', { streamId })
+  return invokeArgumentCommand({ command: 'ai_cancel', argument: { streamId } })
 }
 
 function isPayloadForStream(payload: { streamId: string }, streamId: string): boolean {
@@ -150,7 +160,10 @@ export interface ListAiModelsResult {
  */
 export async function listAiModels(endpoint: string): Promise<ListAiModelsResult> {
   try {
-    const response = await invoke<{ models: AiModelInfo[] }>('list_ai_models', { endpoint })
+    const response = await invokeArgumentCommand({
+      command: 'list_ai_models',
+      argument: { endpoint },
+    })
     return { models: response.models }
   } catch (error) {
     const errorMessage = toErrorMessage(error)
@@ -175,10 +188,6 @@ export interface AiQueryExpandResponse {
   text: string
 }
 
-/**
- * Non-streaming query expansion via `ai_query_expand`.
- * Sends a system + user message pair and returns the assistant response text.
- */
 export async function aiQueryExpand(request: AiQueryExpandRequest): Promise<AiQueryExpandResponse> {
-  return invoke<AiQueryExpandResponse>('ai_query_expand', { req: request })
+  return invokeArgumentCommand({ command: 'ai_query_expand', argument: { req: request } })
 }

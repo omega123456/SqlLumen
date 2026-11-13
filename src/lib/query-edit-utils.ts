@@ -386,12 +386,12 @@ function bindProjectionItem(context: ProjectionContext, item: string): boolean {
   return skipComputedColumn(context)
 }
 
-function buildProjectionBindings(
-  sql: string | null,
-  resultColumns: ColumnMeta[],
-  targetTable: QueryTableEditInfo,
-  queryTablesInOrder: QueryTableEditInfo[]
-): QueryEditColumnBindings {
+function buildProjectionBindings({
+  sql,
+  resultColumns,
+  targetTable,
+  queryTablesInOrder,
+}: ColumnBindingInputs): QueryEditColumnBindings {
   if (!sql) return new Map()
 
   const selectList = extractTopLevelSelectList(sql)
@@ -472,23 +472,30 @@ function canUseDirectNameFallback(
   })
 }
 
-export function buildQueryEditColumnBindings(
-  sql: string | null,
-  resultColumns: ColumnMeta[],
-  targetTable: QueryTableEditInfo,
+export interface ColumnBindingInputs {
+  sql: string | null
+  resultColumns: ColumnMeta[]
+  targetTable: QueryTableEditInfo
   queryTablesInOrder: QueryTableEditInfo[]
-): QueryEditColumnBindings {
+}
+
+export function buildQueryEditColumnBindings({
+  sql,
+  resultColumns,
+  targetTable,
+  queryTablesInOrder,
+}: ColumnBindingInputs): QueryEditColumnBindings {
   const bindings: QueryEditColumnBindings = new Map()
   const tableColumnLookup = new Map(
     targetTable.columns.map((column) => [column.name.toLowerCase(), column.name])
   )
 
-  const projectionBindings = buildProjectionBindings(
-    sql,
-    resultColumns,
-    targetTable,
-    queryTablesInOrder
-  )
+  const projectionBindings = buildProjectionBindings({
+    sql: sql,
+    resultColumns: resultColumns,
+    targetTable: targetTable,
+    queryTablesInOrder: queryTablesInOrder,
+  })
   for (const [index, columnName] of projectionBindings) {
     bindings.set(index, columnName)
   }
@@ -560,6 +567,13 @@ function isEditableResultColumn(check: ResultColumnEditability): boolean {
   return !tableColumn.isBinary
 }
 
+export interface EditableColumnMapInputs {
+  resultColumns: ColumnMeta[]
+  tableColumns: TableDataColumnMeta[]
+  ambiguousNames: Set<string>
+  columnBindings?: QueryEditColumnBindings
+}
+
 /**
  * For a selected table, maps result column indices to whether they are editable.
  * A column is editable if:
@@ -567,12 +581,12 @@ function isEditableResultColumn(check: ResultColumnEditability): boolean {
  *  - It is NOT in ambiguousNames
  *  - The matched table column is NOT binary/blob
  */
-export function buildEditableColumnMap(
-  resultColumns: ColumnMeta[],
-  tableColumns: TableDataColumnMeta[],
-  ambiguousNames: Set<string>,
-  columnBindings?: QueryEditColumnBindings
-): Map<number, boolean> {
+export function buildEditableColumnMap({
+  resultColumns,
+  tableColumns,
+  ambiguousNames,
+  columnBindings,
+}: EditableColumnMapInputs): Map<number, boolean> {
   const map = new Map<number, boolean>()
   const hasExplicitBindings = columnBindings !== undefined
 
@@ -596,16 +610,23 @@ export function buildEditableColumnMap(
   return map
 }
 
+export interface KeyColumnValidationInputs {
+  primaryKeyColumns: string[]
+  resultColumns: ColumnMeta[]
+  ambiguousNames: Set<string>
+  boundColumnIndexMap?: Map<string, number>
+}
+
 /**
  * Validates that all PK/unique key columns are present AND non-ambiguous
  * in the result set.
  */
-export function validateKeyColumnsPresent(
-  primaryKeyColumns: string[],
-  resultColumns: ColumnMeta[],
-  ambiguousNames: Set<string>,
-  boundColumnIndexMap?: Map<string, number>
-): { valid: boolean; missingColumns: string[] } {
+export function validateKeyColumnsPresent({
+  primaryKeyColumns,
+  resultColumns,
+  ambiguousNames,
+  boundColumnIndexMap,
+}: KeyColumnValidationInputs): { valid: boolean; missingColumns: string[] } {
   if (boundColumnIndexMap) {
     const missingColumns = primaryKeyColumns.filter(
       (primaryKey) => !boundColumnIndexMap.has(primaryKey.toLowerCase())
@@ -634,19 +655,28 @@ export function validateKeyColumnsPresent(
   }
 }
 
+export interface RowEditStateInputs {
+  row: unknown[]
+  resultColumns: ColumnMeta[]
+  editableMap: Map<number, boolean>
+  primaryKeyColumnNames: string[]
+  columnBindings?: QueryEditColumnBindings
+  boundColumnIndexMap?: Map<string, number>
+}
+
 /**
  * Builds a RowEditState from a positional row array.
  * Extracts values by column index, keyed by real column name.
  * Only captures values for columns that are in the editableMap.
  */
-export function buildRowEditState(
-  row: unknown[],
-  resultColumns: ColumnMeta[],
-  editableMap: Map<number, boolean>,
-  primaryKeyColumnNames: string[],
-  columnBindings?: QueryEditColumnBindings,
-  boundColumnIndexMap?: Map<string, number>
-): RowEditState {
+export function buildRowEditState({
+  row,
+  resultColumns,
+  editableMap,
+  primaryKeyColumnNames,
+  columnBindings,
+  boundColumnIndexMap,
+}: RowEditStateInputs): RowEditState {
   const originalValues: Record<string, unknown> = {}
   const currentValues: Record<string, unknown> = {}
   const rowKey: Record<string, unknown> = {}

@@ -27,7 +27,7 @@ describe('getSetting', () => {
 describe('setSetting', () => {
   it('calls invoke with correct command and args', async () => {
     await setSetting('theme', 'dark')
-    expect(ipc.calls('set_setting')).toEqual([{ key: 'theme', value: 'dark' }])
+    expect(ipc.payloads('set_setting')).toEqual([{ key: 'theme', value: 'dark' }])
   })
 })
 
@@ -76,6 +76,6 @@ describe('getThemeSetting', () => {
 describe('setThemeSetting', () => {
   it('calls setSetting with "theme" key', async () => {
     await setThemeSetting('dark')
-    expect(ipc.calls('set_setting')).toEqual([{ key: 'theme', value: 'dark' }])
+    expect(ipc.payloads('set_setting')).toEqual([{ key: 'theme', value: 'dark' }])
   })
 })

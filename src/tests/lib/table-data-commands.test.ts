@@ -243,7 +243,7 @@ describe('table data cache lifecycle commands', () => {
     })
 
     expect(result).toEqual({ status: 'available' })
-    expect(ipc.calls('touch_table_data')).toContainEqual({
+    expect(ipc.payloads('touch_table_data')).toContainEqual({
       connectionId: 'conn-1',
       tabId: 'tab-1',
     })
@@ -255,7 +255,7 @@ describe('table data cache lifecycle commands', () => {
       tabId: 'tab-1',
     })
 
-    expect(ipc.calls('evict_table_data')).toContainEqual({
+    expect(ipc.payloads('evict_table_data')).toContainEqual({
       connectionId: 'conn-1',
       tabId: 'tab-1',
     })
@@ -273,7 +273,7 @@ describe('table data cache lifecycle commands', () => {
       status: 'available',
       data: DEFAULT_FETCH_RESPONSE,
     })
-    expect(ipc.calls('restore_table_data_cache')).toContainEqual({
+    expect(ipc.payloads('restore_table_data_cache')).toContainEqual({
       connectionId: 'conn-1',
       tabId: 'tab-1',
       database: 'mydb',
@@ -382,18 +382,18 @@ describe('updateTableRow', () => {
       database: 'mydb',
       table: 'users',
       primaryKeyColumns: ['id'],
-      originalPkValues: { id: 1 },
+      originalPrimaryKeyValues: { id: 1 },
       updatedValues: { name: 'Updated' },
     })
 
-    const calls = ipc.calls('update_table_row')
+    const calls = ipc.payloads('update_table_row')
     expect(calls).toHaveLength(1)
     const capturedArgs = calls[0] as Record<string, unknown>
     expect(capturedArgs.connectionId).toBe('conn-1')
     expect(capturedArgs.database).toBe('mydb')
     expect(capturedArgs.table).toBe('users')
     expect(capturedArgs.primaryKeyColumns).toEqual(['id'])
-    expect(capturedArgs.originalPkValues).toEqual({ id: 1 })
+    expect(capturedArgs.originalPrimaryKeyValues).toEqual({ id: 1 })
     expect(capturedArgs.updatedValues).toEqual({ name: 'Updated' })
   })
 })
@@ -411,14 +411,14 @@ describe('insertTableRow', () => {
       database: 'mydb',
       table: 'users',
       values: { name: 'Charlie' },
-      pkInfo,
+      primaryKeyInfo: pkInfo,
     })
 
     expect(result).toEqual([
       ['id', 3],
       ['name', 'Charlie'],
     ])
-    expect(ipc.calls('insert_table_row')).toHaveLength(1)
+    expect(ipc.payloads('insert_table_row')).toHaveLength(1)
   })
 })
 
@@ -428,16 +428,16 @@ describe('deleteTableRow', () => {
       connectionId: 'conn-1',
       database: 'mydb',
       table: 'users',
-      pkColumns: ['id'],
-      pkValues: { id: 1 },
+      primaryKeyColumns: ['id'],
+      primaryKeyValues: { id: 1 },
     })
 
-    const calls = ipc.calls('delete_table_row')
+    const calls = ipc.payloads('delete_table_row')
     expect(calls).toHaveLength(1)
     const capturedArgs = calls[0] as Record<string, unknown>
     expect(capturedArgs.connectionId).toBe('conn-1')
-    expect(capturedArgs.pkColumns).toEqual(['id'])
-    expect(capturedArgs.pkValues).toEqual({ id: 1 })
+    expect(capturedArgs.primaryKeyColumns).toEqual(['id'])
+    expect(capturedArgs.primaryKeyValues).toEqual({ id: 1 })
   })
 })
 
@@ -543,28 +543,34 @@ describe('error propagation', () => {
 })
 
 describe('fetchBlobValue', () => {
-  it('invokes fetch_blob_value with ordered pkPairs and returns the typed response', async () => {
+  it('invokes fetch_blob_value with ordered primary key pairs and returns the typed response', async () => {
     ipc.override('fetch_blob_value', () => ({
       base64: 'aGk=',
       byteLength: 2,
       tooLarge: false,
     }))
 
-    const result = await fetchBlobValue('conn-1', 'db', 'photos', 'photo', [
-      ['id', 1],
-      ['version', 'v2'],
-    ])
+    const result = await fetchBlobValue({
+      connectionId: 'conn-1',
+      database: 'db',
+      table: 'photos',
+      column: 'photo',
+      primaryKeyPairs: [
+        ['id', 1],
+        ['version', 'v2'],
+      ],
+    })
 
     expect(result).toEqual({ base64: 'aGk=', byteLength: 2, tooLarge: false })
 
-    const calls = ipc.calls('fetch_blob_value')
+    const calls = ipc.payloads('fetch_blob_value')
     expect(calls).toHaveLength(1)
     const args = calls[0] as Record<string, unknown>
     expect(args.connectionId).toBe('conn-1')
     expect(args.database).toBe('db')
     expect(args.table).toBe('photos')
     expect(args.column).toBe('photo')
-    expect(args.pkPairs).toEqual([
+    expect(args.primaryKeyPairs).toEqual([
       ['id', 1],
       ['version', 'v2'],
     ])
@@ -583,7 +589,7 @@ describe('readFileBytes / writeFileBytes', () => {
   it('writeFileBytes invokes write_file_bytes with path and base64', async () => {
     ipc.override('write_file_bytes', () => undefined)
     await writeFileBytes('/tmp/out.bin', 'aGk=')
-    const args = ipc.calls('write_file_bytes')[0] as Record<string, unknown>
+    const args = ipc.payloads('write_file_bytes')[0] as Record<string, unknown>
     expect(args.path).toBe('/tmp/out.bin')
     expect(args.base64).toBe('aGk=')
   })

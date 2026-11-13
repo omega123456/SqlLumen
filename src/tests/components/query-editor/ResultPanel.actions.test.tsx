@@ -317,7 +317,7 @@ describe('ResultPanel actions and states', () => {
     )('name', 'desc')
 
     expect(requestNavigationActionSpy).toHaveBeenCalledWith('tab-1', expect.any(Function))
-    expect(sortResultsSpy).toHaveBeenCalledWith('conn-1', 'tab-1', 'name', 'desc')
+    expect(sortResultsSpy).toHaveBeenCalledWith('tab-1', 'name', 'desc')
   })
 
   it('navigates form rows, saves form edits, and discards form edits', async () => {

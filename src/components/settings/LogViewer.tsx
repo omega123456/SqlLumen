@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowsClockwise, FileArrowDown } from '@phosphor-icons/react'
 import { format } from 'date-fns'
 import { Button } from '../common/Button'
-import { Dropdown } from '../common/Dropdown'
+import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { IconButton } from '../common/IconButton'
 import { InfoBar } from '../common/InfoBar'
 import { PaginationGroup } from '../shared/toolbar/PaginationGroup'
@@ -17,14 +17,14 @@ const PAGE_SIZE = 20
 const AUTO_REFRESH_MS = 5000
 const SKELETON_ROWS = 8
 
-const LEVEL_OPTIONS = [
+const LEVEL_OPTIONS: DropdownOption<LogLevelFilter>[] = [
   { value: 'all', label: 'All' },
   { value: 'error', label: 'Error+' },
   { value: 'warn', label: 'Warn+' },
   { value: 'info', label: 'Info+' },
   { value: 'debug', label: 'Debug+' },
   { value: 'trace', label: 'Trace' },
-] as const
+]
 
 function formatTimestamp(timestamp: string): string {
   return format(new Date(timestamp), 'MMM dd HH:mm:ss')
@@ -233,11 +233,11 @@ export function LogViewer() {
             <Dropdown
               id="log-viewer-level-filter"
               ariaLabel="Severity level"
-              options={LEVEL_OPTIONS.map((option) => ({ ...option }))}
+              options={LEVEL_OPTIONS}
               value={levelFilter}
               onChange={(value) => {
                 setPage(1)
-                setLevelFilter(value as LogLevelFilter)
+                setLevelFilter(value)
               }}
               data-testid="log-viewer-level-filter"
               triggerClassName={styles.filterDropdown}

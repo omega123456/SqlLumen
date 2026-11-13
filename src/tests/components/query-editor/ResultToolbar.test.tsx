@@ -700,7 +700,7 @@ describe('ResultToolbar', () => {
 
       // First click only opens the confirmation dialog — no delete yet.
       fireEvent.click(screen.getByTestId('query-delete-rows-button'))
-      expect(ipc.calls('delete_table_row')).toHaveLength(0)
+      expect(ipc.payloads('delete_table_row')).toHaveLength(0)
       expect(screen.getByRole('heading', { name: 'Delete rows' })).toBeInTheDocument()
       expect(screen.getByText('Delete 2 rows from users?')).toBeInTheDocument()
       expect(screen.getByText('This action cannot be undone.')).toBeInTheDocument()
@@ -709,10 +709,10 @@ describe('ResultToolbar', () => {
       fireEvent.click(screen.getByTestId('confirm-confirm-button'))
 
       await waitFor(() => expect(flat(tabId).totalRows).toBe(1))
-      const calls = ipc.calls('delete_table_row') as Array<Record<string, unknown>>
-      expect(calls.map((c) => c.pkValues)).toEqual([{ id: 1 }, { id: 3 }])
-      expect(ipc.calls('remove_result_rows')[0]).toMatchObject({ baseIndices: [0, 2] })
-      expect(ipc.calls('execute_query')).toHaveLength(0)
+      const calls = ipc.payloads('delete_table_row') as Array<Record<string, unknown>>
+      expect(calls.map((c) => c.primaryKeyValues)).toEqual([{ id: 1 }, { id: 3 }])
+      expect(ipc.payloads('remove_result_rows')[0]).toMatchObject({ baseIndices: [0, 2] })
+      expect(ipc.payloads('execute_query')).toHaveLength(0)
       expect(flat(tabId).checkedRanges).toEqual([])
     })
 
@@ -764,8 +764,8 @@ describe('ResultToolbar', () => {
 
       fireEvent.click(ok)
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-      expect(ipc.calls('delete_table_row')).toHaveLength(0)
-      expect(ipc.calls('fetch_result_window')).toHaveLength(0)
+      expect(ipc.payloads('delete_table_row')).toHaveLength(0)
+      expect(ipc.payloads('fetch_result_window')).toHaveLength(0)
     })
 
     it('does not delete when the confirmation is cancelled', async () => {
@@ -776,9 +776,9 @@ describe('ResultToolbar', () => {
       fireEvent.click(screen.getByTestId('query-delete-rows-button'))
       fireEvent.click(screen.getByTestId('confirm-cancel-button'))
 
-      expect(ipc.calls('delete_table_row')).toHaveLength(0)
+      expect(ipc.payloads('delete_table_row')).toHaveLength(0)
       expect(flat(tabId).rows).toHaveLength(3)
-      expect(ipc.calls('remove_result_rows')).toHaveLength(0)
+      expect(ipc.payloads('remove_result_rows')).toHaveLength(0)
     })
   })
 
@@ -861,7 +861,9 @@ describe('ResultToolbar', () => {
         queryId: 'q-1',
         columns: [{ name: 'id', dataType: 'INT' }],
       })
-      useQueryStore.getState().beginRowAction(tabId, 'Copying', 12340, onCancel)
+      useQueryStore
+        .getState()
+        .beginRowAction(tabId, { verb: 'Copying', total: 12340, onCancel: onCancel })
       render(<ResultToolbar {...props} tabId={tabId} connectionId={connectionId} />)
       // Under 1 s nothing changes, but the toolbar Copy button is disabled.
       expect(screen.queryByTestId('status-loading')).not.toBeInTheDocument()
@@ -919,7 +921,7 @@ describe('ResultToolbar', () => {
         totalRows: 3000,
         checkedRanges: [[0, 3000]],
       })
-      ipc.override('fetch_result_window', (args) => {
+      ipc.overridePayload('fetch_result_window', (args) => {
         const offset = Number(args?.offset)
         const limit = Number(args?.limit)
         const windowRows = Array.from({ length: limit }, (_, i) => [offset + i])
@@ -936,7 +938,7 @@ describe('ResultToolbar', () => {
       await waitFor(() => expect(writeText).toHaveBeenCalled())
       const csv = writeText.mock.lastCall?.[0] as string
       expect(csv.split('\r\n').filter(Boolean)).toHaveLength(3001)
-      const limits = (ipc.calls('fetch_result_window') as Array<{ limit: number }>).map(
+      const limits = (ipc.payloads('fetch_result_window') as Array<{ limit: number }>).map(
         (c) => c.limit
       )
       expect(Math.max(...limits)).toBeLessThanOrEqual(2000)

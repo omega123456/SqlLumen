@@ -26,6 +26,7 @@ import {
 } from './table-designer-type-constants'
 import styles from './ColumnEditor.module.css'
 import { isIndexInBounds } from '../../lib/value-checks'
+import { isTargetWithin } from '../../lib/input-events'
 
 interface ColumnEditorProps {
   tabId: string
@@ -454,7 +455,11 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
 
     const revertField = REVERTIBLE_COLUMN_FIELDS[cellKey]
     if (revertField) {
-      updateColumn(tabId, rowIndex, revertField.field, revertField.parseBaseline(originalValue))
+      updateColumn(tabId, {
+        index: rowIndex,
+        field: revertField.field,
+        value: revertField.parseBaseline(originalValue),
+      })
     }
 
     clearEditStartValue(rowIndex, cellKey)
@@ -471,7 +476,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
 
       const nextCell = findAdjacentCell(rowIndex, cellKey, event.shiftKey ? -1 : 1)
       if (nextCell) {
-        ;(event.currentTarget as HTMLElement).blur()
+        event.currentTarget.blur()
         focusCell(nextCell)
         return
       }
@@ -480,7 +485,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
         !event.shiftKey && rowIndex === columns.length - 1 && cellKey === 'comment'
       if (isTabbingPastLastCell) {
         addColumn(tabId)
-        ;(event.currentTarget as HTMLElement).blur()
+        event.currentTarget.blur()
         setPendingFocusCell({ rowIndex: columns.length, cellKey: 'name' })
       }
 
@@ -490,7 +495,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
     if (event.key === 'Enter') {
       event.preventDefault()
       clearEditStartValue(rowIndex, cellKey)
-      ;(event.currentTarget as HTMLElement).blur()
+      event.currentTarget.blur()
 
       const nextRowCell = findSameCellInNextRow(rowIndex, cellKey)
       if (nextRowCell) {
@@ -503,7 +508,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
     if (event.key === 'Escape') {
       event.preventDefault()
       revertEditableField(rowIndex, cellKey)
-      ;(event.currentTarget as HTMLElement).blur()
+      event.currentTarget.blur()
     }
   }
 
@@ -706,12 +711,11 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
 
                 const applyDefaultModeChange = (nextMode: string) => {
                   setDefaultModeOverrideIndex(null)
-                  updateColumn(
-                    tabId,
-                    columnIndex,
-                    'defaultValue',
-                    defaultValueForMode(nextMode, defaultText)
-                  )
+                  updateColumn(tabId, {
+                    index: columnIndex,
+                    field: 'defaultValue',
+                    value: defaultValueForMode(nextMode, defaultText),
+                  })
                   if (isTextDefaultMode(nextMode)) {
                     setPendingFocusCell({ rowIndex: columnIndex, cellKey: 'default' })
                   }
@@ -733,9 +737,8 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                     }}
                     onPointerDown={(event) => {
                       suppressRowClickRef.current = false
-                      const target = event.target as HTMLElement
                       if (event.button !== 0) return
-                      if (target.closest(DRAG_IGNORE_SELECTOR)) return
+                      if (isTargetWithin(event.target, DRAG_IGNORE_SELECTOR)) return
                       event.preventDefault()
                       event.currentTarget.setPointerCapture(event.pointerId)
                       rowDragRef.current = { from: columnIndex, startY: event.clientY, to: null }
@@ -801,7 +804,11 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                           onClick={(event) => event.stopPropagation()}
                           onKeyDown={(event) => handleEditableKeyDown(event, columnIndex, 'name')}
                           onChange={(event) =>
-                            updateColumn(tabId, columnIndex, 'name', event.target.value)
+                            updateColumn(tabId, {
+                              index: columnIndex,
+                              field: 'name',
+                              value: event.target.value,
+                            })
                           }
                         />
                       </CellFrame>
@@ -827,13 +834,21 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                               },
                             }}
                             onChange={(nextType) => {
-                              updateColumn(tabId, columnIndex, 'type', nextType)
+                              updateColumn(tabId, {
+                                index: columnIndex,
+                                field: 'type',
+                                value: nextType,
+                              })
                               const canKeepAutoIncrement =
                                 isNumericType(nextType) && column.isPrimaryKey
                               const mustClearAutoIncrement =
                                 column.isAutoIncrement && !canKeepAutoIncrement
                               if (mustClearAutoIncrement) {
-                                updateColumn(tabId, columnIndex, 'isAutoIncrement', false)
+                                updateColumn(tabId, {
+                                  index: columnIndex,
+                                  field: 'isAutoIncrement',
+                                  value: false,
+                                })
                               }
                             }}
                             onTriggerFocus={() => {
@@ -877,7 +892,11 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                           onClick={(event) => event.stopPropagation()}
                           onKeyDown={(event) => handleEditableKeyDown(event, columnIndex, 'length')}
                           onChange={(event) =>
-                            updateColumn(tabId, columnIndex, 'length', event.target.value)
+                            updateColumn(tabId, {
+                              index: columnIndex,
+                              field: 'length',
+                              value: event.target.value,
+                            })
                           }
                         />
                       </CellFrame>
@@ -903,12 +922,11 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                           }}
                           onChange={(value) => {
                             const nextSignedness = value === 'UNSIGNED' ? 'UNSIGNED' : 'SIGNED'
-                            updateColumn(
-                              tabId,
-                              columnIndex,
-                              'typeModifier',
-                              applySignedness(column.typeModifier, nextSignedness)
-                            )
+                            updateColumn(tabId, {
+                              index: columnIndex,
+                              field: 'typeModifier',
+                              value: applySignedness(column.typeModifier, nextSignedness),
+                            })
                           }}
                           onTriggerFocus={() => {
                             setSelectedIndex(columnIndex)
@@ -936,7 +954,11 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                           data-testid={`column-nullable-${columnIndex}`}
                           onClick={(event) => event.stopPropagation()}
                           onChange={(event) => {
-                            updateColumn(tabId, columnIndex, 'nullable', event.target.checked)
+                            updateColumn(tabId, {
+                              index: columnIndex,
+                              field: 'nullable',
+                              value: event.target.checked,
+                            })
                           }}
                         />
                       </CellFrame>
@@ -952,13 +974,25 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                           onClick={(event) => event.stopPropagation()}
                           onChange={(event) => {
                             const checked = event.target.checked
-                            updateColumn(tabId, columnIndex, 'isPrimaryKey', checked)
+                            updateColumn(tabId, {
+                              index: columnIndex,
+                              field: 'isPrimaryKey',
+                              value: checked,
+                            })
                             if (checked) {
-                              updateColumn(tabId, columnIndex, 'nullable', false)
+                              updateColumn(tabId, {
+                                index: columnIndex,
+                                field: 'nullable',
+                                value: false,
+                              })
                               return
                             }
                             if (column.isAutoIncrement) {
-                              updateColumn(tabId, columnIndex, 'isAutoIncrement', false)
+                              updateColumn(tabId, {
+                                index: columnIndex,
+                                field: 'isAutoIncrement',
+                                value: false,
+                              })
                             }
                           }}
                         />
@@ -975,12 +1009,11 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                           data-testid={`column-ai-${columnIndex}`}
                           onClick={(event) => event.stopPropagation()}
                           onChange={(event) => {
-                            updateColumn(
-                              tabId,
-                              columnIndex,
-                              'isAutoIncrement',
-                              event.target.checked
-                            )
+                            updateColumn(tabId, {
+                              index: columnIndex,
+                              field: 'isAutoIncrement',
+                              value: event.target.checked,
+                            })
                           }}
                         />
                       </CellFrame>
@@ -1073,9 +1106,13 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                                 onBlur={() => scheduleDefaultCellBlur(columnIndex)}
                                 onClick={(event) => event.stopPropagation()}
                                 onChange={(event) => {
-                                  updateColumn(tabId, columnIndex, 'defaultValue', {
-                                    tag: defaultMode as 'LITERAL' | 'EXPRESSION',
-                                    value: event.target.value,
+                                  updateColumn(tabId, {
+                                    index: columnIndex,
+                                    field: 'defaultValue',
+                                    value: {
+                                      tag: defaultMode as 'LITERAL' | 'EXPRESSION',
+                                      value: event.target.value,
+                                    },
                                   })
                                 }}
                                 onKeyDown={(event) => {
@@ -1130,7 +1167,11 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                             handleEditableKeyDown(event, columnIndex, 'comment')
                           }
                           onChange={(event) =>
-                            updateColumn(tabId, columnIndex, 'comment', event.target.value)
+                            updateColumn(tabId, {
+                              index: columnIndex,
+                              field: 'comment',
+                              value: event.target.value,
+                            })
                           }
                         />
                       </CellFrame>

@@ -257,7 +257,7 @@ describe('UpdatesSettings', () => {
 
     expect(await screen.findByTestId('updates-app-version')).toHaveTextContent('Unavailable')
     await waitFor(() => {
-      const logCalls = ipc.calls('log_frontend')
+      const logCalls = ipc.payloads('log_frontend')
       const matched = logCalls.some((call) => {
         const args = call as Record<string, unknown>
         return (

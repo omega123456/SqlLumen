@@ -654,7 +654,7 @@ describe('ConnectionForm', () => {
     await user.click(screen.getByText('Save'))
 
     await waitFor(() => {
-      const calls = ipc.calls('update_connection')
+      const calls = ipc.payloads('update_connection')
       expect(calls).toHaveLength(1)
       expect((calls[0] as Record<string, unknown>)?.data).toMatchObject({
         clearPassword: true,
@@ -758,7 +758,7 @@ describe('ConnectionForm', () => {
     await user.click(screen.getByText('Save'))
 
     await waitFor(() => {
-      const calls = ipc.calls('update_connection')
+      const calls = ipc.payloads('update_connection')
       expect(calls).toHaveLength(1)
       expect((calls[0] as Record<string, unknown>)?.data).toMatchObject({
         clearPassword: false,
@@ -794,7 +794,7 @@ describe('ConnectionForm', () => {
     // Second save — should call update_connection instead of save_connection
     await user.click(screen.getByText('Save'))
     await waitFor(() => {
-      const updateCalls = ipc.calls('update_connection')
+      const updateCalls = ipc.payloads('update_connection')
       expect(updateCalls).toHaveLength(1)
       expect((updateCalls[0] as Record<string, unknown>)?.id).toBe('new-uuid-123')
     })
@@ -824,7 +824,7 @@ describe('ConnectionForm', () => {
     await user.click(screen.getByText('Save and connect'))
 
     await waitFor(() => {
-      expect(ipc.calls('update_connection')).toHaveLength(1)
+      expect(ipc.payloads('update_connection')).toHaveLength(1)
       expect(ipc.calls('open_connection')).toHaveLength(1)
     })
   })
@@ -865,7 +865,7 @@ describe('ConnectionForm', () => {
     await user.click(screen.getByText('Save'))
 
     await waitFor(() => {
-      expect(ipc.calls('update_connection')).toHaveLength(1)
+      expect(ipc.payloads('update_connection')).toHaveLength(1)
     })
   })
 

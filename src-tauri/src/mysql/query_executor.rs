@@ -1,7 +1,12 @@
 //! Query execution engine: runs SQL against MySQL connections,
 //! stores paginated results, and enforces read-only restrictions.
 
+use crate::commands::requests::ConnectionTabRequest;
 use crate::mysql::cache_status::cache_status_json;
+use crate::mysql::result_cache::{CacheKey, SlotWriteTarget};
+use crate::mysql::result_view::ResultViewSpec;
+#[cfg(not(coverage))]
+use crate::mysql::session::TabRun;
 use crate::mysql::sql_chars::{
     is_escape_before_char, is_identifier_char, is_identifier_char_at, is_identifier_or_dollar_char,
     is_quote_char, is_whitespace_at,
@@ -97,25 +102,40 @@ pub struct StoredResult {
     pub full_export_blocked_reason: Option<FullExportBlockedReason>,
 }
 
-impl StoredResult {
-    /// Build a result with default view, truncation and re-run fields.
-    pub fn new(
-        query_id: String,
-        columns: Vec<ColumnMeta>,
-        rows: SharedRows,
-        execution_time_ms: u64,
-        total_time_ms: u64,
-        affected_rows: u64,
-        auto_limit_applied: bool,
-    ) -> Self {
+pub struct StoredResultParts {
+    pub query_id: String,
+    pub columns: Vec<ColumnMeta>,
+    pub rows: SharedRows,
+    pub execution_time_ms: u64,
+    pub total_time_ms: u64,
+    pub affected_rows: u64,
+    pub auto_limit_applied: bool,
+}
+
+impl StoredResultParts {
+    pub fn empty(query_id: String) -> Self {
         Self {
             query_id,
-            columns,
-            rows,
-            execution_time_ms,
-            total_time_ms,
-            affected_rows,
-            auto_limit_applied,
+            columns: vec![],
+            rows: Arc::new(vec![]),
+            execution_time_ms: 0,
+            total_time_ms: 0,
+            affected_rows: 0,
+            auto_limit_applied: false,
+        }
+    }
+}
+
+impl StoredResult {
+    pub fn new(parts: StoredResultParts) -> Self {
+        Self {
+            query_id: parts.query_id,
+            columns: parts.columns,
+            rows: parts.rows,
+            execution_time_ms: parts.execution_time_ms,
+            total_time_ms: parts.total_time_ms,
+            affected_rows: parts.affected_rows,
+            auto_limit_applied: parts.auto_limit_applied,
             view: None,
             view_spec: crate::mysql::result_view::ResultViewSpec::default(),
             view_version: crate::mysql::result_view::INITIAL_VIEW_VERSION,
@@ -129,9 +149,8 @@ impl StoredResult {
         }
     }
 
-    /// An empty result (no columns, no rows) for DML, errors and stubs.
     pub fn empty(query_id: String) -> Self {
-        Self::new(query_id, vec![], Arc::new(vec![]), 0, 0, 0, false)
+        Self::new(StoredResultParts::empty(query_id))
     }
 
     /// Live base rows: all rows minus tombstones.
@@ -729,6 +748,67 @@ impl<'a> LockingClauseTokenizer<'a> {
 
 pub const DEFAULT_ROW_LIMIT: usize = 1000;
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecuteQueryRequest {
+    pub connection_id: String,
+    pub tab_id: String,
+    pub sql: String,
+    pub row_limit: Option<usize>,
+    pub view_spec: Option<ResultViewSpec>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecuteMultiQueryRequest {
+    pub connection_id: String,
+    pub tab_id: String,
+    pub statements: Vec<String>,
+    pub row_limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecuteCallQueryRequest {
+    pub connection_id: String,
+    pub tab_id: String,
+    pub sql: String,
+    pub row_limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReexecuteSingleResultRequest {
+    pub connection_id: String,
+    pub tab_id: String,
+    pub result_index: usize,
+    pub sql: String,
+    pub row_limit: Option<usize>,
+    pub view_spec: Option<ResultViewSpec>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateResultCellRequest {
+    pub connection_id: String,
+    pub tab_id: String,
+    pub row_index: usize,
+    pub updates: HashMap<usize, serde_json::Value>,
+    pub result_index: Option<usize>,
+    pub query_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalyzeQueryForEditRequest {
+    pub connection_id: String,
+    pub sql: String,
+}
+
+pub fn row_limit_or_default(row_limit: Option<usize>) -> usize {
+    row_limit.unwrap_or(DEFAULT_ROW_LIMIT)
+}
+
 pub fn requested_row_limit(row_limit: usize) -> usize {
     if row_limit == 0 {
         return DEFAULT_ROW_LIMIT;
@@ -908,12 +988,11 @@ fn decode_metadata_text(row: &sqlx::mysql::MySqlRow, index: usize) -> String {
 #[cfg(not(coverage))]
 pub async fn execute_query_impl(
     state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
-    sql: &str,
-    row_limit: usize,
-    view_spec: Option<crate::mysql::result_view::ResultViewSpec>,
+    request: &ExecuteQueryRequest,
 ) -> Result<ExecuteQueryResult, String> {
+    let connection_id = request.connection_id.as_str();
+    let tab_id = request.tab_id.as_str();
+    let sql = request.sql.as_str();
     if !state.has_open_connection(connection_id) {
         return Err(format!("Connection '{connection_id}' not found"));
     }
@@ -922,23 +1001,23 @@ pub async fn execute_query_impl(
         return Err(READ_ONLY_VIOLATION_MESSAGE.to_string());
     }
 
-    let row_limit = effective_row_limit(row_limit, state.result_cache.row_ceiling());
-    let (stored, _item) = crate::mysql::multi_result::execute_single_on_session(
-        state,
-        connection_id,
-        tab_id,
-        sql,
-        row_limit,
-    )
-    .await?;
+    let row_limit = effective_row_limit(
+        row_limit_or_default(request.row_limit),
+        state.result_cache.row_ceiling(),
+    );
+    let run = TabRun::new(connection_id, tab_id);
+    let statement = crate::mysql::multi_result::SessionStatement { sql, row_limit };
+    let stored = crate::mysql::multi_result::execute_single_on_session(state, &run, statement)
+        .await?
+        .stored;
 
-    let stored = crate::mysql::result_view::apply_initial_view(stored, view_spec).await?;
+    let stored =
+        crate::mysql::result_view::apply_initial_view(stored, request.view_spec.clone()).await?;
     let item = MultiQueryResultItem::from_stored(&stored, None, true);
 
-    // Store result set in state — execute_query replaces the WHOLE tab result vector
     state
         .result_cache
-        .insert(connection_id, tab_id, vec![stored]);
+        .insert(CacheKey::new(connection_id, tab_id), vec![stored]);
 
     Ok(ExecuteQueryResult::from(item))
 }
@@ -949,13 +1028,11 @@ pub async fn execute_query_impl(
 #[cfg(coverage)]
 pub async fn execute_query_impl(
     state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
-    sql: &str,
-    row_limit: usize,
-    view_spec: Option<crate::mysql::result_view::ResultViewSpec>,
+    request: &ExecuteQueryRequest,
 ) -> Result<ExecuteQueryResult, String> {
-    // Validate connection exists
+    let connection_id = request.connection_id.as_str();
+    let tab_id = request.tab_id.as_str();
+    let sql = request.sql.as_str();
     state
         .registry
         .get_pool(connection_id)
@@ -966,7 +1043,7 @@ pub async fn execute_query_impl(
     }
 
     let ceiling = state.result_cache.row_ceiling();
-    let row_limit = effective_row_limit(row_limit, ceiling);
+    let row_limit = effective_row_limit(row_limit_or_default(request.row_limit), ceiling);
     let auto_limit_applied = needs_auto_limit(sql);
     let query_id = Uuid::new_v4().to_string();
     // Exercise the same pure-function paths as the real impl so they are
@@ -988,13 +1065,13 @@ pub async fn execute_query_impl(
     stored.row_ceiling = ceiling;
     stored.source_sql = sql.to_string();
     stored.full_export_blocked_reason = statement_blocked_reason(sql, false);
-    let stored = crate::mysql::result_view::apply_initial_view(stored, view_spec).await?;
+    let stored =
+        crate::mysql::result_view::apply_initial_view(stored, request.view_spec.clone()).await?;
     let item = MultiQueryResultItem::from_stored(&stored, None, true);
 
-    // Store empty result in state (exercises the result_cache path)
     state
         .result_cache
-        .insert(connection_id, tab_id, vec![stored]);
+        .insert(CacheKey::new(connection_id, tab_id), vec![stored]);
 
     // Remove dummy thread ID
     state.running_queries.write().await.remove(&key);
@@ -1002,18 +1079,19 @@ pub async fn execute_query_impl(
     Ok(ExecuteQueryResult::from(item))
 }
 
-pub fn evict_results_impl(state: &AppState, connection_id: &str, tab_id: &str) {
+pub fn evict_results_impl(state: &AppState, request: &ConnectionTabRequest) {
     state
         .result_cache
-        .remove_with_spill_cleanup(connection_id, tab_id);
+        .remove_with_spill_cleanup(&request.connection_id, &request.tab_id);
 }
 
 #[cfg(not(coverage))]
 pub async fn cancel_query_impl(
     state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
+    request: &ConnectionTabRequest,
 ) -> Result<bool, String> {
+    let connection_id = request.connection_id.as_str();
+    let tab_id = request.tab_id.as_str();
     let key = (connection_id.to_string(), tab_id.to_string());
 
     // Look up the MySQL thread ID for the running query
@@ -1061,9 +1139,10 @@ pub async fn cancel_query_impl(
 #[cfg(coverage)]
 pub async fn cancel_query_impl(
     state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
+    request: &ConnectionTabRequest,
 ) -> Result<bool, String> {
+    let connection_id = request.connection_id.as_str();
+    let tab_id = request.tab_id.as_str();
     let key = (connection_id.to_string(), tab_id.to_string());
 
     // Look up the MySQL thread ID for the running query
@@ -1503,9 +1582,10 @@ async fn query_session_current_database(pool: &sqlx::MySqlPool) -> Option<String
 #[cfg(not(coverage))]
 pub async fn analyze_query_for_edit_impl(
     state: &AppState,
-    connection_id: &str,
-    sql: &str,
+    request: &AnalyzeQueryForEditRequest,
 ) -> Result<Vec<QueryTableEditInfo>, String> {
+    let connection_id = request.connection_id.as_str();
+    let sql = request.sql.as_str();
     use crate::mysql::sql_table_parser;
 
     let table_refs = sql_table_parser::extract_tables(sql);
@@ -1555,7 +1635,10 @@ pub async fn analyze_query_for_edit_impl(
 
         match crate::mysql::table_data::fetch_table_pk_impl(&pool, database, &table_ref.table).await
         {
-            Ok((pk_info, columns)) => {
+            Ok(crate::mysql::metadata_cache::TableKeyMetadata {
+                primary_key: pk_info,
+                columns,
+            }) => {
                 let foreign_keys = crate::mysql::schema_queries::query_foreign_keys(
                     &pool,
                     database,
@@ -1611,9 +1694,10 @@ pub async fn analyze_query_for_edit_impl(
 #[cfg(coverage)]
 pub async fn analyze_query_for_edit_impl(
     state: &AppState,
-    connection_id: &str,
-    sql: &str,
+    request: &AnalyzeQueryForEditRequest,
 ) -> Result<Vec<QueryTableEditInfo>, String> {
+    let connection_id = request.connection_id.as_str();
+    let sql = request.sql.as_str();
     use crate::mysql::sql_table_parser;
 
     // Exercise the parser — mirrors the real impl's early return for empty tables
@@ -1649,13 +1733,18 @@ pub async fn analyze_query_for_edit_impl(
 /// the old base index. The view (and its version) is unchanged.
 pub fn update_result_cell_impl(
     state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
-    row_index: usize,
-    updates: HashMap<usize, serde_json::Value>,
-    result_index: Option<usize>,
-    query_id: &str,
+    request: UpdateResultCellRequest,
 ) -> Result<(), String> {
+    let UpdateResultCellRequest {
+        connection_id,
+        tab_id,
+        row_index,
+        updates,
+        result_index,
+        query_id,
+    } = request;
+    let connection_id = connection_id.as_str();
+    let tab_id = tab_id.as_str();
     let expected_invalidation_version = state
         .result_cache
         .current_invalidation_version(connection_id, tab_id);
@@ -1677,14 +1766,17 @@ pub fn update_result_cell_impl(
     }
     drop(entry);
 
-    let outcome = state.result_cache.modify_slot_in_place_if_current(
+    let target = SlotWriteTarget {
         connection_id,
         tab_id,
         expected_invalidation_version,
-        resolved_index,
-        Some(query_id),
-        None,
-        |slot| {
+        index: resolved_index,
+        expected_query_id: Some(&query_id),
+        base_view_version: None,
+    };
+    let outcome = state
+        .result_cache
+        .modify_slot_in_place_if_current(&target, |slot| {
             let current = slot.rows.get(row_index).ok_or_else(|| {
                 format!(
                     "Row index {row_index} out of bounds (total rows: {})",
@@ -1706,8 +1798,7 @@ pub fn update_result_cell_impl(
             next[row_index] = SharedRow::from(edited);
             slot.rows = Arc::new(next);
             Ok(())
-        },
-    )?;
+        })?;
 
     match outcome {
         crate::mysql::result_cache::SlotWrite::Applied(()) => Ok(()),
@@ -1787,14 +1878,13 @@ pub struct MultiQueryResult {
 
 // ── Re-execute single result ───────────────────────────────────────────────────
 
-/// Verify a re-execute target slot exists and return its current query id.
 fn capture_reexecute_target(
     state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
-    result_index: usize,
+    request: &ReexecuteSingleResultRequest,
 ) -> Result<String, String> {
-    let cache_result = state.result_cache.get(connection_id, tab_id);
+    let tab_id = request.tab_id.as_str();
+    let result_index = request.result_index;
+    let cache_result = state.result_cache.get(&request.connection_id, tab_id);
     if cache_result.is_expired() {
         return Err(crate::mysql::result_view::RESULTS_EXPIRED_MESSAGE.to_string());
     }
@@ -1811,17 +1901,24 @@ fn capture_reexecute_target(
     Ok(result_vec[result_index].query_id.clone())
 }
 
-/// Replace only the targeted result slot after a re-execution, re-validating
-/// that the tab, the index and the captured query id are all still current so
-/// a newer query's results are never overwritten.
+struct ReexecutedSlot<'a> {
+    request: &'a ReexecuteSingleResultRequest,
+    expected_query_id: String,
+    stored: StoredResult,
+}
+
 fn replace_reexecuted_slot(
     state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
-    result_index: usize,
-    expected_query_id: &str,
-    stored: StoredResult,
+    replacement: ReexecutedSlot<'_>,
 ) -> Result<(), String> {
+    let ReexecutedSlot {
+        request,
+        expected_query_id,
+        stored,
+    } = replacement;
+    let connection_id = request.connection_id.as_str();
+    let tab_id = request.tab_id.as_str();
+    let result_index = request.result_index;
     let entry = match state.result_cache.get(connection_id, tab_id).into_entry() {
         Some(found) => found,
         None => {
@@ -1849,7 +1946,7 @@ fn replace_reexecuted_slot(
         ));
     }
     let actual_query_id = &result_vec[result_index].query_id;
-    if actual_query_id != expected_query_id {
+    if *actual_query_id != expected_query_id {
         tracing::warn!(
             tab_id,
             result_index,
@@ -1860,7 +1957,9 @@ fn replace_reexecuted_slot(
         return Err("Result was replaced by a newer query during re-execution".to_string());
     }
     result_vec[result_index] = stored;
-    state.result_cache.insert(connection_id, tab_id, result_vec);
+    state
+        .result_cache
+        .insert(CacheKey::new(connection_id, tab_id), result_vec);
     Ok(())
 }
 
@@ -1873,13 +1972,10 @@ fn replace_reexecuted_slot(
 #[cfg(not(coverage))]
 pub async fn reexecute_single_result_impl(
     state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
-    result_index: usize,
-    sql: &str,
-    row_limit: usize,
-    view_spec: Option<crate::mysql::result_view::ResultViewSpec>,
+    request: &ReexecuteSingleResultRequest,
 ) -> Result<MultiQueryResultItem, String> {
+    let connection_id = request.connection_id.as_str();
+    let sql = request.sql.as_str();
     if !state.has_open_connection(connection_id) {
         return Err(format!("Connection '{connection_id}' not found"));
     }
@@ -1888,30 +1984,27 @@ pub async fn reexecute_single_result_impl(
         return Err(READ_ONLY_VIOLATION_MESSAGE.to_string());
     }
 
-    // Verify the result index exists and capture the current query_id for
-    // post-await staleness detection.
-    let expected_query_id = capture_reexecute_target(state, connection_id, tab_id, result_index)?;
+    let expected_query_id = capture_reexecute_target(state, request)?;
 
-    let row_limit = effective_row_limit(row_limit, state.result_cache.row_ceiling());
-    let (stored, _item) = crate::mysql::multi_result::execute_single_on_session(
-        state,
-        connection_id,
-        tab_id,
-        sql,
-        row_limit,
-    )
-    .await?;
-    let stored = crate::mysql::result_view::apply_initial_view(stored, view_spec).await?;
+    let row_limit = effective_row_limit(
+        row_limit_or_default(request.row_limit),
+        state.result_cache.row_ceiling(),
+    );
+    let run = TabRun::new(connection_id, &request.tab_id);
+    let statement = crate::mysql::multi_result::SessionStatement { sql, row_limit };
+    let stored = crate::mysql::multi_result::execute_single_on_session(state, &run, statement)
+        .await?
+        .stored;
+    let stored =
+        crate::mysql::result_view::apply_initial_view(stored, request.view_spec.clone()).await?;
     let item = MultiQueryResultItem::from_stored(&stored, None, true);
 
-    replace_reexecuted_slot(
-        state,
-        connection_id,
-        tab_id,
-        result_index,
-        &expected_query_id,
+    let replacement = ReexecutedSlot {
+        request,
+        expected_query_id,
         stored,
-    )?;
+    };
+    replace_reexecuted_slot(state, replacement)?;
 
     Ok(item)
 }
@@ -1922,14 +2015,12 @@ pub async fn reexecute_single_result_impl(
 #[cfg(coverage)]
 pub async fn reexecute_single_result_impl(
     state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
-    result_index: usize,
-    sql: &str,
-    row_limit: usize,
-    view_spec: Option<crate::mysql::result_view::ResultViewSpec>,
+    request: &ReexecuteSingleResultRequest,
 ) -> Result<MultiQueryResultItem, String> {
-    // Validate connection exists
+    let connection_id = request.connection_id.as_str();
+    let tab_id = request.tab_id.as_str();
+    let result_index = request.result_index;
+    let sql = request.sql.as_str();
     state
         .registry
         .get_pool(connection_id)
@@ -1939,18 +2030,14 @@ pub async fn reexecute_single_result_impl(
         return Err(READ_ONLY_VIOLATION_MESSAGE.to_string());
     }
 
-    // Exercise pure-function paths
     let ceiling = state.result_cache.row_ceiling();
-    let row_limit = effective_row_limit(row_limit, ceiling);
+    let row_limit = effective_row_limit(row_limit_or_default(request.row_limit), ceiling);
     let auto_limit_applied = needs_auto_limit(sql);
     let _is_result = returns_result_set(&strip_non_executable_comments(sql));
     let _sql_to_execute = sql_with_auto_limit(sql, auto_limit_applied, row_limit);
 
-    let expected_query_id = capture_reexecute_target(state, connection_id, tab_id, result_index)?;
+    let expected_query_id = capture_reexecute_target(state, request)?;
 
-    // Re-validate after the (simulated) execution and replace the slot. The
-    // previous slot's rows stand in for the fresh result so the view-spec
-    // path is exercised against real data.
     let previous = state
         .result_cache
         .get(connection_id, tab_id)
@@ -1966,17 +2053,16 @@ pub async fn reexecute_single_result_impl(
     stored.row_ceiling = ceiling;
     stored.source_sql = sql.to_string();
     stored.full_export_blocked_reason = statement_blocked_reason(sql, false);
-    let stored = crate::mysql::result_view::apply_initial_view(stored, view_spec).await?;
+    let stored =
+        crate::mysql::result_view::apply_initial_view(stored, request.view_spec.clone()).await?;
     let item = MultiQueryResultItem::from_stored(&stored, None, true);
 
-    replace_reexecuted_slot(
-        state,
-        connection_id,
-        tab_id,
-        result_index,
-        &expected_query_id,
+    let replacement = ReexecutedSlot {
+        request,
+        expected_query_id,
         stored,
-    )?;
+    };
+    replace_reexecuted_slot(state, replacement)?;
 
     Ok(item)
 }
@@ -1991,34 +2077,35 @@ pub async fn reexecute_single_result_impl(
 #[cfg(not(coverage))]
 pub async fn execute_multi_query_impl(
     state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
-    statements: Vec<String>,
-    row_limit: usize,
+    request: &ExecuteMultiQueryRequest,
 ) -> Result<MultiQueryResult, String> {
-    // Validate connection exists
+    let connection_id = request.connection_id.as_str();
+    let tab_id = request.tab_id.as_str();
     state
         .registry
         .get_pool(connection_id)
         .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
 
     let is_read_only = state.registry.is_read_only(connection_id);
-    let row_limit = effective_row_limit(row_limit, state.result_cache.row_ceiling());
+    let row_limit = effective_row_limit(
+        row_limit_or_default(request.row_limit),
+        state.result_cache.row_ceiling(),
+    );
 
-    let (stored_results, result_items) = crate::mysql::multi_result::execute_multi_query_internal(
-        state,
-        connection_id,
-        tab_id,
-        &statements,
+    let run = TabRun::new(connection_id, tab_id);
+    let batch = crate::mysql::multi_result::StatementBatch {
+        statements: &request.statements,
         row_limit,
         is_read_only,
-    )
-    .await?;
+    };
+    let crate::mysql::multi_result::BatchResults {
+        stored_results,
+        result_items,
+    } = crate::mysql::multi_result::execute_multi_query_internal(state, &run, batch).await?;
 
-    // Store all results in state
     state
         .result_cache
-        .insert(connection_id, tab_id, stored_results);
+        .insert(CacheKey::new(connection_id, tab_id), stored_results);
 
     Ok(MultiQueryResult {
         results: result_items,
@@ -2031,12 +2118,11 @@ pub async fn execute_multi_query_impl(
 #[cfg(coverage)]
 pub async fn execute_multi_query_impl(
     state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
-    statements: Vec<String>,
-    row_limit: usize,
+    request: &ExecuteMultiQueryRequest,
 ) -> Result<MultiQueryResult, String> {
-    // Validate connection exists
+    let connection_id = request.connection_id.as_str();
+    let tab_id = request.tab_id.as_str();
+    let statements = &request.statements;
     state
         .registry
         .get_pool(connection_id)
@@ -2044,12 +2130,11 @@ pub async fn execute_multi_query_impl(
 
     let is_read_only = state.registry.is_read_only(connection_id);
     let ceiling = state.result_cache.row_ceiling();
-    let row_limit = effective_row_limit(row_limit, ceiling);
+    let row_limit = effective_row_limit(row_limit_or_default(request.row_limit), ceiling);
     let mut stored_results: Vec<StoredResult> = Vec::new();
     let mut result_items: Vec<MultiQueryResultItem> = Vec::new();
 
-    // Exercise pure-function paths for each statement
-    for sql in &statements {
+    for sql in statements {
         let sql = sql.trim();
         if sql.is_empty() {
             continue;
@@ -2096,7 +2181,7 @@ pub async fn execute_multi_query_impl(
     // Store results in state
     state
         .result_cache
-        .insert(connection_id, tab_id, stored_results);
+        .insert(CacheKey::new(connection_id, tab_id), stored_results);
 
     Ok(MultiQueryResult {
         results: result_items,
@@ -2110,12 +2195,10 @@ pub async fn execute_multi_query_impl(
 #[cfg(not(coverage))]
 pub async fn execute_call_query_impl(
     state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
-    sql: &str,
-    row_limit: usize,
+    request: &ExecuteCallQueryRequest,
 ) -> Result<MultiQueryResult, String> {
-    // Validate connection exists
+    let connection_id = request.connection_id.as_str();
+    let tab_id = request.tab_id.as_str();
     state
         .registry
         .get_pool(connection_id)
@@ -2128,22 +2211,25 @@ pub async fn execute_call_query_impl(
         return Err("This connection is read-only. CALL statements are not allowed on read-only connections.".to_string());
     }
 
-    let row_limit = effective_row_limit(row_limit, state.result_cache.row_ceiling());
-    let statements = vec![sql.to_string()];
-    let (stored_results, result_items) = crate::mysql::multi_result::execute_multi_query_internal(
-        state,
-        connection_id,
-        tab_id,
-        &statements,
+    let row_limit = effective_row_limit(
+        row_limit_or_default(request.row_limit),
+        state.result_cache.row_ceiling(),
+    );
+    let statements = vec![request.sql.clone()];
+    let run = TabRun::new(connection_id, tab_id);
+    let batch = crate::mysql::multi_result::StatementBatch {
+        statements: &statements,
         row_limit,
         is_read_only,
-    )
-    .await?;
+    };
+    let crate::mysql::multi_result::BatchResults {
+        stored_results,
+        result_items,
+    } = crate::mysql::multi_result::execute_multi_query_internal(state, &run, batch).await?;
 
-    // Store all results in state
     state
         .result_cache
-        .insert(connection_id, tab_id, stored_results);
+        .insert(CacheKey::new(connection_id, tab_id), stored_results);
 
     Ok(MultiQueryResult {
         results: result_items,
@@ -2156,12 +2242,11 @@ pub async fn execute_call_query_impl(
 #[cfg(coverage)]
 pub async fn execute_call_query_impl(
     state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
-    sql: &str,
-    row_limit: usize,
+    request: &ExecuteCallQueryRequest,
 ) -> Result<MultiQueryResult, String> {
-    // Validate connection exists
+    let connection_id = request.connection_id.as_str();
+    let tab_id = request.tab_id.as_str();
+    let sql = request.sql.as_str();
     state
         .registry
         .get_pool(connection_id)
@@ -2177,7 +2262,7 @@ pub async fn execute_call_query_impl(
     // Exercise CALL detection and the row-limit clamp
     let is_call = crate::mysql::multi_result::is_call_statement(sql);
     let ceiling = state.result_cache.row_ceiling();
-    let _row_limit = effective_row_limit(row_limit, ceiling);
+    let _row_limit = effective_row_limit(row_limit_or_default(request.row_limit), ceiling);
 
     // Track a dummy thread ID to exercise the running_queries path
     let key = (connection_id.to_string(), tab_id.to_string());
@@ -2197,18 +2282,16 @@ pub async fn execute_call_query_impl(
     // Store result in state
     state
         .result_cache
-        .insert(connection_id, tab_id, vec![stored]);
+        .insert(CacheKey::new(connection_id, tab_id), vec![stored]);
 
     Ok(MultiQueryResult {
         results: vec![item],
     })
 }
 
-pub fn touch_results_impl(
-    state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
-) -> serde_json::Value {
-    let lookup = state.result_cache.get(connection_id, tab_id);
+pub fn touch_results_impl(state: &AppState, request: &ConnectionTabRequest) -> serde_json::Value {
+    let lookup = state
+        .result_cache
+        .get(&request.connection_id, &request.tab_id);
     cache_status_json(lookup.lookup_status())
 }

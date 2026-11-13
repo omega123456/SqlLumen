@@ -1,20 +1,14 @@
+use crate::export::ExportRows;
 use csv::WriterBuilder;
 use std::io::{self, Write};
 
-/// Write query results as CSV to the given writer.
-///
-/// - `columns`: column names for the header row
-/// - `rows`: data rows (each row is a slice of `serde_json::Value`)
-/// - `include_headers`: whether to emit a header row
-///
-/// NULL values are written as empty fields (no content between commas).
-/// Quoting and escaping are handled automatically by the `csv` crate.
 pub fn write_csv<W: Write, R: AsRef<[serde_json::Value]>>(
     writer: &mut W,
-    columns: &[String],
-    rows: &[R],
+    table: &ExportRows<'_, R>,
     include_headers: bool,
 ) -> io::Result<()> {
+    let columns = table.columns;
+    let rows = table.rows;
     let mut wtr = WriterBuilder::new()
         .has_headers(false) // we handle headers manually to control NULL behavior
         .from_writer(writer);

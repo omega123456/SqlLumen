@@ -4,10 +4,11 @@
 use rusqlite::Connection;
 use sqllumen_lib::init_sqlite_vec;
 use sqllumen_lib::schema_index::graph::bfs_related;
-use sqllumen_lib::schema_index::storage;
-use sqllumen_lib::schema_index::types::{ChunkInsert, ChunkType, FkEdge};
+use sqllumen_lib::schema_index::storage::{self, IndexedTableRef};
+use sqllumen_lib::schema_index::types::FkEdge;
 
 use crate::common;
+use crate::common::schema_index_chunks::{insert_table_chunk, TestTableChunk};
 
 const DIM: usize = 4;
 
@@ -18,46 +19,38 @@ fn setup_db() -> Connection {
     conn
 }
 
-fn insert_table_chunk(conn: &Connection, connection_id: &str, db: &str, tbl: &str) {
-    let chunk = ChunkInsert {
-        connection_id: connection_id.to_string(),
-        chunk_key: format!("table:{db}.{tbl}"),
-        db_name: db.to_string(),
-        table_name: tbl.to_string(),
-        chunk_type: ChunkType::Table,
-        ddl_text: format!("CREATE TABLE `{tbl}` (id INT PRIMARY KEY)"),
-        ddl_hash: format!("hash_{tbl}"),
-        model_id: "test-model".to_string(),
-        ref_db_name: None,
-        ref_table_name: None,
-        embedding: vec![1.0, 0.0, 0.0, 0.0],
-        text_for_embedding: None,
-        row_count_approx: None,
-    };
-    storage::insert_chunk(conn, &chunk).expect("insert chunk");
+struct SameDatabaseEdge<'a> {
+    connection_id: &'a str,
+    db_name: &'a str,
+    src_tbl: &'a str,
+    dst_tbl: &'a str,
 }
 
-fn insert_edge(
-    conn: &Connection,
-    cid: &str,
-    src_db: &str,
-    src_tbl: &str,
-    dst_db: &str,
-    dst_tbl: &str,
-) {
+fn insert_edge(conn: &Connection, link: SameDatabaseEdge<'_>) {
+    let SameDatabaseEdge {
+        connection_id,
+        db_name,
+        src_tbl,
+        dst_tbl,
+    } = link;
     let edge = FkEdge {
-        connection_id: cid.to_string(),
-        src_db: src_db.to_string(),
+        connection_id: connection_id.to_string(),
+        src_db: db_name.to_string(),
         src_tbl: src_tbl.to_string(),
         src_col: "id".to_string(),
-        dst_db: dst_db.to_string(),
+        dst_db: db_name.to_string(),
         dst_tbl: dst_tbl.to_string(),
         dst_col: "ref_id".to_string(),
         constraint_name: format!("fk_{src_tbl}_{dst_tbl}"),
         on_delete: Some("RESTRICT".to_string()),
         on_update: Some("RESTRICT".to_string()),
     };
-    storage::replace_fk_edges_for_table(conn, cid, src_db, src_tbl, &[edge]).expect("insert edge");
+    let source_table = IndexedTableRef {
+        connection_id,
+        db_name,
+        table_name: src_tbl,
+    };
+    storage::replace_fk_edges_for_table(conn, &source_table, &[edge]).expect("insert edge");
 }
 
 #[test]
@@ -67,12 +60,45 @@ fn bfs_3_table_chain_returns_hop_distances() {
 
     // Chain: A -> B -> C
     for tbl in &["A", "B", "C"] {
-        insert_table_chunk(&conn, cid, "db1", tbl);
+        insert_table_chunk(
+            &conn,
+            TestTableChunk {
+                connection_id: cid,
+                db_name: "db1",
+                table_name: tbl,
+                embedding: vec![1.0, 0.0, 0.0, 0.0],
+            },
+        );
     }
-    insert_edge(&conn, cid, "db1", "A", "db1", "B");
-    insert_edge(&conn, cid, "db1", "B", "db1", "C");
+    insert_edge(
+        &conn,
+        SameDatabaseEdge {
+            connection_id: cid,
+            db_name: "db1",
+            src_tbl: "A",
+            dst_tbl: "B",
+        },
+    );
+    insert_edge(
+        &conn,
+        SameDatabaseEdge {
+            connection_id: cid,
+            db_name: "db1",
+            src_tbl: "B",
+            dst_tbl: "C",
+        },
+    );
 
-    let nodes = bfs_related(&conn, cid, &[("db1".into(), "A".into())], 2, 100).unwrap();
+    let nodes = bfs_related(
+        &conn,
+        &[("db1".into(), "A".into())],
+        &sqllumen_lib::schema_index::graph::GraphWalk {
+            connection_id: cid,
+            depth: 2,
+            edge_budget: 100,
+        },
+    )
+    .unwrap();
 
     // Should find B at hop 1, C at hop 2
     assert_eq!(nodes.len(), 2);
@@ -90,13 +116,46 @@ fn bfs_respects_depth_limit() {
     let cid = "conn-1";
 
     for tbl in &["A", "B", "C"] {
-        insert_table_chunk(&conn, cid, "db1", tbl);
+        insert_table_chunk(
+            &conn,
+            TestTableChunk {
+                connection_id: cid,
+                db_name: "db1",
+                table_name: tbl,
+                embedding: vec![1.0, 0.0, 0.0, 0.0],
+            },
+        );
     }
-    insert_edge(&conn, cid, "db1", "A", "db1", "B");
-    insert_edge(&conn, cid, "db1", "B", "db1", "C");
+    insert_edge(
+        &conn,
+        SameDatabaseEdge {
+            connection_id: cid,
+            db_name: "db1",
+            src_tbl: "A",
+            dst_tbl: "B",
+        },
+    );
+    insert_edge(
+        &conn,
+        SameDatabaseEdge {
+            connection_id: cid,
+            db_name: "db1",
+            src_tbl: "B",
+            dst_tbl: "C",
+        },
+    );
 
     // Depth 1 — should only find B
-    let nodes = bfs_related(&conn, cid, &[("db1".into(), "A".into())], 1, 100).unwrap();
+    let nodes = bfs_related(
+        &conn,
+        &[("db1".into(), "A".into())],
+        &sqllumen_lib::schema_index::graph::GraphWalk {
+            connection_id: cid,
+            depth: 1,
+            edge_budget: 100,
+        },
+    )
+    .unwrap();
     assert_eq!(nodes.len(), 1);
     assert_eq!(nodes[0].table_name, "B");
     assert_eq!(nodes[0].hop, 1);
@@ -109,14 +168,55 @@ fn bfs_respects_edge_budget() {
 
     // Star: center -> A, center -> B, center -> C
     for tbl in &["center", "A", "B", "C"] {
-        insert_table_chunk(&conn, cid, "db1", tbl);
+        insert_table_chunk(
+            &conn,
+            TestTableChunk {
+                connection_id: cid,
+                db_name: "db1",
+                table_name: tbl,
+                embedding: vec![1.0, 0.0, 0.0, 0.0],
+            },
+        );
     }
-    insert_edge(&conn, cid, "db1", "center", "db1", "A");
-    insert_edge(&conn, cid, "db1", "center", "db1", "B");
-    insert_edge(&conn, cid, "db1", "center", "db1", "C");
+    insert_edge(
+        &conn,
+        SameDatabaseEdge {
+            connection_id: cid,
+            db_name: "db1",
+            src_tbl: "center",
+            dst_tbl: "A",
+        },
+    );
+    insert_edge(
+        &conn,
+        SameDatabaseEdge {
+            connection_id: cid,
+            db_name: "db1",
+            src_tbl: "center",
+            dst_tbl: "B",
+        },
+    );
+    insert_edge(
+        &conn,
+        SameDatabaseEdge {
+            connection_id: cid,
+            db_name: "db1",
+            src_tbl: "center",
+            dst_tbl: "C",
+        },
+    );
 
     // Edge budget of 2 — should stop after exploring 2 edges
-    let nodes = bfs_related(&conn, cid, &[("db1".into(), "center".into())], 2, 2).unwrap();
+    let nodes = bfs_related(
+        &conn,
+        &[("db1".into(), "center".into())],
+        &sqllumen_lib::schema_index::graph::GraphWalk {
+            connection_id: cid,
+            depth: 2,
+            edge_budget: 2,
+        },
+    )
+    .unwrap();
     // Should find at most 2 neighbors
     assert!(nodes.len() <= 2);
 }
@@ -128,28 +228,95 @@ fn bfs_handles_cycles() {
 
     // Cycle: A -> B -> C -> A
     for tbl in &["A", "B", "C"] {
-        insert_table_chunk(&conn, cid, "db1", tbl);
+        insert_table_chunk(
+            &conn,
+            TestTableChunk {
+                connection_id: cid,
+                db_name: "db1",
+                table_name: tbl,
+                embedding: vec![1.0, 0.0, 0.0, 0.0],
+            },
+        );
     }
-    insert_edge(&conn, cid, "db1", "A", "db1", "B");
-    insert_edge(&conn, cid, "db1", "B", "db1", "C");
-    insert_edge(&conn, cid, "db1", "C", "db1", "A");
+    insert_edge(
+        &conn,
+        SameDatabaseEdge {
+            connection_id: cid,
+            db_name: "db1",
+            src_tbl: "A",
+            dst_tbl: "B",
+        },
+    );
+    insert_edge(
+        &conn,
+        SameDatabaseEdge {
+            connection_id: cid,
+            db_name: "db1",
+            src_tbl: "B",
+            dst_tbl: "C",
+        },
+    );
+    insert_edge(
+        &conn,
+        SameDatabaseEdge {
+            connection_id: cid,
+            db_name: "db1",
+            src_tbl: "C",
+            dst_tbl: "A",
+        },
+    );
 
     // Should not loop forever; visited set prevents revisiting
-    let nodes = bfs_related(&conn, cid, &[("db1".into(), "A".into())], 3, 100).unwrap();
+    let nodes = bfs_related(
+        &conn,
+        &[("db1".into(), "A".into())],
+        &sqllumen_lib::schema_index::graph::GraphWalk {
+            connection_id: cid,
+            depth: 3,
+            edge_budget: 100,
+        },
+    )
+    .unwrap();
     assert_eq!(nodes.len(), 2); // B and C only (A is the seed)
 }
 
 #[test]
 fn bfs_empty_seeds_returns_empty() {
     let conn = setup_db();
-    let nodes = bfs_related(&conn, "conn-1", &[], 2, 100).unwrap();
+    let nodes = bfs_related(
+        &conn,
+        &[],
+        &sqllumen_lib::schema_index::graph::GraphWalk {
+            connection_id: "conn-1",
+            depth: 2,
+            edge_budget: 100,
+        },
+    )
+    .unwrap();
     assert!(nodes.is_empty());
 }
 
 #[test]
 fn bfs_no_edges_returns_empty() {
     let conn = setup_db();
-    insert_table_chunk(&conn, "conn-1", "db1", "lonely");
-    let nodes = bfs_related(&conn, "conn-1", &[("db1".into(), "lonely".into())], 2, 100).unwrap();
+    insert_table_chunk(
+        &conn,
+        TestTableChunk {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "lonely",
+            embedding: vec![1.0, 0.0, 0.0, 0.0],
+        },
+    );
+    let nodes = bfs_related(
+        &conn,
+        &[("db1".into(), "lonely".into())],
+        &sqllumen_lib::schema_index::graph::GraphWalk {
+            connection_id: "conn-1",
+            depth: 2,
+            edge_budget: 100,
+        },
+    )
+    .unwrap();
     assert!(nodes.is_empty());
 }

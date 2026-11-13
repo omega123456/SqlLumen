@@ -279,12 +279,12 @@ describe('MonacoEditorWrapper', () => {
 
   it('registers model-connection mapping when connectionId is provided', () => {
     render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
-    expect(mockRegisterModelConnection()).toHaveBeenCalledWith(
-      'inmemory://model/1',
-      'conn-1',
-      'tab-1',
-      'query-editor'
-    )
+    expect(mockRegisterModelConnection()).toHaveBeenCalledWith({
+      uri: 'inmemory://model/1',
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      tabType: 'query-editor',
+    })
   })
 
   it('does not register model-connection mapping when connectionId is not provided', () => {
@@ -348,12 +348,12 @@ describe('MonacoEditorWrapper', () => {
     render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
 
     // Verify initial registration used the correct URI
-    expect(mockRegisterModelConnection()).toHaveBeenCalledWith(
-      'inmemory://model/1',
-      'conn-1',
-      'tab-1',
-      'query-editor'
-    )
+    expect(mockRegisterModelConnection()).toHaveBeenCalledWith({
+      uri: 'inmemory://model/1',
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      tabType: 'query-editor',
+    })
 
     // Simulate the model being disposed before our handler runs
     // (getModel returns null when Monaco has already cleaned up)

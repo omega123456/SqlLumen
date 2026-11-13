@@ -65,15 +65,15 @@ fn sample_response(id: i64) -> TableDataResponse {
 }
 
 fn stub_result(query_id: &str) -> StoredResult {
-    StoredResult::new(
-        query_id.to_string(),
-        vec![],
-        std::sync::Arc::new(vec![]),
-        0,
-        0,
-        0,
-        false,
-    )
+    StoredResult::new(sqllumen_lib::mysql::query_executor::StoredResultParts {
+        query_id: query_id.to_string(),
+        columns: vec![],
+        rows: std::sync::Arc::new(vec![]),
+        execution_time_ms: 0,
+        total_time_ms: 0,
+        affected_rows: 0,
+        auto_limit_applied: false,
+    })
 }
 
 struct StepMemorySnapshot {
@@ -113,7 +113,10 @@ fn insert_and_get_round_trips_table_data_response() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = TableDataCache::new_for_test(1800, tmp.path().to_path_buf());
 
-    cache.insert("conn-1", "tab-1", sample_response(42));
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "tab-1"),
+        sample_response(42),
+    );
 
     let entry = cache
         .get("conn-1", "tab-1")
@@ -133,9 +136,10 @@ fn insert_and_get_round_trips_table_data_response() {
 fn touch_reports_available_for_cached_entry_and_expired_after_remove() {
     let state = common::test_app_state();
 
-    state
-        .table_data_cache
-        .insert("conn-1", "tab-1", sample_response(7));
+    state.table_data_cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "tab-1"),
+        sample_response(7),
+    );
     assert_eq!(
         touch_table_data_impl(&state, "conn-1", "tab-1"),
         serde_json::json!({ "status": "available" })
@@ -155,7 +159,10 @@ fn touch_rewarms_spilled_entry_from_disk() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = TableDataCache::new_for_test(1, tmp.path().to_path_buf());
 
-    cache.insert("conn-1", "tab-1", sample_response(99));
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "tab-1"),
+        sample_response(99),
+    );
     thread::sleep(Duration::from_millis(1500));
     cache.run_pending_tasks();
     cache.flush_spill_jobs();
@@ -189,11 +196,20 @@ fn touch_rewarms_spilled_entry_from_disk() {
 fn restore_returns_memory_hit_data() {
     let state = common::test_app_state();
     let expected = sample_response(42);
-    state
-        .table_data_cache
-        .insert("conn-1", "tab-1", expected.clone());
+    state.table_data_cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "tab-1"),
+        expected.clone(),
+    );
 
-    let result = restore_table_data_cache_impl(&state, "conn-1", "tab-1", "app_db", "users");
+    let result = restore_table_data_cache_impl(
+        &state,
+        &sqllumen_lib::mysql::table_data::RestoreTableDataCacheRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+            database: "app_db".to_string(),
+            table: "users".to_string(),
+        },
+    );
 
     assert_eq!(result.status, CacheStatus::Available);
     assert_eq!(result.data, Some(expected));
@@ -204,7 +220,10 @@ fn restore_rewarms_spilled_entry_from_disk() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = TableDataCache::new_for_test(1, tmp.path().to_path_buf());
 
-    cache.insert("conn-1", "tab-1", sample_response(88));
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "tab-1"),
+        sample_response(88),
+    );
     thread::sleep(Duration::from_millis(1500));
     cache.run_pending_tasks();
     cache.flush_spill_jobs();
@@ -214,7 +233,15 @@ fn restore_rewarms_spilled_entry_from_disk() {
         ..common::test_app_state()
     };
 
-    let result = restore_table_data_cache_impl(&state, "conn-1", "tab-1", "app_db", "users");
+    let result = restore_table_data_cache_impl(
+        &state,
+        &sqllumen_lib::mysql::table_data::RestoreTableDataCacheRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+            database: "app_db".to_string(),
+            table: "users".to_string(),
+        },
+    );
 
     assert_eq!(result.status, CacheStatus::Available);
     assert_eq!(result.data, Some(sample_response(88)));
@@ -224,7 +251,15 @@ fn restore_rewarms_spilled_entry_from_disk() {
 fn restore_reports_missing_when_key_was_never_cached() {
     let state = common::test_app_state();
 
-    let result = restore_table_data_cache_impl(&state, "conn-1", "tab-missing", "app_db", "users");
+    let result = restore_table_data_cache_impl(
+        &state,
+        &sqllumen_lib::mysql::table_data::RestoreTableDataCacheRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-missing".to_string(),
+            database: "app_db".to_string(),
+            table: "users".to_string(),
+        },
+    );
 
     assert_eq!(result.status, CacheStatus::Missing);
     assert_eq!(result.data, None);
@@ -233,13 +268,22 @@ fn restore_reports_missing_when_key_was_never_cached() {
 #[test]
 fn restore_reports_expired_when_cached_entry_and_spill_are_gone() {
     let state = common::test_app_state();
-    state
-        .table_data_cache
-        .insert("conn-1", "tab-1", sample_response(7));
+    state.table_data_cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "tab-1"),
+        sample_response(7),
+    );
     state.table_data_cache.remove("conn-1", "tab-1");
     state.table_data_cache.run_pending_tasks();
 
-    let result = restore_table_data_cache_impl(&state, "conn-1", "tab-1", "app_db", "users");
+    let result = restore_table_data_cache_impl(
+        &state,
+        &sqllumen_lib::mysql::table_data::RestoreTableDataCacheRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+            database: "app_db".to_string(),
+            table: "users".to_string(),
+        },
+    );
 
     assert_eq!(result.status, CacheStatus::Expired);
     assert_eq!(result.data, None);
@@ -250,7 +294,10 @@ fn evict_removes_entry_and_spill_file() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = TableDataCache::new_for_test(1, tmp.path().to_path_buf());
 
-    cache.insert("conn-1", "tab-1", sample_response(5));
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "tab-1"),
+        sample_response(5),
+    );
     thread::sleep(Duration::from_millis(1500));
     cache.run_pending_tasks();
     cache.flush_spill_jobs();
@@ -281,8 +328,13 @@ fn explicit_cleanup_blocks_late_table_data_reinsert() {
     let expected_version = cache.current_invalidation_version("conn-1", "tab-1");
     cache.remove_with_spill_cleanup("conn-1", "tab-1");
 
-    let inserted =
-        cache.insert_if_current("conn-1", "tab-1", expected_version, sample_response(11));
+    let inserted = cache.insert_if_current(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "tab-1"),
+        sqllumen_lib::mysql::result_cache::VersionedValue {
+            expected_invalidation_version: expected_version,
+            value: sample_response(11),
+        },
+    );
 
     assert!(
         !inserted,
@@ -297,9 +349,10 @@ fn explicit_cleanup_blocks_late_table_data_reinsert() {
 #[test]
 fn sync_after_cleanup_does_not_recreate_table_data_cache_entry() {
     let state = common::test_app_state();
-    state
-        .table_data_cache
-        .insert("conn-1", "tab-1", sample_response(1));
+    state.table_data_cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "tab-1"),
+        sample_response(1),
+    );
     state
         .table_data_cache
         .remove_with_spill_cleanup("conn-1", "tab-1");
@@ -327,9 +380,17 @@ fn sync_after_cleanup_does_not_recreate_table_data_cache_entry() {
         serde_json::json!({ "status": "missing" })
     );
     assert!(
-        restore_table_data_cache_impl(&state, "conn-1", "tab-1", "app_db", "users")
-            .data
-            .is_none(),
+        restore_table_data_cache_impl(
+            &state,
+            &sqllumen_lib::mysql::table_data::RestoreTableDataCacheRequest {
+                connection_id: "conn-1".to_string(),
+                tab_id: "tab-1".to_string(),
+                database: "app_db".to_string(),
+                table: "users".to_string()
+            }
+        )
+        .data
+        .is_none(),
         "late sync should not recreate table-data cache after cleanup"
     );
 }
@@ -349,8 +410,14 @@ fn shared_maintenance_refresh_can_spare_table_data_cache_after_result_eviction()
         Duration::from_millis(1),
     );
 
-    result_cache.insert("conn-1", "results-tab", vec![stub_result("query-1")]);
-    table_data_cache.insert("conn-1", "table-tab", sample_response(21));
+    result_cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "results-tab"),
+        vec![stub_result("query-1")],
+    );
+    table_data_cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "table-tab"),
+        sample_response(21),
+    );
     thread::sleep(Duration::from_millis(5));
 
     let total = 64_u64 * 1024 * 1024 * 1024;
@@ -381,9 +448,10 @@ fn shared_maintenance_refresh_can_spare_table_data_cache_after_result_eviction()
 #[test]
 fn cache_sync_updates_rows_after_insert_update_and_delete() {
     let state = common::test_app_state();
-    state
-        .table_data_cache
-        .insert("conn-1", "tab-1", sample_response(1));
+    state.table_data_cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "tab-1"),
+        sample_response(1),
+    );
 
     let sample_columns = sample_response(1).columns;
     let sample_primary_key = sample_response(1).primary_key;
@@ -408,9 +476,17 @@ fn cache_sync_updates_rows_after_insert_update_and_delete() {
     );
     assert_eq!(inserted.status, CacheStatus::Synced);
 
-    let after_insert = restore_table_data_cache_impl(&state, "conn-1", "tab-1", "app_db", "users")
-        .data
-        .expect("insert sync should keep data available");
+    let after_insert = restore_table_data_cache_impl(
+        &state,
+        &sqllumen_lib::mysql::table_data::RestoreTableDataCacheRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+            database: "app_db".to_string(),
+            table: "users".to_string(),
+        },
+    )
+    .data
+    .expect("insert sync should keep data available");
     assert_eq!(after_insert.rows.len(), 2);
     assert_eq!(
         after_insert.rows[1],
@@ -437,9 +513,17 @@ fn cache_sync_updates_rows_after_insert_update_and_delete() {
     );
     assert_eq!(updated.status, CacheStatus::Synced);
 
-    let after_update = restore_table_data_cache_impl(&state, "conn-1", "tab-1", "app_db", "users")
-        .data
-        .expect("update sync should keep data available");
+    let after_update = restore_table_data_cache_impl(
+        &state,
+        &sqllumen_lib::mysql::table_data::RestoreTableDataCacheRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+            database: "app_db".to_string(),
+            table: "users".to_string(),
+        },
+    )
+    .data
+    .expect("update sync should keep data available");
     assert_eq!(
         after_update.rows[0],
         vec![serde_json::json!(1), serde_json::json!(4.2)]
@@ -463,9 +547,17 @@ fn cache_sync_updates_rows_after_insert_update_and_delete() {
     );
     assert_eq!(deleted.status, CacheStatus::Synced);
 
-    let after_delete = restore_table_data_cache_impl(&state, "conn-1", "tab-1", "app_db", "users")
-        .data
-        .expect("delete sync should keep data available");
+    let after_delete = restore_table_data_cache_impl(
+        &state,
+        &sqllumen_lib::mysql::table_data::RestoreTableDataCacheRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+            database: "app_db".to_string(),
+            table: "users".to_string(),
+        },
+    )
+    .data
+    .expect("delete sync should keep data available");
     assert_eq!(
         *after_delete.rows,
         vec![vec![serde_json::json!(2), serde_json::json!(9.5)]]

@@ -809,9 +809,11 @@ async fn semantic_search_no_model_configured() {
 
     let result = semantic_search_impl(
         &state,
-        "sess-search".to_string(),
-        vec!["find users".to_string()],
-        None,
+        sqllumen_lib::commands::schema_index::SemanticSearchRequest {
+            session_id: "sess-search".to_string(),
+            queries: vec!["find users".to_string()],
+            hints: None,
+        },
     )
     .await;
 
@@ -834,7 +836,15 @@ async fn semantic_search_empty_queries_returns_empty() {
     // Register session in registry
     register_dummy_session(&state, "sess-search2", "profile-search2");
 
-    let result = semantic_search_impl(&state, "sess-search2".to_string(), vec![], None).await;
+    let result = semantic_search_impl(
+        &state,
+        sqllumen_lib::commands::schema_index::SemanticSearchRequest {
+            session_id: "sess-search2".to_string(),
+            queries: vec![],
+            hints: None,
+        },
+    )
+    .await;
 
     assert!(result.is_ok());
     assert!(result.unwrap().is_empty());
@@ -846,9 +856,11 @@ async fn semantic_search_session_not_found() {
 
     let result = semantic_search_impl(
         &state,
-        "nonexistent-session".to_string(),
-        vec!["find users".to_string()],
-        None,
+        sqllumen_lib::commands::schema_index::SemanticSearchRequest {
+            session_id: "nonexistent-session".to_string(),
+            queries: vec!["find users".to_string()],
+            hints: None,
+        },
     )
     .await;
 
@@ -871,9 +883,11 @@ async fn semantic_search_with_queries_hits_coverage_stub() {
 
     let result = semantic_search_impl(
         &state,
-        "sess-search3".to_string(),
-        vec!["find all users".to_string()],
-        None,
+        sqllumen_lib::commands::schema_index::SemanticSearchRequest {
+            session_id: "sess-search3".to_string(),
+            queries: vec!["find all users".to_string()],
+            hints: None,
+        },
     )
     .await;
 
@@ -1563,8 +1577,10 @@ async fn invalidate_schema_index_session_not_found() {
 
     let result = invalidate_schema_index_impl(
         &state,
-        "nonexistent-sess".to_string(),
-        vec!["db.table".to_string()],
+        sqllumen_lib::commands::schema_index::InvalidateSchemaIndexRequest {
+            session_id: "nonexistent-sess".to_string(),
+            tables: vec!["db.table".to_string()],
+        },
     )
     .await;
     assert!(result.is_err());
@@ -1580,8 +1596,10 @@ async fn invalidate_schema_index_ok_for_valid_session() {
 
     let result = invalidate_schema_index_impl(
         &state,
-        "sess-inv".to_string(),
-        vec!["testdb.users".to_string()],
+        sqllumen_lib::commands::schema_index::InvalidateSchemaIndexRequest {
+            session_id: "sess-inv".to_string(),
+            tables: vec!["testdb.users".to_string()],
+        },
     )
     .await;
     assert!(result.is_ok());
@@ -1594,7 +1612,14 @@ async fn invalidate_schema_index_with_empty_tables() {
 
     register_dummy_session(&state, "sess-inv-empty", "profile-inv-empty");
 
-    let result = invalidate_schema_index_impl(&state, "sess-inv-empty".to_string(), vec![]).await;
+    let result = invalidate_schema_index_impl(
+        &state,
+        sqllumen_lib::commands::schema_index::InvalidateSchemaIndexRequest {
+            session_id: "sess-inv-empty".to_string(),
+            tables: vec![],
+        },
+    )
+    .await;
     assert!(result.is_ok());
 }
 

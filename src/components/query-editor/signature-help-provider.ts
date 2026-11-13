@@ -611,12 +611,12 @@ async function fetchRoutineSignature(
   database: string,
   token: CancellationToken
 ): Promise<monaco.languages.SignatureHelpResult | undefined> {
-  const entry = await getRoutineParameters(
-    lookup.connectionId,
-    database,
-    lookup.functionName,
-    lookup.routineType
-  )
+  const entry = await getRoutineParameters({
+    connectionId: lookup.connectionId,
+    database: database,
+    routineName: lookup.functionName,
+    routineType: lookup.routineType,
+  })
   if (token.isCancellationRequested) return undefined
   if (entry === null) return undefined
   return buildRoutineSignatureResult(lookup.functionName, entry, lookup.activeParameter)

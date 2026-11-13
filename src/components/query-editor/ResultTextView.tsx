@@ -123,7 +123,7 @@ export function ResultTextView({
     if (shownCount === 0) return
     if (loaded?.key === loadKey) return
     let cancelled = false
-    readViewRange(tabId, resultIndex, [0, shownCount])
+    readViewRange({ tabId: tabId, resultIndex: resultIndex, range: [0, shownCount] })
       .then((rows) => {
         if (!cancelled) setLoaded({ key: loadKey, rows: rows.map((row) => row.row) })
       })

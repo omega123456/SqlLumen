@@ -10,7 +10,7 @@ import type { TableDataTabState } from '../../types/schema'
 describe('TableDataStore scroll cell persistence', () => {
   it('should have scrollRow and scrollCol fields in tab state', () => {
     const store = useTableDataStore.getState()
-    store.initTab('tab-1', 'conn-1', 'mydb', 'users')
+    store.initTab('tab-1', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
 
     const tabState = useTableDataStore.getState().tabs['tab-1'] as TableDataTabState
 
@@ -27,7 +27,7 @@ describe('TableDataStore scroll cell persistence', () => {
   it('should retain scroll cell coordinate values after being set', () => {
     const store = useTableDataStore.getState()
 
-    store.initTab('tab-scroll', 'conn-1', 'mydb', 'orders')
+    store.initTab('tab-scroll', { connectionId: 'conn-1', database: 'mydb', table: 'orders' })
     store.setScrollCell('tab-scroll', 25, 10)
 
     const tabState = useTableDataStore.getState().tabs['tab-scroll'] as TableDataTabState

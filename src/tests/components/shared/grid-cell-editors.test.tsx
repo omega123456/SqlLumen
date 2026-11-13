@@ -76,12 +76,11 @@ describe('NullableCellEditor — store syncing', () => {
 
     // syncCellValue must be called alongside updateCellValue so the
     // backing row data stays in sync (matching useCellEditor behaviour).
-    expect(props.syncCellValue).toHaveBeenCalledWith(
-      'tab-1',
-      expect.any(Object), // row
-      'col_1',
-      'Updated'
-    )
+    expect(props.syncCellValue).toHaveBeenCalledWith('tab-1', {
+      rowData: expect.any(Object),
+      column: 'col_1',
+      value: 'Updated',
+    })
   })
 
   it('calls onRowChange when the user types (shared grid preview)', () => {
@@ -101,7 +100,11 @@ describe('NullableCellEditor — store syncing', () => {
     const nullBtn = document.querySelector('.td-null-toggle') as HTMLButtonElement
     fireEvent.click(nullBtn)
 
-    expect(props.syncCellValue).toHaveBeenCalledWith('tab-1', expect.any(Object), 'col_1', null)
+    expect(props.syncCellValue).toHaveBeenCalledWith('tab-1', {
+      rowData: expect.any(Object),
+      column: 'col_1',
+      value: null,
+    })
   })
 
   it('starts in NULL mode and typing leaves NULL mode automatically', async () => {
@@ -156,7 +159,11 @@ describe('NullableCellEditor — store syncing', () => {
     fireEvent.click(nullBtn)
 
     // When toggling NULL off, the editor restores with empty string
-    expect(props.syncCellValue).toHaveBeenCalledWith('tab-1', expect.any(Object), 'col_1', '')
+    expect(props.syncCellValue).toHaveBeenCalledWith('tab-1', {
+      rowData: expect.any(Object),
+      column: 'col_1',
+      value: '',
+    })
   })
 
   it('calls syncCellValue when Escape restores original value', () => {
@@ -171,12 +178,11 @@ describe('NullableCellEditor — store syncing', () => {
     // Press Escape to restore
     fireEvent.keyDown(input, { key: 'Escape' })
 
-    expect(props.syncCellValue).toHaveBeenCalledWith(
-      'tab-1',
-      expect.any(Object),
-      'col_1',
-      'original'
-    )
+    expect(props.syncCellValue).toHaveBeenCalledWith('tab-1', {
+      rowData: expect.any(Object),
+      column: 'col_1',
+      value: 'original',
+    })
   })
 
   it('uses the typing-activation restore value when Escape cancels a seeded edit', () => {
@@ -195,12 +201,11 @@ describe('NullableCellEditor — store syncing', () => {
 
     fireEvent.keyDown(input, { key: 'Escape' })
 
-    expect(props.syncCellValue).toHaveBeenCalledWith(
-      'tab-1',
-      expect.any(Object),
-      'col_1',
-      'Original Value'
-    )
+    expect(props.syncCellValue).toHaveBeenCalledWith('tab-1', {
+      rowData: expect.any(Object),
+      column: 'col_1',
+      value: 'Original Value',
+    })
     expect(props.onRowChange).toHaveBeenCalledWith({ col_0: 1, col_1: 'Original Value' }, false)
     expect(props.onClose).toHaveBeenCalledWith(false, false)
 
@@ -470,12 +475,11 @@ describe('EnumCellEditor — store syncing', () => {
     await user.click(combo)
     await user.click(screen.getByRole('option', { name: 'inactive' }))
 
-    expect(props.syncCellValue).toHaveBeenCalledWith(
-      'tab-1',
-      expect.any(Object),
-      'col_2',
-      'inactive'
-    )
+    expect(props.syncCellValue).toHaveBeenCalledWith('tab-1', {
+      rowData: expect.any(Object),
+      column: 'col_2',
+      value: 'inactive',
+    })
   })
 
   it('calls onRowChange when selecting a new enum value', async () => {
@@ -497,7 +501,11 @@ describe('EnumCellEditor — store syncing', () => {
     const nullBtn = document.querySelector('.td-null-toggle') as HTMLButtonElement
     fireEvent.click(nullBtn)
 
-    expect(props.syncCellValue).toHaveBeenCalledWith('tab-1', expect.any(Object), 'col_2', null)
+    expect(props.syncCellValue).toHaveBeenCalledWith('tab-1', {
+      rowData: expect.any(Object),
+      column: 'col_2',
+      value: null,
+    })
   })
 
   it('calls onRowChange with null when toggling NULL on', () => {

@@ -126,6 +126,19 @@ function ShortcutBindingButton({
   )
 }
 
+interface ShortcutConflict {
+  conflictActionId: string
+  pendingActionId: string
+  pendingBinding: ShortcutBinding
+}
+
+interface RecordingSession {
+  recordingActionId: string | null
+  conflict: ShortcutConflict | null
+}
+
+const IDLE_RECORDING: RecordingSession = { recordingActionId: null, conflict: null }
+
 export function ShortcutsSettings() {
   const liveShortcuts = useShortcutStore((state) => state.shortcuts)
   const setPendingChange = useSettingsStore((state) => state.setPendingChange)
@@ -150,10 +163,9 @@ export function ShortcutsSettings() {
     syncWorkingShortcutsWithPending(pendingShortcuts)
   }, [pendingShortcuts])
 
-  const [recordingActionId, setRecordingActionId] = useState<string | null>(null)
-  const [conflictActionId, setConflictActionId] = useState<string | null>(null)
-  const [pendingBinding, setPendingBinding] = useState<ShortcutBinding | null>(null)
-  const [pendingActionId, setPendingActionId] = useState<string | null>(null)
+  const [recording, setRecording] = useState<RecordingSession>(IDLE_RECORDING)
+  const recordingActionId = recording.recordingActionId
+  const conflictActionId = recording.conflict?.conflictActionId ?? null
 
   /** Stage changes to settings store so Save becomes enabled. */
   const stageShortcuts = useCallback(
@@ -164,49 +176,41 @@ export function ShortcutsSettings() {
     [setPendingChange]
   )
 
-  const cancelRecording = useCallback(() => {
-    setRecordingActionId(null)
-    setConflictActionId(null)
-    setPendingBinding(null)
-    setPendingActionId(null)
-  }, [])
+  const cancelRecording = useCallback(() => setRecording(IDLE_RECORDING), [])
 
   const finishRecording = useCallback(
     (actionId: string, binding: ShortcutBinding) => {
       const conflict = findConflict(workingShortcuts, binding, actionId)
       if (conflict) {
-        setConflictActionId(conflict)
-        setPendingBinding(binding)
-        setPendingActionId(actionId)
-        setRecordingActionId(null)
+        setRecording({
+          recordingActionId: null,
+          conflict: {
+            conflictActionId: conflict,
+            pendingActionId: actionId,
+            pendingBinding: binding,
+          },
+        })
         return
       }
       const updated = { ...workingShortcuts, [actionId]: binding }
       stageShortcuts(updated)
-      setRecordingActionId(null)
-      setConflictActionId(null)
-      setPendingBinding(null)
-      setPendingActionId(null)
+      setRecording(IDLE_RECORDING)
     },
     [workingShortcuts, stageShortcuts]
   )
 
   const resolveConflict = useCallback(() => {
-    if (!pendingBinding) return
-    if (!pendingActionId) return
-    if (!conflictActionId) return
+    const conflict = recording.conflict
+    if (!conflict) return
     const updated = { ...workingShortcuts }
-    updated[pendingActionId] = pendingBinding
-    updated[conflictActionId] = DEFAULT_SHORTCUTS[conflictActionId] ?? {
+    updated[conflict.pendingActionId] = conflict.pendingBinding
+    updated[conflict.conflictActionId] = DEFAULT_SHORTCUTS[conflict.conflictActionId] ?? {
       key: '',
       modifiers: [],
     }
     stageShortcuts(updated)
-    setConflictActionId(null)
-    setPendingBinding(null)
-    setPendingActionId(null)
-    setRecordingActionId(null)
-  }, [workingShortcuts, pendingBinding, pendingActionId, conflictActionId, stageShortcuts])
+    setRecording(IDLE_RECORDING)
+  }, [workingShortcuts, recording.conflict, stageShortcuts])
 
   const resetShortcut = useCallback(
     (actionId: string) => {
@@ -296,7 +300,9 @@ export function ShortcutsSettings() {
                         binding={binding}
                         isRecording={isRecording}
                         onCancelRecording={cancelRecording}
-                        onStartRecording={() => setRecordingActionId(id)}
+                        onStartRecording={() =>
+                          setRecording((current) => ({ ...current, recordingActionId: id }))
+                        }
                       />
                       {hasConflict && (
                         <span className={styles.conflict}>

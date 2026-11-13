@@ -233,7 +233,10 @@ pub fn init_logging(log_db_path: &std::path::Path) -> Result<LoggingInit, String
     // emitting events.
     try_enable_windows_ansi_stderr();
 
-    let (sqlite_layer, sqlite_guard) = sqlite_layer::init_sqlite_layer(log_db_path)?;
+    let sqlite_layer::SqliteLogging {
+        layer: sqlite_layer,
+        guard: sqlite_guard,
+    } = sqlite_layer::init_sqlite_layer(log_db_path)?;
     let _ = SQLITE_LOG_WRITER_GUARD.set(sqlite_guard);
 
     let initial_filter = build_initial_filter();

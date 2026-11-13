@@ -12,7 +12,7 @@ afterEach(() => {
 })
 
 function logMessages(): string[] {
-  return ipc.calls('log_frontend').map((call) => (call as { message: string }).message)
+  return ipc.payloads('log_frontend').map((call) => (call as { message: string }).message)
 }
 
 describe('window commands', () => {

@@ -203,20 +203,25 @@ export function GlobalContextMenu() {
     setOpen(null)
   }, [])
 
-  useDismissOnOutsideClick(menuRef, open !== null, closeMenu, { closeOnEscape: true })
+  useDismissOnOutsideClick({
+    ref: menuRef,
+    active: open !== null,
+    onDismiss: closeMenu,
+    options: { closeOnEscape: true },
+  })
 
   useLayoutEffect(() => {
     const element = menuRef.current
     if (!open) return
     if (!element) return
     const rect = element.getBoundingClientRect()
-    const position = positionContextMenuInPortal(
-      open.portalRoot,
-      open.x,
-      open.y,
-      rect.width,
-      rect.height
-    )
+    const position = positionContextMenuInPortal({
+      portalRoot: open.portalRoot,
+      clientX: open.x,
+      clientY: open.y,
+      menuWidth: rect.width,
+      menuHeight: rect.height,
+    })
     element.style.left = `${position.x}px`
     element.style.top = `${position.y}px`
   }, [open])

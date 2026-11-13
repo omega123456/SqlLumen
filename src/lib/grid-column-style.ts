@@ -254,13 +254,21 @@ function stringifyGridValue(value: unknown): string {
   return String(value)
 }
 
-export function getAutoSizedColumnWidth(
-  column: TableDataColumnMeta,
-  columnIndex: number,
-  rows: readonly unknown[][],
-  displayName?: string,
-  headerIconWidthPx = 0
-): number {
+export interface AutoSizedColumn {
+  column: TableDataColumnMeta
+  columnIndex: number
+  rows: readonly unknown[][]
+  displayName?: string
+  headerIconWidthPx?: number
+}
+
+export function getAutoSizedColumnWidth({
+  column,
+  columnIndex,
+  rows,
+  displayName,
+  headerIconWidthPx = 0,
+}: AutoSizedColumn): number {
   const sizing = getColumnWidthSizing(column.dataType, column.isNullable)
 
   // Header width: 10px bold font with 0.08-0.1em letter-spacing = ~8.5px/char.

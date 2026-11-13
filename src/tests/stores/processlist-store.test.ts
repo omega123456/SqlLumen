@@ -170,7 +170,7 @@ describe('processlist-store', () => {
       await useProcessListStore.getState().fetchProcessList(CONN, SESSION, false)
 
       // Auto-refresh failure should log a warning via IPC and show a toast
-      const logCalls = ipc.calls('log_frontend')
+      const logCalls = ipc.payloads('log_frontend')
       const hasAutoRefreshWarning = logCalls.some(
         (call) =>
           (call as Record<string, unknown>)?.level === 'warn' &&
@@ -222,7 +222,7 @@ describe('processlist-store', () => {
         { id: 1, success: true, error: null },
         { id: 2, success: false, error: 'access denied' },
       ]
-      ipc.override('kill_queries', (args) => {
+      ipc.overridePayload('kill_queries', (args) => {
         expect((args as { ids: number[] }).ids).toEqual([1, 2])
         return results
       })
@@ -251,7 +251,7 @@ describe('processlist-store', () => {
 
       await useProcessListStore.getState().killSelectedProcesses(CONN, SESSION)
 
-      expect(ipc.calls('list_history')).toHaveLength(1)
+      expect(ipc.payloads('list_history')).toHaveLength(1)
     })
   })
 

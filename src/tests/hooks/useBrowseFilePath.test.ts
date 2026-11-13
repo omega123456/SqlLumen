@@ -49,7 +49,7 @@ describe('useBrowseFilePath', () => {
       await result.current.browseForFilePath(SAVE_REQUEST)
     })
 
-    expect(ipc.calls('log_frontend')).toContainEqual({
+    expect(ipc.payloads('log_frontend')).toContainEqual({
       level: 'info',
       message: expect.stringContaining('[test-dialog] Save dialog unavailable:'),
     })

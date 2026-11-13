@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invokeArgumentCommand, invokeCommand } from './ipc/dispatch'
 
 export interface ProcessRow {
   id: number
@@ -18,9 +18,9 @@ export interface KillResult {
 }
 
 export async function getProcesslist(sessionId: string): Promise<ProcessRow[]> {
-  return invoke<ProcessRow[]>('get_processlist', { sessionId })
+  return invokeArgumentCommand({ command: 'get_processlist', argument: { sessionId } })
 }
 
 export async function killQueries(sessionId: string, ids: number[]): Promise<KillResult[]> {
-  return invoke<KillResult[]>('kill_queries', { sessionId, ids })
+  return invokeCommand({ command: 'kill_queries', payload: { sessionId, ids } })
 }

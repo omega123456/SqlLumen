@@ -27,11 +27,13 @@ fn make_result(chunk_id: i64, table_name: &str, score: f64) -> SearchResult {
 async fn test_rerank_empty_candidates() {
     let client = sqllumen_lib::http_client();
     let results = sqllumen_lib::schema_index::rerank::rerank_with_llm(
-        vec![],
-        "test question",
         &client,
-        "http://localhost:99999", // unreachable
-        "test-model",
+        sqllumen_lib::schema_index::rerank::RerankBackend { endpoint: "http://localhost:99999", model: // unreachable
+        "test-model" },
+        sqllumen_lib::schema_index::rerank::RerankInput {
+            candidates: vec![],
+            question: "test question",
+        },
     )
     .await;
     assert!(results.is_empty());
@@ -48,11 +50,13 @@ async fn test_rerank_timeout_fallback() {
     let candidates = vec![make_result(1, "users", 0.9), make_result(2, "orders", 0.8)];
 
     let results = sqllumen_lib::schema_index::rerank::rerank_with_llm(
-        candidates.clone(),
-        "find user orders",
         &client,
-        "http://192.0.2.1:1", // non-routable (RFC 5737)
-        "test-model",
+        sqllumen_lib::schema_index::rerank::RerankBackend { endpoint: "http://192.0.2.1:1", model: // non-routable (RFC 5737)
+        "test-model" },
+        sqllumen_lib::schema_index::rerank::RerankInput {
+            candidates: candidates.clone(),
+            question: "find user orders",
+        },
     )
     .await;
 
@@ -73,11 +77,13 @@ async fn test_rerank_invalid_endpoint_fallback() {
     ];
 
     let results = sqllumen_lib::schema_index::rerank::rerank_with_llm(
-        candidates.clone(),
-        "show products",
         &client,
-        "http://localhost:1", // should fail to connect
-        "test-model",
+        sqllumen_lib::schema_index::rerank::RerankBackend { endpoint: "http://localhost:1", model: // should fail to connect
+        "test-model" },
+        sqllumen_lib::schema_index::rerank::RerankInput {
+            candidates: candidates.clone(),
+            question: "show products",
+        },
     )
     .await;
 
@@ -115,11 +121,15 @@ async fn test_rerank_disables_reasoning_on_request() {
     let candidates = vec![make_result(1, "users", 0.9), make_result(2, "orders", 0.8)];
 
     let results = sqllumen_lib::schema_index::rerank::rerank_with_llm(
-        candidates,
-        "find orders",
         &client,
-        &server.uri(),
-        "test-model",
+        sqllumen_lib::schema_index::rerank::RerankBackend {
+            endpoint: &server.uri(),
+            model: "test-model",
+        },
+        sqllumen_lib::schema_index::rerank::RerankInput {
+            candidates,
+            question: "find orders",
+        },
     )
     .await;
 
@@ -268,11 +278,15 @@ async fn test_rerank_with_long_ddl_truncation() {
     let candidates = vec![r, make_result(2, "orders", 0.8)];
 
     let results = sqllumen_lib::schema_index::rerank::rerank_with_llm(
-        candidates,
-        "test question",
         &client,
-        "http://192.0.2.1:1",
-        "test-model",
+        sqllumen_lib::schema_index::rerank::RerankBackend {
+            endpoint: "http://192.0.2.1:1",
+            model: "test-model",
+        },
+        sqllumen_lib::schema_index::rerank::RerankInput {
+            candidates,
+            question: "test question",
+        },
     )
     .await;
 

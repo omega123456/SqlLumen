@@ -28,6 +28,8 @@ interface TableDesignerTabProps {
   isActive?: boolean
 }
 
+const SUB_TAB_ORDER: readonly DesignerSubTab[] = ['columns', 'indexes', 'fks', 'properties', 'ddl']
+
 const SUB_TAB_LABELS: Record<DesignerSubTab, string> = {
   columns: 'Columns',
   indexes: 'Indexes',
@@ -226,7 +228,12 @@ export function TableDesignerTab({ tab, isActive = true }: TableDesignerTabProps
   useEffect(() => {
     const existing = useTableDesignerStore.getState().tabs[tabId]
     if (!existing) {
-      initTab(tabId, mode, connectionId, databaseName, objectName)
+      initTab(tabId, {
+        mode: mode,
+        connectionId: connectionId,
+        databaseName: databaseName,
+        objectName: objectName,
+      })
       if (mode === 'alter') {
         void loadSchema(tabId)
       }
@@ -375,7 +382,7 @@ export function TableDesignerTab({ tab, isActive = true }: TableDesignerTabProps
       </div>
 
       <UnderlineTabBar className={styles.subTabBar} data-testid="table-designer-subtabs">
-        {(Object.keys(SUB_TAB_LABELS) as DesignerSubTab[]).map((subTabKey) => (
+        {SUB_TAB_ORDER.map((subTabKey) => (
           <UnderlineTab
             key={subTabKey}
             active={selectedSubTab === subTabKey}

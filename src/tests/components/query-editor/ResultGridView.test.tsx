@@ -146,7 +146,7 @@ describe('ResultGridView', () => {
     expect(source.getRow(1)).toBe(source.getRow(1))
     // The visible range drives page loads (all rows are already loaded here).
     source.onVisibleRangeChange?.([0, 2])
-    expect(ipc.calls('fetch_result_window')).toHaveLength(0)
+    expect(ipc.payloads('fetch_result_window')).toHaveLength(0)
     // Off-window reads resolve through the page cache.
     await expect(source.readRange?.([0, 2])).resolves.toEqual([
       expect.objectContaining({ __rowIdx: 0, col_1: 'Ada' }),

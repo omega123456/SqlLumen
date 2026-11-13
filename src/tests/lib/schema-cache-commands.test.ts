@@ -13,7 +13,7 @@ describe('schema-cache-commands', () => {
 
   it('saves a schema cache snapshot for a connection', async () => {
     await expect(saveSchemaCacheSnapshot('conn-1', '{"tables":["users"]}')).resolves.toBeUndefined()
-    expect(ipc.calls('save_schema_cache_snapshot')).toEqual([
+    expect(ipc.payloads('save_schema_cache_snapshot')).toEqual([
       {
         connectionId: 'conn-1',
         snapshotJson: '{"tables":["users"]}',

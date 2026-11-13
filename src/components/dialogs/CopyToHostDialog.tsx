@@ -53,13 +53,13 @@ type CopyType = 'both' | 'structureOnly' | 'dataOnly'
 const CATEGORY_LABELS = COPY_OBJECT_CATEGORY_LABELS
 const CATEGORY_ORDER = COPY_OBJECT_CATEGORY_ORDER
 
-const COPY_TYPE_OPTIONS: DropdownOption[] = [
+const COPY_TYPE_OPTIONS: DropdownOption<CopyType>[] = [
   { value: 'both', label: 'Structure + data' },
   { value: 'structureOnly', label: 'Structure only' },
   { value: 'dataOnly', label: 'Data only' },
 ]
 
-const INSERT_MODE_OPTIONS: DropdownOption[] = [
+const INSERT_MODE_OPTIONS: DropdownOption<CopyInsertMode>[] = [
   { value: 'insert', label: 'INSERT' },
   { value: 'insertIgnore', label: 'INSERT IGNORE' },
   { value: 'replace', label: 'REPLACE INTO' },
@@ -412,7 +412,7 @@ function CopyOptionsSection({ options, onOptionChange }: CopyOptionsSectionProps
           labelledBy="copy-type-label"
           options={COPY_TYPE_OPTIONS}
           value={options.copyType}
-          onChange={(value) => onOptionChange('copyType', value as CopyType)}
+          onChange={(value) => onOptionChange('copyType', value)}
           data-testid="copy-type"
         />
       </div>
@@ -473,7 +473,7 @@ function CopyOptionsSection({ options, onOptionChange }: CopyOptionsSectionProps
             options={INSERT_MODE_OPTIONS}
             value={options.insertMode}
             disabled={dataDisabled}
-            onChange={(value) => onOptionChange('insertMode', value as CopyInsertMode)}
+            onChange={(value) => onOptionChange('insertMode', value)}
             data-testid="copy-insert-mode"
           />
         </div>
@@ -660,6 +660,47 @@ function CopyFooterActions({
   )
 }
 
+interface TargetSelection {
+  connectionId: string
+  databaseValue: string
+  newDatabaseName: string
+}
+
+const EMPTY_TARGET_SELECTION: TargetSelection = {
+  connectionId: '',
+  databaseValue: '',
+  newDatabaseName: '',
+}
+
+function withDefaultDatabase(selection: TargetSelection, database: string): TargetSelection {
+  if (selection.databaseValue !== '') return selection
+  return { ...selection, databaseValue: database }
+}
+
+interface TargetDatabaseListing {
+  databases: string[]
+  notice: string | null
+}
+
+const EMPTY_TARGET_LISTING: TargetDatabaseListing = { databases: [], notice: null }
+
+const CLOSED_TARGET_NOTICE =
+  'Open this target connection first to list existing databases, or choose “+ New database…”.'
+
+interface CopyRunState {
+  isCopying: boolean
+  jobId: string | null
+  progress: CopyProgress | null
+  cancelPending: boolean
+}
+
+const IDLE_COPY_RUN: CopyRunState = {
+  isCopying: false,
+  jobId: null,
+  progress: null,
+  cancelPending: false,
+}
+
 export default function CopyToHostDialog({
   isOpen,
   onClose,
@@ -671,12 +712,14 @@ export default function CopyToHostDialog({
   const savedConnections = useConnectionStore((state) => state.savedConnections)
   const activeConnections = useConnectionStore((state) => state.activeConnections)
 
-  // Target selection
-  const [targetConnectionId, setTargetConnectionId] = useState('')
-  const [targetDatabaseValue, setTargetDatabaseValue] = useState('')
-  const [newDatabaseName, setNewDatabaseName] = useState('')
-  const [targetDatabases, setTargetDatabases] = useState<string[]>([])
-  const [targetDatabaseNotice, setTargetDatabaseNotice] = useState<string | null>(null)
+  const [targetSelection, setTargetSelection] = useState<TargetSelection>(EMPTY_TARGET_SELECTION)
+  const {
+    connectionId: targetConnectionId,
+    databaseValue: targetDatabaseValue,
+    newDatabaseName,
+  } = targetSelection
+  const [targetListing, setTargetListing] = useState<TargetDatabaseListing>(EMPTY_TARGET_LISTING)
+  const { databases: targetDatabases, notice: targetDatabaseNotice } = targetListing
 
   // Objects
   const [objects, setObjects] = useState<CopyableObjects | null>(null)
@@ -689,11 +732,11 @@ export default function CopyToHostDialog({
 
   const [copyOptions, setCopyOptions] = useState<CopyDialogOptions>(DEFAULT_COPY_OPTIONS)
 
-  // Copy run state
-  const [isCopying, setIsCopying] = useState(false)
-  const [jobId, setJobId] = useState<string | null>(null)
-  const [progress, setProgress] = useState<CopyProgress | null>(null)
-  const [cancelPending, setCancelPending] = useState(false)
+  const [copyRun, setCopyRun] = useState<CopyRunState>(IDLE_COPY_RUN)
+  const { isCopying, jobId, progress, cancelPending } = copyRun
+  const patchCopyRun = useCallback((patch: Partial<CopyRunState>) => {
+    setCopyRun((current) => ({ ...current, ...patch }))
+  }, [])
 
   const newDbInputRef = useRef<HTMLInputElement>(null)
 
@@ -707,18 +750,12 @@ export default function CopyToHostDialog({
       return
     }
 
-    setTargetConnectionId('')
-    setTargetDatabaseValue('')
-    setNewDatabaseName('')
-    setTargetDatabases([])
-    setTargetDatabaseNotice(null)
+    setTargetSelection(EMPTY_TARGET_SELECTION)
+    setTargetListing(EMPTY_TARGET_LISTING)
     setSelected(createEmptyCopySelection())
     setExpandedCategories(initialExpandedCategories(preSelectedCategory))
     setCopyOptions(DEFAULT_COPY_OPTIONS)
-    setIsCopying(false)
-    setJobId(null)
-    setProgress(null)
-    setCancelPending(false)
+    setCopyRun(IDLE_COPY_RUN)
   }, [isOpen, preSelectedCategory])
 
   // Resolve the source host so we can exclude it (and read-only profiles) from the target picker.
@@ -791,34 +828,28 @@ export default function CopyToHostDialog({
 
     const loadDatabases = async () => {
       if (!targetConnectionId) {
-        setTargetDatabases([])
-        setTargetDatabaseNotice(null)
+        setTargetListing(EMPTY_TARGET_LISTING)
         return
       }
 
       if (!activeTargetSessionId) {
-        setTargetDatabases([])
-        setTargetDatabaseNotice(
-          'Open this target connection first to list existing databases, or choose “+ New database…”.'
-        )
+        setTargetListing({ databases: [], notice: CLOSED_TARGET_NOTICE })
         return
       }
 
       try {
         const dbs = await listDatabases(activeTargetSessionId)
         if (cancelled) return
-        setTargetDatabases(dbs)
-        setTargetDatabaseNotice(null)
+        setTargetListing({ databases: dbs, notice: null })
         // Default to a target database matching the source name when one exists, but never
         // overwrite a selection the user has already made.
         if (dbs.includes(sourceDatabase)) {
-          setTargetDatabaseValue((previous) => (previous === '' ? sourceDatabase : previous))
+          setTargetSelection((previous) => withDefaultDatabase(previous, sourceDatabase))
         }
       } catch (error) {
         if (cancelled) return
         const message = toErrorMessage(error)
-        setTargetDatabases([])
-        setTargetDatabaseNotice(null)
+        setTargetListing(EMPTY_TARGET_LISTING)
         logFrontendError('[copy-to-host] Failed to load target databases:', message)
         showErrorToast(`Failed to load target databases: ${message}`)
       }
@@ -839,13 +870,13 @@ export default function CopyToHostDialog({
   }, [targetDatabaseValue])
 
   const handleCopyFinished = (finishedProgress: CopyProgress) => {
-    setIsCopying(false)
+    patchCopyRun({ isCopying: false })
     if (finishedProgress.status === 'completed') {
       showSuccessToast('Copy completed', `${objectCountText(finishedProgress.objectsDone)} copied`)
       return
     }
     if (finishedProgress.status === 'cancelled') {
-      setCancelPending(false)
+      patchCopyRun({ cancelPending: false })
       return
     }
     showErrorToast('Copy failed', finishedProgress.errorMessage ?? 'Copy to host failed')
@@ -854,7 +885,7 @@ export default function CopyToHostDialog({
   useJobProgressPolling({
     jobId: jobId,
     fetchProgress: getCopyProgress,
-    onProgress: setProgress,
+    onProgress: (nextProgress) => patchCopyRun({ progress: nextProgress }),
     onFinished: handleCopyFinished,
     pollFailureMessage: '[copy-to-host] Failed to poll progress:',
   })
@@ -939,8 +970,7 @@ export default function CopyToHostDialog({
   // Start the copy job.
   const handleCopy = useCallback(async () => {
     if (!canCopy) return
-    setIsCopying(true)
-    setProgress(null)
+    patchCopyRun({ isCopying: true, progress: null })
 
     const copyObjects = assembleCopyObjects(selected)
 
@@ -955,9 +985,9 @@ export default function CopyToHostDialog({
         objects: copyObjects,
         options: options,
       })
-      setJobId(id)
+      patchCopyRun({ jobId: id })
     } catch (error) {
-      setIsCopying(false)
+      patchCopyRun({ isCopying: false })
       const message = toErrorMessage(error)
       showErrorToast('Copy failed', message)
       logFrontendError('[copy-to-host] Failed to start copy:', message)
@@ -970,22 +1000,23 @@ export default function CopyToHostDialog({
     sourceDatabase,
     targetConnectionId,
     effectiveTargetDatabase,
+    patchCopyRun,
   ])
 
   // Cancel a running copy.
   const handleCancel = useCallback(async () => {
     if (!jobId) return
     if (cancelPending) return
-    setCancelPending(true)
+    patchCopyRun({ cancelPending: true })
     try {
       await cancelCopy(jobId)
     } catch (error) {
-      setCancelPending(false)
+      patchCopyRun({ cancelPending: false })
       const message = toErrorMessage(error)
       logFrontendError('[copy-to-host] Failed to cancel copy:', message)
       showErrorToast('Failed to cancel copy', message)
     }
-  }, [jobId, cancelPending])
+  }, [jobId, cancelPending, patchCopyRun])
 
   const isTerminal = isTerminalJobStatus(progress?.status)
   const showProgress = isCopying || progress !== null
@@ -998,9 +1029,7 @@ export default function CopyToHostDialog({
   )
 
   const handleTargetConnectionChange = (connectionId: string) => {
-    setTargetConnectionId(connectionId)
-    setTargetDatabaseValue('')
-    setNewDatabaseName('')
+    setTargetSelection({ ...EMPTY_TARGET_SELECTION, connectionId: connectionId })
   }
 
   return (
@@ -1078,8 +1107,10 @@ export default function CopyToHostDialog({
             newDatabaseInputRef={newDbInputRef}
             handlers={{
               onConnectionChange: handleTargetConnectionChange,
-              onDatabaseChange: setTargetDatabaseValue,
-              onNewDatabaseNameChange: setNewDatabaseName,
+              onDatabaseChange: (databaseValue) =>
+                setTargetSelection((previous) => ({ ...previous, databaseValue: databaseValue })),
+              onNewDatabaseNameChange: (newName) =>
+                setTargetSelection((previous) => ({ ...previous, newDatabaseName: newName })),
             }}
           />
 

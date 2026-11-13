@@ -24,6 +24,7 @@ import { Textarea } from '../common/Textarea'
 import { Button } from '../common/Button'
 import { parsePastedBytes } from '../../lib/blob-utils'
 import styles from './BlobPastePopover.module.css'
+import { isTargetInside } from '../../lib/input-events'
 
 const FOCUSABLE_SELECTOR = [
   'button:not([disabled])',
@@ -121,9 +122,8 @@ export function BlobPastePopover({
   useEffect(() => {
     if (!isOpen) return
     const handlePointerDown = (event: MouseEvent) => {
-      const target = event.target as Node
-      if (popoverRef.current?.contains(target)) return
-      if (anchorRef.current?.contains(target)) return
+      if (isTargetInside(popoverRef.current, event.target)) return
+      if (isTargetInside(anchorRef.current, event.target)) return
       close()
     }
     document.addEventListener('mousedown', handlePointerDown)

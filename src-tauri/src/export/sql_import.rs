@@ -229,29 +229,27 @@ pub fn parse_sql_statements(input: &str) -> Vec<String> {
     statements
 }
 
-/// Execute a SQL import job asynchronously.
-///
-/// Reads statements from the given file, executes them sequentially against
-/// the MySQL pool, and updates the shared progress map.  Emits `tracing`
-/// spans for observability and logs a single summary history entry at the end.
-///
-/// # Arguments
-/// * `pool` — MySQL connection pool
-/// * `file_path` — Path to the .sql file
-/// * `stop_on_error` — If true, stop executing after the first error
-/// * `job_id` — Unique job identifier
-/// * `import_jobs` — Shared progress map (lives on `AppState`)
-/// * `db` — SQLite handle for history logging
-/// * `connection_id` — Resolved profile/connection id for history logging
+pub struct SqlImportJob<'a> {
+    pub file_path: &'a str,
+    pub stop_on_error: bool,
+    pub job_id: &'a str,
+    pub import_jobs: &'a Arc<RwLock<HashMap<String, ImportJobProgress>>>,
+    pub history_db: &'a Arc<Mutex<rusqlite::Connection>>,
+    pub connection_id: &'a str,
+}
+
 pub fn execute_sql_import(
     pool: &sqlx::MySqlPool,
-    file_path: &str,
-    stop_on_error: bool,
-    job_id: &str,
-    import_jobs: &Arc<RwLock<HashMap<String, ImportJobProgress>>>,
-    db: &Arc<Mutex<rusqlite::Connection>>,
-    connection_id: &str,
+    import_job: &SqlImportJob<'_>,
 ) -> Result<(), String> {
+    let SqlImportJob {
+        file_path,
+        stop_on_error,
+        job_id,
+        import_jobs,
+        history_db: db,
+        connection_id,
+    } = *import_job;
     let rt = tokio::runtime::Handle::try_current()
         .map_err(|error| format!("No tokio runtime: {error}"))?;
 

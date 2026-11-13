@@ -27,13 +27,13 @@ describe('useCommandPaletteRecentsStore', () => {
     ipc.override('get_setting', (args) =>
       mockGetSetting(String((args as Record<string, unknown>)?.key ?? ''))
     )
-    ipc.override('set_setting', (args) =>
+    ipc.overridePayload('set_setting', (args) =>
       mockSetSetting(
         String((args as Record<string, unknown>)?.key ?? ''),
         String((args as Record<string, unknown>)?.value ?? '')
       )
     )
-    ipc.override('log_frontend', (args) => {
+    ipc.overridePayload('log_frontend', (args) => {
       const payload = args as Record<string, unknown>
       mockLogFrontend(String(payload.level), String(payload.message))
       return undefined

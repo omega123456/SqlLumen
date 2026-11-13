@@ -71,12 +71,16 @@ async fn multi_batch_produces_three_inserts() {
     let stream = row_stream(rows);
     stream_to_dump(
         stream,
-        &mut cursor,
-        "users",
-        &columns,
+        sqllumen_lib::commands::sql_dump::DumpTarget {
+            file: &mut cursor,
+            table_name: "users",
+            columns: &columns,
+            job: sqllumen_lib::commands::sql_dump::DumpJob {
+                jobs: &jobs,
+                job_id,
+            },
+        },
         |row: &Vec<SqlDumpValue>| row.clone(),
-        &jobs,
-        job_id,
     )
     .await
     .expect("stream_to_dump should succeed");
@@ -115,12 +119,16 @@ async fn exact_batch_boundary_produces_one_insert() {
     let stream = row_stream(rows);
     stream_to_dump(
         stream,
-        &mut cursor,
-        "items",
-        &columns,
+        sqllumen_lib::commands::sql_dump::DumpTarget {
+            file: &mut cursor,
+            table_name: "items",
+            columns: &columns,
+            job: sqllumen_lib::commands::sql_dump::DumpJob {
+                jobs: &jobs,
+                job_id,
+            },
+        },
         |row: &Vec<SqlDumpValue>| row.clone(),
-        &jobs,
-        job_id,
     )
     .await
     .expect("stream_to_dump should succeed");
@@ -152,12 +160,16 @@ async fn single_batch_fewer_than_limit() {
     let stream = row_stream(rows);
     stream_to_dump(
         stream,
-        &mut cursor,
-        "small",
-        &columns,
+        sqllumen_lib::commands::sql_dump::DumpTarget {
+            file: &mut cursor,
+            table_name: "small",
+            columns: &columns,
+            job: sqllumen_lib::commands::sql_dump::DumpJob {
+                jobs: &jobs,
+                job_id,
+            },
+        },
         |row: &Vec<SqlDumpValue>| row.clone(),
-        &jobs,
-        job_id,
     )
     .await
     .expect("stream_to_dump should succeed");
@@ -188,12 +200,16 @@ async fn empty_stream_produces_no_output() {
     let stream = row_stream(vec![]);
     stream_to_dump(
         stream,
-        &mut cursor,
-        "empty_tbl",
-        &columns,
+        sqllumen_lib::commands::sql_dump::DumpTarget {
+            file: &mut cursor,
+            table_name: "empty_tbl",
+            columns: &columns,
+            job: sqllumen_lib::commands::sql_dump::DumpJob {
+                jobs: &jobs,
+                job_id,
+            },
+        },
         |row: &Vec<SqlDumpValue>| row.clone(),
-        &jobs,
-        job_id,
     )
     .await
     .expect("stream_to_dump should succeed with empty stream");
@@ -236,12 +252,16 @@ async fn per_batch_progress_is_monotonically_increasing() {
     let stream = row_stream(rows);
     stream_to_dump(
         stream,
-        &mut cursor,
-        "progress_tbl",
-        &columns,
+        sqllumen_lib::commands::sql_dump::DumpTarget {
+            file: &mut cursor,
+            table_name: "progress_tbl",
+            columns: &columns,
+            job: sqllumen_lib::commands::sql_dump::DumpJob {
+                jobs: &jobs,
+                job_id,
+            },
+        },
         |row: &Vec<SqlDumpValue>| row.clone(),
-        &jobs,
-        job_id,
     )
     .await
     .expect("stream_to_dump should succeed");
@@ -298,12 +318,16 @@ async fn output_contains_correct_sql_formatting() {
     let stream = row_stream(rows);
     stream_to_dump(
         stream,
-        &mut cursor,
-        "products",
-        &columns,
+        sqllumen_lib::commands::sql_dump::DumpTarget {
+            file: &mut cursor,
+            table_name: "products",
+            columns: &columns,
+            job: sqllumen_lib::commands::sql_dump::DumpJob {
+                jobs: &jobs,
+                job_id,
+            },
+        },
         |row: &Vec<SqlDumpValue>| row.clone(),
-        &jobs,
-        job_id,
     )
     .await
     .expect("stream_to_dump should succeed");
@@ -348,12 +372,16 @@ async fn mid_stream_error_propagates() {
 
     let result = stream_to_dump(
         stream,
-        &mut cursor,
-        "erroring",
-        &columns,
+        sqllumen_lib::commands::sql_dump::DumpTarget {
+            file: &mut cursor,
+            table_name: "erroring",
+            columns: &columns,
+            job: sqllumen_lib::commands::sql_dump::DumpJob {
+                jobs: &jobs,
+                job_id,
+            },
+        },
         |row: &Vec<SqlDumpValue>| row.clone(),
-        &jobs,
-        job_id,
     )
     .await;
 
@@ -400,12 +428,16 @@ async fn empty_columns_returns_ok_with_no_output() {
     let stream = row_stream(rows);
     stream_to_dump(
         stream,
-        &mut cursor,
-        "tbl",
-        &columns,
+        sqllumen_lib::commands::sql_dump::DumpTarget {
+            file: &mut cursor,
+            table_name: "tbl",
+            columns: &columns,
+            job: sqllumen_lib::commands::sql_dump::DumpJob {
+                jobs: &jobs,
+                job_id,
+            },
+        },
         |row: &Vec<SqlDumpValue>| row.clone(),
-        &jobs,
-        job_id,
     )
     .await
     .expect("stream_to_dump should succeed with empty columns");

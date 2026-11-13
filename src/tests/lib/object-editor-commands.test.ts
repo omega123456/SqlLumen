@@ -13,9 +13,14 @@ describe('getObjectBody', () => {
   it('calls invoke with the correct command and args', async () => {
     ipc.override('get_object_body', () => 'CREATE VIEW ...')
 
-    const result = await getObjectBody('conn-1', 'app_db', 'my_view', 'view')
+    const result = await getObjectBody({
+      connectionId: 'conn-1',
+      database: 'app_db',
+      objectName: 'my_view',
+      objectType: 'view',
+    })
 
-    expect(ipc.calls('get_object_body')).toEqual([
+    expect(ipc.payloads('get_object_body')).toEqual([
       {
         connectionId: 'conn-1',
         database: 'app_db',
@@ -30,9 +35,14 @@ describe('getObjectBody', () => {
     ipc.override('get_object_body', () => {
       throw new Error('Object not found')
     })
-    await expect(getObjectBody('conn-1', 'db', 'x', 'procedure')).rejects.toThrow(
-      'Object not found'
-    )
+    await expect(
+      getObjectBody({
+        connectionId: 'conn-1',
+        database: 'db',
+        objectName: 'x',
+        objectType: 'procedure',
+      })
+    ).rejects.toThrow('Object not found')
   })
 })
 
@@ -46,14 +56,14 @@ describe('saveObject', () => {
     }
     ipc.override('save_object', () => response)
 
-    const result = await saveObject(
-      'conn-1',
-      'app_db',
-      'my_proc',
-      'procedure',
-      'CREATE PROCEDURE ...',
-      'create'
-    )
+    const result = await saveObject({
+      connectionId: 'conn-1',
+      database: 'app_db',
+      objectName: 'my_proc',
+      objectType: 'procedure',
+      body: 'CREATE PROCEDURE ...',
+      mode: 'create',
+    })
 
     expect(ipc.calls('save_object')).toEqual([
       {
@@ -74,17 +84,29 @@ describe('saveObject', () => {
     ipc.override('save_object', () => {
       throw new Error('Save failed')
     })
-    await expect(saveObject('conn-1', 'db', 'x', 'view', 'body', 'alter')).rejects.toThrow(
-      'Save failed'
-    )
+    await expect(
+      saveObject({
+        connectionId: 'conn-1',
+        database: 'db',
+        objectName: 'x',
+        objectType: 'view',
+        body: 'body',
+        mode: 'alter',
+      })
+    ).rejects.toThrow('Save failed')
   })
 })
 
 describe('dropObject', () => {
   it('calls invoke with the correct command and args', async () => {
-    const result = await dropObject('conn-1', 'app_db', 'my_trigger', 'trigger')
+    const result = await dropObject({
+      connectionId: 'conn-1',
+      database: 'app_db',
+      objectName: 'my_trigger',
+      objectType: 'trigger',
+    })
 
-    expect(ipc.calls('drop_object')).toEqual([
+    expect(ipc.payloads('drop_object')).toEqual([
       {
         connectionId: 'conn-1',
         database: 'app_db',
@@ -99,7 +121,9 @@ describe('dropObject', () => {
     ipc.override('drop_object', () => {
       throw new Error('Drop failed')
     })
-    await expect(dropObject('conn-1', 'db', 'x', 'event')).rejects.toThrow('Drop failed')
+    await expect(
+      dropObject({ connectionId: 'conn-1', database: 'db', objectName: 'x', objectType: 'event' })
+    ).rejects.toThrow('Drop failed')
   })
 })
 
@@ -111,9 +135,14 @@ describe('getRoutineParameters', () => {
     ]
     ipc.override('get_routine_parameters', () => params)
 
-    const result = await getRoutineParameters('conn-1', 'app_db', 'my_proc', 'procedure')
+    const result = await getRoutineParameters({
+      connectionId: 'conn-1',
+      database: 'app_db',
+      routineName: 'my_proc',
+      routineType: 'procedure',
+    })
 
-    expect(ipc.calls('get_routine_parameters')).toEqual([
+    expect(ipc.payloads('get_routine_parameters')).toEqual([
       {
         connectionId: 'conn-1',
         database: 'app_db',
@@ -125,9 +154,14 @@ describe('getRoutineParameters', () => {
   })
 
   it('works with function routine type', async () => {
-    await getRoutineParameters('conn-1', 'db', 'my_func', 'function')
+    await getRoutineParameters({
+      connectionId: 'conn-1',
+      database: 'db',
+      routineName: 'my_func',
+      routineType: 'function',
+    })
 
-    expect(ipc.calls('get_routine_parameters')).toEqual([
+    expect(ipc.payloads('get_routine_parameters')).toEqual([
       {
         connectionId: 'conn-1',
         database: 'db',
@@ -141,9 +175,14 @@ describe('getRoutineParameters', () => {
     ipc.override('get_routine_parameters', () => {
       throw new Error('Not found')
     })
-    await expect(getRoutineParameters('conn-1', 'db', 'x', 'procedure')).rejects.toThrow(
-      'Not found'
-    )
+    await expect(
+      getRoutineParameters({
+        connectionId: 'conn-1',
+        database: 'db',
+        routineName: 'x',
+        routineType: 'procedure',
+      })
+    ).rejects.toThrow('Not found')
   })
 })
 
@@ -155,14 +194,14 @@ describe('getRoutineParametersWithReturnType', () => {
     ]
     ipc.override('get_routine_parameters_with_return_type', () => params)
 
-    const result = await getRoutineParametersWithReturnType(
-      'conn-1',
-      'app_db',
-      'my_func',
-      'FUNCTION'
-    )
+    const result = await getRoutineParametersWithReturnType({
+      connectionId: 'conn-1',
+      database: 'app_db',
+      routineName: 'my_func',
+      routineType: 'FUNCTION',
+    })
 
-    expect(ipc.calls('get_routine_parameters_with_return_type')).toEqual([
+    expect(ipc.payloads('get_routine_parameters_with_return_type')).toEqual([
       {
         connectionId: 'conn-1',
         database: 'app_db',
@@ -178,7 +217,12 @@ describe('getRoutineParametersWithReturnType', () => {
       throw new Error('Connection lost')
     })
     await expect(
-      getRoutineParametersWithReturnType('conn-1', 'db', 'x', 'FUNCTION')
+      getRoutineParametersWithReturnType({
+        connectionId: 'conn-1',
+        database: 'db',
+        routineName: 'x',
+        routineType: 'FUNCTION',
+      })
     ).rejects.toThrow('Connection lost')
   })
 })

@@ -163,7 +163,7 @@ describe('useUpdateStore', () => {
 
     await useUpdateStore.getState().checkForUpdate(true)
 
-    expect(ipc.calls('log_frontend')).toContainEqual({
+    expect(ipc.payloads('log_frontend')).toContainEqual({
       level: 'error',
       message: '[update-store] Manual update check failed: manual failure',
     })
@@ -341,7 +341,7 @@ describe('useUpdateStore', () => {
 
     await useUpdateStore.getState().restartApp()
 
-    expect(ipc.calls('log_frontend')).toContainEqual({
+    expect(ipc.payloads('log_frontend')).toContainEqual({
       level: 'error',
       message: '[update-store] Restart failed: restart failed',
     })
@@ -367,7 +367,7 @@ describe('useUpdateStore', () => {
       downloadProgress: 40,
       errorMessage: 'download failed',
     })
-    expect(ipc.calls('log_frontend')).toContainEqual({
+    expect(ipc.payloads('log_frontend')).toContainEqual({
       level: 'error',
       message: '[update-store] Install failed: download failed',
     })
@@ -539,7 +539,7 @@ describe('useUpdateStore', () => {
 
     await useUpdateStore.getState().checkForUpdate(false)
 
-    expect(ipc.calls('log_frontend')).toContainEqual({
+    expect(ipc.payloads('log_frontend')).toContainEqual({
       level: 'error',
       message: '[update-store] Automatic update check failed: network down',
     })

@@ -110,7 +110,7 @@ export function MemoryScopePicker({
       const currentPosition = enabledIndices.indexOf(highlightedIndex)
       const start = currentPosition === -1 ? 0 : currentPosition
       const nextPosition = (start + delta + enabledIndices.length) % enabledIndices.length
-      setHighlightedIndex(enabledIndices[nextPosition]!)
+      setHighlightedIndex(enabledIndices[nextPosition])
     },
     [enabledIndices, highlightedIndex]
   )

@@ -23,6 +23,36 @@ use super::query_executor::StoredResult;
 /// (`results.maxRows`); see `commands::settings` for the setting bounds.
 pub const DEFAULT_ROW_CEILING: usize = 100_000;
 
+#[derive(Debug, Clone, Copy)]
+pub struct CacheKey<'a> {
+    pub connection_id: &'a str,
+    pub tab_id: &'a str,
+}
+
+impl<'a> CacheKey<'a> {
+    pub fn new(connection_id: &'a str, tab_id: &'a str) -> Self {
+        Self {
+            connection_id,
+            tab_id,
+        }
+    }
+}
+
+pub struct VersionedValue<V> {
+    pub expected_invalidation_version: u64,
+    pub value: V,
+}
+
+#[derive(Clone, Copy)]
+pub struct SlotWriteTarget<'a> {
+    pub connection_id: &'a str,
+    pub tab_id: &'a str,
+    pub expected_invalidation_version: u64,
+    pub index: usize,
+    pub expected_query_id: Option<&'a str>,
+    pub base_view_version: Option<u64>,
+}
+
 /// Outcome of [`GenericCache::modify_slot_in_place_if_current`].
 #[derive(Debug, PartialEq, Eq)]
 pub enum SlotWrite<T> {
@@ -165,31 +195,14 @@ impl MemorySnapshot for SysinfoMemorySnapshot {
 fn macos_reclaimable_bytes() -> Option<u64> {
     use std::mem;
 
-    // Not re-exported by libc 0.2; declared here so the `mach_host_self()` send
-    // right can be released. Stable Mach syscall: releases a reference to the
-    // named port right in the given task's IPC space.
-    extern "C" {
-        fn mach_port_deallocate(
-            task: libc::mach_port_t,
-            name: libc::mach_port_t,
-        ) -> libc::kern_return_t;
-    }
-
-    // SAFETY: the Mach call operates on a stack-owned, zero-initialized
-    // out-param with an explicitly sized count, and we check the return code
-    // before reading the result. `mach_host_self` is deprecated in libc in
-    // favor of the `mach2` crate, but the symbol is stable; we avoid the extra
-    // dependency.
-    #[allow(deprecated)]
+    // SAFETY: the Mach calls write only to a stack-owned, zero-initialized out-param with an explicitly sized count, and the return code is checked before the result is read.
     unsafe {
         let page_size = libc::vm_page_size as u64;
         if page_size == 0 {
             return None;
         }
 
-        // `mach_host_self()` returns an owned send right that must be released,
-        // otherwise this periodically-called function leaks a port name per call.
-        let host = libc::mach_host_self();
+        let host = mach2::mach_init::mach_host_self();
 
         let mut stats: libc::vm_statistics64 = mem::zeroed();
         let mut count = libc::HOST_VM_INFO64_COUNT;
@@ -199,7 +212,7 @@ fn macos_reclaimable_bytes() -> Option<u64> {
             &mut stats as *mut _ as *mut libc::integer_t,
             &mut count,
         );
-        mach_port_deallocate(libc::mach_task_self(), host);
+        mach2::mach_port::mach_port_deallocate(mach2::traps::mach_task_self(), host);
 
         if ret != libc::KERN_SUCCESS {
             return None;
@@ -628,11 +641,14 @@ where
         CacheGet::Expired
     }
 
-    /// Insert or replace a value for a connection/tab pair.
-    pub fn insert(&self, connection_id: &str, tab_id: &str, value: V) {
+    pub fn insert(&self, key: CacheKey<'_>, value: V) {
         let expected_invalidation_version =
-            self.current_invalidation_version(connection_id, tab_id);
-        let _ = self.insert_if_current(connection_id, tab_id, expected_invalidation_version, value);
+            self.current_invalidation_version(key.connection_id, key.tab_id);
+        let write = VersionedValue {
+            expected_invalidation_version,
+            value,
+        };
+        let _ = self.insert_if_current(key, write);
     }
 
     /// Returns the current invalidation version for the key.
@@ -645,14 +661,15 @@ where
         versions.get(&key).copied().unwrap_or(0)
     }
 
-    /// Insert or replace a value when the invalidation version still matches.
-    pub fn insert_if_current(
-        &self,
-        connection_id: &str,
-        tab_id: &str,
-        expected_invalidation_version: u64,
-        value: V,
-    ) -> bool {
+    pub fn insert_if_current(&self, cache_key: CacheKey<'_>, write: VersionedValue<V>) -> bool {
+        let CacheKey {
+            connection_id,
+            tab_id,
+        } = cache_key;
+        let VersionedValue {
+            expected_invalidation_version,
+            value,
+        } = write;
         let key = (connection_id.to_string(), tab_id.to_string());
         let current_invalidation_version = self.current_invalidation_version(connection_id, tab_id);
         if current_invalidation_version != expected_invalidation_version {
@@ -986,20 +1003,22 @@ impl GenericCache<Vec<StoredResult>> {
     /// `f` mutates a clone of the slot; the clone replaces the slot only when
     /// `f` succeeds, so an `Err` from `f` leaves the cache unchanged. Rows that
     /// were handed out are never mutated: `f` must build new `SharedRows`.
-    #[allow(clippy::too_many_arguments)]
     pub fn modify_slot_in_place_if_current<T, F>(
         &self,
-        connection_id: &str,
-        tab_id: &str,
-        expected_invalidation_version: u64,
-        index: usize,
-        expected_query_id: Option<&str>,
-        base_view_version: Option<u64>,
+        target: &SlotWriteTarget<'_>,
         operation: F,
     ) -> Result<SlotWrite<T>, String>
     where
         F: FnOnce(&mut StoredResult) -> Result<T, String>,
     {
+        let SlotWriteTarget {
+            connection_id,
+            tab_id,
+            expected_invalidation_version,
+            index,
+            expected_query_id,
+            base_view_version,
+        } = *target;
         let key = (connection_id.to_string(), tab_id.to_string());
         let _write_guard = self
             .in_place_write_lock

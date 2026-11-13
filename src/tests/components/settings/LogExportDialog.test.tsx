@@ -111,7 +111,7 @@ describe('LogExportDialog', () => {
     await user.click(screen.getByTestId('log-export-submit-button'))
 
     await waitFor(() => {
-      const calls = ipc.calls('export_logs')
+      const calls = ipc.payloads('export_logs')
       expect(calls).toHaveLength(1)
       expect(calls[0]).toMatchObject({
         startTimestamp: '2026-06-01',
@@ -140,7 +140,7 @@ describe('LogExportDialog', () => {
       expect(ipc.calls('plugin:dialog|save')).toHaveLength(1)
     })
 
-    expect(ipc.calls('export_logs')).toHaveLength(0)
+    expect(ipc.payloads('export_logs')).toHaveLength(0)
     expect(onClose).not.toHaveBeenCalled()
     expect(screen.getByTestId('log-export-submit-button')).toBeEnabled()
     expect(screen.getByTestId('log-export-cancel-button')).toBeEnabled()
@@ -156,10 +156,10 @@ describe('LogExportDialog', () => {
     await user.click(screen.getByTestId('log-export-submit-button'))
 
     await waitFor(() => {
-      expect(ipc.calls('export_logs')).toHaveLength(1)
+      expect(ipc.payloads('export_logs')).toHaveLength(1)
     })
 
-    const [call] = ipc.calls('export_logs') as Array<Record<string, string>>
+    const [call] = ipc.payloads('export_logs') as Array<Record<string, string>>
     expect(call.startTimestamp).toBe('2026-06-01')
     expect(call.endTimestamp).toBe('2026-06-07')
   })

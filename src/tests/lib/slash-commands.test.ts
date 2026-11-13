@@ -63,7 +63,7 @@ describe('slash-commands', () => {
 
     await remember!.execute('  save this note  ', 'session-1')
 
-    const calls = ipc.calls('save_memory')
+    const calls = ipc.payloads('save_memory')
     expect(calls).toHaveLength(1)
     const args = calls[0] as Record<string, unknown>
     expect(args).toMatchObject({
@@ -81,7 +81,7 @@ describe('slash-commands', () => {
     )
 
     await expectToast('error', 'Please provide text to remember')
-    expect(ipc.calls('save_memory')).toHaveLength(0)
+    expect(ipc.payloads('save_memory')).toHaveLength(0)
   })
 
   it('logs and rethrows when /remember fails to save', async () => {
@@ -94,7 +94,7 @@ describe('slash-commands', () => {
       'backend unavailable'
     )
 
-    const logCalls = ipc.calls('log_frontend')
+    const logCalls = ipc.payloads('log_frontend')
     const matched = logCalls.some((call) => {
       const a = call as Record<string, unknown>
       return (
@@ -123,7 +123,7 @@ describe('slash-commands', () => {
       setRememberScope('global')
       const result = await executeRemember('a global note', 'session-1')
       expect(result.type).toBe('saved')
-      const calls = ipc.calls('save_memory')
+      const calls = ipc.payloads('save_memory')
       expect(calls).toHaveLength(1)
       expect(calls[0]).toMatchObject({
         sessionId: 'session-1',
@@ -136,7 +136,7 @@ describe('slash-commands', () => {
     it('executeRemember honors an explicit caller-provided scope over the setting', async () => {
       setRememberScope('connection')
       await executeRemember('group note', 'session-1', 'group')
-      const calls = ipc.calls('save_memory')
+      const calls = ipc.payloads('save_memory')
       expect(calls[0]).toMatchObject({ scope: 'group' })
     })
 
@@ -144,7 +144,7 @@ describe('slash-commands', () => {
       setRememberScope('ask')
       const result = await executeRemember('  unsure note  ', 'session-1')
       expect(result).toEqual({ type: 'ask', content: 'unsure note' })
-      expect(ipc.calls('save_memory')).toHaveLength(0)
+      expect(ipc.payloads('save_memory')).toHaveLength(0)
     })
 
     it('executeRemember rejects empty input regardless of scope', async () => {
@@ -152,7 +152,7 @@ describe('slash-commands', () => {
       await expect(executeRemember('   ', 'session-1')).rejects.toThrow(
         'Cannot save empty memory. Usage: /remember <text>'
       )
-      expect(ipc.calls('save_memory')).toHaveLength(0)
+      expect(ipc.payloads('save_memory')).toHaveLength(0)
     })
   })
 })

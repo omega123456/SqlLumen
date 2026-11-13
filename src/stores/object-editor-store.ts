@@ -179,12 +179,12 @@ export const useObjectEditorStore = create<ObjectEditorStore>()((set, get) => {
       patchTab(tabId, { isLoading: true, error: null })
 
       try {
-        const body = await getObjectBody(
-          tab.connectionId,
-          tab.database,
-          tab.objectName,
-          tab.objectType
-        )
+        const body = await getObjectBody({
+          connectionId: tab.connectionId,
+          database: tab.database,
+          objectName: tab.objectName,
+          objectType: tab.objectType,
+        })
 
         if (!get().tabs[tabId]) return
 
@@ -213,14 +213,14 @@ export const useObjectEditorStore = create<ObjectEditorStore>()((set, get) => {
 
       let response: SaveObjectResponse
       try {
-        response = await saveObject(
-          tab.connectionId,
-          tab.database,
-          tab.objectName,
-          tab.objectType,
-          tab.content,
-          tab.mode
-        )
+        response = await saveObject({
+          connectionId: tab.connectionId,
+          database: tab.database,
+          objectName: tab.objectName,
+          objectType: tab.objectType,
+          body: tab.content,
+          mode: tab.mode,
+        })
       } catch (error) {
         if (!get().tabs[tabId]) return
 

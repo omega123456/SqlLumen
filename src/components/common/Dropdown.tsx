@@ -1,6 +1,6 @@
 import {
   type CSSProperties,
-  forwardRef,
+  type Ref,
   useCallback,
   useEffect,
   useId,
@@ -19,8 +19,8 @@ import { createPortal } from 'react-dom'
 import { isActivationKey, isTargetInside } from '../../lib/input-events'
 import { subscribeToTabDeactivated } from '../../lib/workspace-tab-activity-events'
 
-export interface DropdownOption {
-  value: string
+export interface DropdownOption<TValue extends string = string> {
+  value: TValue
   label: string
   description?: string
   disabled?: boolean
@@ -50,9 +50,9 @@ type DropdownTriggerProps = Omit<
   [key: `data-${string}`]: string | number | undefined
 }
 
-type CommonDropdownProps = DropdownLabelProps & {
+type CommonDropdownProps<TValue extends string = string> = DropdownLabelProps & {
   id: string
-  options: DropdownOption[]
+  options: DropdownOption<TValue>[]
   disabled?: boolean
   'data-testid'?: string
   className?: string
@@ -67,8 +67,8 @@ type CommonDropdownProps = DropdownLabelProps & {
   focusListOnOpen?: boolean
   placeholder?: string
   listAriaLabel?: string
-  renderTriggerValue?: (selectedOptions: DropdownOption[]) => ReactNode
-  renderOptionLabel?: (option: DropdownOption, context: DropdownRenderContext) => ReactNode
+  renderTriggerValue?: (selectedOptions: DropdownOption<TValue>[]) => ReactNode
+  renderOptionLabel?: (option: DropdownOption<TValue>, context: DropdownRenderContext) => ReactNode
   workspaceTabId?: string
   /** Trigger chevron size and weight; defaults to 16px bold. */
   chevronSize?: number
@@ -77,19 +77,24 @@ type CommonDropdownProps = DropdownLabelProps & {
   minPanelWidth?: number
 }
 
-type SingleSelectDropdownProps = CommonDropdownProps & {
+type SingleSelectDropdownProps<TValue extends string> = CommonDropdownProps<TValue> & {
   multiple?: false
-  value: string
-  onChange: (value: string) => void
+  value: TValue
+  onChange: (value: TValue) => void
 }
 
-type MultiSelectDropdownProps = CommonDropdownProps & {
+type MultiSelectDropdownProps<TValue extends string> = CommonDropdownProps<TValue> & {
   multiple: true
-  value: string[]
-  onChange: (value: string[]) => void
+  value: TValue[]
+  onChange: (value: TValue[]) => void
 }
 
-export type DropdownProps = SingleSelectDropdownProps | MultiSelectDropdownProps
+export type DropdownProps<TValue extends string = string> =
+  SingleSelectDropdownProps<TValue> | MultiSelectDropdownProps<TValue>
+
+type DropdownComponentProps<TValue extends string> = DropdownProps<TValue> & {
+  ref?: Ref<HTMLButtonElement>
+}
 
 const MAX_DROPDOWN_HEIGHT = 320
 const VIEWPORT_MARGIN = 8
@@ -117,7 +122,9 @@ function getScrollParents(node: HTMLElement | null): (HTMLElement | Window)[] {
   return list
 }
 
-function isMultiSelect(props: DropdownProps): props is MultiSelectDropdownProps {
+function isMultiSelect<TValue extends string>(
+  props: DropdownProps<TValue>
+): props is MultiSelectDropdownProps<TValue> {
   return props.multiple === true
 }
 
@@ -130,7 +137,7 @@ interface FixedPanelLayoutRequest {
   placement: DropdownPlacement
 }
 
-function assignForwardedRef<T>(ref: React.ForwardedRef<T>, node: T | null): void {
+function assignForwardedRef<T>(ref: Ref<T> | undefined, node: T | null): void {
   if (typeof ref === 'function') {
     ref(node)
     return
@@ -140,24 +147,29 @@ function assignForwardedRef<T>(ref: React.ForwardedRef<T>, node: T | null): void
   }
 }
 
-function selectedValueText(props: DropdownProps): string {
+function selectedValueText<TValue extends string>(props: DropdownProps<TValue>): string {
   if (isMultiSelect(props)) return props.value.join(', ')
   return props.value
 }
 
-function fallbackTriggerLabel(props: DropdownProps): string {
+function fallbackTriggerLabel<TValue extends string>(props: DropdownProps<TValue>): string {
   const selectedText = selectedValueText(props)
   if (selectedText) return selectedText
   return props.placeholder ?? props.options[0]?.label ?? ''
 }
 
-function multiSelectTriggerLabel(props: MultiSelectDropdownProps): string {
+function multiSelectTriggerLabel<TValue extends string>(
+  props: MultiSelectDropdownProps<TValue>
+): string {
   return props.value
     .map((value) => props.options.find((option) => option.value === value)?.label ?? value)
     .join(', ')
 }
 
-function resolveSelectedLabel(props: DropdownProps, selectedOptions: DropdownOption[]): ReactNode {
+function resolveSelectedLabel<TValue extends string>(
+  props: DropdownProps<TValue>,
+  selectedOptions: DropdownOption<TValue>[]
+): ReactNode {
   if (props.renderTriggerValue) return props.renderTriggerValue(selectedOptions)
   if (selectedOptions.length === 0) return fallbackTriggerLabel(props)
   if (isMultiSelect(props)) return multiSelectTriggerLabel(props)
@@ -230,7 +242,9 @@ function closestDialogElement(trigger: HTMLElement): HTMLElement | null {
   return closestDialog instanceof HTMLElement ? closestDialog : null
 }
 
-function listboxAriaLabelFor(props: CommonDropdownProps): string | undefined {
+function listboxAriaLabelFor<TValue extends string>(
+  props: CommonDropdownProps<TValue>
+): string | undefined {
   if (props.listAriaLabel !== undefined) return props.listAriaLabel
   if (props.labelledBy) return undefined
   if (!props.ariaLabel) return undefined
@@ -284,14 +298,14 @@ function buildListboxStyle(
   }
 }
 
-function SingleOptionLabel({
+function SingleOptionLabel<TValue extends string>({
   option,
   context,
   renderOptionLabel,
 }: {
-  option: DropdownOption
+  option: DropdownOption<TValue>
   context: DropdownRenderContext
-  renderOptionLabel: CommonDropdownProps['renderOptionLabel']
+  renderOptionLabel: CommonDropdownProps<TValue>['renderOptionLabel']
 }) {
   if (renderOptionLabel) return <>{renderOptionLabel(option, context)}</>
   return (
@@ -409,313 +423,264 @@ function DropdownChrome({
   return null
 }
 
-export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
-  function Dropdown(props, forwardedRef) {
-    const {
-      id,
-      labelledBy,
-      ariaLabel,
-      options,
-      disabled,
-      'data-testid': dataTestId,
-      className,
-      triggerClassName,
-      onTriggerKeyDown,
-      onListKeyDown,
-      onOpenChange,
-      onTriggerFocus,
-      onTriggerBlur,
-      triggerProps,
-      renderOptionLabel,
-      closeOnSelect = !isMultiSelect(props),
-      focusListOnOpen = true,
-      workspaceTabId,
-      chevronSize = 16,
-      chevronWeight = 'bold',
-      minPanelWidth = FLYOUT_MIN_WIDTH,
-    } = props
+export function Dropdown<TValue extends string = string>({
+  ref: forwardedRef,
+  ...props
+}: DropdownComponentProps<TValue>) {
+  const {
+    id,
+    labelledBy,
+    ariaLabel,
+    options,
+    disabled,
+    'data-testid': dataTestId,
+    className,
+    triggerClassName,
+    onTriggerKeyDown,
+    onListKeyDown,
+    onOpenChange,
+    onTriggerFocus,
+    onTriggerBlur,
+    triggerProps,
+    renderOptionLabel,
+    closeOnSelect = !isMultiSelect(props),
+    focusListOnOpen = true,
+    workspaceTabId,
+    chevronSize = 16,
+    chevronWeight = 'bold',
+    minPanelWidth = FLYOUT_MIN_WIDTH,
+  } = props
 
-    const { onClick: triggerOnClick, ...triggerRest } = triggerProps ?? {}
-    const listboxId = useId()
-    const rootRef = useRef<HTMLDivElement>(null)
-    const triggerRef = useRef<HTMLButtonElement>(null)
-    const panelRef = useRef<HTMLUListElement>(null)
-    const [placement, setPlacement] = useState<DropdownPlacement>('bottom')
-    const [dropdownMaxHeight, setDropdownMaxHeight] = useState(MAX_DROPDOWN_HEIGHT)
-    const [dropdownLayout, setDropdownLayout] = useState<DropdownFixedLayout>({
-      left: 0,
-      width: 0,
-      top: null,
-      bottom: null,
-    })
-    const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null)
-    const [isPortalInDialog, setIsPortalInDialog] = useState(false)
-    const openRef = useRef(false)
+  const { onClick: triggerOnClick, ...triggerRest } = triggerProps ?? {}
+  const listboxId = useId()
+  const rootRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLUListElement>(null)
+  const [placement, setPlacement] = useState<DropdownPlacement>('bottom')
+  const [dropdownMaxHeight, setDropdownMaxHeight] = useState(MAX_DROPDOWN_HEIGHT)
+  const [dropdownLayout, setDropdownLayout] = useState<DropdownFixedLayout>({
+    left: 0,
+    width: 0,
+    top: null,
+    bottom: null,
+  })
+  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null)
+  const [isPortalInDialog, setIsPortalInDialog] = useState(false)
+  const openRef = useRef(false)
 
-    const setTriggerRef = useCallback(
-      (node: HTMLButtonElement | null) => {
-        triggerRef.current = node
-        assignForwardedRef(forwardedRef, node)
-      },
-      [forwardedRef]
-    )
+  const setTriggerRef = useCallback(
+    (node: HTMLButtonElement | null) => {
+      triggerRef.current = node
+      assignForwardedRef(forwardedRef, node)
+    },
+    [forwardedRef]
+  )
 
-    const selectedIndices = useMemo(() => {
-      if (isMultiSelect(props)) {
-        return props.value
-          .map((selectedValue) => indexOfValue(options, selectedValue))
-          .filter((index) => index >= 0)
-      }
-
-      return [indexOfValue(options, props.value)].filter((index) => index >= 0)
-    }, [options, props])
-
-    const selectedOptions = useMemo(
-      () => selectedIndices.map((index) => options[index]!).filter(Boolean),
-      [options, selectedIndices]
-    )
-
-    const selectedLabel = useMemo(
-      () => resolveSelectedLabel(props, selectedOptions),
-      [props, selectedOptions]
-    )
-
-    const isWithinDropdownTarget = (target: EventTarget | null): boolean =>
-      target instanceof Node &&
-      (rootRef.current?.contains(target) === true || panelRef.current?.contains(target) === true)
-
-    const closeListbox = useCallback(() => {
-      if (!openRef.current) {
-        return
-      }
-
-      const event = new KeyboardEvent('keydown', {
-        key: 'Escape',
-        bubbles: true,
-        cancelable: true,
-      })
-      ;(panelRef.current ?? triggerRef.current)?.dispatchEvent(event)
-    }, [])
-
-    useLayoutEffect(() => {
-      const trigger = triggerRef.current
-      if (!trigger) {
-        return
-      }
-
-      applyTriggerLabel(trigger, labelledBy, ariaLabel)
-    }, [ariaLabel, labelledBy])
-
-    const handleTriggerBlur = (event: ReactFocusEvent<HTMLButtonElement>, open: boolean) => {
-      onTriggerBlur?.(event)
-      const isListboxKeptOpen = event.defaultPrevented || !open || focusListOnOpen
-      if (isListboxKeptOpen) {
-        return
-      }
-
-      if (isWithinDropdownTarget(event.relatedTarget)) {
-        return
-      }
-
-      closeListbox()
-    }
-
-    const updatePlacement = useCallback(() => {
-      const trigger = triggerRef.current
-      const panel = panelRef.current
-      if (!trigger) return
-      if (!panel) return
-
-      // Inside a native <dialog> the panel must render into that dialog's top-layer subtree.
-      const dialog = closestDialogElement(trigger)
-      setPortalContainer(dialog ?? document.body)
-      setIsPortalInDialog(dialog !== null)
-
-      const triggerRect = trigger.getBoundingClientRect()
-      const horizontal = horizontalPanelBounds(triggerRect, minPanelWidth)
-      const vertical = verticalPanelPlacement(triggerRect, panel)
-      setPlacement(vertical.placement)
-      setDropdownMaxHeight(vertical.maxHeight)
-      setDropdownLayout(
-        fixedPanelLayout({
-          triggerRect: triggerRect,
-          dialogRect: dialog?.getBoundingClientRect() ?? null,
-          horizontal: horizontal,
-          placement: vertical.placement,
-        })
-      )
-    }, [minPanelWidth])
-
-    const setPanelRef = useCallback(
-      (node: HTMLUListElement | null) => {
-        panelRef.current = node
-        if (node) {
-          updatePlacement()
-        }
-      },
-      [updatePlacement]
-    )
-
-    const rootClassName = ['ui-dropdown', className].filter(Boolean).join(' ')
-    const triggerClass = ['ui-dropdown__trigger', triggerClassName].filter(Boolean).join(' ')
-    const listboxAriaLabel = listboxAriaLabelFor(props)
-    const listboxClassName = buildListboxClassName(isPortalInDialog, placement)
-    const listboxStyle = buildListboxStyle(dropdownMaxHeight, dropdownLayout, placement)
-
-    const renderOptions = (open: boolean) => {
-      if (!open) {
-        return null
-      }
-
-      return createPortal(
-        <ListboxOptions
-          static
-          as="ul"
-          modal={false}
-          ref={setPanelRef}
-          id={listboxId}
-          className={listboxClassName}
-          aria-labelledby={labelledBy}
-          aria-label={listboxAriaLabel}
-          onKeyDown={(event) => {
-            if (event.key === 'Tab') {
-              onTriggerKeyDown?.(event as unknown as ReactKeyboardEvent<HTMLButtonElement>)
-              onListKeyDown?.(event)
-              return
-            }
-
-            if (isActivationKey(event.key)) {
-              return
-            }
-
-            onListKeyDown?.(event)
-          }}
-          onBlur={(event) => {
-            if (!focusListOnOpen) {
-              return
-            }
-
-            if (isWithinDropdownTarget(event.relatedTarget)) {
-              return
-            }
-
-            closeListbox()
-          }}
-          data-placement={placement}
-          style={listboxStyle}
-        >
-          {options.map((option, index) => (
-            <ListboxOption
-              as="li"
-              key={`${option.value}-${index}`}
-              id={`${listboxId}-option-${index}`}
-              value={option.value}
-              disabled={option.disabled}
-              aria-label={option.label}
-              data-testid={dataTestId ? `${dataTestId}-option-${option.value}` : undefined}
-              className={(optionState) => buildOptionClassName(optionState, isMultiSelect(props))}
-              onMouseDown={(event) => {
-                event.preventDefault()
-                event.stopPropagation()
-              }}
-              onClick={() => {
-                const shouldCloseAfterPick = isMultiSelect(props) && closeOnSelect
-                if (shouldCloseAfterPick) {
-                  queueMicrotask(closeListbox)
-                }
-              }}
-            >
-              {({ selected, focus }) => (
-                <>
-                  {isMultiSelect(props) ? (
-                    <span className="ui-dropdown__option-row">
-                      <span className="ui-dropdown__option-content">
-                        {renderOptionLabel ? (
-                          renderOptionLabel(option, {
-                            selected: selected,
-                            highlighted: focus,
-                          })
-                        ) : (
-                          <>
-                            <span>{option.label}</span>
-                            {option.description ? (
-                              <span className="ui-dropdown__meta">{option.description}</span>
-                            ) : null}
-                          </>
-                        )}
-                      </span>
-                      <Check className="ui-dropdown__check" size={16} weight="bold" aria-hidden />
-                    </span>
-                  ) : (
-                    <SingleOptionLabel
-                      option={option}
-                      context={{ selected: selected, highlighted: focus }}
-                      renderOptionLabel={renderOptionLabel}
-                    />
-                  )}
-                </>
-              )}
-            </ListboxOption>
-          ))}
-        </ListboxOptions>,
-        portalContainer ?? document.body
-      )
-    }
-
+  const selectedIndices = useMemo(() => {
     if (isMultiSelect(props)) {
-      return (
-        <Listbox value={props.value} onChange={props.onChange} disabled={disabled} multiple>
-          {({ open }) => {
-            openRef.current = open
-            return (
-              <div className={rootClassName} ref={rootRef}>
-                <DropdownChrome
-                  open={open}
-                  options={options}
-                  rootRef={rootRef}
-                  triggerRef={triggerRef}
-                  panelRef={panelRef}
-                  workspaceTabId={workspaceTabId}
-                  focusListOnOpen={focusListOnOpen}
-                  onOpenChange={onOpenChange}
-                  closeListbox={closeListbox}
-                  updatePlacement={updatePlacement}
-                />
-                <ListboxButton
-                  ref={setTriggerRef}
-                  id={id}
-                  className={triggerClass}
-                  aria-labelledby={labelledBy}
-                  aria-label={ariaLabel}
-                  aria-controls={listboxId}
-                  data-panel-placement={open ? placement : undefined}
-                  data-testid={dataTestId}
-                  {...triggerRest}
-                  onClick={(event) => {
-                    triggerOnClick?.(event)
-                  }}
-                  onFocus={onTriggerFocus}
-                  onBlur={(event) => handleTriggerBlur(event, open)}
-                  onKeyDown={onTriggerKeyDown}
-                >
-                  <span className="ui-dropdown__value">{selectedLabel}</span>
-                  <CaretDown
-                    className="ui-dropdown__chevron"
-                    size={chevronSize}
-                    weight={chevronWeight}
-                    aria-hidden
-                  />
-                </ListboxButton>
-                {renderOptions(open)}
-              </div>
-            )
-          }}
-        </Listbox>
-      )
+      return props.value
+        .map((selectedValue) => indexOfValue(options, selectedValue))
+        .filter((index) => index >= 0)
     }
 
+    return [indexOfValue(options, props.value)].filter((index) => index >= 0)
+  }, [options, props])
+
+  const selectedOptions = useMemo(
+    () => selectedIndices.map((index) => options[index]).filter(Boolean),
+    [options, selectedIndices]
+  )
+
+  const selectedLabel = useMemo(
+    () => resolveSelectedLabel(props, selectedOptions),
+    [props, selectedOptions]
+  )
+
+  const isWithinDropdownTarget = (target: EventTarget | null): boolean =>
+    target instanceof Node &&
+    (rootRef.current?.contains(target) === true || panelRef.current?.contains(target) === true)
+
+  const closeListbox = useCallback(() => {
+    if (!openRef.current) {
+      return
+    }
+
+    const event = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    })
+    ;(panelRef.current ?? triggerRef.current)?.dispatchEvent(event)
+  }, [])
+
+  useLayoutEffect(() => {
+    const trigger = triggerRef.current
+    if (!trigger) {
+      return
+    }
+
+    applyTriggerLabel(trigger, labelledBy, ariaLabel)
+  }, [ariaLabel, labelledBy])
+
+  const handleTriggerBlur = (event: ReactFocusEvent<HTMLButtonElement>, open: boolean) => {
+    onTriggerBlur?.(event)
+    const isListboxKeptOpen = event.defaultPrevented || !open || focusListOnOpen
+    if (isListboxKeptOpen) {
+      return
+    }
+
+    if (isWithinDropdownTarget(event.relatedTarget)) {
+      return
+    }
+
+    closeListbox()
+  }
+
+  const updatePlacement = useCallback(() => {
+    const trigger = triggerRef.current
+    const panel = panelRef.current
+    if (!trigger) return
+    if (!panel) return
+
+    // Inside a native <dialog> the panel must render into that dialog's top-layer subtree.
+    const dialog = closestDialogElement(trigger)
+    setPortalContainer(dialog ?? document.body)
+    setIsPortalInDialog(dialog !== null)
+
+    const triggerRect = trigger.getBoundingClientRect()
+    const horizontal = horizontalPanelBounds(triggerRect, minPanelWidth)
+    const vertical = verticalPanelPlacement(triggerRect, panel)
+    setPlacement(vertical.placement)
+    setDropdownMaxHeight(vertical.maxHeight)
+    setDropdownLayout(
+      fixedPanelLayout({
+        triggerRect: triggerRect,
+        dialogRect: dialog?.getBoundingClientRect() ?? null,
+        horizontal: horizontal,
+        placement: vertical.placement,
+      })
+    )
+  }, [minPanelWidth])
+
+  const setPanelRef = useCallback(
+    (node: HTMLUListElement | null) => {
+      panelRef.current = node
+      if (node) {
+        updatePlacement()
+      }
+    },
+    [updatePlacement]
+  )
+
+  const rootClassName = ['ui-dropdown', className].filter(Boolean).join(' ')
+  const triggerClass = ['ui-dropdown__trigger', triggerClassName].filter(Boolean).join(' ')
+  const listboxAriaLabel = listboxAriaLabelFor(props)
+  const listboxClassName = buildListboxClassName(isPortalInDialog, placement)
+  const listboxStyle = buildListboxStyle(dropdownMaxHeight, dropdownLayout, placement)
+
+  const renderOptions = (open: boolean) => {
+    if (!open) {
+      return null
+    }
+
+    return createPortal(
+      <ListboxOptions
+        static
+        as="ul"
+        modal={false}
+        ref={setPanelRef}
+        id={listboxId}
+        className={listboxClassName}
+        aria-labelledby={labelledBy}
+        aria-label={listboxAriaLabel}
+        onKeyDown={(event) => {
+          if (event.key === 'Tab') {
+            onTriggerKeyDown?.(event as unknown as ReactKeyboardEvent<HTMLButtonElement>)
+            onListKeyDown?.(event)
+            return
+          }
+
+          if (isActivationKey(event.key)) {
+            return
+          }
+
+          onListKeyDown?.(event)
+        }}
+        onBlur={(event) => {
+          if (!focusListOnOpen) {
+            return
+          }
+
+          if (isWithinDropdownTarget(event.relatedTarget)) {
+            return
+          }
+
+          closeListbox()
+        }}
+        data-placement={placement}
+        style={listboxStyle}
+      >
+        {options.map((option, index) => (
+          <ListboxOption
+            as="li"
+            key={`${option.value}-${index}`}
+            id={`${listboxId}-option-${index}`}
+            value={option.value}
+            disabled={option.disabled}
+            aria-label={option.label}
+            data-testid={dataTestId ? `${dataTestId}-option-${option.value}` : undefined}
+            className={(optionState) => buildOptionClassName(optionState, isMultiSelect(props))}
+            onMouseDown={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+            }}
+            onClick={() => {
+              const shouldCloseAfterPick = isMultiSelect(props) && closeOnSelect
+              if (shouldCloseAfterPick) {
+                queueMicrotask(closeListbox)
+              }
+            }}
+          >
+            {({ selected, focus }) => (
+              <>
+                {isMultiSelect(props) ? (
+                  <span className="ui-dropdown__option-row">
+                    <span className="ui-dropdown__option-content">
+                      {renderOptionLabel ? (
+                        renderOptionLabel(option, {
+                          selected: selected,
+                          highlighted: focus,
+                        })
+                      ) : (
+                        <>
+                          <span>{option.label}</span>
+                          {option.description ? (
+                            <span className="ui-dropdown__meta">{option.description}</span>
+                          ) : null}
+                        </>
+                      )}
+                    </span>
+                    <Check className="ui-dropdown__check" size={16} weight="bold" aria-hidden />
+                  </span>
+                ) : (
+                  <SingleOptionLabel
+                    option={option}
+                    context={{ selected: selected, highlighted: focus }}
+                    renderOptionLabel={renderOptionLabel}
+                  />
+                )}
+              </>
+            )}
+          </ListboxOption>
+        ))}
+      </ListboxOptions>,
+      portalContainer ?? document.body
+    )
+  }
+
+  if (isMultiSelect(props)) {
     return (
-      <Listbox value={props.value} onChange={props.onChange} disabled={disabled}>
+      <Listbox value={props.value} onChange={props.onChange} disabled={disabled} multiple>
         {({ open }) => {
           openRef.current = open
           return (
@@ -735,7 +700,6 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
               <ListboxButton
                 ref={setTriggerRef}
                 id={id}
-                role="combobox"
                 className={triggerClass}
                 aria-labelledby={labelledBy}
                 aria-label={ariaLabel}
@@ -765,4 +729,55 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
       </Listbox>
     )
   }
-)
+
+  return (
+    <Listbox value={props.value} onChange={props.onChange} disabled={disabled}>
+      {({ open }) => {
+        openRef.current = open
+        return (
+          <div className={rootClassName} ref={rootRef}>
+            <DropdownChrome
+              open={open}
+              options={options}
+              rootRef={rootRef}
+              triggerRef={triggerRef}
+              panelRef={panelRef}
+              workspaceTabId={workspaceTabId}
+              focusListOnOpen={focusListOnOpen}
+              onOpenChange={onOpenChange}
+              closeListbox={closeListbox}
+              updatePlacement={updatePlacement}
+            />
+            <ListboxButton
+              ref={setTriggerRef}
+              id={id}
+              role="combobox"
+              className={triggerClass}
+              aria-labelledby={labelledBy}
+              aria-label={ariaLabel}
+              aria-controls={listboxId}
+              data-panel-placement={open ? placement : undefined}
+              data-testid={dataTestId}
+              {...triggerRest}
+              onClick={(event) => {
+                triggerOnClick?.(event)
+              }}
+              onFocus={onTriggerFocus}
+              onBlur={(event) => handleTriggerBlur(event, open)}
+              onKeyDown={onTriggerKeyDown}
+            >
+              <span className="ui-dropdown__value">{selectedLabel}</span>
+              <CaretDown
+                className="ui-dropdown__chevron"
+                size={chevronSize}
+                weight={chevronWeight}
+                aria-hidden
+              />
+            </ListboxButton>
+            {renderOptions(open)}
+          </div>
+        )
+      }}
+    </Listbox>
+  )
+}

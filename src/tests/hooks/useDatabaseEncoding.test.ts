@@ -33,7 +33,9 @@ beforeEach(() => {
 
 describe('useDatabaseEncoding', () => {
   it('fetches charsets and collations when isOpen is true', async () => {
-    const { result } = renderHook(() => useDatabaseEncoding('conn-1', true))
+    const { result } = renderHook(() =>
+      useDatabaseEncoding({ connectionId: 'conn-1', isOpen: true })
+    )
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false)
@@ -46,7 +48,7 @@ describe('useDatabaseEncoding', () => {
   })
 
   it('does not fetch when isOpen is false', () => {
-    renderHook(() => useDatabaseEncoding('conn-1', false))
+    renderHook(() => useDatabaseEncoding({ connectionId: 'conn-1', isOpen: false }))
 
     expect(ipc.calls('list_charsets')).toEqual([])
     expect(ipc.calls('list_collations')).toEqual([])
@@ -56,7 +58,9 @@ describe('useDatabaseEncoding', () => {
     ipc.override('list_charsets', () => new Promise(() => {}))
     ipc.override('list_collations', () => new Promise(() => {}))
 
-    const { result } = renderHook(() => useDatabaseEncoding('conn-1', true))
+    const { result } = renderHook(() =>
+      useDatabaseEncoding({ connectionId: 'conn-1', isOpen: true })
+    )
 
     expect(result.current.isLoading).toBe(true)
   })
@@ -66,7 +70,9 @@ describe('useDatabaseEncoding', () => {
       throw new Error('Connection lost')
     })
 
-    const { result } = renderHook(() => useDatabaseEncoding('conn-1', true))
+    const { result } = renderHook(() =>
+      useDatabaseEncoding({ connectionId: 'conn-1', isOpen: true })
+    )
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false)
@@ -77,7 +83,12 @@ describe('useDatabaseEncoding', () => {
 
   it('uses initialCharset and initialCollation values', () => {
     const { result } = renderHook(() =>
-      useDatabaseEncoding('conn-1', false, 'utf8mb4', 'utf8mb4_general_ci')
+      useDatabaseEncoding({
+        connectionId: 'conn-1',
+        isOpen: false,
+        initialCharset: 'utf8mb4',
+        initialCollation: 'utf8mb4_general_ci',
+      })
     )
 
     expect(result.current.charset).toBe('utf8mb4')
@@ -85,7 +96,9 @@ describe('useDatabaseEncoding', () => {
   })
 
   it('filters collations by selected charset', async () => {
-    const { result } = renderHook(() => useDatabaseEncoding('conn-1', true, 'utf8mb4'))
+    const { result } = renderHook(() =>
+      useDatabaseEncoding({ connectionId: 'conn-1', isOpen: true, initialCharset: 'utf8mb4' })
+    )
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false)
@@ -96,7 +109,9 @@ describe('useDatabaseEncoding', () => {
   })
 
   it('returns all collations when no charset is selected', async () => {
-    const { result } = renderHook(() => useDatabaseEncoding('conn-1', true))
+    const { result } = renderHook(() =>
+      useDatabaseEncoding({ connectionId: 'conn-1', isOpen: true })
+    )
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false)
@@ -107,7 +122,9 @@ describe('useDatabaseEncoding', () => {
   })
 
   it('setCharset updates charset and resets collation to default', async () => {
-    const { result } = renderHook(() => useDatabaseEncoding('conn-1', true))
+    const { result } = renderHook(() =>
+      useDatabaseEncoding({ connectionId: 'conn-1', isOpen: true })
+    )
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false)
@@ -123,7 +140,12 @@ describe('useDatabaseEncoding', () => {
 
   it('setCharset with empty string clears both charset and collation', async () => {
     const { result } = renderHook(() =>
-      useDatabaseEncoding('conn-1', true, 'utf8mb4', 'utf8mb4_general_ci')
+      useDatabaseEncoding({
+        connectionId: 'conn-1',
+        isOpen: true,
+        initialCharset: 'utf8mb4',
+        initialCollation: 'utf8mb4_general_ci',
+      })
     )
 
     await waitFor(() => {
@@ -140,7 +162,12 @@ describe('useDatabaseEncoding', () => {
 
   it('setCollation updates collation directly', async () => {
     const { result } = renderHook(() =>
-      useDatabaseEncoding('conn-1', true, 'utf8mb4', 'utf8mb4_general_ci')
+      useDatabaseEncoding({
+        connectionId: 'conn-1',
+        isOpen: true,
+        initialCharset: 'utf8mb4',
+        initialCollation: 'utf8mb4_general_ci',
+      })
     )
 
     await waitFor(() => {
@@ -157,7 +184,12 @@ describe('useDatabaseEncoding', () => {
   it('applies initialCharset/initialCollation when they change', async () => {
     const { result, rerender } = renderHook(
       ({ charset, collation }: { charset?: string; collation?: string }) =>
-        useDatabaseEncoding('conn-1', true, charset, collation),
+        useDatabaseEncoding({
+          connectionId: 'conn-1',
+          isOpen: true,
+          initialCharset: charset,
+          initialCollation: collation,
+        }),
       {
         initialProps: { charset: undefined, collation: undefined } as {
           charset?: string
@@ -192,7 +224,9 @@ describe('useDatabaseEncoding', () => {
         })
     )
 
-    const { unmount } = renderHook(() => useDatabaseEncoding('conn-1', true))
+    const { unmount } = renderHook(() =>
+      useDatabaseEncoding({ connectionId: 'conn-1', isOpen: true })
+    )
 
     // Unmount before the fetch resolves
     unmount()

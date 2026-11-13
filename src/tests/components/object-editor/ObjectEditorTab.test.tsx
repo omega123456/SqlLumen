@@ -136,7 +136,7 @@ describe('ObjectEditorTab', () => {
     })
     expect(screen.getByText('New Stored Procedure')).toBeInTheDocument()
     // getObjectBody should NOT have been called in create mode
-    expect(ipc.calls('get_object_body')).toHaveLength(0)
+    expect(ipc.payloads('get_object_body')).toHaveLength(0)
   })
 
   it('save button click triggers saveBody', async () => {

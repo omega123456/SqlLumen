@@ -9,22 +9,22 @@ use std::time::Duration;
 
 /// Helper: build a minimal `StoredResult` for testing.
 fn stub_result(query_id: &str) -> StoredResult {
-    StoredResult::new(
-        query_id.to_string(),
-        vec![],
-        std::sync::Arc::new(vec![]),
-        0,
-        0,
-        0,
-        false,
-    )
+    StoredResult::new(sqllumen_lib::mysql::query_executor::StoredResultParts {
+        query_id: query_id.to_string(),
+        columns: vec![],
+        rows: std::sync::Arc::new(vec![]),
+        execution_time_ms: 0,
+        total_time_ms: 0,
+        affected_rows: 0,
+        auto_limit_applied: false,
+    })
 }
 
 /// Helper: build a `StoredResult` with typed Number values for round-trip testing.
 fn stub_result_with_numbers(query_id: &str) -> StoredResult {
-    StoredResult::new(
-        query_id.to_string(),
-        vec![
+    StoredResult::new(sqllumen_lib::mysql::query_executor::StoredResultParts {
+        query_id: query_id.to_string(),
+        columns: vec![
             ColumnMeta {
                 name: "u64_col".to_string(),
                 data_type: "BIGINT UNSIGNED".to_string(),
@@ -38,16 +38,16 @@ fn stub_result_with_numbers(query_id: &str) -> StoredResult {
                 data_type: "DOUBLE".to_string(),
             },
         ],
-        crate::common::shared_rows(vec![vec![
+        rows: crate::common::shared_rows(vec![vec![
             serde_json::Value::Number(serde_json::Number::from(42u64)),
             serde_json::Value::Number(serde_json::Number::from(-99i64)),
             serde_json::Value::Number(serde_json::Number::from_f64(1.25).unwrap()),
         ]]),
-        123,
-        123,
-        0,
-        false,
-    )
+        execution_time_ms: 123,
+        total_time_ms: 123,
+        affected_rows: 0,
+        auto_limit_applied: false,
+    })
 }
 
 /// Test memory snapshot with controllable values.
@@ -114,7 +114,10 @@ fn ttl_expired_entry_creates_spill_file() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = ResultCache::new_for_test(1, tmp.path().to_path_buf());
 
-    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q1")],
+    );
 
     // Wait for TTL to expire
     thread::sleep(Duration::from_millis(1500));
@@ -138,7 +141,10 @@ fn cache_miss_rewarms_from_spill_file() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = ResultCache::new_for_test(1, tmp.path().to_path_buf());
 
-    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q1")],
+    );
 
     // Wait for TTL to expire
     thread::sleep(Duration::from_millis(1500));
@@ -174,7 +180,10 @@ fn rewarmed_data_preserves_number_types() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = ResultCache::new_for_test(1, tmp.path().to_path_buf());
 
-    cache.insert("conn1", "tab1", vec![stub_result_with_numbers("q-nums")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result_with_numbers("q-nums")],
+    );
 
     // Wait for TTL to expire
     thread::sleep(Duration::from_millis(1500));
@@ -208,7 +217,10 @@ fn known_key_no_spill_file_returns_expired() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = ResultCache::new_for_test(1, tmp.path().to_path_buf());
 
-    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q1")],
+    );
 
     // Wait for TTL to expire
     thread::sleep(Duration::from_millis(1500));
@@ -246,7 +258,10 @@ fn remove_with_spill_cleanup_deletes_spill_file() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = ResultCache::new_for_test(1, tmp.path().to_path_buf());
 
-    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q1")],
+    );
 
     // Wait for TTL to expire (creates spill file)
     thread::sleep(Duration::from_millis(1500));
@@ -260,7 +275,10 @@ fn remove_with_spill_cleanup_deletes_spill_file() {
     assert!(cache.get("conn1", "tab1").is_available());
 
     // Now insert fresh data so there's something to clean up
-    cache.insert("conn1", "tab1", vec![stub_result("q2")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q2")],
+    );
 
     // remove_with_spill_cleanup should remove entry and prevent spill
     cache.remove_with_spill_cleanup("conn1", "tab1");
@@ -307,8 +325,14 @@ fn ram_pressure_eviction_triggers_spill() {
         Duration::from_millis(1),
     );
 
-    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
-    cache.insert("conn1", "tab2", vec![stub_result("q2")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q1")],
+    );
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab2"),
+        vec![stub_result("q2")],
+    );
     thread::sleep(Duration::from_millis(5));
 
     // Simulate low memory: 100 MB available out of 8 GB
@@ -338,10 +362,22 @@ fn ram_pressure_stops_after_memory_recovers() {
         Duration::from_millis(1),
     );
 
-    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
-    cache.insert("conn1", "tab2", vec![stub_result("q2")]);
-    cache.insert("conn1", "tab3", vec![stub_result("q3")]);
-    cache.insert("conn1", "tab4", vec![stub_result("q4")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q1")],
+    );
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab2"),
+        vec![stub_result("q2")],
+    );
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab3"),
+        vec![stub_result("q3")],
+    );
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab4"),
+        vec![stub_result("q4")],
+    );
     thread::sleep(Duration::from_millis(5));
 
     let snapshot = StepMemorySnapshot::new(
@@ -367,7 +403,10 @@ fn stale_spill_deleted_on_overwrite() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = ResultCache::new_for_test(1, tmp.path().to_path_buf());
 
-    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q1")],
+    );
 
     // Wait for TTL to expire (creates spill file)
     thread::sleep(Duration::from_millis(1500));
@@ -381,7 +420,10 @@ fn stale_spill_deleted_on_overwrite() {
     );
 
     // Insert new data for the same key — stale spill should be deleted
-    cache.insert("conn1", "tab1", vec![stub_result("q2")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q2")],
+    );
 
     assert!(
         !spill_path.exists(),
@@ -396,9 +438,15 @@ fn replacement_does_not_leave_orphan_spill() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = ResultCache::new_for_test(3600, tmp.path().to_path_buf());
 
-    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q1")],
+    );
     // Replace immediately
-    cache.insert("conn1", "tab1", vec![stub_result("q2")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q2")],
+    );
 
     // Run maintenance to flush any pending eviction notifications
     cache.run_pending_tasks();
@@ -420,14 +468,20 @@ fn stale_eviction_notification_does_not_write_outdated_spill_file() {
         Duration::from_millis(1),
     );
 
-    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q1")],
+    );
     thread::sleep(Duration::from_millis(5));
 
     let low_memory = FakeMemorySnapshot::new(100 * 1024 * 1024, 8 * 1024 * 1024 * 1024);
     let mut low_memory = low_memory;
     cache.run_maintenance(&mut low_memory);
 
-    cache.insert("conn1", "tab1", vec![stub_result("q2")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q2")],
+    );
     cache.flush_spill_jobs();
 
     let spill_path = cache.spill_file_path("conn1", "tab1");
@@ -446,10 +500,22 @@ fn maintenance_refreshes_memory_between_passes() {
         Duration::from_millis(1),
     );
 
-    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
-    cache.insert("conn1", "tab2", vec![stub_result("q2")]);
-    cache.insert("conn1", "tab3", vec![stub_result("q3")]);
-    cache.insert("conn1", "tab4", vec![stub_result("q4")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q1")],
+    );
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab2"),
+        vec![stub_result("q2")],
+    );
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab3"),
+        vec![stub_result("q3")],
+    );
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab4"),
+        vec![stub_result("q4")],
+    );
     thread::sleep(Duration::from_millis(5));
 
     let mut snapshot = StepMemorySnapshot::new(
@@ -472,8 +538,14 @@ fn ram_pressure_skips_recently_touched_entries_until_idle_threshold() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = ResultCache::new_for_test(3600, tmp.path().to_path_buf());
 
-    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
-    cache.insert("conn1", "tab2", vec![stub_result("q2")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q1")],
+    );
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab2"),
+        vec![stub_result("q2")],
+    );
 
     let snapshot = FakeMemorySnapshot::new(100 * 1024 * 1024, 8 * 1024 * 1024 * 1024);
     let mut snapshot = snapshot;
@@ -518,7 +590,10 @@ fn tab_close_cleanup_prevents_spill_recreation() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = ResultCache::new_for_test(3600, tmp.path().to_path_buf());
 
-    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q1")],
+    );
 
     // remove_with_spill_cleanup marks the key as cleaned
     cache.remove_with_spill_cleanup("conn1", "tab1");
@@ -541,7 +616,10 @@ fn drop_cleans_up_current_session_spill_directory() {
     let session_dir = {
         let cache = ResultCache::new_for_test(1, spill_root.clone());
         let session_dir = spill_root.join(cache.session_id());
-        cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+        cache.insert(
+            sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+            vec![stub_result("q1")],
+        );
         thread::sleep(Duration::from_millis(1500));
         cache.run_pending_tasks();
         cache.flush_spill_jobs();
@@ -566,7 +644,10 @@ fn spilled_file_serializes_bare_value_without_generation_metadata() {
     let cache = ResultCache::new_for_test(1, tmp.path().to_path_buf());
 
     let original = vec![stub_result_with_numbers("q-roundtrip")];
-    cache.insert("conn1", "tab1", original.clone());
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        original.clone(),
+    );
 
     // Trigger eviction via TTL expiry, then synchronize on the spill worker.
     thread::sleep(Duration::from_millis(1500));
@@ -597,11 +678,12 @@ fn spilled_file_serializes_bare_value_without_generation_metadata() {
     // field must fail.
     #[derive(serde::Deserialize)]
     struct WrapperProbe {
-        #[allow(dead_code)]
         generation: u64,
     }
     assert!(
-        rmp_serde::from_slice::<WrapperProbe>(&bytes).is_err(),
+        rmp_serde::from_slice::<WrapperProbe>(&bytes)
+            .map(|probe| probe.generation)
+            .is_err(),
         "serialized payload must not contain CachedEntry generation metadata"
     );
 
@@ -620,7 +702,10 @@ fn in_memory_hit_returns_found() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
 
-    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    cache.insert(
+        sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1"),
+        vec![stub_result("q1")],
+    );
 
     assert!(matches!(
         cache.get("conn1", "tab1"),

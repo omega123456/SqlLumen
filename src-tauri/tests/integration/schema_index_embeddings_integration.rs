@@ -33,10 +33,14 @@ async fn embed_texts_returns_vectors() {
 
     let result = embed_texts(
         &client,
-        &base_url,
-        "test-model",
-        vec!["hello".to_string(), "world".to_string()],
-        None,
+        sqllumen_lib::schema_index::embeddings::EmbeddingModel {
+            base_url: &base_url,
+            model: "test-model",
+        },
+        sqllumen_lib::schema_index::embeddings::EmbeddingInput {
+            texts: vec!["hello".to_string(), "world".to_string()],
+            dimensions: None,
+        },
     )
     .await;
 
@@ -51,7 +55,18 @@ async fn embed_texts_returns_vectors() {
 async fn embed_texts_empty_input_returns_empty() {
     let client = test_client();
     // No server needed for empty input
-    let result = embed_texts(&client, "http://unused", "model", vec![], None).await;
+    let result = embed_texts(
+        &client,
+        sqllumen_lib::schema_index::embeddings::EmbeddingModel {
+            base_url: "http://unused",
+            model: "model",
+        },
+        sqllumen_lib::schema_index::embeddings::EmbeddingInput {
+            texts: vec![],
+            dimensions: None,
+        },
+    )
+    .await;
     assert!(result.is_ok());
     assert_eq!(result.unwrap().len(), 0);
 }
@@ -76,11 +91,17 @@ async fn embed_texts_normalises_chat_completions_url() {
 
     let result = embed_texts_with_timeout(
         &client,
-        &base_url,
-        "m",
-        vec!["test".to_string()],
-        None,
-        std::time::Duration::from_millis(50),
+        sqllumen_lib::schema_index::embeddings::EmbeddingCall {
+            model: sqllumen_lib::schema_index::embeddings::EmbeddingModel {
+                base_url: &base_url,
+                model: "m",
+            },
+            request_timeout: std::time::Duration::from_millis(50),
+        },
+        sqllumen_lib::schema_index::embeddings::EmbeddingInput {
+            texts: vec!["test".to_string()],
+            dimensions: None,
+        },
     )
     .await;
     assert!(result.is_ok(), "should normalise URL: {:?}", result);
@@ -102,7 +123,18 @@ async fn embed_texts_normalises_bare_v1_url() {
     let client = test_client();
     let base_url = format!("{}/v1", server.uri());
 
-    let result = embed_texts(&client, &base_url, "m", vec!["test".to_string()], None).await;
+    let result = embed_texts(
+        &client,
+        sqllumen_lib::schema_index::embeddings::EmbeddingModel {
+            base_url: &base_url,
+            model: "m",
+        },
+        sqllumen_lib::schema_index::embeddings::EmbeddingInput {
+            texts: vec!["test".to_string()],
+            dimensions: None,
+        },
+    )
+    .await;
     assert!(result.is_ok());
     assert_eq!(result.unwrap()[0], vec![2.0]);
 }
@@ -138,15 +170,19 @@ async fn embed_texts_retries_on_http_400() {
 
     let result = embed_texts(
         &client,
-        &base_url,
-        "m",
-        vec![
-            "a".to_string(),
-            "b".to_string(),
-            "c".to_string(),
-            "d".to_string(),
-        ],
-        None,
+        sqllumen_lib::schema_index::embeddings::EmbeddingModel {
+            base_url: &base_url,
+            model: "m",
+        },
+        sqllumen_lib::schema_index::embeddings::EmbeddingInput {
+            texts: vec![
+                "a".to_string(),
+                "b".to_string(),
+                "c".to_string(),
+                "d".to_string(),
+            ],
+            dimensions: None,
+        },
     )
     .await;
 
@@ -183,10 +219,14 @@ async fn embed_texts_retries_on_http_413() {
 
     let result = embed_texts(
         &client,
-        &base_url,
-        "m",
-        vec!["a".to_string(), "b".to_string()],
-        None,
+        sqllumen_lib::schema_index::embeddings::EmbeddingModel {
+            base_url: &base_url,
+            model: "m",
+        },
+        sqllumen_lib::schema_index::embeddings::EmbeddingInput {
+            texts: vec!["a".to_string(), "b".to_string()],
+            dimensions: None,
+        },
     )
     .await;
 
@@ -208,7 +248,18 @@ async fn embed_texts_returns_error_on_malformed_json() {
     let client = test_client();
     let base_url = format!("{}/v1", server.uri());
 
-    let result = embed_texts(&client, &base_url, "m", vec!["test".to_string()], None).await;
+    let result = embed_texts(
+        &client,
+        sqllumen_lib::schema_index::embeddings::EmbeddingModel {
+            base_url: &base_url,
+            model: "m",
+        },
+        sqllumen_lib::schema_index::embeddings::EmbeddingInput {
+            texts: vec!["test".to_string()],
+            dimensions: None,
+        },
+    )
+    .await;
 
     assert!(result.is_err());
     let err = format!("{}", result.unwrap_err());
@@ -242,11 +293,17 @@ async fn embed_texts_returns_error_on_timeout() {
 
     let result = embed_texts_with_timeout(
         &client,
-        &base_url,
-        "m",
-        vec!["test".to_string()],
-        None,
-        std::time::Duration::from_millis(50),
+        sqllumen_lib::schema_index::embeddings::EmbeddingCall {
+            model: sqllumen_lib::schema_index::embeddings::EmbeddingModel {
+                base_url: &base_url,
+                model: "m",
+            },
+            request_timeout: std::time::Duration::from_millis(50),
+        },
+        sqllumen_lib::schema_index::embeddings::EmbeddingInput {
+            texts: vec!["test".to_string()],
+            dimensions: None,
+        },
     )
     .await;
 
@@ -273,7 +330,18 @@ async fn embed_texts_returns_error_on_http_500() {
     let client = test_client();
     let base_url = format!("{}/v1", server.uri());
 
-    let result = embed_texts(&client, &base_url, "m", vec!["test".to_string()], None).await;
+    let result = embed_texts(
+        &client,
+        sqllumen_lib::schema_index::embeddings::EmbeddingModel {
+            base_url: &base_url,
+            model: "m",
+        },
+        sqllumen_lib::schema_index::embeddings::EmbeddingInput {
+            texts: vec!["test".to_string()],
+            dimensions: None,
+        },
+    )
+    .await;
 
     assert!(result.is_err());
     let err = format!("{}", result.unwrap_err());
@@ -291,10 +359,14 @@ async fn embed_texts_returns_error_on_connection_refused() {
 
     let result = embed_texts(
         &client,
-        "http://127.0.0.1:1/v1",
-        "m",
-        vec!["test".to_string()],
-        None,
+        sqllumen_lib::schema_index::embeddings::EmbeddingModel {
+            base_url: "http://127.0.0.1:1/v1",
+            model: "m",
+        },
+        sqllumen_lib::schema_index::embeddings::EmbeddingInput {
+            texts: vec!["test".to_string()],
+            dimensions: None,
+        },
     )
     .await;
 
@@ -313,10 +385,14 @@ async fn embed_texts_empty_base_url_returns_clear_error() {
     let client = test_client();
     let result = embed_texts(
         &client,
-        "",
-        "nomic-embed-text",
-        vec!["test".to_string()],
-        None,
+        sqllumen_lib::schema_index::embeddings::EmbeddingModel {
+            base_url: "",
+            model: "nomic-embed-text",
+        },
+        sqllumen_lib::schema_index::embeddings::EmbeddingInput {
+            texts: vec!["test".to_string()],
+            dimensions: None,
+        },
     )
     .await;
     assert!(
@@ -418,10 +494,14 @@ async fn embed_texts_returns_error_when_retries_exhausted() {
 
     let result = embed_texts(
         &client,
-        &base_url,
-        "m",
-        vec!["a".to_string(), "b".to_string()],
-        None,
+        sqllumen_lib::schema_index::embeddings::EmbeddingModel {
+            base_url: &base_url,
+            model: "m",
+        },
+        sqllumen_lib::schema_index::embeddings::EmbeddingInput {
+            texts: vec!["a".to_string(), "b".to_string()],
+            dimensions: None,
+        },
     )
     .await;
 
@@ -465,7 +545,18 @@ async fn embed_texts_sends_truncate_true_in_request_body() {
     let client = test_client();
     let base_url = format!("{}/v1", server.uri());
 
-    let result = embed_texts(&client, &base_url, "bge-m3", vec!["test".to_string()], None).await;
+    let result = embed_texts(
+        &client,
+        sqllumen_lib::schema_index::embeddings::EmbeddingModel {
+            base_url: &base_url,
+            model: "bge-m3",
+        },
+        sqllumen_lib::schema_index::embeddings::EmbeddingInput {
+            texts: vec!["test".to_string()],
+            dimensions: None,
+        },
+    )
+    .await;
     assert!(result.is_ok(), "should succeed: {:?}", result);
     assert_eq!(result.unwrap()[0], vec![0.1, 0.2]);
 }
@@ -514,7 +605,18 @@ async fn embed_texts_sends_encoding_format_float_in_request_body() {
     let client = test_client();
     let base_url = format!("{}/v1", server.uri());
 
-    let result = embed_texts(&client, &base_url, "bge-m3", vec!["test".to_string()], None).await;
+    let result = embed_texts(
+        &client,
+        sqllumen_lib::schema_index::embeddings::EmbeddingModel {
+            base_url: &base_url,
+            model: "bge-m3",
+        },
+        sqllumen_lib::schema_index::embeddings::EmbeddingInput {
+            texts: vec!["test".to_string()],
+            dimensions: None,
+        },
+    )
+    .await;
     assert!(result.is_ok(), "should succeed: {:?}", result);
     assert_eq!(result.unwrap()[0], vec![0.1, 0.2]);
 }

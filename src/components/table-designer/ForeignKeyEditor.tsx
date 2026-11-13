@@ -4,6 +4,7 @@ import { logFrontendError } from '../../lib/app-log-commands'
 import { listColumns, listDatabases, listSchemaObjects } from '../../lib/schema-commands'
 import {
   useTableDesignerStore,
+  type TableDesignerStore,
   type TableDesignerTabState,
 } from '../../stores/table-designer-store'
 import type { TableDesignerColumnDef, TableDesignerForeignKeyDef } from '../../types/schema'
@@ -126,12 +127,7 @@ interface ForeignKeyRowContext {
   sourceColumnOptions: DropdownOption[]
   databaseOptions: DropdownOption[]
   referencedLookups: ReferencedLookups
-  updateForeignKey: (
-    tabId: string,
-    foreignKeyIndex: number,
-    field: keyof TableDesignerForeignKeyDef,
-    value: unknown
-  ) => void
+  updateForeignKey: TableDesignerStore['updateForeignKey']
   onSelect: (index: number) => void
   onDelete: (index: number) => void
 }
@@ -253,7 +249,7 @@ function ReferencedColumnCell({
   const columnNames = referencedColumnNamesFor(referencedLookups, targetKey)
   const isLoading = isReferencedColumnLoadingFor(referencedLookups, targetKey)
   const updateReferencedColumn = (value: string) =>
-    updateForeignKey(tabId, index, 'referencedColumn', value)
+    updateForeignKey(tabId, { index: index, field: 'referencedColumn', value: value })
   const hasColumnChoices = foreignKey.referencedTable !== '' && columnNames.length > 0
 
   if (!hasColumnChoices) {
@@ -301,7 +297,7 @@ function EditableForeignKeyCells({ foreignKey, position, context }: EditableFore
   const { index, isSelected } = position
   const referencedDatabase = foreignKey.referencedDatabase || context.databaseName || ''
   const update = (field: keyof TableDesignerForeignKeyDef, value: unknown) =>
-    updateForeignKey(tabId, index, field, value)
+    updateForeignKey(tabId, { index: index, field: field, value: value })
 
   return (
     <>

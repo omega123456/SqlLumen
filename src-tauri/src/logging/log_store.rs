@@ -122,12 +122,19 @@ pub fn insert_log_entries(conn: &mut Connection, entries: &[NewLogEntry]) -> Res
     tx.commit()
 }
 
-pub fn list_logs(
-    conn: &Connection,
-    page: i64,
-    level_num: Option<i64>,
-    now: DateTime<Utc>,
-) -> Result<LogPage> {
+#[derive(Debug, Clone, Copy)]
+pub struct LogPageQuery {
+    pub page: i64,
+    pub level_num: Option<i64>,
+    pub now: DateTime<Utc>,
+}
+
+pub fn list_logs(conn: &Connection, query: &LogPageQuery) -> Result<LogPage> {
+    let LogPageQuery {
+        page,
+        level_num,
+        now,
+    } = *query;
     let page = page.max(1);
     let offset = (page - 1) * LOG_PAGE_SIZE;
     let last_24h_cutoff = (now - Duration::hours(24)).to_rfc3339();
