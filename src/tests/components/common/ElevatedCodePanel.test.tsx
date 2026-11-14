@@ -15,37 +15,43 @@ describe('ElevatedCodePanel', () => {
     )
 
     const root = screen.getByTestId('code-panel')
-    expect(root).toHaveClass('ui-elevated-surface')
-
-    expect(root.querySelector('.ui-elevated-panel-header')).toBeTruthy()
-    expect(root.querySelector('.ui-elevated-panel-header__label')).toHaveTextContent('DDL')
-
+    expect(root).toHaveAttribute('data-variant', 'ring')
+    expect(screen.getByText('DDL').parentElement).toHaveAttribute('data-variant', 'table')
     expect(screen.getByRole('button', { name: 'Copy' })).toBeInTheDocument()
 
     const code = root.querySelector('pre code')
     expect(code?.textContent).toContain('SELECT 1')
   })
 
+  it('renders the strip header variant', () => {
+    render(
+      <ElevatedCodePanel label="DDL" headerVariant="strip">
+        <span>y</span>
+      </ElevatedCodePanel>
+    )
+
+    expect(screen.getByText('DDL').parentElement).toHaveAttribute('data-variant', 'strip')
+  })
+
   it('omits actions wrapper when headerActions is absent', () => {
-    const { container } = render(
+    render(
       <ElevatedCodePanel label="X">
         <span>y</span>
       </ElevatedCodePanel>
     )
 
-    expect(container.querySelector('.ui-elevated-panel-header__actions')).toBeNull()
+    expect(screen.getByText('X').nextElementSibling).toBeNull()
   })
 
   it('can reuse the shared code shell without rendering a header row', () => {
     render(
-      <ElevatedCodePanel data-testid="code-panel" hideHeader={true}>
+      <ElevatedCodePanel data-testid="code-panel" label="Hidden" hideHeader={true}>
         <span>SELECT 1</span>
       </ElevatedCodePanel>
     )
 
     const root = screen.getByTestId('code-panel')
-    expect(root).toHaveClass('ui-elevated-surface')
-    expect(root.querySelector('.ui-elevated-panel-header')).toBeNull()
+    expect(screen.queryByText('Hidden')).not.toBeInTheDocument()
     expect(root.querySelector('pre code')?.textContent).toContain('SELECT 1')
   })
 })

@@ -1,13 +1,13 @@
 import { createPortal } from 'react-dom'
 import type { CSSProperties } from 'react'
 import { X, CheckCircle, Warning, XCircle, type Icon } from '@phosphor-icons/react'
+import { joinClassNames } from '../../lib/class-names'
+import { FOCUS_RING } from '../../lib/focus-ring'
 import { useToastStore, type ToastItem } from '../../stores/toast-store'
-import styles from './ToastViewport.module.css'
 
-const TOAST_ICON_SIZE = 24
+const TOAST_ICON_SIZE = 16
 
 interface ToastVariantPresentation {
-  toastClassName: string
   iconWellClassName: string
   progressClassName: string
   VariantIcon: Icon
@@ -15,35 +15,20 @@ interface ToastVariantPresentation {
 
 const TOAST_VARIANT_PRESENTATION: Record<ToastItem['variant'], ToastVariantPresentation> = {
   error: {
-    toastClassName: styles.toastError,
-    iconWellClassName: `${styles.iconWell} ${styles.iconWellError}`,
-    progressClassName: `${styles.progressFill} ${styles.progressError}`,
+    iconWellClassName: 'text-light-error dark:text-dark-error',
+    progressClassName: 'bg-light-error dark:bg-dark-error',
     VariantIcon: XCircle,
   },
   success: {
-    toastClassName: styles.toastSuccess,
-    iconWellClassName: `${styles.iconWell} ${styles.iconWellSuccess}`,
-    progressClassName: `${styles.progressFill} ${styles.progressSuccess}`,
+    iconWellClassName: 'text-light-tertiary dark:text-dark-tertiary',
+    progressClassName: 'bg-light-tertiary dark:bg-dark-tertiary',
     VariantIcon: CheckCircle,
   },
   warning: {
-    toastClassName: styles.toastWarning,
-    iconWellClassName: `${styles.iconWell} ${styles.iconWellWarning}`,
-    progressClassName: `${styles.progressFill} ${styles.progressWarning}`,
+    iconWellClassName: 'text-light-warning dark:text-dark-warning',
+    progressClassName: 'bg-light-warning dark:bg-dark-warning',
     VariantIcon: Warning,
   },
-}
-
-function variantClass(variant: ToastItem['variant']) {
-  return TOAST_VARIANT_PRESENTATION[variant].toastClassName
-}
-
-function iconWellClass(variant: ToastItem['variant']) {
-  return TOAST_VARIANT_PRESENTATION[variant].iconWellClassName
-}
-
-function progressClass(variant: ToastItem['variant']) {
-  return TOAST_VARIANT_PRESENTATION[variant].progressClassName
 }
 
 function ToastIcon({ variant }: { variant: ToastItem['variant'] }) {
@@ -57,21 +42,31 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: strin
 
   return (
     <div
-      className={`${styles.toast} ${variantClass(item.variant)}`}
+      className="flex max-w-toast flex-col rounded-overlay border border-light-stroke-flyout bg-light-surface-container-high shadow-light-flyout dark:border-dark-stroke-flyout dark:bg-dark-surface-container-high dark:shadow-dark-flyout"
       role={role}
       data-testid="toast-item"
       data-toast-variant={item.variant}
     >
-      <div className={styles.surface}>
-        <div className={iconWellClass(item.variant)}>
+      <div className="flex w-full flex-row items-start gap-3 py-3.5 pr-2 pl-4">
+        <div
+          className={joinClassNames([
+            'mt-0.5 flex size-4 shrink-0 items-center justify-center',
+            TOAST_VARIANT_PRESENTATION[item.variant].iconWellClassName,
+          ])}
+        >
           <ToastIcon variant={item.variant} />
         </div>
-        <div className={styles.body}>
-          <div className={styles.headerRow}>
-            <h3 className={styles.title}>{item.title}</h3>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="wrap-break-word font-body text-body font-semibold text-light-on-surface dark:text-dark-on-surface">
+              {item.title}
+            </h3>
             <button
               type="button"
-              className={styles.close}
+              className={joinClassNames([
+                'shrink-0 cursor-pointer border-0 bg-transparent p-0 leading-flat text-light-on-surface dark:text-dark-on-surface',
+                FOCUS_RING,
+              ])}
               aria-label="Dismiss notification"
               data-testid="toast-dismiss"
               onClick={() => {
@@ -81,11 +76,21 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: strin
               <X size={18} weight="regular" aria-hidden />
             </button>
           </div>
-          {item.message ? <p className={styles.message}>{item.message}</p> : null}
+          {item.message ? (
+            <p className="mt-0.5 wrap-break-word font-body text-row text-light-on-surface-variant dark:text-dark-on-surface-variant">
+              {item.message}
+            </p>
+          ) : null}
         </div>
       </div>
-      <div className={styles.progressTrack} aria-hidden>
-        <div className={progressClass(item.variant)} style={progressStyle} />
+      <div className="hidden" aria-hidden>
+        <div
+          className={joinClassNames([
+            'block h-full w-full origin-left animate-toast-progress window-blurred:animate-toast-progress-paused',
+            TOAST_VARIANT_PRESENTATION[item.variant].progressClassName,
+          ])}
+          style={progressStyle}
+        />
       </div>
     </div>
   )
@@ -104,12 +109,12 @@ export function ToastViewport() {
 
   const content = (
     <div
-      className={styles.viewport}
+      className="pointer-events-none fixed inset-0 z-10050 flex max-w-screen flex-col items-end justify-end gap-2 px-4 pt-4 pb-10"
       data-testid="toast-stack"
       aria-live="polite"
       aria-relevant="additions"
     >
-      <div className={styles.stack}>
+      <div className="pointer-events-auto flex w-full max-w-toast flex-col gap-2">
         {toasts.map((item) => (
           <ToastCard key={item.id} item={item} onDismiss={dismiss} />
         ))}

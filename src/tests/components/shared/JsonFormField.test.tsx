@@ -87,7 +87,7 @@ describe('JsonFormField', () => {
     )
 
     const field = screen.getByTestId('json-form-field')
-    expect(screen.getByTestId('json-form-field-panel')).toHaveClass('ui-elevated-surface')
+    expect(screen.getByTestId('json-form-field-panel')).toHaveAttribute('data-variant', 'ring')
     expect(field.textContent).toContain('{\n  "name": "Ada",\n  "age": 42\n}')
     expect(field.querySelector('.key')?.textContent).toBe('"name"')
     expect(field.querySelector('.string')?.textContent).toBe('"Ada"')

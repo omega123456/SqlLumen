@@ -7,7 +7,6 @@ import { defaultValueForMode, defaultValueText, isTextDefaultMode } from '../col
 import { CellFrame } from './CellFrame'
 import {
   cellOf,
-  dropdownTriggerClass,
   editableInputClass,
   isCellModified,
   stopClick,
@@ -69,7 +68,7 @@ function DefaultModeDropdown(props: ColumnCellProps) {
         'data-cell-key': 'default',
         onClick: stopClick,
       }}
-      triggerClassName={dropdownTriggerClass(row, styles.cellInput)}
+      triggerClassName={styles.cellDropdown}
       onTriggerFocus={activate}
       onTriggerBlur={() => defaultCell.scheduleBlur(columnIndex)}
       onTriggerKeyDown={handleKeyDown}

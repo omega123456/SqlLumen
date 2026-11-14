@@ -20,7 +20,7 @@ describe('MetadataCard', () => {
   it('uses elevated surface on root', () => {
     render(<MetadataCard metadata={makeMetadata()} />)
 
-    expect(screen.getByTestId('metadata-card')).toHaveClass('ui-elevated-surface')
+    expect(screen.getByTestId('metadata-card')).toHaveAttribute('data-variant', 'ring')
   })
 
   it('shows engine value', () => {

@@ -122,39 +122,6 @@ export function measurePanelLayout(request: PanelLayoutRequest): DropdownPanelLa
   }
 }
 
-interface OptionRenderState {
-  selected: boolean
-  focus: boolean
-  disabled: boolean
-}
-
-export function buildOptionClassName(
-  optionState: OptionRenderState,
-  isMultiOption: boolean
-): string {
-  const isHighlighted = optionState.focus && !optionState.selected
-  return [
-    'ui-dropdown__option',
-    optionState.selected ? 'ui-dropdown__option--selected' : '',
-    isHighlighted ? 'ui-dropdown__option--highlighted' : '',
-    isMultiOption ? 'ui-dropdown__option--multi' : '',
-    optionState.disabled ? 'ui-dropdown__option--disabled' : '',
-  ]
-    .filter(Boolean)
-    .join(' ')
-}
-
-export function buildListboxClassName(panelLayout: DropdownPanelLayout): string {
-  return [
-    'ui-dropdown__panel',
-    'click-outside-ignore',
-    panelLayout.isPortalInDialog ? 'ui-dropdown__panel--in-dialog' : '',
-    panelLayout.placement === 'top' ? 'ui-dropdown__panel--top' : '',
-  ]
-    .filter(Boolean)
-    .join(' ')
-}
-
 export function buildListboxStyle(panelLayout: DropdownPanelLayout): CSSProperties {
   const { layout, placement } = panelLayout
   const verticalAnchor =

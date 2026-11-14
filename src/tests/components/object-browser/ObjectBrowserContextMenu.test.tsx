@@ -532,10 +532,10 @@ describe('ObjectBrowserContextMenu', () => {
     )
 
     const truncateBtn = screen.getByText('Truncate table...').closest('button')
-    expect(truncateBtn?.className).toContain('ui-context-menu__item--destructive')
+    expect(truncateBtn).toHaveAttribute('data-destructive', 'true')
 
     const dropBtn = screen.getByText('Drop table...').closest('button')
-    expect(dropBtn?.className).toContain('ui-context-menu__item--destructive')
+    expect(dropBtn).toHaveAttribute('data-destructive', 'true')
   })
 
   it('shows correct items for view node (writable)', () => {

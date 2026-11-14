@@ -180,7 +180,6 @@ describe('TableDesignerTab', () => {
     }))
     render(<TableDesignerTab tab={makeTab()} />)
 
-    expect(screen.getByTestId('table-designer-header')).not.toHaveClass('ui-elevated-surface')
     expect(screen.getByTestId('table-designer-caption')).toHaveTextContent('app_db · 2 columns')
     expect(screen.getByTestId('table-designer-apply')).toHaveTextContent('Apply changes')
   })

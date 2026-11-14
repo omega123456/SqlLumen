@@ -174,7 +174,7 @@ function ConnectionTabRail({ tabs, activeTabId, actions }: ConnectionTabRailProp
   const tabsByProfileId = groupTabsByProfile(tabs)
   if (tabs.length === 0) return null
   return (
-    <UnderlineTabBar variant="document" className={styles.connectionTabRail}>
+    <UnderlineTabBar variant="document" rowHeight="tall" className={styles.connectionTabRail}>
       {tabs.map((connection) => (
         <ConnectionTab
           key={connection.id}

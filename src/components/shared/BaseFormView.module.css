@@ -181,7 +181,7 @@
   background: var(--fill-subtle-pressed);
 }
 
-/* Modified / NULL state of a form field control (text input or dropdown trigger) */
+/* Modified / NULL state of a form field text input */
 .fieldModified {
   border-color: var(--primary) !important;
 }

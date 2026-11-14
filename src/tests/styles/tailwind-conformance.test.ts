@@ -96,6 +96,11 @@ describe('index.css — directives', () => {
       'hover',
       'window-blurred',
       'slider-thumb',
+      'webkit-scrollbar',
+      'webkit-scrollbar-track',
+      'webkit-scrollbar-thumb',
+      'webkit-scrollbar-thumb-hover',
+      'svg',
       'resize-dragging',
     ])
   })
@@ -306,6 +311,19 @@ describe('@theme — control shapes and focus shadows', () => {
     for (const themeName of ['dark', 'light']) {
       expect(theme[`--shadow-${themeName}-${name}`]).toBe(
         `${underline}var(--color-${themeName}-${colour})`
+      )
+    }
+  })
+})
+
+describe('@theme — tab strip shadows', () => {
+  it.each([
+    ['divider-bottom', 'inset 0 -1px 0 ', 'stroke-divider'],
+    ['strip-tint', 'inset 0 0 0 999px ', 'surface-strip'],
+  ])('%s shadow reads the %s colour in both themes', (name, offset, colour) => {
+    for (const themeName of ['dark', 'light']) {
+      expect(theme[`--shadow-${themeName}-${name}`]).toBe(
+        `${offset}var(--color-${themeName}-${colour})`
       )
     }
   })

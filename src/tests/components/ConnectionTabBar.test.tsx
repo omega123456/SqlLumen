@@ -485,7 +485,7 @@ describe('ConnectionTabBar', () => {
 
     fireEvent.pointerDown(from, { button: 0, clientX: 280, clientY: 15 })
     fireEvent.pointerMove(window, { clientX: 198, clientY: 15 })
-    await waitFor(() => expect(from.className).toContain('dragging'))
+    await waitFor(() => expect(from).toHaveAttribute('data-dragging', 'true'))
     fireEvent.pointerUp(window, { clientX: 198, clientY: 15 })
 
     expect(useConnectionStore.getState().activeConnectionOrder).toEqual([
@@ -555,7 +555,7 @@ describe('ConnectionTabBar', () => {
     fireEvent.pointerDown(tab, { button: 0, clientX: 180, clientY: 15 })
     fireEvent.pointerMove(window, { clientX: 222, clientY: 15 })
 
-    await waitFor(() => expect(tab.className).toContain('dragging'))
+    await waitFor(() => expect(tab).toHaveAttribute('data-dragging', 'true'))
     fireEvent.pointerUp(window, { clientX: 222, clientY: 15 })
 
     expect(useConnectionStore.getState().activeConnectionOrder).toEqual(['sess-1', 'sess-2'])

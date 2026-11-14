@@ -34,7 +34,6 @@
 
 /* Document-style tab rail; the selected tab joins the workspace below */
 .tabBar .connectionTabRail {
-  --underline-tab-row-height: var(--title-strip-height);
   position: relative;
   z-index: 1;
   align-self: flex-start;

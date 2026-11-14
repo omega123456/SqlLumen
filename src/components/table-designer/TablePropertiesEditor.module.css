@@ -46,17 +46,22 @@
   animation: table-properties-spin 0.85s linear infinite;
 }
 
-/* Layout only; borders/fill/shadow from global .ui-field-chrome or .ui-dropdown__trigger */
-.control {
+/* Layout only; borders/fill/shadow come from the shared field chrome or the Dropdown trigger */
+.control,
+.dropdownControl {
   width: 100%;
   min-height: 40px;
   padding: 10px 12px;
-  color: var(--on-surface);
   font-family: var(--font-body);
   font-size: var(--type-size-sm);
 }
 
-.control:disabled {
+.control {
+  color: var(--on-surface);
+}
+
+.control:disabled,
+.dropdownControl:disabled {
   opacity: 0.7;
   cursor: wait;
 }

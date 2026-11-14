@@ -24,7 +24,6 @@ import { CellFrame } from './column-editor/CellFrame'
 import {
   ariaInvalidValue,
   cellOf,
-  dropdownTriggerClass,
   editableInputClass,
   isCellModified,
   stopClick,
@@ -133,7 +132,7 @@ function TypeCell(props: ColumnCellProps) {
             onChange={(nextType) => changeColumnType(props, nextType)}
             onTriggerFocus={() => controller.activateCell(cell)}
             onTriggerKeyDown={(event) => controller.handleEditableKeyDown(event, cell)}
-            triggerClassName={dropdownTriggerClass(row, `${styles.cellInput} ${styles.typeInput}`)}
+            triggerClassName={`${styles.cellDropdown} ${styles.typeInput}`}
           />
         </div>
       </CellFrame>
@@ -175,7 +174,7 @@ function SignednessCell(props: ColumnCellProps) {
           onTriggerFocus={activateWithBaseline}
           onTriggerBlur={() => controller.forgetEditStart(cell)}
           onTriggerKeyDown={(event) => controller.handleEditableKeyDown(event, cell)}
-          triggerClassName={dropdownTriggerClass(row, `${styles.cellInput} ${styles.signedInput}`)}
+          triggerClassName={`${styles.cellDropdown} ${styles.signedInput}`}
         />
       </CellFrame>
     </td>

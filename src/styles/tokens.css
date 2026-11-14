@@ -342,7 +342,7 @@
 
   --ui-ssl-hint-fg: var(--on-surface-variant);
 
-  /* ---------- Dropdown (trigger matches .ui-input geometry & fill) ---------- */
+  /* ---------- Dropdown (trigger matches the text field geometry & fill) ---------- */
   --ui-dropdown-trigger-bg: var(--ui-input-bg);
   --ui-dropdown-trigger-border: var(--ui-input-border);
   --ui-dropdown-trigger-hover-border-color: var(--stroke-control);

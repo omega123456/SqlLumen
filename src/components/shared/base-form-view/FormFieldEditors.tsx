@@ -115,7 +115,7 @@ function EnumFieldEditor({ field, rawValue, isNull }: FormFieldEditorProps) {
       value={isNull ? ENUM_NULL_SENTINEL : displayValue(rawValue)}
       onChange={handleChange}
       data-testid={fieldInputTestId(column)}
-      triggerClassName={fieldStateClassName(field.isModified, isNull)}
+      fieldState={{ modified: field.isModified, isNull: isNull }}
     />
   )
 }

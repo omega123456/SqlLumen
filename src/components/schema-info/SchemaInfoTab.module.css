@@ -56,7 +56,6 @@
 /* Sub-tab bar — rail padding; tab styles live in UnderlineTabs */
 /* Prototype `.vtabs`: 40px SelectorBar, 12px inset */
 .subTabBar {
-  --underline-tab-row-height: 40px;
   flex: none;
   padding: 0 12px;
 }

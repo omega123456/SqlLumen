@@ -3,6 +3,12 @@ import { createPortal } from 'react-dom'
 import { Copy, PencilSimple, Trash } from '@phosphor-icons/react'
 import { Button } from '../../common/Button'
 import { useDismissOnOutsideClick } from '../useDismissOnOutsideClick'
+import {
+  CONTEXT_MENU,
+  CONTEXT_MENU_ICON,
+  CONTEXT_MENU_SEPARATOR,
+  contextMenuItemClassName,
+} from '../../../lib/class-names-menu'
 import { getContextMenuPositionMode } from '../../../lib/context-menu-utils'
 import { useContextMenuPlacement } from '../../../hooks/use-context-menu-placement'
 import type { SavedConnection } from '../../../types/connection'
@@ -30,31 +36,27 @@ function GroupMenuItems({ groupId, actions }: { groupId: string; actions: Contex
     <>
       <Button
         variant="bare"
-        className="ui-context-menu__item"
+        className={contextMenuItemClassName(false)}
         role="menuitem"
         onClick={() => actions.onRenameGroup(groupId)}
       >
         <PencilSimple
-          className="ui-context-menu__icon"
+          className={CONTEXT_MENU_ICON}
           size={MENU_ICON_SIZE}
           weight="regular"
           aria-hidden
         />
         <span>Rename</span>
       </Button>
-      <div className="ui-context-menu__separator" role="separator" aria-orientation="horizontal" />
+      <div className={CONTEXT_MENU_SEPARATOR} role="separator" aria-orientation="horizontal" />
       <Button
         variant="bare"
-        className="ui-context-menu__item ui-context-menu__item--destructive"
+        className={contextMenuItemClassName(true)}
+        data-destructive
         role="menuitem"
         onClick={() => actions.onDeleteGroup(groupId)}
       >
-        <Trash
-          className="ui-context-menu__icon"
-          size={MENU_ICON_SIZE}
-          weight="regular"
-          aria-hidden
-        />
+        <Trash className={CONTEXT_MENU_ICON} size={MENU_ICON_SIZE} weight="regular" aria-hidden />
         <span>Delete</span>
       </Button>
     </>
@@ -71,11 +73,11 @@ function ConnectionMenuItems({
   return (
     <Button
       variant="bare"
-      className="ui-context-menu__item"
+      className={contextMenuItemClassName(false)}
       role="menuitem"
       onClick={() => actions.onDuplicateConnection(connection)}
     >
-      <Copy className="ui-context-menu__icon" size={MENU_ICON_SIZE} weight="regular" aria-hidden />
+      <Copy className={CONTEXT_MENU_ICON} size={MENU_ICON_SIZE} weight="regular" aria-hidden />
       <span>Duplicate</span>
     </Button>
   )
@@ -104,7 +106,7 @@ export function SavedConnectionsContextMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="ui-context-menu"
+      className={CONTEXT_MENU}
       data-testid="saved-connections-context-menu"
       style={{
         left: menu.x,

@@ -875,7 +875,7 @@ describe('AiSettings - Model Categories', () => {
     })
 
     const card = screen.getByTestId('ai-model-card-llama3')
-    expect(card.className).toContain('ui-elevated-surface')
+    expect(card).toHaveAttribute('data-variant', 'ring')
     expect(card).toHaveAttribute('role', 'radio')
     expect(card).toHaveAttribute('tabindex', '0')
   })

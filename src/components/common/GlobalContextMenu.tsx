@@ -2,6 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ClipboardText, CopySimple, Scissors } from '@phosphor-icons/react'
 import { logFrontend } from '../../lib/app-log-commands'
+import {
+  CONTEXT_MENU,
+  CONTEXT_MENU_ICON,
+  contextMenuItemClassName,
+} from '../../lib/class-names-menu'
 import { useContextMenuPlacement } from '../../hooks/use-context-menu-placement'
 import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
 import {
@@ -319,7 +324,7 @@ export function GlobalContextMenu() {
   return createPortal(
     <div
       ref={menuRef}
-      className="ui-context-menu"
+      className={CONTEXT_MENU}
       style={{
         left: open.x,
         top: open.y,
@@ -335,7 +340,7 @@ export function GlobalContextMenu() {
         <button
           key={key}
           type="button"
-          className="ui-context-menu__item"
+          className={contextMenuItemClassName(false)}
           role="menuitem"
           disabled={!isEnabled(flags)}
           data-testid={testId}
@@ -343,12 +348,7 @@ export function GlobalContextMenu() {
             runMenuAction(() => action(open.field, open.textSelection), closeMenu)
           }}
         >
-          <Icon
-            className="ui-context-menu__icon"
-            size={MENU_ICON_SIZE}
-            weight="regular"
-            aria-hidden
-          />
+          <Icon className={CONTEXT_MENU_ICON} size={MENU_ICON_SIZE} weight="regular" aria-hidden />
           <span>{label}</span>
         </button>
       ))}

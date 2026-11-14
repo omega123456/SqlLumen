@@ -9,45 +9,70 @@ import {
   type RefObject,
   type SyntheticEvent,
 } from 'react'
-import { joinClassNames } from '../../lib/class-names'
+import { dataFlag } from '../../lib/data-attributes'
 import { isActivationKey, isMiddleMouseButton } from '../../lib/input-events'
-import styles from './UnderlineTabs.module.css'
 import {
-  BAR_VARIANT_CLASS,
-  type UnderlineTabBarProps,
-  type UnderlineTabVariant,
-} from './underline-tabs/tab-bar-variants'
+  barSuffixClassName,
+  standaloneBarClassName,
+  wrapperClassName,
+  wrappedBarClassName,
+} from './underline-tabs/tab-bar-classes'
+import {
+  labelButtonClassName,
+  suffixSlotClassName,
+  tabClassName,
+  type TabDropIndicator,
+} from './underline-tabs/tab-classes'
+import type { UnderlineTabBarProps, UnderlineTabVariant } from './underline-tabs/tab-bar-variants'
 import { ScrollableTabBar } from './underline-tabs/ScrollableTabBar'
 
-export type { UnderlineTabBarProps, UnderlineTabVariant } from './underline-tabs/tab-bar-variants'
-
-const TAB_VARIANT_CLASS: Record<UnderlineTabVariant, string> = {
-  default: '',
-  selector: styles.tabSelector,
-  document: styles.tabDocument,
-}
+export type {
+  UnderlineTabBarProps,
+  UnderlineTabRowHeight,
+  UnderlineTabVariant,
+} from './underline-tabs/tab-bar-variants'
 
 export function UnderlineTabBar(props: UnderlineTabBarProps) {
   if (props.scrollable) {
     return <ScrollableTabBar {...props} />
   }
-  const { children, className, 'data-testid': testId, prefix, suffix, variant = 'default' } = props
-  const barClass = [styles.bar, BAR_VARIANT_CLASS[variant]].filter(Boolean).join(' ')
+  const {
+    children,
+    className,
+    'data-testid': testId,
+    prefix,
+    suffix,
+    variant = 'default',
+    rowHeight = 'default',
+  } = props
   if (prefix || suffix) {
-    const wrapperClass = [styles.barWrapper, BAR_VARIANT_CLASS[variant], className]
-      .filter(Boolean)
-      .join(' ')
     return (
-      <div className={wrapperClass} data-testid={testId}>
+      <div
+        className={wrapperClassName({ variant: variant, className: className })}
+        data-variant={variant}
+        data-testid={testId}
+      >
         {prefix}
-        <div className={barClass}>{children}</div>
-        {suffix ? <div className={styles.barSuffix}>{suffix}</div> : null}
+        <div
+          className={wrappedBarClassName({ variant: variant, rowHeight: rowHeight })}
+          data-variant={variant}
+        >
+          {children}
+        </div>
+        {suffix ? <div className={barSuffixClassName(rowHeight)}>{suffix}</div> : null}
       </div>
     )
   }
-  const finalBarClass = className ? `${barClass} ${className}` : barClass
   return (
-    <div className={finalBarClass} data-testid={testId}>
+    <div
+      className={standaloneBarClassName({
+        variant: variant,
+        rowHeight: rowHeight,
+        className: className,
+      })}
+      data-variant={variant}
+      data-testid={testId}
+    >
       {children}
     </div>
   )
@@ -73,15 +98,10 @@ export interface UnderlineTabProps {
   onDrop?: (e: DragEvent<HTMLElement>) => void
   draggable?: boolean
   dragging?: boolean
-  dropIndicator?: 'before' | 'after'
+  dropIndicator?: TabDropIndicator
   prefix?: ReactNode
   suffix?: ReactNode
   variant?: UnderlineTabVariant
-}
-
-const DROP_INDICATOR_CLASS: Record<NonNullable<UnderlineTabProps['dropIndicator']>, string> = {
-  before: styles.dropBefore,
-  after: styles.dropAfter,
 }
 
 type ResolvedUnderlineTabProps = UnderlineTabProps &
@@ -90,11 +110,6 @@ type ResolvedUnderlineTabProps = UnderlineTabProps &
 interface ResolvedTabViewProps {
   props: ResolvedUnderlineTabProps
   elementRef: RefObject<HTMLDivElement | HTMLButtonElement | null>
-}
-
-function dropIndicatorClassName(dropIndicator: UnderlineTabProps['dropIndicator']): string {
-  if (!dropIndicator) return ''
-  return DROP_INDICATOR_CLASS[dropIndicator]
 }
 
 function activeDataAttribute(active: boolean): true | undefined {
@@ -111,15 +126,6 @@ function middleMouseDownHandler(
 ): ((event: MouseEvent<HTMLElement>) => void) | undefined {
   if (!onAuxClick) return undefined
   return preventMiddleMouseDown
-}
-
-function tabStateClassNames(props: ResolvedUnderlineTabProps, activeClassName: string): string[] {
-  return [
-    TAB_VARIANT_CLASS[props.variant],
-    props.active ? activeClassName : '',
-    props.dragging ? styles.dragging : '',
-    dropIndicatorClassName(props.dropIndicator),
-  ]
 }
 
 function onlyFromContainer<Event extends SyntheticEvent<HTMLElement>>(
@@ -141,7 +147,7 @@ function TabSuffixSlot({ props }: { props: ResolvedUnderlineTabProps }) {
   if (props.suffix == null) return null
   return (
     <div
-      className={styles.suffixSlot}
+      className={suffixSlotClassName(props.variant)}
       onPointerDown={props.onPointerDown}
       onDragStart={props.onDragStart}
       onDragOver={props.onDragOver}
@@ -156,11 +162,14 @@ function TabSuffixSlot({ props }: { props: ResolvedUnderlineTabProps }) {
 
 function SplitUnderlineTab({ props, elementRef }: ResolvedTabViewProps) {
   const handleSelect = selectHandler(props)
-  const cellClass = joinClassNames([
-    styles.cell,
-    ...tabStateClassNames(props, styles.cellActive),
-    props.className ?? '',
-  ])
+  const cellClass = tabClassName({
+    shape: 'cell',
+    variant: props.variant,
+    active: props.active,
+    dragging: props.dragging,
+    dropIndicator: props.dropIndicator,
+    className: props.className,
+  })
 
   const onLabelKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     props.onKeyDown?.(event)
@@ -175,6 +184,9 @@ function SplitUnderlineTab({ props, elementRef }: ResolvedTabViewProps) {
     <div
       ref={elementRef as React.RefObject<HTMLDivElement>}
       className={cellClass}
+      data-variant={props.variant}
+      data-dragging={dataFlag(props.dragging)}
+      data-drop-indicator={props.dropIndicator}
       data-active={activeDataAttribute(props.active)}
       data-testid={props['data-testid']}
       title={props.title}
@@ -193,7 +205,7 @@ function SplitUnderlineTab({ props, elementRef }: ResolvedTabViewProps) {
         tabIndex={0}
         aria-label={props['aria-label']}
         aria-selected={props.active}
-        className={styles.labelButton}
+        className={labelButtonClassName(props.variant)}
         onClick={handleSelect}
         onKeyDown={onLabelKeyDown}
         onPointerDown={props.onPointerDown}
@@ -212,17 +224,23 @@ function SplitUnderlineTab({ props, elementRef }: ResolvedTabViewProps) {
 }
 
 function SimpleUnderlineTab({ props, elementRef }: ResolvedTabViewProps) {
-  const simpleClass = joinClassNames([
-    styles.simple,
-    ...tabStateClassNames(props, styles.simpleActive),
-    props.className ?? '',
-  ])
+  const simpleClass = tabClassName({
+    shape: 'simple',
+    variant: props.variant,
+    active: props.active,
+    dragging: props.dragging,
+    dropIndicator: props.dropIndicator,
+    className: props.className,
+  })
 
   return (
     <button
       ref={elementRef as React.RefObject<HTMLButtonElement>}
       type="button"
       className={simpleClass}
+      data-variant={props.variant}
+      data-dragging={dataFlag(props.dragging)}
+      data-drop-indicator={props.dropIndicator}
       data-active={activeDataAttribute(props.active)}
       data-testid={props['data-testid']}
       aria-label={props['aria-label']}

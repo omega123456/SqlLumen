@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { ArrowsClockwise, CheckCircle, DownloadSimple, WarningCircle } from '@phosphor-icons/react'
 import { Button } from '../../common/Button'
+import { ELEVATED_SURFACE } from '../../../lib/class-names'
 import type { ReadyToFinishAction, UpdateStatus } from '../../../stores/update-store'
 import styles from '../UpdatesSettings.module.css'
 
@@ -36,7 +37,7 @@ function UpToDateView({ appVersion, checkForUpdatesButton }: SoftwareUpdateViewP
 function UpdateAvailableView({ availableVersion, handlers }: SoftwareUpdateViewProps) {
   return (
     <div
-      className={`${styles.updateCard} ui-elevated-surface`}
+      className={`${styles.updateCard} ${ELEVATED_SURFACE}`}
       data-testid="updates-available-card"
     >
       <div className={styles.cardTitle}>Version {availableVersion ?? 'new'} is available</div>
@@ -56,7 +57,7 @@ function UpdateAvailableView({ availableVersion, handlers }: SoftwareUpdateViewP
 function InstallingView({ availableVersion, downloadProgress }: SoftwareUpdateViewProps) {
   return (
     <div
-      className={`${styles.updateCard} ui-elevated-surface`}
+      className={`${styles.updateCard} ${ELEVATED_SURFACE}`}
       data-testid="updates-installing-card"
     >
       <div className={styles.cardTitle}>Downloading version {availableVersion ?? 'update'}...</div>
@@ -86,7 +87,7 @@ function ReadyToFinishView({ readyToFinish, errorMessage, handlers }: SoftwareUp
   const isManualQuit = readyToFinish.action === 'manual-quit'
   return (
     <div
-      className={`${styles.updateCard} ui-elevated-surface`}
+      className={`${styles.updateCard} ${ELEVATED_SURFACE}`}
       data-testid="updates-ready-card"
       aria-live="polite"
     >

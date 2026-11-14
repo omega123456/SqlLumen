@@ -9,6 +9,7 @@ import {
 import { createPortal } from 'react-dom'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import styles from './DialogShell.module.css'
+import { ELEVATED_SURFACE } from '../../lib/class-names'
 
 export interface DialogShellProps {
   isOpen: boolean
@@ -197,7 +198,7 @@ export function DialogShell({
     >
       <DialogPanel
         formProps={formProps}
-        className={withOptionalClassName(`ui-elevated-surface ${styles.dialog}`, panelClassName)}
+        className={withOptionalClassName(`${ELEVATED_SURFACE} ${styles.dialog}`, panelClassName)}
         style={dialogStyle}
         testId={panelTestIdFor(testId)}
         panelRef={dialogRef}

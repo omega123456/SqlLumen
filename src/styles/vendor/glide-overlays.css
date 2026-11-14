@@ -77,7 +77,7 @@
   box-shadow: none;
 }
 
-/* Enum DropdownCell menu: same Fluent flyout as the shared Dropdown panel (.ui-dropdown__panel).
+/* Enum DropdownCell menu: same Fluent flyout as the shared Dropdown panel.
    react-select keeps its own focused-option fill, so keyboard highlight stays visible. */
 #portal .gdg-p13nj8j0 [class*='-menu'] {
   background: var(--surface-container-high);

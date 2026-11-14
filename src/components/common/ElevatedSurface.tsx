@@ -1,14 +1,30 @@
 import type { HTMLAttributes } from 'react'
+import { ELEVATED_SURFACE, joinClassNames } from '../../lib/class-names'
 
-function joinClasses(...parts: (string | undefined)[]): string {
-  return parts.filter(Boolean).join(' ')
+export type ElevatedSurfaceVariant = 'ring' | 'bordered'
+
+const VARIANT_CLASSES: Record<ElevatedSurfaceVariant, string> = {
+  ring: ELEVATED_SURFACE,
+  bordered:
+    'rounded-card border border-light-stroke-card dark:border-dark-stroke-card bg-light-surface-container-high dark:bg-dark-surface-container-high',
 }
 
-export type ElevatedSurfaceProps = HTMLAttributes<HTMLDivElement>
+export type ElevatedSurfaceProps = HTMLAttributes<HTMLDivElement> & {
+  variant?: ElevatedSurfaceVariant
+}
 
-export function ElevatedSurface({ className, children, ...rest }: ElevatedSurfaceProps) {
+export function ElevatedSurface({
+  variant = 'ring',
+  className,
+  children,
+  ...rest
+}: ElevatedSurfaceProps) {
   return (
-    <div className={joinClasses('ui-elevated-surface', className)} {...rest}>
+    <div
+      data-variant={variant}
+      className={joinClassNames([VARIANT_CLASSES[variant], className])}
+      {...rest}
+    >
       {children}
     </div>
   )

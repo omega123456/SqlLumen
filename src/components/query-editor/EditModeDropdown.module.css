@@ -6,7 +6,7 @@
   flex-shrink: 0;
 }
 
-/* Small combo (prototype `.b.sm.combo.combo-sm`) — base chrome comes from .ui-dropdown__trigger */
+/* Small combo (prototype `.b.sm.combo.combo-sm`) — base chrome comes from the shared Dropdown trigger */
 .editModeSelect {
   height: var(--control-height-sm);
   min-width: 118px;

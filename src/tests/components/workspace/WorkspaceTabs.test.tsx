@@ -1160,7 +1160,7 @@ describe('WorkspaceTabs', () => {
     fireEvent.pointerDown(tab, { button: 0, clientX: 180, clientY: 15 })
     fireEvent.pointerMove(window, { clientX: 222, clientY: 15 })
 
-    await waitFor(() => expect(tab.className).toContain('dragging'))
+    await waitFor(() => expect(tab).toHaveAttribute('data-dragging', 'true'))
     fireEvent.pointerUp(window, { clientX: 222, clientY: 15 })
 
     expect(
@@ -1249,11 +1249,11 @@ describe('WorkspaceTabs', () => {
 
     fireEvent.pointerDown(historyTab, { button: 0, clientX: 180, clientY: 15 })
     fireEvent.pointerMove(window, { clientX: 188, clientY: 15 })
-    expect(historyTab?.className ?? '').not.toContain('dragging')
+    expect(historyTab).not.toHaveAttribute('data-dragging')
 
     fireEvent.pointerDown(processTab, { button: 0, clientX: 180, clientY: 15 })
     fireEvent.pointerMove(window, { clientX: 188, clientY: 15 })
-    expect(processTab?.className ?? '').not.toContain('dragging')
+    expect(processTab).not.toHaveAttribute('data-dragging')
   })
 })
 
@@ -1588,7 +1588,7 @@ describe('WorkspaceTabRail — safe subset reorder', () => {
       })
 
       const item = screen.getByTestId('tab-context-menu-item-reveal-in-object-browser')
-      expect(item.querySelector('.ui-context-menu__shortcut')).toBeNull()
+      expect(item).toHaveTextContent(/^Reveal in object browser$/)
     })
 
     it('is disabled for a table being created', () => {

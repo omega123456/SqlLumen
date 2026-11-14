@@ -76,7 +76,7 @@
   color: var(--on-surface);
 }
 
-/* Format selector (Dropdown trigger — pairs with global .ui-dropdown) */
+/* Format selector (Dropdown trigger) */
 .formatDropdownRoot {
   width: 100%;
 }
@@ -87,7 +87,6 @@
   border: var(--ui-input-border) !important;
   border-radius: var(--ui-input-radius);
   background: var(--ui-input-bg) !important;
-  color: var(--on-surface);
   font-family: var(--font-body);
   font-size: var(--ui-input-font-size);
   padding: var(--ui-input-padding-y) var(--ui-input-padding-x) !important;

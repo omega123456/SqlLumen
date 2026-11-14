@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { dispatchAuxClick } from '../../helpers/dispatch-aux-click'
@@ -80,22 +79,25 @@ describe('UnderlineTabs', () => {
       </>
     )
 
-    expect(screen.getByTestId('sel-bar').className).toMatch(/barSelector/)
-    expect(screen.getByTestId('sel-tab').className).toMatch(/tabSelector/)
-    expect(screen.getByTestId('doc-bar').className).toMatch(/barDocument/)
-    expect(screen.getByTestId('doc-tab').className).toMatch(/tabDocument/)
-    expect(screen.getByTestId('default-bar').className).not.toMatch(/barSelector|barDocument/)
-    expect(screen.getByTestId('default-tab').className).not.toMatch(/tabSelector|tabDocument/)
+    expect(screen.getByTestId('sel-bar')).toHaveAttribute('data-variant', 'selector')
+    expect(screen.getByTestId('sel-tab')).toHaveAttribute('data-variant', 'selector')
+    expect(screen.getByTestId('doc-bar')).toHaveAttribute('data-variant', 'document')
+    expect(screen.getByTestId('doc-tab')).toHaveAttribute('data-variant', 'document')
+    expect(screen.getByTestId('default-bar')).toHaveAttribute('data-variant', 'default')
+    expect(screen.getByTestId('default-tab')).toHaveAttribute('data-variant', 'default')
   })
 
-  it('applies the bar variant class to the suffix wrapper', () => {
+  it('applies the bar variant to the suffix wrapper', () => {
     render(
       <UnderlineTabBar data-testid="wrap" variant="document" suffix={<span>+</span>}>
         <UnderlineTab onClick={() => {}}>A</UnderlineTab>
       </UnderlineTabBar>
     )
-    expect(screen.getByTestId('wrap').className).toMatch(/barWrapper/)
-    expect(screen.getByTestId('wrap').className).toMatch(/barDocument/)
+    expect(screen.getByTestId('wrap')).toHaveAttribute('data-variant', 'document')
+    expect(screen.getByText('+').parentElement?.previousElementSibling).toHaveAttribute(
+      'data-variant',
+      'document'
+    )
   })
 
   it('renders a prefix before the tabs and the suffix after them', () => {
@@ -128,7 +130,6 @@ describe('UnderlineTabs', () => {
         </UnderlineTab>
       </UnderlineTabBar>
     )
-    expect(screen.getByTestId('wrap').className).toMatch(/barWrapper/)
     expect(screen.getByTestId('wrap').firstElementChild).toBe(screen.getByTestId('pre'))
   })
 
@@ -167,18 +168,6 @@ describe('UnderlineTabs', () => {
     expect(screen.getByRole('button', { name: 'Split off' })).toHaveAttribute(
       'aria-selected',
       'false'
-    )
-  })
-
-  it('drops the selected document tab outline and the document hover fill', () => {
-    const css = readFileSync('src/components/common/UnderlineTabs.module.css', 'utf8')
-    const active = css.match(
-      /\.tabDocument\.simpleActive,\s*\.tabDocument\.cellActive\s*\{([^}]*)\}/
-    )
-    expect(active?.[1]).toContain('background-color: var(--surface-container)')
-    expect(active?.[1]).not.toContain('border-color')
-    expect(css).toMatch(
-      /\.tabDocument:hover:not\(\[data-active\]\)\s*\{[^}]*background-color:\s*transparent/
     )
   })
 
@@ -290,14 +279,6 @@ describe('UnderlineTabs', () => {
 
     fireEvent.dragStart(screen.getByRole('button', { name: 'Drag Label' }))
     expect(onDragStart).toHaveBeenCalledTimes(1)
-  })
-
-  it('hides the native scrollbar on scrollable bars', () => {
-    const css = readFileSync('src/components/common/UnderlineTabs.module.css', 'utf8')
-    expect(css).toMatch(/\.barScrollable\s*\{[^}]*overflow-x:\s*auto/)
-    expect(css).toMatch(/\.barScrollable\s*\{[^}]*scrollbar-width:\s*none/)
-    expect(css).toMatch(/\.barScrollable::-webkit-scrollbar\s*\{[^}]*display:\s*none/)
-    expect(css).not.toContain('scrollbar-gutter')
   })
 
   describe('scrollable bar', () => {

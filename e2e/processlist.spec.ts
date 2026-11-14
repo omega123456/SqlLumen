@@ -85,7 +85,7 @@ test.describe('Process List tab', () => {
 
     await expect(filterDropdown).toHaveText('Exclude idle')
     // The label must fit its trigger, not ellipsize
-    const label = filterDropdown.locator('.ui-dropdown__value')
+    const label = filterDropdown.locator('span')
     expect(await label.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
 
     await filterDropdown.click()

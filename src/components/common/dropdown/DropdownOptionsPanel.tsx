@@ -2,8 +2,10 @@ import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent
 import { ListboxOption, ListboxOptions } from '@headlessui/react'
 import { Check } from '@phosphor-icons/react'
 import { createPortal } from 'react-dom'
+import { joinClassNames } from '../../../lib/class-names'
 import { isActivationKey } from '../../../lib/input-events'
-import { buildListboxClassName, buildListboxStyle, buildOptionClassName } from './dropdown-layout'
+import { buildListboxStyle } from './dropdown-layout'
+import { dropdownOptionClassName, dropdownPanelClassName } from './dropdown-classes'
 import { listboxAriaLabelFor } from './dropdown-labels'
 import type { DropdownController } from './use-dropdown-controller'
 import {
@@ -15,6 +17,18 @@ import {
 } from './dropdown-types'
 
 const CHECK_ICON_SIZE = 16
+
+type CheckVisibility = 'shown' | 'hidden'
+
+const CHECK_VISIBILITY_CLASSES: Record<CheckVisibility, string> = {
+  shown: 'opacity-100',
+  hidden: 'opacity-0',
+}
+
+function checkVisibility(isSelected: boolean): CheckVisibility {
+  if (isSelected) return 'shown'
+  return 'hidden'
+}
 
 interface OptionLabelProps<TValue extends string> {
   option: DropdownOption<TValue>
@@ -31,18 +45,30 @@ function SingleOptionLabel<TValue extends string>({
   return (
     <>
       <span>{option.label}</span>
-      {option.description ? <span className="ui-dropdown__meta">{option.description}</span> : null}
+      {option.description ? (
+        <span className="font-mono text-caption font-regular whitespace-normal text-light-outline dark:text-dark-outline">
+          {option.description}
+        </span>
+      ) : null}
     </>
   )
 }
 
 function MultiOptionLabel<TValue extends string>(props: OptionLabelProps<TValue>) {
   return (
-    <span className="ui-dropdown__option-row">
-      <span className="ui-dropdown__option-content">
+    <span className="flex w-full items-center justify-between gap-3">
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <SingleOptionLabel {...props} />
       </span>
-      <Check className="ui-dropdown__check" size={CHECK_ICON_SIZE} weight="bold" aria-hidden />
+      <Check
+        className={joinClassNames([
+          'shrink-0 text-light-primary dark:text-dark-primary',
+          CHECK_VISIBILITY_CLASSES[checkVisibility(props.context.selected)],
+        ])}
+        size={CHECK_ICON_SIZE}
+        weight="bold"
+        aria-hidden
+      />
     </span>
   )
 }
@@ -100,7 +126,7 @@ function DropdownOptionItem<TValue extends string>({
       disabled={option.disabled}
       aria-label={option.label}
       data-testid={dataTestId ? `${dataTestId}-option-${option.value}` : undefined}
-      className={(optionState) => buildOptionClassName(optionState, isMultiOption)}
+      className={(optionState) => dropdownOptionClassName(optionState, isMultiOption)}
       onMouseDown={preventFocusSteal}
       onClick={handleClick}
     >
@@ -137,7 +163,7 @@ export function DropdownOptionsPanel<TValue extends string>({
       modal={false}
       ref={panelRef}
       id={listboxId}
-      className={buildListboxClassName(panelLayout)}
+      className={dropdownPanelClassName(panelLayout.isPortalInDialog)}
       aria-labelledby={labelledBy}
       aria-label={listboxAriaLabelFor(dropdownProps)}
       onKeyDown={handleKeyDown}

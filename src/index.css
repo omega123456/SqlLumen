@@ -10,6 +10,11 @@
 @custom-variant hover (&:hover);
 @custom-variant window-blurred (&:where([data-window-focused='false'] *));
 @custom-variant slider-thumb (&::-webkit-slider-thumb);
+@custom-variant webkit-scrollbar (&::-webkit-scrollbar);
+@custom-variant webkit-scrollbar-track (&::-webkit-scrollbar-track);
+@custom-variant webkit-scrollbar-thumb (&::-webkit-scrollbar-thumb);
+@custom-variant webkit-scrollbar-thumb-hover (&::-webkit-scrollbar-thumb:hover);
+@custom-variant svg (& svg);
 @custom-variant resize-dragging (&:where([data-separator='active'], [data-resize-handle-state='drag'], [data-resize-handle-active]));
 
 @theme static {
@@ -323,6 +328,10 @@
   --shadow-light-field-focus: inset 0 -1px 0 var(--color-light-primary);
   --shadow-dark-field-error: inset 0 -1px 0 var(--color-dark-error);
   --shadow-light-field-error: inset 0 -1px 0 var(--color-light-error);
+  --shadow-dark-divider-bottom: inset 0 -1px 0 var(--color-dark-stroke-divider);
+  --shadow-light-divider-bottom: inset 0 -1px 0 var(--color-light-stroke-divider);
+  --shadow-dark-strip-tint: inset 0 0 0 999px var(--color-dark-surface-strip);
+  --shadow-light-strip-tint: inset 0 0 0 999px var(--color-light-surface-strip);
   --shadow-dark-slider-thumb-hover: 0 0 0 4px var(--color-dark-primary-a15);
   --shadow-light-slider-thumb-hover: 0 0 0 4px var(--color-light-primary-a15);
   --shadow-dark-slider-thumb-focus: 0 0 0 4px var(--color-dark-primary-a25);

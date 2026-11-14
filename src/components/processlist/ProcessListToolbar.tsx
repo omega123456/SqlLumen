@@ -13,7 +13,6 @@ import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { KillSummaryDialog } from './KillSummaryDialog'
 import { StatusArea } from '../shared/toolbar/StatusArea'
 import { Button } from '../common/Button'
-import sharedToolbarStyles from '../shared/toolbar/toolbar-items.module.css'
 import { showErrorToast, showSuccessToast, showWarningToast } from '../../stores/toast-store'
 import type { KillResult, ProcessRow } from '../../lib/processlist-commands'
 import styles from './ProcessListToolbar.module.css'
@@ -284,7 +283,8 @@ function ProcessListRefreshControls({
         }
         workspaceTabId={workspaceTabId}
         className={styles.autoWidthDropdown}
-        triggerClassName={sharedToolbarStyles.pageSizeSelect}
+        triggerSize="sm"
+        triggerWidth="auto"
       />
 
       <Dropdown
@@ -296,7 +296,8 @@ function ProcessListRefreshControls({
         onChange={(value) => setRefreshInterval(connectionId, Number(value))}
         workspaceTabId={workspaceTabId}
         className={styles.autoWidthDropdown}
-        triggerClassName={sharedToolbarStyles.pageSizeSelect}
+        triggerSize="sm"
+        triggerWidth="auto"
       />
     </>
   )

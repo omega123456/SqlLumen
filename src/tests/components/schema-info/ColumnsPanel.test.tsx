@@ -17,12 +17,12 @@ function makeColumn(overrides: Partial<ColumnInfo> = {}): ColumnInfo {
 }
 
 describe('ColumnsPanel', () => {
-  it('wraps table in ui-elevated-surface', () => {
+  it('wraps table in an elevated surface', () => {
     const columns = [makeColumn()]
 
     const { container } = render(<ColumnsPanel columns={columns} />)
 
-    expect(container.querySelectorAll('.ui-elevated-surface')).toHaveLength(1)
+    expect(container.querySelectorAll('[data-variant="bordered"]')).toHaveLength(1)
   })
 
   it('renders correct column count', () => {

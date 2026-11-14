@@ -1,6 +1,11 @@
 import { createPortal } from 'react-dom'
 import { ClipboardText, CopySimple, Scissors } from '@phosphor-icons/react'
 import { getContextMenuPositionMode } from '../../../../lib/context-menu-utils'
+import {
+  CONTEXT_MENU,
+  CONTEXT_MENU_ICON,
+  contextMenuItemClassName,
+} from '../../../../lib/class-names-menu'
 import { Button } from '../../../common/Button'
 import type { ClipboardMenuPosition } from './canvas-grid-types'
 
@@ -28,7 +33,7 @@ export function GridClipboardMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="ui-context-menu"
+      className={CONTEXT_MENU}
       role="menu"
       data-testid={clipboardMenuTestId(testId)}
       style={{
@@ -38,16 +43,31 @@ export function GridClipboardMenu({
       }}
       onPointerDown={(event) => event.stopPropagation()}
     >
-      <Button variant="bare" className="ui-context-menu__item" role="menuitem" onClick={onCopy}>
-        <CopySimple className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
+      <Button
+        variant="bare"
+        className={contextMenuItemClassName(false)}
+        role="menuitem"
+        onClick={onCopy}
+      >
+        <CopySimple className={CONTEXT_MENU_ICON} size={18} weight="regular" aria-hidden />
         <span>Copy</span>
       </Button>
-      <Button variant="bare" className="ui-context-menu__item" role="menuitem" onClick={onCut}>
-        <Scissors className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
+      <Button
+        variant="bare"
+        className={contextMenuItemClassName(false)}
+        role="menuitem"
+        onClick={onCut}
+      >
+        <Scissors className={CONTEXT_MENU_ICON} size={18} weight="regular" aria-hidden />
         <span>Cut</span>
       </Button>
-      <Button variant="bare" className="ui-context-menu__item" role="menuitem" onClick={onPaste}>
-        <ClipboardText className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
+      <Button
+        variant="bare"
+        className={contextMenuItemClassName(false)}
+        role="menuitem"
+        onClick={onPaste}
+      >
+        <ClipboardText className={CONTEXT_MENU_ICON} size={18} weight="regular" aria-hidden />
         <span>Paste</span>
       </Button>
     </div>,

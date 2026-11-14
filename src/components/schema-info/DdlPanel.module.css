@@ -27,12 +27,6 @@
   background: var(--surface-container-lowest);
 }
 
-.codePanel > :global(.ui-elevated-panel-header) {
-  height: 34px;
-  padding: 0 4px 0 12px;
-  background: var(--surface-container-high);
-}
-
 /* Prototype `.ddl`: well fill, mono 13/21, 14px 16px inset */
 .codePanel .ddl {
   padding: 14px 16px;

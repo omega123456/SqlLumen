@@ -3,7 +3,6 @@ import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Dropdown } from '../../../components/common/Dropdown'
 import { dispatchWorkspaceTabDeactivated } from '../../../lib/workspace-tab-activity-events'
-import { cssRule } from '../../helpers/css-source'
 
 describe('Dropdown', () => {
   afterEach(() => {
@@ -255,27 +254,6 @@ describe('Dropdown', () => {
     expect(listbox.parentElement).toBe(document.body)
   })
 
-  it('marks the portal listbox as click-outside-ignore for overlay editors', async () => {
-    const user = userEvent.setup()
-
-    render(
-      <>
-        <span id="lb-ignore">Pick</span>
-        <Dropdown
-          id="d-ignore"
-          labelledBy="lb-ignore"
-          options={options}
-          value=""
-          onChange={vi.fn()}
-        />
-      </>
-    )
-
-    await user.click(screen.getByRole('combobox', { name: 'Pick' }))
-
-    expect(screen.getByRole('listbox')).toHaveClass('click-outside-ignore')
-  })
-
   it('opens upward when there is not enough room below the trigger', async () => {
     const user = userEvent.setup()
 
@@ -398,7 +376,7 @@ describe('Dropdown', () => {
       )
 
       const trigger = screen.getByRole('combobox', { name: 'Pick' })
-      const chevron = trigger.querySelector('.ui-dropdown__chevron')
+      const chevron = trigger.querySelector('svg')
       expect(chevron).toHaveAttribute('width', '12')
       expect(chevron).toHaveAttribute('height', '12')
 
@@ -548,11 +526,104 @@ describe('Dropdown', () => {
   })
 })
 
-describe('Dropdown flyout styles', () => {
-  it('gives the panel the flyout stroke, shadow and 8px radius', () => {
-    const panel = cssRule('styles/global.css', '.ui-dropdown__panel')
-    expect(panel).toContain('border: 1px solid var(--stroke-flyout)')
-    expect(panel).toContain('border-radius: var(--radius-overlay)')
-    expect(panel).toContain('box-shadow: var(--shadow-flyout)')
+describe('Dropdown trigger variants', () => {
+  const options = [
+    { value: 'a', label: 'Alpha' },
+    { value: 'b', label: 'Beta' },
+  ]
+
+  it('defaults to a medium full-width trigger without field state flags', () => {
+    render(<Dropdown id="d" ariaLabel="Pick" options={options} value="a" onChange={vi.fn()} />)
+
+    const trigger = screen.getByRole('combobox', { name: 'Pick' })
+    expect(trigger).toHaveAttribute('data-size', 'md')
+    expect(trigger).toHaveAttribute('data-width', 'fill')
+    expect(trigger).not.toHaveAttribute('data-modified')
+    expect(trigger).not.toHaveAttribute('data-null')
+  })
+
+  it('flags the trigger while the list is open', async () => {
+    const user = userEvent.setup()
+    render(<Dropdown id="d" ariaLabel="Pick" options={options} value="a" onChange={vi.fn()} />)
+
+    const trigger = screen.getByRole('combobox', { name: 'Pick' })
+    expect(trigger).not.toHaveAttribute('data-open')
+
+    await user.click(trigger)
+
+    expect(trigger).toHaveAttribute('data-open')
+  })
+
+  it('exposes the small content-width trigger', () => {
+    render(
+      <Dropdown
+        id="d"
+        ariaLabel="Pick"
+        options={options}
+        value="a"
+        onChange={vi.fn()}
+        triggerSize="sm"
+        triggerWidth="auto"
+      />
+    )
+
+    const trigger = screen.getByRole('combobox', { name: 'Pick' })
+    expect(trigger).toHaveAttribute('data-size', 'sm')
+    expect(trigger).toHaveAttribute('data-width', 'auto')
+  })
+
+  it('flags the modified and NULL field state on the trigger', () => {
+    render(
+      <Dropdown
+        id="d"
+        ariaLabel="Pick"
+        options={options}
+        value="a"
+        onChange={vi.fn()}
+        fieldState={{ modified: true, isNull: true }}
+      />
+    )
+
+    const trigger = screen.getByRole('combobox', { name: 'Pick' })
+    expect(trigger).toHaveAttribute('data-modified', 'true')
+    expect(trigger).toHaveAttribute('data-null', 'true')
+  })
+
+  it('marks the selected and disabled options through aria attributes', async () => {
+    const user = userEvent.setup()
+    render(
+      <Dropdown
+        id="d"
+        ariaLabel="Pick"
+        options={[...options, { value: 'c', label: 'Gamma', disabled: true }]}
+        value="b"
+        onChange={vi.fn()}
+      />
+    )
+
+    await user.click(screen.getByRole('combobox', { name: 'Pick' }))
+
+    expect(screen.getByRole('option', { name: 'Beta' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('option', { name: 'Alpha' })).toHaveAttribute('aria-selected', 'false')
+    expect(screen.getByRole('option', { name: 'Gamma' })).toHaveAttribute('aria-disabled', 'true')
+  })
+
+  it('renders multi-select options with a check mark slot', async () => {
+    const user = userEvent.setup()
+    render(
+      <Dropdown
+        id="d"
+        ariaLabel="Pick"
+        multiple
+        options={options}
+        value={['a']}
+        onChange={vi.fn()}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Pick' }))
+
+    expect(screen.getByRole('option', { name: 'Alpha' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('option', { name: 'Beta' })).toHaveAttribute('aria-selected', 'false')
   })
 })

@@ -130,13 +130,10 @@ describe('TabContextMenu', () => {
     )
 
     const reveal = screen.getByTestId('tab-context-menu-item-reveal')
-    expect(reveal.querySelector('.ui-context-menu__shortcut')).toHaveTextContent('Shift F1')
-    expect(reveal.nextElementSibling).toHaveClass('ui-context-menu__separator')
-    expect(reveal.nextElementSibling?.nextElementSibling).toBe(
-      screen.getByTestId('tab-context-menu-item-rename')
-    )
-    expect(
-      screen.getByTestId('tab-context-menu-item-rename').querySelector('.ui-context-menu__shortcut')
-    ).toBeNull()
+    const rename = screen.getByTestId('tab-context-menu-item-rename')
+    expect(reveal).toHaveTextContent('Shift F1')
+    expect(reveal.nextElementSibling?.tagName).toBe('HR')
+    expect(reveal.nextElementSibling?.nextElementSibling).toBe(rename)
+    expect(rename).toHaveTextContent(/^Rename$/)
   })
 })

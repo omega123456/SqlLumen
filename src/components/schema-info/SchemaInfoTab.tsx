@@ -253,7 +253,7 @@ interface SchemaInfoSubTabBarProps {
 function SchemaInfoSubTabBar({ tab, activeSubTab }: SchemaInfoSubTabBarProps) {
   const setSubTab = useWorkspaceStore((state) => state.setSubTab)
   return (
-    <UnderlineTabBar className={styles.subTabBar}>
+    <UnderlineTabBar rowHeight="tall" className={styles.subTabBar}>
       {SUB_TAB_VISIBILITY[tab.objectType].map((subTab) => (
         <UnderlineTab
           key={subTab}

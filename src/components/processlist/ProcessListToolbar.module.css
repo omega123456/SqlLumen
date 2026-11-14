@@ -145,11 +145,6 @@
   width: fit-content;
 }
 
-/* The shared 84px combo width fits page sizes, not "Exclude idle" or interval labels */
-.autoWidthDropdown :global(.ui-dropdown__trigger) {
-  width: auto;
-}
-
 /* Read-only badge — matches TableDataToolbar */
 .readonlyBadge {
   display: flex;

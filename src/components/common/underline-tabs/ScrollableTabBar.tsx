@@ -1,9 +1,18 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { CaretLeftIcon, CaretRightIcon } from '@phosphor-icons/react'
 import { useElementSize } from '../../../hooks/use-element-size'
-import { Button } from '../Button'
-import { BAR_VARIANT_CLASS, type UnderlineTabBarProps } from './tab-bar-variants'
-import styles from '../UnderlineTabs.module.css'
+import { joinClassNames } from '../../../lib/class-names'
+import { dataFlag } from '../../../lib/data-attributes'
+import { Button, type ButtonProps } from '../Button'
+import { FOCUS_RING } from '../../../lib/focus-ring'
+import {
+  barContentClassName,
+  barSuffixClassName,
+  edgeZoneClassName,
+  scrollableViewportClassName,
+  wrapperClassName,
+} from './tab-bar-classes'
+import type { UnderlineTabBarProps, UnderlineTabVariant } from './tab-bar-variants'
 
 const EDGE_CHIP_ICON_SIZE = 14
 
@@ -160,32 +169,46 @@ function scrollStrip(
   scroll(viewport, content)
 }
 
-function StartChip({ hiddenCount, onClick }: { hiddenCount: number; onClick: () => void }) {
+function EdgeChipButton(props: ButtonProps) {
   return (
-    <div className={styles.edgeZoneStart}>
-      <Button
-        variant="subtle"
-        size="sm"
-        className={styles.edgeChip}
+    <Button
+      variant="bare"
+      className={joinClassNames([
+        'inline-flex h-control-sm min-w-10 items-center justify-center gap-1 rounded-control bg-transparent px-2 font-body text-caption font-semibold text-light-on-surface-variant tabular-nums whitespace-nowrap cursor-default dark:text-dark-on-surface-variant',
+        FOCUS_RING,
+        'not-disabled:hover:bg-light-fill-subtle-hover dark:not-disabled:hover:bg-dark-fill-subtle-hover not-disabled:hover:text-light-on-surface dark:not-disabled:hover:text-dark-on-surface not-disabled:active:bg-light-fill-subtle-pressed dark:not-disabled:active:bg-dark-fill-subtle-pressed disabled:opacity-40',
+      ])}
+      {...props}
+    />
+  )
+}
+
+interface EdgeChipProps {
+  hiddenCount: number
+  variant: UnderlineTabVariant
+  onClick: () => void
+}
+
+function StartChip({ hiddenCount, variant, onClick }: EdgeChipProps) {
+  return (
+    <div className={edgeZoneClassName('start', variant)}>
+      <EdgeChipButton
         aria-label={`Scroll tabs left, ${hiddenCount} hidden`}
         data-testid="tab-strip-scroll-start"
         onClick={onClick}
       >
         <CaretLeftIcon size={EDGE_CHIP_ICON_SIZE} aria-hidden="true" />
         {hiddenCount}
-      </Button>
+      </EdgeChipButton>
     </div>
   )
 }
 
-function EndChip({ hiddenCount, onClick }: { hiddenCount: number; onClick: () => void }) {
+function EndChip({ hiddenCount, variant, onClick }: EdgeChipProps) {
   const hasHiddenTabs = hiddenCount > 0
   return (
-    <div className={styles.edgeZoneEnd}>
-      <Button
-        variant="subtle"
-        size="sm"
-        className={styles.edgeChip}
+    <div className={edgeZoneClassName('end', variant)}>
+      <EdgeChipButton
         aria-label={
           hasHiddenTabs
             ? `Scroll tabs right, ${hiddenCount} hidden`
@@ -197,7 +220,7 @@ function EndChip({ hiddenCount, onClick }: { hiddenCount: number; onClick: () =>
       >
         {hasHiddenTabs ? hiddenCount : null}
         <CaretRightIcon size={EDGE_CHIP_ICON_SIZE} aria-hidden="true" />
-      </Button>
+      </EdgeChipButton>
     </div>
   )
 }
@@ -209,6 +232,7 @@ export function ScrollableTabBar({
   prefix,
   suffix,
   variant = 'default',
+  rowHeight = 'default',
 }: UnderlineTabBarProps) {
   const areaRef = useRef<HTMLDivElement | null>(null)
   const viewportRef = useRef<HTMLDivElement | null>(null)
@@ -219,34 +243,45 @@ export function ScrollableTabBar({
   useKeepActiveTabVisible(contentRef, overflowing)
   useVerticalWheelScrollsHorizontally(viewportRef)
 
-  const wrapperClass = [styles.barWrapper, BAR_VARIANT_CLASS[variant], className]
-    .filter(Boolean)
-    .join(' ')
-  const barClass = [styles.bar, styles.barScrollable, BAR_VARIANT_CLASS[variant]]
-    .filter(Boolean)
-    .join(' ')
   const hasHiddenStartTabs = overflowing && hidden.start > 0
+  const shapeOptions = { variant: variant, rowHeight: rowHeight }
+  const viewportOptions = { ...shapeOptions, overflowing: overflowing }
 
   return (
-    <div className={wrapperClass} data-testid={testId} data-overflowing={overflowing || undefined}>
+    <div
+      className={wrapperClassName({ variant: variant, className: className })}
+      data-variant={variant}
+      data-testid={testId}
+      data-overflowing={dataFlag(overflowing)}
+    >
       {prefix}
-      <div ref={areaRef} className={styles.scrollArea}>
+      <div ref={areaRef} className="relative flex grow basis-0 min-w-0 items-stretch">
         {hasHiddenStartTabs ? (
           <StartChip
             hiddenCount={hidden.start}
+            variant={variant}
             onClick={() => scrollStrip(elements, scrollToStartTab)}
           />
         ) : null}
-        <div ref={viewportRef} className={barClass} onScroll={sync}>
-          <div ref={contentRef} className={styles.barContent}>
+        <div
+          ref={viewportRef}
+          className={scrollableViewportClassName(viewportOptions)}
+          data-variant={variant}
+          onScroll={sync}
+        >
+          <div ref={contentRef} className={barContentClassName(shapeOptions)}>
             {children}
           </div>
         </div>
         {overflowing ? (
-          <EndChip hiddenCount={hidden.end} onClick={() => scrollStrip(elements, scrollToEndTab)} />
+          <EndChip
+            hiddenCount={hidden.end}
+            variant={variant}
+            onClick={() => scrollStrip(elements, scrollToEndTab)}
+          />
         ) : null}
       </div>
-      {suffix ? <div className={styles.barSuffix}>{suffix}</div> : null}
+      {suffix ? <div className={barSuffixClassName(rowHeight)}>{suffix}</div> : null}
     </div>
   )
 }

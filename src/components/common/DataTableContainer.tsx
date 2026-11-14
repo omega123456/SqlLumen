@@ -1,10 +1,6 @@
 import type { HTMLAttributes } from 'react'
+import { joinClassNames, SCROLLBAR } from '../../lib/class-names'
 import { ElevatedSurface } from './ElevatedSurface'
-import styles from './DataTableContainer.module.css'
-
-function joinClasses(...parts: (string | undefined)[]): string {
-  return parts.filter(Boolean).join(' ')
-}
 
 export interface DataTableContainerProps extends HTMLAttributes<HTMLDivElement> {
   elevated?: boolean
@@ -17,7 +13,15 @@ export function DataTableContainer({
   ...rest
 }: DataTableContainerProps) {
   const scroll = (
-    <div className={joinClasses(styles.scrollInner, className)} {...rest}>
+    <div
+      className={joinClassNames([
+        'overflow-x-auto',
+        SCROLLBAR,
+        elevated ? 'rounded-card' : undefined,
+        className,
+      ])}
+      {...rest}
+    >
       {children}
     </div>
   )
@@ -26,5 +30,9 @@ export function DataTableContainer({
     return scroll
   }
 
-  return <ElevatedSurface className={styles.elevatedOuter}>{scroll}</ElevatedSurface>
+  return (
+    <ElevatedSurface variant="bordered" className="overflow-hidden">
+      {scroll}
+    </ElevatedSurface>
+  )
 }

@@ -82,8 +82,8 @@ export function cellInputClassName(isSelected: boolean): string {
   return isSelected ? styles.activeInput : styles.inactiveInput
 }
 
-export function cellSelectClassName(isSelected: boolean): string {
-  return `${styles.cellSelect} ${cellInputClassName(isSelected)}`
+export function cellSelectClassName(): string {
+  return styles.cellSelect
 }
 
 export function referencedTargetKeyFor(

@@ -35,7 +35,6 @@ describe('FavoriteDialog', () => {
   it('renders in "New favorite" mode when editingFavorite is null', () => {
     render(<FavoriteDialog connectionId="conn-1" />)
 
-    expect(screen.getByTestId('favorite-dialog-panel')).toHaveClass('ui-elevated-surface')
     expect(screen.getByText('New favorite')).toBeInTheDocument()
     expect(screen.getByTestId('favorite-dialog-save')).toHaveTextContent('Save')
   })

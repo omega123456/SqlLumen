@@ -31,7 +31,7 @@ describe('FavouritesSnippetCard', () => {
       />
     )
 
-    expect(screen.getByTestId('favourites-snippet-card-1')).toHaveClass('ui-elevated-surface')
+    expect(screen.getByTestId('favourites-snippet-card-1')).toHaveAttribute('data-variant', 'ring')
     expect(screen.getByText('My query')).toBeInTheDocument()
     expect(screen.getByText('Gets all orders')).toBeInTheDocument()
   })

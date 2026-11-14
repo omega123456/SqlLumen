@@ -38,6 +38,7 @@ export function DdlPanel({ ddl, metadata, objectType }: DdlPanelProps) {
     <ElevatedCodePanel
       className={styles.codePanel}
       preClassName={styles.ddl}
+      headerVariant="strip"
       label={isTable ? 'SHOW CREATE TABLE' : 'DDL'}
       headerActions={
         <Button variant="subtle" size="sm" onClick={() => void handleCopy()}>

@@ -197,7 +197,17 @@
 }
 
 /* Cell combos at the designer's 30px cell height (prototype `.dz-grid .combo`);
-   border/shadow from global .ui-dropdown__trigger */
+   fill, text and border states come from the shared Dropdown trigger */
+.cellDropdown {
+  height: 30px;
+  padding: 0 8px 0 10px;
+  font-family: var(--font-body);
+  font-size: var(--type-row-size);
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
 .cellInput {
   height: 30px;
   padding: 0 8px 0 10px;

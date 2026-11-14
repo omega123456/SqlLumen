@@ -78,7 +78,7 @@
   gap: 8px;
 }
 
-/* Dropdown triggers: chrome comes from global .ui-dropdown__trigger */
+/* Dropdown triggers: chrome comes from the shared Dropdown trigger */
 .columnSelect,
 .operatorSelect {
   height: 34px;
@@ -99,13 +99,16 @@
   flex: 1;
   width: 100%;
   min-width: 0;
-  cursor: pointer;
 }
 
 .operatorSelect {
   flex: 1;
   width: 100%;
   min-width: 0;
+}
+
+.columnSelect:where(:enabled),
+.operatorSelect:where(:enabled) {
   cursor: pointer;
 }
 

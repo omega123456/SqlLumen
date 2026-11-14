@@ -2,7 +2,6 @@
 
 /* Result tabs strip (prototype `.p-btabs`): 38px, 13px selector tabs, 2px accent underline */
 .strip {
-  --underline-tab-row-height: var(--doc-tab-strip-height);
   padding: 0 8px;
 }
 

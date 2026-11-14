@@ -1,6 +1,8 @@
 import { ListboxButton } from '@headlessui/react'
 import { CaretDown } from '@phosphor-icons/react'
 import { joinClassNames } from '../../../lib/class-names'
+import { dataFlag } from '../../../lib/data-attributes'
+import { dropdownTriggerClassName, triggerAppearanceOf } from './dropdown-classes'
 import { DropdownChrome } from './DropdownChrome'
 import { DropdownOptionsPanel } from './DropdownOptionsPanel'
 import type { DropdownController } from './use-dropdown-controller'
@@ -45,16 +47,25 @@ function DropdownTrigger<TValue extends string>({
     chevronWeight = 'bold',
   } = dropdownProps
   const { onClick: triggerOnClick, ...triggerRest } = triggerProps ?? {}
+  const appearance = triggerAppearanceOf(dropdownProps)
 
   return (
     <ListboxButton
       ref={triggerRef}
       id={id}
       {...triggerRoleProps(dropdownProps)}
-      className={joinClassNames(['ui-dropdown__trigger', triggerClassName])}
+      className={dropdownTriggerClassName({
+        open: open,
+        appearance: appearance,
+        className: triggerClassName,
+      })}
       aria-labelledby={labelledBy}
       aria-label={ariaLabel}
       aria-controls={controller.listboxId}
+      data-size={appearance.size}
+      data-width={appearance.width}
+      data-modified={dataFlag(appearance.fieldState.modified)}
+      data-null={dataFlag(appearance.fieldState.isNull)}
       data-panel-placement={open ? controller.panelLayout.placement : undefined}
       data-testid={dataTestId}
       {...triggerRest}
@@ -65,9 +76,11 @@ function DropdownTrigger<TValue extends string>({
       onBlur={(event) => controller.handleTriggerBlur(event, open)}
       onKeyDown={dropdownProps.onTriggerKeyDown}
     >
-      <span className="ui-dropdown__value">{controller.selectedLabel}</span>
+      <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+        {controller.selectedLabel}
+      </span>
       <CaretDown
-        className="ui-dropdown__chevron"
+        className="shrink-0 text-light-on-surface-variant dark:text-dark-on-surface-variant group-disabled:text-light-text-disabled dark:group-disabled:text-dark-text-disabled"
         size={chevronSize}
         weight={chevronWeight}
         aria-hidden
@@ -84,7 +97,7 @@ export function DropdownBody<TValue extends string>({
 }: DropdownBodyProps<TValue>) {
   const { rootRef } = elements
   return (
-    <div className={joinClassNames(['ui-dropdown', dropdownProps.className])} ref={rootRef}>
+    <div className={joinClassNames(['relative w-full', dropdownProps.className])} ref={rootRef}>
       <DropdownChrome
         open={open}
         optionCount={dropdownProps.options.length}

@@ -16,6 +16,21 @@ export interface DropdownOption<TValue extends string = string> {
 
 export type DropdownPlacement = 'top' | 'bottom'
 
+export type DropdownTriggerSize = 'md' | 'sm'
+
+export type DropdownTriggerWidth = 'fill' | 'auto'
+
+export interface DropdownFieldState {
+  modified: boolean
+  isNull: boolean
+}
+
+export interface DropdownTriggerAppearance {
+  size: DropdownTriggerSize
+  width: DropdownTriggerWidth
+  fieldState: DropdownFieldState
+}
+
 export type DropdownFixedLayout = {
   left: number
   width: number
@@ -45,6 +60,9 @@ export type CommonDropdownProps<TValue extends string = string> = DropdownLabelP
   'data-testid'?: string
   className?: string
   triggerClassName?: string
+  triggerSize?: DropdownTriggerSize
+  triggerWidth?: DropdownTriggerWidth
+  fieldState?: DropdownFieldState
   onTriggerKeyDown?: (event: ReactKeyboardEvent<HTMLButtonElement>) => void
   onListKeyDown?: (event: ReactKeyboardEvent<HTMLUListElement>) => void
   onOpenChange?: (open: boolean) => void

@@ -75,10 +75,6 @@
   white-space: nowrap;
 }
 
-.formInner .formTabBar {
-  --underline-tab-row-height: 38px;
-}
-
 .tabErrorDot {
   display: inline-block;
   width: 6px;

@@ -10,7 +10,7 @@
   z-index: 1000;
 }
 
-/* Layout only; chrome comes from global `.ui-elevated-surface`. */
+/* Layout only; chrome comes from the shared elevated surface classes. */
 .dialog {
   padding: 24px;
   width: fit-content;

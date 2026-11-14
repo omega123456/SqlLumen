@@ -26,10 +26,6 @@ export function editableInputClass(row: ColumnRowModel, isActive: boolean): stri
   return selectedRowInputClass(row.isSelected, activityClass)
 }
 
-export function dropdownTriggerClass(row: ColumnRowModel, cellClasses: string): string {
-  return `${cellClasses} ${selectedRowInputClass(row.isSelected, styles.inactiveInput)}`
-}
-
 export function updateField(
   { row, controller }: ColumnCellProps,
   field: keyof TableDesignerColumnDef,

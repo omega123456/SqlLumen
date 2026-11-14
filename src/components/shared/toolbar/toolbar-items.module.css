@@ -51,7 +51,7 @@
   flex-shrink: 0;
 }
 
-/* Small combo (prototype `.b.sm.combo`, 84px) — chrome from .ui-dropdown__trigger */
+/* Small combo (prototype `.b.sm.combo`, 84px) — chrome from the shared Dropdown trigger */
 .pageSizeSelect {
   width: 84px;
   height: var(--control-height-sm);

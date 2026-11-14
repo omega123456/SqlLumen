@@ -69,7 +69,7 @@ function PropertyDropdownField(field: PropertyDropdownFieldProps) {
         data-testid={`table-properties-${field.field}`}
         onChange={field.onChange}
         workspaceTabId={field.tabId}
-        triggerClassName={styles.control}
+        triggerClassName={styles.dropdownControl}
       />
     </div>
   )

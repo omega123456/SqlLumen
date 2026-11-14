@@ -65,7 +65,6 @@
 
 /* Prototype `.vtabs`: 40px SelectorBar, 12px inset (the bar draws the divider) */
 .subTabBar {
-  --underline-tab-row-height: 40px;
   flex: none;
   padding: 0 12px;
   background-color: transparent;

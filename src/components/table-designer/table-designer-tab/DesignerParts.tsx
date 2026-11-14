@@ -147,7 +147,11 @@ interface DesignerSubTabBarProps {
 
 export function DesignerSubTabBar({ selectedSubTab, onSelect }: DesignerSubTabBarProps) {
   return (
-    <UnderlineTabBar className={styles.subTabBar} data-testid="table-designer-subtabs">
+    <UnderlineTabBar
+      rowHeight="tall"
+      className={styles.subTabBar}
+      data-testid="table-designer-subtabs"
+    >
       {SUB_TAB_ORDER.map((subTabKey) => (
         <UnderlineTab
           key={subTabKey}

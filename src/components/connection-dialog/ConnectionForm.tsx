@@ -96,7 +96,7 @@ interface ConnectionFormTabsProps {
 
 function ConnectionFormTabs({ activeTab, errors, onSelectTab }: ConnectionFormTabsProps) {
   return (
-    <UnderlineTabBar className={styles.formTabBar} data-testid="connection-form-tabs">
+    <UnderlineTabBar data-testid="connection-form-tabs">
       {TAB_ORDER.map((tab) => (
         <UnderlineTab
           key={tab}

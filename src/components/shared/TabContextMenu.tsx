@@ -3,6 +3,12 @@ import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
 import { DISMISS_ALL_CONTEXT_MENUS } from '../../lib/context-menu-events'
+import {
+  CONTEXT_MENU,
+  CONTEXT_MENU_SEPARATOR,
+  contextMenuItemClassName,
+} from '../../lib/class-names-menu'
+import { dataFlag } from '../../lib/data-attributes'
 import { getContextMenuPositionMode } from '../../lib/context-menu-utils'
 import { useContextMenuPlacement } from '../../hooks/use-context-menu-placement'
 import { Button } from '../common/Button'
@@ -27,12 +33,6 @@ export interface TabContextMenuProps {
   onClose: () => void
 }
 
-function menuItemClassName(item: TabContextMenuItem): string {
-  return ['ui-context-menu__item', item.destructive ? 'ui-context-menu__item--destructive' : '']
-    .filter(Boolean)
-    .join(' ')
-}
-
 function TabContextMenuEntry({
   item,
   closeMenu,
@@ -44,7 +44,8 @@ function TabContextMenuEntry({
     <Button
       variant="bare"
       role="menuitem"
-      className={menuItemClassName(item)}
+      className={contextMenuItemClassName(item.destructive)}
+      data-destructive={dataFlag(item.destructive)}
       disabled={item.disabled}
       data-testid={`tab-context-menu-item-${item.key}`}
       onClick={() => {
@@ -58,7 +59,10 @@ function TabContextMenuEntry({
       {item.icon ? <span aria-hidden>{item.icon}</span> : null}
       <span>{item.label}</span>
       {item.shortcut ? (
-        <span className="ui-context-menu__shortcut" aria-hidden>
+        <span
+          className="ml-auto pl-6 text-caption text-light-on-surface-variant dark:text-dark-on-surface-variant group-disabled:text-inherit"
+          aria-hidden
+        >
           {item.shortcut}
         </span>
       ) : null}
@@ -70,7 +74,7 @@ function TabContextMenuEntry({
   return (
     <>
       {button}
-      <hr className="ui-context-menu__separator" />
+      <hr className={CONTEXT_MENU_SEPARATOR} />
     </>
   )
 }
@@ -108,7 +112,7 @@ export function TabContextMenu({ visible, x, y, portalRoot, items, onClose }: Ta
   return createPortal(
     <div
       ref={menuRef}
-      className="ui-context-menu"
+      className={CONTEXT_MENU}
       role="menu"
       style={{
         left: x,

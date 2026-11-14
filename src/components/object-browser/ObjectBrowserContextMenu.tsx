@@ -2,6 +2,13 @@ import { useCallback, useEffect, useLayoutEffect, useRef, type RefObject } from 
 import { createPortal } from 'react-dom'
 import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
 import { logFrontend } from '../../lib/app-log-commands'
+import {
+  CONTEXT_MENU,
+  CONTEXT_MENU_ICON,
+  CONTEXT_MENU_SEPARATOR,
+  contextMenuItemClassName,
+} from '../../lib/class-names-menu'
+import { dataFlag } from '../../lib/data-attributes'
 import { clampContextMenuPosition, writeClipboardText } from '../../lib/context-menu-utils'
 import { DISMISS_ALL_CONTEXT_MENUS } from '../../lib/context-menu-events'
 import type { CopyObjectSelection } from '../../lib/copy-to-host-commands'
@@ -85,11 +92,6 @@ function refreshesDatabase(nodeType: NodeType, node: TreeNode | undefined): bool
   const isTableLike = nodeType === 'table' || nodeType === 'view'
   if (!isTableLike) return true
   return Boolean(node?.parentId)
-}
-
-function menuItemClassName(destructive: boolean | undefined): string {
-  if (!destructive) return 'ui-context-menu__item'
-  return 'ui-context-menu__item ui-context-menu__item--destructive'
 }
 
 type NodeActions = Pick<
@@ -183,19 +185,20 @@ function useViewportClampedMenu(
 
 function MenuEntryView({ entry }: { entry: MenuEntry }) {
   if (isSeparator(entry)) {
-    return <hr className="ui-context-menu__separator" />
+    return <hr className={CONTEXT_MENU_SEPARATOR} />
   }
   return (
     <Button
       variant="bare"
-      className={menuItemClassName(entry.destructive)}
+      className={contextMenuItemClassName(entry.destructive)}
+      data-destructive={dataFlag(entry.destructive)}
       role="menuitem"
       disabled={entry.disabled}
       data-testid={`ctx-${entry.key}`}
       title={entry.title}
       onClick={entry.action}
     >
-      <span className="ui-context-menu__icon">{entry.icon}</span>
+      <span className={CONTEXT_MENU_ICON}>{entry.icon}</span>
       <span>{entry.label}</span>
     </Button>
   )
@@ -235,7 +238,7 @@ function ContextMenuPanel({ menuRef, ...entryProps }: ContextMenuPanelProps) {
   return createPortal(
     <div
       ref={menuRef}
-      className="ui-context-menu"
+      className={CONTEXT_MENU}
       style={{ left: entryProps.x, top: entryProps.y }}
       role="menu"
       data-testid="object-browser-context-menu"

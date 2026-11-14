@@ -163,7 +163,7 @@ function IndexNameCell({ index, position, context, error }: IndexCellProps) {
 
 function IndexTypeCell({ index, position, context }: IndexCellProps) {
   const { tabId } = context
-  const { storeIndex, visibleIndex, isSelected } = position
+  const { storeIndex, visibleIndex } = position
   return (
     <td className={styles.bodyCell}>
       <div onClick={stopRowSelection}>
@@ -176,7 +176,7 @@ function IndexTypeCell({ index, position, context }: IndexCellProps) {
           onChange={(value) =>
             context.updateIndex(tabId, { index: storeIndex, field: 'indexType', value: value })
           }
-          triggerClassName={`${styles.cellSelect} ${indexInputClassName(isSelected)}`}
+          triggerClassName={styles.cellSelect}
         />
       </div>
     </td>

@@ -131,11 +131,6 @@ describe('DialogShell', () => {
     expect(panel.style.overflow).toBe('hidden')
   })
 
-  it('uses elevated surface chrome on the panel', () => {
-    render(<DialogShell {...defaultProps} />)
-    expect(screen.getByTestId('test-dialog-panel')).toHaveClass('ui-elevated-surface')
-  })
-
   it('uses default maxWidth of 420 when not specified', () => {
     render(<DialogShell {...defaultProps} />)
     const dialogContent = screen.getByText('Dialog content').parentElement

@@ -181,7 +181,7 @@ function ReferencedColumnCell({
         data-testid={`fk-referenced-column-${index}`}
         onChange={updateReferencedColumn}
         workspaceTabId={tabId}
-        triggerClassName={cellSelectClassName(isSelected)}
+        triggerClassName={cellSelectClassName()}
       />
     </div>
   )
@@ -213,7 +213,7 @@ function ForeignKeyDropdownCell(cell: ForeignKeyDropdownCellProps) {
           data-testid={`fk-${field}-${position.index}`}
           onChange={cell.onChange}
           workspaceTabId={tabId}
-          triggerClassName={cellSelectClassName(position.isSelected)}
+          triggerClassName={cellSelectClassName()}
           disabled={cell.disabled}
         />
       </div>
