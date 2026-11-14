@@ -3,21 +3,14 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const globalCss = readFileSync(resolve(process.cwd(), 'src/styles/global.css'), 'utf8')
-const resetCss = readFileSync(resolve(process.cwd(), 'src/styles/reset.css'), 'utf8')
-
-const allGlobalStyles = resetCss + '\n' + globalCss
+const indexHtml = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8')
+const BODY_OPENING_TAG = /<body\b[^>]*>/s
 
 describe('user-select policy', () => {
-  it('should set user-select: none on body or root element to prevent text selection globally', () => {
-    // A desktop app should disable text selection by default on the body/#root/*
-    // and selectively re-enable it on code blocks, schema tables, and input fields.
-    const hasGlobalUserSelectNone =
-      /body\s*\{[^}]*user-select:\s*none/s.test(allGlobalStyles) ||
-      /#root\s*\{[^}]*user-select:\s*none/s.test(allGlobalStyles) ||
-      /\*\s*\{[^}]*user-select:\s*none/s.test(allGlobalStyles) ||
-      /html\s*\{[^}]*user-select:\s*none/s.test(allGlobalStyles)
+  it('should set select-none on the body element to prevent text selection globally', () => {
+    const bodyTag = BODY_OPENING_TAG.exec(indexHtml)?.[0] ?? ''
 
-    expect(hasGlobalUserSelectNone).toBe(true)
+    expect(bodyTag.split(/\s+/)).toContain('select-none')
   })
 
   it('should re-enable user-select: text on schema-info table elements', () => {

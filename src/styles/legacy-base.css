@@ -1,0 +1,75 @@
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: var(--radius-sm);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+::selection {
+  background: var(--fill-accent-tint);
+  color: var(--on-surface);
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  overflow-wrap: break-word;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-size: revert-layer;
+  font-weight: revert-layer;
+}
+
+ol,
+ul,
+menu {
+  list-style: revert-layer;
+}
+
+code,
+kbd,
+samp,
+pre {
+  font-family: revert-layer;
+}
+
+textarea {
+  resize: revert-layer;
+}
+
+svg,
+canvas {
+  max-width: 100%;
+}

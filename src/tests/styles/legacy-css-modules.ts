@@ -142,7 +142,7 @@ export const LEGACY_MODULES: readonly string[] = [
   'components/workspace/WorkspaceTabs.module.css',
   'styles/data-grid-precision.css',
   'styles/global.css',
-  'styles/reset.css',
+  'styles/legacy-base.css',
   'styles/skeleton.css',
   'styles/sql-syntax-highlight.module.css',
   'styles/tokens.css',

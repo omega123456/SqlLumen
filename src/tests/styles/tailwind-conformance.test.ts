@@ -1,4 +1,4 @@
-import { readdirSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
@@ -97,6 +97,45 @@ describe('index.css — directives', () => {
   it('never applies utilities inside css rules', () => {
     const offenders = sourceCssFiles().filter((file) => /@apply\b/.test(withoutComments(file)))
     expect(offenders).toEqual([])
+  })
+})
+
+describe('preflight and base classes', () => {
+  const indexHtml = readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8')
+  const statements = topLevelStatements(readSourceFile('index.css'))
+
+  function classesOf(openingTag: RegExp): string[] {
+    const tag = openingTag.exec(indexHtml)?.[0] ?? ''
+    const classValue = /class="([^"]*)"/.exec(tag)?.[1] ?? ''
+    return classValue.split(/\s+/)
+  }
+
+  it('imports the full tailwindcss entry and the legacy base inside the base layer', () => {
+    expect(statements[0]).toBe("@import 'tailwindcss'")
+    expect(statements).toContain("@import './styles/legacy-base.css' layer(base)")
+  })
+
+  it('sets the page defaults through classes on html, body and #root', () => {
+    expect(classesOf(/<html\b[^>]*>/s)).toEqual(
+      expect.arrayContaining(['dark', 'antialiased', 'tab-8', 'scheme-light', 'dark:scheme-dark'])
+    )
+    expect(classesOf(/<body\b[^>]*>/s)).toEqual(
+      expect.arrayContaining([
+        'select-none',
+        'font-body',
+        'text-body',
+        'bg-light-surface',
+        'dark:bg-dark-surface',
+        'mica:bg-transparent',
+      ])
+    )
+    expect(classesOf(/<div id="root"[^>]*>/)).toEqual(
+      expect.arrayContaining(['h-full', 'flex', 'flex-col'])
+    )
+  })
+
+  it('keeps the legacy base free of colour literals', () => {
+    expect(filesMatching(['styles/legacy-base.css'], COLOUR_LITERAL)).toEqual([])
   })
 })
 

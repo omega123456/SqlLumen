@@ -102,8 +102,8 @@ describe('IconButton Fluent styles', () => {
     expect(cssRule(css, '.lg')).toContain('width: var(--control-height)')
   })
 
-  it('gets the Fluent focus ring from the global :focus-visible rule', () => {
-    expect(cssRule('styles/global.css', ':focus-visible')).toBe(
+  it('gets the Fluent focus ring from the base :focus-visible rule', () => {
+    expect(cssRule('styles/legacy-base.css', ':focus-visible')).toBe(
       'outline: none; box-shadow: var(--focus-ring);'
     )
   })

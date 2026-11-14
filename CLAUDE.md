@@ -104,7 +104,7 @@ src/
     connection-dialog/
     object-browser/
   index.css          # Tailwind entry: @import, @plugin, @custom-variant and the @theme static token block
-  styles/            # Legacy tokens.css, global.css, data-grid-precision.css (shrinking) + vendor/ (Monaco, hljs, Glide overlays, fonts)
+  styles/            # Legacy tokens.css, global.css, legacy-base.css, data-grid-precision.css (shrinking) + vendor/ (Monaco, hljs, Glide overlays, fonts)
   types/             # Shared TypeScript types (connection.ts, schema.ts, …)
   tests/             # Mirrors src/ layout; setup.ts wires the shared IPC harness plus Monaco/polyfills
 
@@ -168,6 +168,7 @@ The migration plan is `.agent/plans/2026-11-14_tailwind-utilities-migration_plan
 - **Inline `style`** is only for numbers computed at runtime. Read theme values from TypeScript only through `src/lib/theme-tokens.ts` (`currentTheme`, `readThemeColor`, `readToken`, `readPixelToken`, `observeThemeChange`).
 - **Vendor CSS exception:** hand-written CSS is allowed only in `src/styles/vendor/` for DOM SqlLumen does not render (Monaco, highlight.js, Glide overlays, datepicker, colour picker, scrollbars, fonts), with no colour literals.
 - **Enforcement:** `src/tests/styles/tailwind-conformance.test.ts` (CSS file allowlist, `index.css` directives, paired tokens, Fluent value table) and ESLint `local/tailwind-classes` (scoped through `CONFORMANCE_RULE_SCOPES`, widened as areas migrate).
+- **Preflight is on** (`@import 'tailwindcss'`). `html`, `body` and `#root` take their base classes in `index.html`. `src/styles/legacy-base.css` (imported into `layer(base)`) is a temporary home for the old global element rules and for the rules that keep preflight from changing existing visuals (heading size, list style, `pre`/`code` font, `svg` max width, `p`/heading wrapping, textarea resize); it is deleted in the last migration phase, so a migrated component must set those values itself.
 - **Screenshot parity:** a styling migration must not change the baselines. Never update baselines or loosen thresholds to make a migration pass.
 
 ---
