@@ -58,11 +58,19 @@ describe('Slider', () => {
     expect(slider).toHaveAttribute('aria-label', 'Slider')
   })
 
-  it('accepts className prop', () => {
-    const { container } = render(
-      <Slider min={0} max={100} step={1} value={50} onChange={() => {}} className="custom" />
-    )
+  it.each([
+    [0, '0% 100%'],
+    [50, '50% 100%'],
+    [100, '100% 100%'],
+  ])('fills %i percent of the track', (value, backgroundSize) => {
+    render(<Slider min={0} max={100} step={1} value={value} onChange={() => {}} />)
 
-    expect(container.firstChild).toHaveClass('custom')
+    expect(screen.getByRole('slider')).toHaveStyle({ backgroundSize })
+  })
+
+  it('leaves the track empty when the range is empty', () => {
+    render(<Slider min={5} max={5} step={1} value={5} onChange={() => {}} />)
+
+    expect(screen.getByRole('slider')).toHaveStyle({ backgroundSize: '0% 100%' })
   })
 })

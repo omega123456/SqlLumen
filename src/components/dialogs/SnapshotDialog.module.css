@@ -87,7 +87,6 @@
   padding: var(--space-xs);
   border: none;
   border-radius: var(--radius-md);
-  background: transparent;
   color: var(--ui-close-button-fg);
   cursor: pointer;
   opacity: 0;

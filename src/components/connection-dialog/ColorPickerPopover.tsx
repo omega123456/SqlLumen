@@ -5,6 +5,7 @@ import { TextInput } from '../common/TextInput'
 import { Button } from '../common/Button'
 import styles from './ColorPickerPopover.module.css'
 import { isTargetOutside } from '../../lib/input-events'
+import { FIELD_CHROME } from '../../lib/class-names-field'
 
 interface ColorPickerPopoverProps {
   color: string | null
@@ -96,7 +97,7 @@ function ColorPickerPanel({ color, onChange, panelRef, style, onClose }: ColorPi
       <TextInput
         variant="bare"
         type="text"
-        className={`ui-field-chrome ${styles.hexInput}`}
+        className={`${FIELD_CHROME} ${styles.hexInput}`}
         value={hexInput}
         onChange={handleHexInputChange}
         placeholder="#000000"

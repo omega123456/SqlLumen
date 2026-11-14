@@ -9,6 +9,7 @@
 @custom-variant mica (&:where(.mica, .mica *));
 @custom-variant hover (&:hover);
 @custom-variant window-blurred (&:where([data-window-focused='false'] *));
+@custom-variant slider-thumb (&::-webkit-slider-thumb);
 @custom-variant resize-dragging (&:where([data-separator='active'], [data-resize-handle-state='drag'], [data-resize-handle-active]));
 
 @theme static {
@@ -243,6 +244,7 @@
   --font-weight-*: initial;
   --font-weight-regular: 400;
   --font-weight-semibold: 600;
+  --font-weight-extrabold: 800;
 
   --text-*: initial;
   --text-title: 28px;
@@ -263,6 +265,7 @@
   --text-size-row: 13px;
   --text-size-caption: 12px;
   --text-size-mono: 13px;
+  --text-size-glyph: 10px;
 
   --leading-*: initial;
   --leading-flat: 1;
@@ -299,6 +302,11 @@
   --radius-card: 6px;
   --radius-overlay: 8px;
   --radius-bar: 3px;
+  --radius-track: 2px;
+  --radius-switch: 10px;
+  --radius-round: 50%;
+
+  --border-width-check: 1.6px;
 
   --shadow-*: initial;
   --shadow-dark-flyout: 0 8px 16px rgba(0, 0, 0, 0.26);
@@ -313,6 +321,12 @@
   --shadow-light-elevated: 0 0 0 1px var(--color-light-stroke-card);
   --shadow-dark-field-focus: inset 0 -1px 0 var(--color-dark-primary);
   --shadow-light-field-focus: inset 0 -1px 0 var(--color-light-primary);
+  --shadow-dark-field-error: inset 0 -1px 0 var(--color-dark-error);
+  --shadow-light-field-error: inset 0 -1px 0 var(--color-light-error);
+  --shadow-dark-slider-thumb-hover: 0 0 0 4px var(--color-dark-primary-a15);
+  --shadow-light-slider-thumb-hover: 0 0 0 4px var(--color-light-primary-a15);
+  --shadow-dark-slider-thumb-focus: 0 0 0 4px var(--color-dark-primary-a25);
+  --shadow-light-slider-thumb-focus: 0 0 0 4px var(--color-light-primary-a25);
 
   --breakpoint-*: initial;
   --breakpoint-compact: 641px;

@@ -105,7 +105,10 @@ describe('WorkspaceArea', () => {
   it('renders the New Connection button when no connections', () => {
     render(<WorkspaceArea />)
     expect(screen.getByText('New connection')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'New connection' })).toHaveClass('ui-button--accent')
+    expect(screen.getByRole('button', { name: 'New connection' })).toHaveAttribute(
+      'data-variant',
+      'accent'
+    )
   })
 
   it('"New connection" button calls openDialog()', async () => {

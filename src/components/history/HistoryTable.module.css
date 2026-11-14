@@ -146,13 +146,6 @@
   box-shadow: inset 3px 0 0 var(--primary);
 }
 
-/* Prototype `.b.sub.xs`: 24px square */
-.openButton:global(.ui-button) {
-  width: 24px;
-  height: 24px;
-  vertical-align: middle;
-}
-
 /* Prototype `.h-none` */
 .message {
   display: flex;

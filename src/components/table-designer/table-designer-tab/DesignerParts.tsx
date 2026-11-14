@@ -17,6 +17,7 @@ import {
   type DesignerTabView,
 } from './designer-tab-view'
 import styles from '../TableDesignerTab.module.css'
+import { FIELD_CHROME } from '../../../lib/class-names-field'
 
 interface DesignerHeadingProps {
   isCreateMode: boolean
@@ -42,7 +43,7 @@ function DesignerHeading({
         type="text"
         value={tableName}
         placeholder="table_name"
-        className={`ui-field-chrome ${styles.tableNameInput}`}
+        className={`${FIELD_CHROME} ${styles.tableNameInput}`}
         data-testid="table-designer-name-input"
         onChange={(event) => onTableNameChange(event.target.value)}
       />

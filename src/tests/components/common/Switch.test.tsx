@@ -18,13 +18,12 @@ describe('Switch', () => {
     expect(screen.getByText('On')).toBeInTheDocument()
   })
 
-  it('forwards change events and className', async () => {
+  it('forwards change events', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     render(<Switch aria-label="Wrap" checked={false} onChange={onChange} className="extra" />)
 
     const input = screen.getByRole('switch')
-    expect(input).toHaveClass('extra')
     await user.click(input)
     expect(onChange).toHaveBeenCalledTimes(1)
   })

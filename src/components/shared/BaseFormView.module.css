@@ -181,14 +181,14 @@
   background: var(--fill-subtle-pressed);
 }
 
-/* NULL toggle */
-.fieldNullBtn:global(.ui-button) {
-  color: var(--on-surface-variant);
+/* Modified / NULL state of a form field control (text input or dropdown trigger) */
+.fieldModified {
+  border-color: var(--primary) !important;
 }
 
-.fieldNullBtnActive:global(.ui-button) {
-  color: var(--primary);
-  background: var(--fill-accent-tint);
+.fieldNull {
+  font-style: italic;
+  color: var(--td-null-text-color);
 }
 
 /* "Unsaved change detected" note under the field */

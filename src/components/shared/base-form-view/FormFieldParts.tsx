@@ -96,9 +96,8 @@ export function FormFieldActions({ editor }: { editor: FormFieldEditorProps }) {
       </Button>
       {canToggleNull && (
         <Button
-          variant="subtle"
+          variant={isNull ? 'subtleToggled' : 'subtleMuted'}
           size="sm"
-          className={`${styles.fieldNullBtn} ${isNull ? styles.fieldNullBtnActive : ''}`}
           onClick={() => field.onNullToggle(column, field.colIdx)}
           data-testid={`btn-null-${column.displayName}`}
         >

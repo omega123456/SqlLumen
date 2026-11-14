@@ -74,14 +74,13 @@ describe('ConfirmDialog', () => {
   it('isDestructive confirm button has danger variant styling', () => {
     render(<ConfirmDialog {...defaultProps} isDestructive />)
     const btn = screen.getByTestId('confirm-confirm-button')
-    expect(btn.className).toContain('ui-button--danger')
-    expect(btn.className).not.toContain('ui-button--accent')
+    expect(btn).toHaveAttribute('data-variant', 'danger')
   })
 
   it('non-destructive confirm button has primary styling', () => {
     render(<ConfirmDialog {...defaultProps} isDestructive={false} />)
     const btn = screen.getByTestId('confirm-confirm-button')
-    expect(btn.className).toContain('ui-button--accent')
+    expect(btn).toHaveAttribute('data-variant', 'accent')
   })
 
   it('isLoading disables confirm button and shows a spinner with loading state', () => {

@@ -36,7 +36,7 @@ function CopyCodeButton({ copied, onCopy }: CopyCodeButtonProps) {
   const copiedLabel = 'Copied!'
   return (
     <Button
-      variant="subtle"
+      variant="subtleMuted"
       size="sm"
       onClick={onCopy}
       title={copied ? copiedLabel : 'Copy code'}
@@ -71,7 +71,7 @@ function extractText(node: ReactNode): string {
 function DiffButton({ onDiff }: { onDiff: () => void }) {
   return (
     <Button
-      variant="subtle"
+      variant="subtleMuted"
       size="sm"
       onClick={onDiff}
       title="View diff"

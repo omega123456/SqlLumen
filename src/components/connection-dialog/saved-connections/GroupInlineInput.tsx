@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { TextInput } from '../../common/TextInput'
 import styles from '../SavedConnectionsList.module.css'
+import { FIELD_CHROME } from '../../../lib/class-names-field'
 
 interface GroupInlineInputProps {
   value: string
@@ -33,7 +34,7 @@ export function GroupInlineInput({
       ref={inputRef}
       variant="bare"
       type="text"
-      className={`ui-field-chrome ${styles.renameInput}`}
+      className={`${FIELD_CHROME} ${styles.renameInput}`}
       value={value}
       onChange={(event) => onChange(event.target.value)}
       onBlur={onCommit}

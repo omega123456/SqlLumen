@@ -221,10 +221,14 @@ describe('ConnectionForm', () => {
     expect(screen.getByText('Save and connect')).toBeInTheDocument()
     expect(screen.queryByText('Delete')).not.toBeInTheDocument()
 
-    expect(screen.getByRole('button', { name: 'Test connection' })).toHaveClass('ui-button')
-    expect(screen.getByRole('button', { name: 'Save' })).toHaveClass('ui-button')
-    expect(screen.getByRole('button', { name: 'Save and connect' })).toHaveClass(
-      'ui-button--accent'
+    expect(screen.getByRole('button', { name: 'Test connection' })).toHaveAttribute(
+      'data-variant',
+      'default'
+    )
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveAttribute('data-variant', 'default')
+    expect(screen.getByRole('button', { name: 'Save and connect' })).toHaveAttribute(
+      'data-variant',
+      'accent'
     )
   })
 

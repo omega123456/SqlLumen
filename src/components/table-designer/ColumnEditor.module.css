@@ -98,7 +98,7 @@
 }
 
 /* The whole row is draggable, but its controls keep their own cursors */
-.row :where(input, textarea, select, button) {
+.row :where(input, textarea, select, button):where(:enabled) {
   cursor: auto;
 }
 
@@ -211,8 +211,8 @@
 
 /* Cell controls keep the Fluent control fill in every row (prototype `.dz-grid .fld`, `.combo`);
    the row itself shows the selection. */
-.inactiveInput,
-.activeInput {
+.inactiveInput:where(:enabled),
+.activeInput:where(:enabled) {
   background: var(--fill-control);
 }
 

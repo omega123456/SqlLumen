@@ -10,6 +10,7 @@ import { CalendarHeader } from './date-time-picker/CalendarHeader'
 import { CALENDAR_COLUMN_TYPES } from './date-time-picker/date-time-picker-model'
 import { usePickerDismissal } from './date-time-picker/use-picker-dismissal'
 import { usePickerValue } from './date-time-picker/use-picker-value'
+import { FIELD_CHROME } from '../../lib/class-names-field'
 
 import 'react-datepicker/dist/react-datepicker.css'
 
@@ -64,7 +65,7 @@ function TimeSection({ timeInput, disabled, onChange }: TimeSectionProps) {
       <TextInput
         variant="bare"
         type="text"
-        className={`ui-field-chrome ${styles.timeInput}`}
+        className={`${FIELD_CHROME} ${styles.timeInput}`}
         value={timeInput}
         onChange={onChange}
         placeholder="HH:MM:SS"

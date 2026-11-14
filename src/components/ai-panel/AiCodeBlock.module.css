@@ -33,11 +33,6 @@
   gap: 2px;
 }
 
-/* Prototype `.ai-code .hd .b`: subtle sm buttons in the secondary text colour */
-.actions > :global(.ui-button) {
-  color: var(--on-surface-variant);
-}
-
 /* Prototype `.ai-code pre`: mono 12.5/19, wrapped (outranks the bubble's `pre` spacing) */
 .codeBlock .pre {
   margin: 0;

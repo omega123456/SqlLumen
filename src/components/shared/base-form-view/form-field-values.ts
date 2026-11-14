@@ -1,7 +1,7 @@
 import { getTemporalColumnType, getTodayMysqlString } from '../../../lib/date-utils'
 import { isJsonSqlType } from '../../../lib/grid-column-style'
 import type { DropdownOption } from '../../common/Dropdown'
-import tiStyles from '../../common/TextInput.module.css'
+import styles from '../BaseFormView.module.css'
 import { ENUM_NULL_SENTINEL } from '../../table-data/enum-field-utils'
 import {
   base64ByteLength,
@@ -108,7 +108,7 @@ export function buildEnumDropdownOptions(column: GridColumnDescriptor): Dropdown
 }
 
 export function fieldStateClassName(isModified: boolean, isNull: boolean): string {
-  return [isModified ? tiStyles.formFieldModified : '', isNull ? tiStyles.formFieldNull : '']
+  return [isModified ? styles.fieldModified : '', isNull ? styles.fieldNull : '']
     .filter(Boolean)
     .join(' ')
 }

@@ -2,14 +2,13 @@ import { createRef } from 'react'
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { IconButton } from '../../../components/common/IconButton'
-import { cssRule } from '../../helpers/css-source'
 
 describe('IconButton', () => {
   it('defaults to type button and md size', () => {
     render(<IconButton aria-label="Close">X</IconButton>)
     const btn = screen.getByRole('button', { name: 'Close' })
     expect(btn).toHaveAttribute('type', 'button')
-    expect(btn.className).toContain('md')
+    expect(btn).toHaveAttribute('data-size', 'md')
   })
 
   it('renders sm size when specified', () => {
@@ -19,7 +18,7 @@ describe('IconButton', () => {
       </IconButton>
     )
     const btn = screen.getByRole('button', { name: 'Small' })
-    expect(btn.className).toContain('sm')
+    expect(btn).toHaveAttribute('data-size', 'sm')
   })
 
   it('renders lg size when specified', () => {
@@ -29,18 +28,7 @@ describe('IconButton', () => {
       </IconButton>
     )
     const btn = screen.getByRole('button', { name: 'Large' })
-    expect(btn.className).toContain('lg')
-  })
-
-  it('merges className', () => {
-    render(
-      <IconButton className="my-extra" aria-label="Extra">
-        E
-      </IconButton>
-    )
-    const btn = screen.getByRole('button', { name: 'Extra' })
-    expect(btn.className).toContain('my-extra')
-    expect(btn.className).toContain('iconButton')
+    expect(btn).toHaveAttribute('data-size', 'lg')
   })
 
   it('forwards ref', () => {
@@ -80,31 +68,5 @@ describe('IconButton', () => {
     )
     expect(screen.getByTestId('icon-btn')).toBeInTheDocument()
     expect(screen.getByRole('button')).toHaveAttribute('title', 'My Title')
-  })
-})
-
-describe('IconButton Fluent styles', () => {
-  const css = 'components/common/IconButton.module.css'
-
-  it('uses subtle fills for hover and pressed (prototype `.b.sub.ic`)', () => {
-    expect(cssRule(css, '.iconButton')).toContain('background: transparent')
-    expect(cssRule(css, '.iconButton:hover:not(:disabled)')).toContain(
-      'background: var(--fill-subtle-hover)'
-    )
-    expect(cssRule(css, '.iconButton:active:not(:disabled)')).toContain(
-      'background: var(--fill-subtle-pressed)'
-    )
-  })
-
-  it('sizes to 24, 28 and 32px', () => {
-    expect(cssRule(css, '.sm')).toContain('width: 24px')
-    expect(cssRule(css, '.md')).toContain('width: var(--control-height-sm)')
-    expect(cssRule(css, '.lg')).toContain('width: var(--control-height)')
-  })
-
-  it('gets the Fluent focus ring from the base :focus-visible rule', () => {
-    expect(cssRule('styles/legacy-base.css', ':focus-visible')).toBe(
-      'outline: none; box-shadow: var(--focus-ring);'
-    )
   })
 })

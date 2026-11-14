@@ -19,7 +19,6 @@ const PERMANENT_CSS_FILES = [
   'styles/vendor/monaco-suggest-widget.css',
 ]
 const ALLOWED_INDEX_DIRECTIVES = ['@import', '@plugin', '@custom-variant', '@theme']
-const SLIDER_MODULE = 'components/common/Slider.module.css'
 const COLOUR_LITERAL = /#[0-9a-fA-F]{3,8}\b|rgba?\(\s*\d|hsla?\(|oklch\(/
 
 const theme = readThemeTokens()
@@ -91,7 +90,14 @@ describe('index.css — directives', () => {
     expect(
       statements.some((statement) => statement.startsWith('@plugin "tailwind-scrollbar"'))
     ).toBe(true)
-    expect(variantNames).toEqual(['dark', 'mica', 'hover', 'window-blurred', 'resize-dragging'])
+    expect(variantNames).toEqual([
+      'dark',
+      'mica',
+      'hover',
+      'window-blurred',
+      'slider-thumb',
+      'resize-dragging',
+    ])
   })
 
   it('never applies utilities inside css rules', () => {
@@ -279,6 +285,32 @@ describe('@theme — shape, elevation and heights', () => {
   })
 })
 
+describe('@theme — control shapes and focus shadows', () => {
+  it.each([
+    ['--radius-track', '2px'],
+    ['--radius-switch', '10px'],
+    ['--radius-round', '50%'],
+    ['--border-width-check', '1.6px'],
+    ['--text-size-glyph', '10px'],
+    ['--font-weight-extrabold', '800'],
+  ])('%s is %s', (name, value) => {
+    expect(theme[name]).toBe(value)
+  })
+
+  it.each([
+    ['field-error', 'error', ''],
+    ['slider-thumb-hover', 'primary-a15', '0 0 0 4px '],
+    ['slider-thumb-focus', 'primary-a25', '0 0 0 4px '],
+  ])('%s shadow reads the %s colour in both themes', (name, colour, offset) => {
+    const underline = name === 'field-error' ? 'inset 0 -1px 0 ' : offset
+    for (const themeName of ['dark', 'light']) {
+      expect(theme[`--shadow-${themeName}-${name}`]).toBe(
+        `${underline}var(--color-${themeName}-${colour})`
+      )
+    }
+  })
+})
+
 describe('@theme — type', () => {
   it('uses Selawik for UI text and JetBrains Mono for code', () => {
     expect(theme['--font-body']).toContain("'Selawik'")
@@ -326,8 +358,7 @@ describe('legacy module css — tokens are the single colour source', () => {
     expect(filesMatching(legacyModuleFiles, /text-transform:\s*uppercase/)).toEqual([])
   })
 
-  it('only uses gradients for the slider value fill', () => {
-    const migrated = legacyModuleFiles.filter((file) => file !== SLIDER_MODULE)
-    expect(filesMatching(migrated, /gradient\(/)).toEqual([])
+  it('has no gradients', () => {
+    expect(filesMatching(legacyModuleFiles, /gradient\(/)).toEqual([])
   })
 })

@@ -206,10 +206,6 @@
   font-size: var(--type-row-size);
 }
 
-.columnButton:global(.ui-button) {
-  justify-content: flex-start;
-}
-
 .columnButtonFixed {
   min-width: 0;
   width: 100%;

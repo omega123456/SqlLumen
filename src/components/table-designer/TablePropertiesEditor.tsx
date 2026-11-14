@@ -17,6 +17,7 @@ import {
   useCharsetOptions,
   useCollationOptions,
 } from './table-properties-editor/use-property-options'
+import { FIELD_CHROME } from '../../lib/class-names-field'
 
 interface TablePropertiesEditorProps {
   tabId: string
@@ -91,7 +92,7 @@ function AutoIncrementField({ tabId, properties, onChange }: PropertyFieldsProps
         variant="bare"
         type="number"
         min="1"
-        className={`ui-field-chrome ${styles.control}`}
+        className={`${FIELD_CHROME} ${styles.control}`}
         value={autoIncrementInputValue(properties)}
         data-testid="table-properties-auto-increment"
         onChange={(event) => onChange('autoIncrement', parseAutoIncrement(event.target.value))}
@@ -109,7 +110,7 @@ function CommentField({ tabId, properties, onChange }: PropertyFieldsProps) {
       <Textarea
         id={`table-properties-comment-${tabId}`}
         variant="bare"
-        className={`ui-field-chrome ${styles.control} ${styles.textarea}`}
+        className={`${FIELD_CHROME} ${styles.control} ${styles.textarea}`}
         value={properties.comment}
         data-testid="table-properties-comment"
         onChange={(event) => onChange('comment', event.target.value)}

@@ -46,6 +46,32 @@ interface IndexColumnsSelectorProps {
   columnsError: string | undefined
 }
 
+interface AddColumnsFirstButtonProps {
+  columnsError: string | undefined
+  visibleIndex: number
+  onClick: (event: React.MouseEvent) => void
+}
+
+function AddColumnsFirstButton({
+  columnsError,
+  visibleIndex,
+  onClick,
+}: AddColumnsFirstButtonProps) {
+  return (
+    <Button
+      type="button"
+      contentAlign="start"
+      className={`${styles.columnButton} ${errorClassName(columnsError)}`}
+      aria-invalid={ariaInvalidFor(columnsError)}
+      title={columnsError}
+      data-testid={`index-columns-button-${visibleIndex}`}
+      onClick={onClick}
+    >
+      Add columns first
+    </Button>
+  )
+}
+
 function IndexColumnsSelector({
   index,
   position,
@@ -61,16 +87,11 @@ function IndexColumnsSelector({
 
   if (columnNames.length === 0) {
     return (
-      <Button
-        type="button"
-        className={`${styles.columnButton} ${errorClassName(columnsError)}`}
-        aria-invalid={ariaInvalidFor(columnsError)}
-        title={columnsError}
-        data-testid={`index-columns-button-${visibleIndex}`}
+      <AddColumnsFirstButton
+        columnsError={columnsError}
+        visibleIndex={visibleIndex}
         onClick={selectRow}
-      >
-        Add columns first
-      </Button>
+      />
     )
   }
 

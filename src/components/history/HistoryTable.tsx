@@ -82,9 +82,8 @@ function HistoryTableRow({
       <td className={styles.ui}>
         <Button
           variant="subtle"
-          size="sm"
+          size="xs"
           iconOnly
-          className={styles.openButton}
           onClick={(event) => {
             event.stopPropagation()
             rowActions.onOpenInEditor(entry)

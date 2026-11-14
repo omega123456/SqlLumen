@@ -5,6 +5,7 @@ import { TextInput } from '../../common/TextInput'
 import type { FilterCondition, FilterOperator } from '../../../types/schema'
 import { isNullaryOperator } from '../filter-conditions'
 import styles from '../FilterDialog.module.css'
+import { FIELD_CHROME } from '../../../lib/class-names-field'
 
 const REMOVE_ICON_SIZE = 14
 
@@ -74,7 +75,7 @@ export function FilterConditionRow({ condition, index, context }: FilterConditio
         ref={(element) => context.registerValueInput(index, element)}
         variant="bare"
         type="text"
-        className={`ui-field-chrome ${styles.valueInput} ${isNullary ? styles.valueInputDisabled : ''}`}
+        className={`${FIELD_CHROME} ${styles.valueInput} ${isNullary ? styles.valueInputDisabled : ''}`}
         value={condition.value}
         onChange={(event) => context.onChange(index, 'value', event.target.value)}
         disabled={isNullary}

@@ -189,6 +189,7 @@ Keep every test in a dedicated file under the appropriate test root (`src/tests/
   - Wrap direct external store mutations (`useXStore.setState(...)`) in `act(() => { ... })` whenever components from that store may be mounted.
   - If mount effects schedule async updates, wait for the resulting UI/store state with `waitFor` before the test exits.
   - When a test change introduces or exposes React `act(...)` warnings, treat that as unfinished work and clean the warnings up before completing the task.
+- **Never assert on CSS classes** (`toHaveClass`, `className` checks, class selectors) in Vitest or Playwright. Assert role, `aria-*`, text, or a `data-*` attribute that is the lookup key (`data-variant`, `data-active`).
 - Tests ship alongside features in the same change set — not deferred.
 
 ### Rust

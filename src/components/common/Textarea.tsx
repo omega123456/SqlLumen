@@ -1,36 +1,38 @@
 import { forwardRef, type TextareaHTMLAttributes } from 'react'
-import styles from './Textarea.module.css'
-
-function mergeClassNames(...parts: (string | undefined | false)[]): string {
-  return parts.filter(Boolean).join(' ')
-}
+import { joinClassNames } from '../../lib/class-names'
+import { fieldChromeClassName } from '../../lib/class-names-field'
+import { dataFlag } from '../../lib/data-attributes'
 
 export type TextareaVariant = 'default' | 'mono' | 'formField' | 'bare'
+
+type ChromeVariant = Exclude<TextareaVariant, 'bare'>
+
+const CHROME_VARIANT_CLASSES: Record<ChromeVariant, string> = {
+  default: 'w-full px-2.5 py-1.25 resize font-body text-body',
+  mono: 'w-full px-2.5 py-1.25 resize font-mono text-mono',
+  formField: 'w-full flex-1 min-h-18 px-2.5 py-1.25 resize-y font-mono text-mono',
+}
 
 export type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
   variant?: TextareaVariant
   invalid?: boolean
 }
 
-const VARIANT_CLASSES: Record<TextareaVariant, string> = {
-  default: 'ui-textarea',
-  mono: mergeClassNames('ui-textarea', styles.mono),
-  formField: mergeClassNames('ui-field-chrome', styles.formField),
-  bare: '',
-}
-
-function variantClasses(variant: TextareaVariant): string {
-  return VARIANT_CLASSES[variant]
+function variantClassName(variant: TextareaVariant, invalid: boolean): string {
+  if (variant === 'bare') return ''
+  return joinClassNames([fieldChromeClassName(invalid), CHROME_VARIANT_CLASSES[variant]])
 }
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(
-  { variant = 'default', invalid, className, ...rest },
+  { variant = 'default', invalid = false, className, ...rest },
   ref
 ) {
   return (
     <textarea
       ref={ref}
-      className={mergeClassNames(variantClasses(variant), invalid && styles.invalid, className)}
+      data-variant={variant}
+      data-invalid={dataFlag(invalid)}
+      className={joinClassNames([variantClassName(variant, invalid), className])}
       autoCapitalize="none"
       autoCorrect="off"
       {...rest}

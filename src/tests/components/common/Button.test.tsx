@@ -9,68 +9,68 @@ describe('Button', () => {
     render(<Button>Go</Button>)
     const btn = screen.getByRole('button', { name: 'Go' })
     expect(btn).toHaveAttribute('type', 'button')
-    expect(btn).toHaveClass('ui-button')
-    expect(btn.className).toBe('ui-button')
+    expect(btn).toHaveAttribute('data-variant', 'default')
+    expect(btn).toHaveAttribute('data-size', 'md')
+    expect(btn).not.toHaveAttribute('data-icon-only')
+    expect(btn).not.toHaveAttribute('data-danger-text')
   })
 
-  it('maps each variant to its modifier class', () => {
-    const variants = [
-      ['accent', 'ui-button--accent'],
-      ['subtle', 'ui-button--subtle'],
-      ['danger', 'ui-button--danger'],
-    ] as const
+  it.each(['accent', 'subtle', 'subtleMuted', 'subtleToggled', 'danger'] as const)(
+    'exposes the %s variant as its lookup key',
+    (variant) => {
+      render(<Button variant={variant}>{variant}</Button>)
+      expect(screen.getByRole('button')).toHaveAttribute('data-variant', variant)
+    }
+  )
 
-    for (const [variant, expectedClass] of variants) {
-      const { unmount } = render(<Button variant={variant}>{variant}</Button>)
-      const btn = screen.getByRole('button')
-      expect(btn).toHaveClass('ui-button', expectedClass)
+  it('exposes the content alignment as a lookup key', () => {
+    render(
+      <>
+        <Button data-testid="centered">A</Button>
+        <Button contentAlign="start" data-testid="started">
+          B
+        </Button>
+      </>
+    )
+    expect(screen.getByTestId('centered')).toHaveAttribute('data-align', 'center')
+    expect(screen.getByTestId('started')).toHaveAttribute('data-align', 'start')
+  })
+
+  it('keeps the bare variant free of styling attributes', () => {
+    render(
+      <Button variant="bare" size="sm" iconOnly dangerText>
+        Bare
+      </Button>
+    )
+    const btn = screen.getByRole('button', { name: 'Bare' })
+    expect(btn).toHaveAttribute('data-variant', 'bare')
+    expect(btn).toHaveAttribute('type', 'button')
+  })
+
+  it('combines danger text with every styled variant', () => {
+    const variants = ['default', 'accent', 'subtle', 'danger'] as const
+    for (const variant of variants) {
+      const { unmount } = render(
+        <Button variant={variant} dangerText>
+          {variant}
+        </Button>
+      )
+      expect(screen.getByRole('button')).toHaveAttribute('data-danger-text', 'true')
       unmount()
     }
   })
 
-  it('applies the sm size, icon-only and danger-text modifiers', () => {
+  it('exposes the size, icon-only and danger-text lookup keys', () => {
     render(
       <Button variant="subtle" size="sm" iconOnly dangerText aria-label="Delete row">
         x
       </Button>
     )
     const btn = screen.getByRole('button', { name: 'Delete row' })
-    expect(btn).toHaveClass(
-      'ui-button',
-      'ui-button--subtle',
-      'ui-button--sm',
-      'ui-button--icon',
-      'ui-button--danger-text'
-    )
-  })
-
-  it('omits modifiers that are not requested', () => {
-    render(<Button variant="accent">Run</Button>)
-    const btn = screen.getByRole('button', { name: 'Run' })
-    expect(btn).not.toHaveClass('ui-button--sm')
-    expect(btn).not.toHaveClass('ui-button--icon')
-    expect(btn).not.toHaveClass('ui-button--danger-text')
-  })
-
-  it('merges className with the variant classes', () => {
-    render(<Button className="extra-slot">Save</Button>)
-    expect(screen.getByRole('button', { name: 'Save' })).toHaveClass('ui-button', 'extra-slot')
-  })
-
-  it('renders only the caller className for the bare variant', () => {
-    render(
-      <Button variant="bare" size="sm" iconOnly dangerText className="toolbar-slot">
-        Bare
-      </Button>
-    )
-    const btn = screen.getByRole('button', { name: 'Bare' })
-    expect(btn.className).toBe('toolbar-slot')
-    expect(btn).toHaveAttribute('type', 'button')
-  })
-
-  it('renders no class attribute for a bare button without a className', () => {
-    render(<Button variant="bare">Plain</Button>)
-    expect(screen.getByRole('button', { name: 'Plain' })).not.toHaveAttribute('class')
+    expect(btn).toHaveAttribute('data-variant', 'subtle')
+    expect(btn).toHaveAttribute('data-size', 'sm')
+    expect(btn).toHaveAttribute('data-icon-only', 'true')
+    expect(btn).toHaveAttribute('data-danger-text', 'true')
   })
 
   it('forwards ref', () => {

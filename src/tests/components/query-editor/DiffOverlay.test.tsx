@@ -82,7 +82,7 @@ describe('DiffOverlay', () => {
     render(<DiffOverlay {...DEFAULT_PROPS} />)
     const rejectBtn = screen.getByTestId('diff-reject-button')
     expect(rejectBtn).toHaveTextContent('Reject all')
-    expect(rejectBtn).toHaveClass('ui-button--danger')
+    expect(rejectBtn).toHaveAttribute('data-variant', 'danger')
   })
 
   it('renders Accept All, Reject All, and Close buttons', () => {
