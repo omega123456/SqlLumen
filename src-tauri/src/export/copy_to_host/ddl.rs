@@ -1,18 +1,5 @@
 use super::*;
 
-// ---------------------------------------------------------------------------
-// DEFINER stripping
-// ---------------------------------------------------------------------------
-
-/// Remove the `DEFINER = '…'@'…'` clause from routine/trigger/event DDL.
-///
-/// Consumes `DEFINER`, optional whitespace, `=`, optional whitespace, then the
-/// complete `user@host` spec. The spec is parsed quote-aware so valid quoted
-/// definers containing whitespace (for example `'my user'@'%'`) are removed as a
-/// whole instead of leaving corrupt fragments in the DDL.
-///
-/// Case-insensitive; only the first occurrence is removed (DDL has exactly one
-/// DEFINER clause). If no clause is present the input is returned unchanged.
 fn is_quote_byte(byte: u8) -> bool {
     matches!(byte, b'\'' | b'`' | b'"')
 }
@@ -25,8 +12,6 @@ fn quoted_span_end(bytes: &[u8], start: usize, quote: u8) -> Option<usize> {
         if byte != quote {
             continue;
         }
-        // MySQL escapes quote characters in quoted identifiers by
-        // doubling them; keep the doubled pair inside the quote.
         let is_doubled_quote = has_byte_at(bytes, position, quote);
         if !is_doubled_quote {
             return Some(position);
@@ -52,10 +37,6 @@ fn definer_spec_end(bytes: &[u8], start: usize) -> Option<usize> {
 }
 
 pub fn strip_definer(ddl: &str) -> String {
-    // Hand-rolled scan (no regex dependency needed): find a case-insensitive
-    // "DEFINER", skip ws/=/ws, then skip the user@host spec while respecting
-    // quoted whitespace, then collapse following whitespace to a single space so
-    // the surrounding tokens stay split.
     let bytes = ddl.as_bytes();
     let lower = ddl.to_ascii_lowercase();
     let needle = "definer";
@@ -64,7 +45,6 @@ pub fn strip_definer(ddl: &str) -> String {
     };
 
     let mut position = start + needle.len();
-    // optional whitespace
     while is_ascii_whitespace_byte_at(bytes, position) {
         position += 1;
     }
@@ -72,11 +52,9 @@ pub fn strip_definer(ddl: &str) -> String {
         return ddl.to_string();
     }
     position += 1;
-    // optional whitespace
     while is_ascii_whitespace_byte_at(bytes, position) {
         position += 1;
     }
-    // consume the user@host spec, allowing whitespace inside quoted identifiers
     let has_definer_spec = position < bytes.len() && !is_ascii_whitespace_byte_at(bytes, position);
     if !has_definer_spec {
         return ddl.to_string();
@@ -84,7 +62,6 @@ pub fn strip_definer(ddl: &str) -> String {
     let Some(position) = definer_spec_end(bytes, position) else {
         return ddl.to_string();
     };
-    // consume trailing whitespace after the clause
     let mut after = position;
     while is_ascii_whitespace_byte_at(bytes, after) {
         after += 1;
@@ -92,8 +69,6 @@ pub fn strip_definer(ddl: &str) -> String {
 
     let mut result = String::with_capacity(ddl.len());
     result.push_str(&ddl[..start]);
-    // If both sides have content, keep a single separating space so adjacent
-    // keywords (e.g. "CREATE" / "PROCEDURE") remain split.
     let needs_space =
         !result.is_empty() && !result.ends_with(char::is_whitespace) && after < ddl.len();
     if needs_space {
@@ -103,14 +78,6 @@ pub fn strip_definer(ddl: &str) -> String {
     result
 }
 
-// ---------------------------------------------------------------------------
-// DDL transforms
-// ---------------------------------------------------------------------------
-
-/// Build a `DROP <KEYWORD> IF EXISTS \`name\`;` statement for the given object type.
-///
-/// `escaped_name` must already be backtick-escaped (internal backticks doubled),
-/// without surrounding backticks.
 pub fn drop_if_exists_statement(object_type: CopyObjectType, escaped_name: &str) -> String {
     let keyword = match object_type {
         CopyObjectType::Table => "TABLE",
@@ -122,14 +89,6 @@ pub fn drop_if_exists_statement(object_type: CopyObjectType, escaped_name: &str)
     format!("DROP {keyword} IF EXISTS `{escaped_name}`")
 }
 
-/// Rewrite a `CREATE TABLE` DDL into `CREATE TABLE IF NOT EXISTS` (idempotent —
-/// returns the DDL unchanged if it already contains `IF NOT EXISTS`, is not a
-/// `CREATE TABLE`, or the object type does not support the clause).
-///
-/// `IF NOT EXISTS` is only valid for `CREATE TABLE`/`CREATE EVENT`/`CREATE TRIGGER`
-/// (MySQL 8.0.29+) but the copy feature scopes it to tables for predictable
-/// cross-version behavior; routines do not accept the clause, so they are left
-/// untouched here.
 pub fn apply_create_if_not_exists(object_type: CopyObjectType, ddl: &str) -> String {
     if object_type != CopyObjectType::Table {
         return ddl.to_string();
@@ -142,20 +101,12 @@ pub fn apply_create_if_not_exists(object_type: CopyObjectType, ddl: &str) -> Str
     if !lower.starts_with("create table") {
         return ddl.to_string();
     }
-    // Preserve leading whitespace, then splice "IF NOT EXISTS" after "CREATE TABLE".
     let leading_len = ddl.len() - trimmed_start.len();
     let leading = &ddl[..leading_len];
     let rest = &trimmed_start["create table".len()..];
     format!("{leading}CREATE TABLE IF NOT EXISTS{rest}")
 }
 
-/// Rewrite a non-table object's header name to the selected target schema.
-///
-/// MySQL's `SHOW CREATE` output may include either qualified or unqualified
-/// object names. Copy jobs do not issue `USE target_db`, so non-table DDL must
-/// name the destination schema explicitly. Replace only the keyword-scoped
-/// header identifier, leaving body SQL, string literals, comments, and table DDL
-/// alone.
 #[derive(Debug, Clone, Copy)]
 pub struct CopyObject<'a> {
     pub object_type: CopyObjectType,
@@ -282,14 +233,6 @@ fn create_table_prefix_len(lower_ddl: &str) -> Option<usize> {
         .map(str::len)
 }
 
-/// Qualify an unqualified `CREATE TABLE` header with the selected target schema.
-///
-/// `SHOW CREATE TABLE` commonly returns `CREATE TABLE `name` ...` without a
-/// schema qualifier. Copy jobs do not issue `USE target_db` because the target
-/// pool may be a reused live UI pool, so table DDL must name the destination
-/// schema explicitly. The rewrite is intentionally narrow: only the header's
-/// first backtick-quoted table identifier immediately following `CREATE TABLE`
-/// or `CREATE TABLE IF NOT EXISTS` is replaced.
 pub fn qualify_table_ddl_schema(ddl: &str, target_database: &str, table_name: &str) -> String {
     let is_missing_target_name = target_database.is_empty() || table_name.is_empty();
     if is_missing_target_name {

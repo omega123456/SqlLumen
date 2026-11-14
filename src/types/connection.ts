@@ -1,14 +1,3 @@
-/**
- * TypeScript types for connection data models.
- *
- * Field names use camelCase — the Rust backend uses snake_case internally,
- * but Tauri's serde serialization handles conversion via `#[serde(rename_all = "camelCase")]`.
- */
-
-/**
- * A saved connection profile as returned from the backend.
- * Note: never contains the password — only `hasPassword` boolean.
- */
 export interface SavedConnection {
   id: string
   name: string
@@ -31,10 +20,6 @@ export interface SavedConnection {
   updatedAt: string
 }
 
-/**
- * A connection group record from the backend.
- * `parentId` is always null in v1, included for forward-compatibility.
- */
 export interface ConnectionGroup {
   id: string
   name: string
@@ -43,21 +28,14 @@ export interface ConnectionGroup {
   createdAt: string
 }
 
-/**
- * An active (open) connection with its profile and runtime status.
- * `id` is the runtime session id (MySQL pool key); `profile.id` is the saved profile row id.
- */
 export interface ActiveConnection {
-  /** Runtime session id — use for IPC (`connectionId`) and UI tab keys. */
   id: string
   profile: SavedConnection
-  /** Current session database used by the live MySQL session. */
   sessionDatabase?: string | null
   status: 'connected' | 'disconnected' | 'reconnecting'
   serverVersion: string
 }
 
-/** A session that remains open in the native connection registry. */
 export interface OpenConnectionSession {
   sessionId: string
   profileId: string
@@ -66,9 +44,6 @@ export interface OpenConnectionSession {
   sessionDatabase: string | null
 }
 
-/**
- * Result of testing a MySQL connection.
- */
 export interface TestConnectionResult {
   success: boolean
   serverVersion: string | null
@@ -78,10 +53,6 @@ export interface TestConnectionResult {
   errorMessage: string | null
 }
 
-/**
- * Form data for creating or updating a connection.
- * Contains the plain password string (unlike SavedConnection which has hasPassword boolean).
- */
 export interface ConnectionFormData {
   name: string
   host: string
@@ -100,10 +71,6 @@ export interface ConnectionFormData {
   keepaliveIntervalSecs: number
 }
 
-/**
- * Event payload for connection status changes (from Tauri event system).
- * `connectionId` is the runtime session id.
- */
 export interface ConnectionStatusEvent {
   connectionId: string
   status: 'connected' | 'disconnected' | 'reconnecting'

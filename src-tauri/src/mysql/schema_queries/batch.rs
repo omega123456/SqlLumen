@@ -11,8 +11,6 @@ use super::connection_keys::{aggregate_index_rows, IndexRowColumns};
 use super::decode_mysql_text_cell;
 use super::{ForeignKeyInfo, IndexInfo};
 
-/// Query all foreign keys for every table across multiple databases at once.
-/// Returns a `HashMap<String, Vec<ForeignKeyInfo>>` keyed by `"{schema}.{table}"`.
 #[cfg(not(coverage))]
 pub async fn query_all_foreign_keys_batch(
     pool: &MySqlPool,
@@ -76,7 +74,6 @@ pub async fn query_all_foreign_keys_batch(
     Ok(result)
 }
 
-/// Coverage stub for `query_all_foreign_keys_batch`.
 #[cfg(coverage)]
 pub async fn query_all_foreign_keys_batch(
     _pool: &(),
@@ -85,8 +82,6 @@ pub async fn query_all_foreign_keys_batch(
     Ok(HashMap::new())
 }
 
-/// Query all views across multiple databases at once.
-/// Returns a `HashMap<String, Vec<ViewMeta>>` keyed by database name.
 #[cfg(not(coverage))]
 pub async fn query_all_views_batch(
     pool: &MySqlPool,
@@ -128,7 +123,6 @@ pub async fn query_all_views_batch(
     Ok(result)
 }
 
-/// Coverage stub for `query_all_views_batch`.
 #[cfg(coverage)]
 pub async fn query_all_views_batch(
     _pool: &(),
@@ -137,8 +131,6 @@ pub async fn query_all_views_batch(
     Ok(HashMap::new())
 }
 
-/// Query all triggers across multiple databases at once.
-/// Returns a `HashMap<String, Vec<TriggerMeta>>` keyed by database name.
 #[cfg(not(coverage))]
 pub async fn query_all_triggers_batch(
     pool: &MySqlPool,
@@ -180,7 +172,6 @@ pub async fn query_all_triggers_batch(
     Ok(result)
 }
 
-/// Coverage stub for `query_all_triggers_batch`.
 #[cfg(coverage)]
 pub async fn query_all_triggers_batch(
     _pool: &(),
@@ -189,8 +180,6 @@ pub async fn query_all_triggers_batch(
     Ok(HashMap::new())
 }
 
-/// Query all indexes for every table across multiple databases at once.
-/// Returns a `HashMap<String, Vec<IndexInfo>>` keyed by `"{schema}.{table}"`.
 #[cfg(not(coverage))]
 pub async fn query_all_indexes_batch(
     pool: &MySqlPool,
@@ -227,7 +216,6 @@ pub async fn query_all_indexes_batch(
         .map_err(|error| format!("Failed to get batch indexes: {error}"))?;
     query_log::log_mysql_rows(&rows);
 
-    // Columns: 0=TABLE_SCHEMA, 1=TABLE_NAME, 2=INDEX_NAME, 3=NON_UNIQUE, 4=INDEX_TYPE, 5=COLUMN_NAME, 6=CARDINALITY
     Ok(aggregate_index_rows(
         &rows,
         |row| {
@@ -245,7 +233,6 @@ pub async fn query_all_indexes_batch(
     ))
 }
 
-/// Coverage stub for `query_all_indexes_batch`.
 #[cfg(coverage)]
 pub async fn query_all_indexes_batch(
     _pool: &(),

@@ -1,20 +1,13 @@
 use super::*;
 
-/// A single result item from a multi-query or CALL execution.
-///
-/// Carries metadata plus the **first window** of the result's view; the full
-/// result stays in the Rust cache and is read with `fetch_result_window`.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MultiQueryResultItem {
     pub query_id: String,
     pub source_sql: String,
     pub columns: Vec<ColumnMeta>,
-    /// Live base rows (tombstones excluded).
     pub total_rows: i64,
-    /// Server-execution-only time (narrow).
     pub execution_time_ms: u64,
-    /// Combined time (execution + transfer + serialization).
     pub total_time_ms: u64,
     pub affected_rows: u64,
     pub auto_limit_applied: bool,
@@ -30,7 +23,6 @@ pub struct MultiQueryResultItem {
 }
 
 impl MultiQueryResultItem {
-    /// Build the IPC item for a stored result: metadata plus its first window.
     pub fn from_stored(stored: &StoredResult, error: Option<String>, re_executable: bool) -> Self {
         Self {
             query_id: stored.query_id.clone(),
@@ -54,7 +46,6 @@ impl MultiQueryResultItem {
     }
 }
 
-/// Wrapper for multiple result items returned from batch execution.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MultiQueryResult {

@@ -1,16 +1,3 @@
-/**
- * BaseFormView — shared editable single-record form component.
- *
- * Displays one row at a time with editable inputs for each column.
- * Supports NULL toggle, modified-field indicators, copy-to-clipboard,
- * record navigation, and save/discard actions.
- *
- * This component is store-free — all state comes through props.
- * Consumers adapt their rich edit state into the shared RowEditState shape.
- *
- * Based on the TableDataFormView design.
- */
-
 import { useMemo, useRef } from 'react'
 import type { BaseFormViewProps } from '../../types/shared-data-view'
 import { FormField } from './base-form-view/FormField'

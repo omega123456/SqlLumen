@@ -14,7 +14,6 @@ import { MILLISECONDS_PER_DAY } from '../../lib/units'
 const DAYS_PER_WEEK = 7
 const DAYS_PER_MONTH_RANGE = 30
 
-/** Stable default references to avoid infinite re-render from useSyncExternalStore. */
 const EMPTY_ENTRIES: HistoryEntry[] = []
 
 export interface HistoryTabProps {
@@ -22,17 +21,12 @@ export interface HistoryTabProps {
   isActive?: boolean
 }
 
-/** Time range durations in milliseconds. */
 const RANGE_MS: Record<Exclude<TimeRange, 'all'>, number> = {
   '24h': MILLISECONDS_PER_DAY,
   '7d': DAYS_PER_WEEK * MILLISECONDS_PER_DAY,
   '30d': DAYS_PER_MONTH_RANGE * MILLISECONDS_PER_DAY,
 }
 
-/**
- * Convert a {@link TimeRange} into an RFC-3339 lower bound for the backend
- * query, or `null` for the unbounded "all history" range.
- */
 function rangeToSince(range: TimeRange): string | null {
   if (range === 'all') return null
   return new Date(Date.now() - RANGE_MS[range]).toISOString()

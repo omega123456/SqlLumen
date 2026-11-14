@@ -1,5 +1,4 @@
 export const GENERAL_FUNCTION_NAMES: readonly string[] = [
-  // --- Numeric functions ---
   'ABS',
   'ACOS',
   'ASIN',
@@ -32,7 +31,6 @@ export const GENERAL_FUNCTION_NAMES: readonly string[] = [
   'TAN',
   'TRUNCATE',
 
-  // --- String functions ---
   'ASCII',
   'BIN',
   'BINARY',
@@ -95,7 +93,6 @@ export const GENERAL_FUNCTION_NAMES: readonly string[] = [
   'UPPER',
   'WEIGHT_STRING',
 
-  // --- Date/time functions ---
   'ADD_MONTHS',
   'ADDDATE',
   'ADDTIME',
@@ -159,7 +156,6 @@ export const GENERAL_FUNCTION_NAMES: readonly string[] = [
   'YEAR',
   'YEARWEEK',
 
-  // --- Aggregate functions ---
   'AVG',
   'BIT_AND',
   'BIT_OR',
@@ -180,7 +176,6 @@ export const GENERAL_FUNCTION_NAMES: readonly string[] = [
   'VAR_SAMP',
   'VARIANCE',
 
-  // --- Window functions ---
   'CUME_DIST',
   'DENSE_RANK',
   'FIRST_VALUE',
@@ -195,19 +190,16 @@ export const GENERAL_FUNCTION_NAMES: readonly string[] = [
   'RANK',
   'ROW_NUMBER',
 
-  // --- Control flow ---
   'COALESCE',
   'IF',
   'IFNULL',
   'NULLIF',
   'INTERVAL',
 
-  // --- Comparison / utility functions ---
   'GREATEST',
   'ISNULL',
   'LEAST',
 
-  // --- Information functions ---
   'BENCHMARK',
   'COERCIBILITY',
   'COLLATION',
@@ -226,7 +218,6 @@ export const GENERAL_FUNCTION_NAMES: readonly string[] = [
   'USER',
   'VERSION',
 
-  // --- Encryption / hashing / compression ---
   'AES_DECRYPT',
   'AES_ENCRYPT',
   'COMPRESS',
@@ -243,7 +234,6 @@ export const GENERAL_FUNCTION_NAMES: readonly string[] = [
   'SHA1',
   'SHA2',
 
-  // --- JSON functions ---
   'JSON_ARRAY',
   'JSON_ARRAY_APPEND',
   'JSON_ARRAY_INSERT',
@@ -283,7 +273,6 @@ export const GENERAL_FUNCTION_NAMES: readonly string[] = [
   'JSON_VALID',
   'JSON_VALUE',
 
-  // --- Dynamic column functions (MariaDB-specific) ---
   'COLUMN_ADD',
   'COLUMN_CHECK',
   'COLUMN_CREATE',
@@ -293,7 +282,6 @@ export const GENERAL_FUNCTION_NAMES: readonly string[] = [
   'COLUMN_JSON',
   'COLUMN_LIST',
 
-  // --- Network / IPv6 functions ---
   'INET_ATON',
   'INET_NTOA',
   'INET6_ATON',
@@ -303,52 +291,43 @@ export const GENERAL_FUNCTION_NAMES: readonly string[] = [
   'IS_IPV4_MAPPED',
   'IS_IPV6',
 
-  // --- Lock functions ---
   'GET_LOCK',
   'IS_FREE_LOCK',
   'IS_USED_LOCK',
   'RELEASE_LOCK',
 
-  // --- Sequence functions (MariaDB-specific) ---
   'LASTVAL',
   'NEXTVAL',
   'SETVAL',
 
-  // --- UUID functions ---
   'SYS_GUID',
   'UUID',
   'UUID_SHORT',
   'UUIDV4',
   'UUIDV7',
 
-  // --- Replication / GTID ---
   'BINLOG_GTID_POS',
   'MASTER_GTID_WAIT',
   'MASTER_POS_WAIT',
 
-  // --- WSREP / Galera ---
   'WSREP_LAST_SEEN_GTID',
   'WSREP_LAST_WRITTEN_GTID',
   'WSREP_SYNC_WAIT_UPTO_GTID',
 
-  // --- Spider engine functions ---
   'SPIDER_BG_DIRECT_SQL',
   'SPIDER_COPY_TABLES',
   'SPIDER_DIRECT_SQL',
   'SPIDER_FLUSH_TABLE_MON_CACHE',
 
-  // --- Vector functions (MariaDB 11.6+) ---
   'VEC_DISTANCE',
   'VEC_DISTANCE_COSINE',
   'VEC_DISTANCE_EUCLIDEAN',
   'VEC_FROMTEXT',
   'VEC_TOTEXT',
 
-  // --- XML functions ---
   'EXTRACTVALUE',
   'UPDATEXML',
 
-  // --- Misc utility ---
   'BIT_COUNT',
   'CONVERT_TZ',
   'SLEEP',

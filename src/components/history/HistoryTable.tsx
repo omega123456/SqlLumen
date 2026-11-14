@@ -15,9 +15,7 @@ export interface HistoryTableProps {
   onSelectEntry: (id: number) => void
   onOpenInEditor: (entry: HistoryEntry) => void
   connectionId: string
-  /** Initial load in flight with nothing to show yet. */
   isLoading?: boolean
-  /** Load error; replaces the list with a retry prompt. */
   error?: string | null
   onRetry?: () => void
 }
@@ -213,8 +211,6 @@ export function HistoryTable({
   const search = useHistoryStore((state) => state.searchByConnection[connectionId] ?? '')
   const loadMore = useHistoryStore((state) => state.loadMore)
 
-  // Time-range aware: only offer "load more" while fewer rows are loaded than
-  // exist within the active time window (`total` is already scoped to it).
   const hasMore = entries.length < total
 
   const handleLoadMore = useCallback(() => {

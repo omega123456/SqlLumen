@@ -52,7 +52,6 @@ export const EXPORT_FORMAT_CONFIG: Record<
 
 export const FORMAT_KEYS: readonly ExportFormat[] = ['csv', 'json', 'xlsx', 'sql-insert']
 
-/** XLSX option description when the dialog offers "All rows" (wireframe 6). */
 const XLSX_ALL_ROWS_DESCRIPTION = 'Excel (.xlsx) · up to 1,048,576 rows'
 
 export function keepTableNameForSqlInsertOnly(options: Required<ExportOptions>): ExportOptions {
@@ -60,7 +59,6 @@ export function keepTableNameForSqlInsertOnly(options: Required<ExportOptions>):
   return { ...options, tableName: tableName }
 }
 
-/** Sentence naming the grid sort and filters a full export ignores. */
 export function ignoredViewMessage(hasSort: boolean, filterCount: number): string {
   const filters = `${filterCount} ${filterCount === 1 ? 'filter' : 'filters'}`
   const hasFilters = filterCount > 0
@@ -69,7 +67,6 @@ export function ignoredViewMessage(hasSort: boolean, filterCount: number): strin
   return `Your ${filters} will be ignored.`
 }
 
-/** `m:ss` for the elapsed time of a running export. */
 function formatElapsed(elapsedMs: number): string {
   const totalSeconds = Math.floor(elapsedMs / MILLISECONDS_PER_SECOND)
   const minutes = Math.floor(totalSeconds / SECONDS_PER_MINUTE)
@@ -77,7 +74,6 @@ function formatElapsed(elapsedMs: number): string {
   return `${minutes}:${seconds.toString().padStart(TWO_DIGIT_WIDTH, '0')}`
 }
 
-/** Megabytes written, with one decimal below 10 MB. */
 function formatMegabytes(bytes: number): string {
   const megabytes = bytes / BYTES_PER_MEGABYTE
   return megabytes < ONE_DECIMAL_BELOW_MEGABYTES
@@ -85,11 +81,6 @@ function formatMegabytes(bytes: number): string {
     : formatCount(Math.round(megabytes))
 }
 
-/**
- * Status line of a running export ("Building workbook…" until XLSX rows flow).
- * XLSX omits the MB segment: the workbook is written to disk only when it is
- * saved, so its byte count stays 0 while rows are added.
- */
 export function exportProgressText(job: ResultExportJob): string {
   const rows = job.progress?.rowsWritten ?? 0
   const isBuildingWorkbook = job.format === 'xlsx' && rows === 0

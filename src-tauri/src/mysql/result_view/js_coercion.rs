@@ -7,7 +7,6 @@ pub(super) fn finite_compare_number(text: &str) -> Option<f64> {
     Some(js_string_to_number(text)).filter(|number| number.is_finite())
 }
 
-/// JavaScript `Number.prototype.toString()` for a finite double.
 pub fn js_number_to_string(value: f64) -> String {
     if value.is_nan() {
         return "NaN".to_string();
@@ -19,7 +18,6 @@ pub fn js_number_to_string(value: f64) -> String {
         return "0".to_string();
     }
     let sign = minus_sign(value < 0.0);
-    // `{:e}` yields the shortest round-trip digits, e.g. "1.2345e-7".
     let sci = format!("{:e}", value.abs());
     let (mantissa, exponent) = sci.split_once('e').unwrap_or((sci.as_str(), "0"));
     let digits: String = mantissa
@@ -90,11 +88,6 @@ pub(super) fn json_number_as_f64(number: &serde_json::Number) -> f64 {
     number.as_f64().unwrap_or(f64::NAN)
 }
 
-/// JavaScript `String(value)` for a JSON cell value.
-///
-/// `null` → `"null"`, booleans → `"true"`/`"false"`, numbers per JS formatting,
-/// objects → `"[object Object]"`, arrays → elements joined with `,` (with
-/// `null` elements rendered as empty strings, as `Array.prototype.join` does).
 pub fn js_string(value: &Value) -> Cow<'_, str> {
     match value {
         Value::Null => Cow::Borrowed("null"),
@@ -116,7 +109,6 @@ pub fn js_string(value: &Value) -> Cow<'_, str> {
     }
 }
 
-/// JavaScript `WhiteSpace` + `LineTerminator` (the set `String.prototype.trim` removes).
 pub(super) fn is_js_whitespace(character: char) -> bool {
     matches!(
         character,
@@ -145,8 +137,6 @@ pub(super) fn has_any_byte_at(bytes: &[u8], position: usize, expected: &[u8]) ->
         .is_some_and(|byte| expected.contains(byte))
 }
 
-/// True when `s` is a JS `StrUnsignedDecimalLiteral` (digits with an optional
-/// fraction and exponent; at least one digit in the significand).
 pub(super) fn is_js_unsigned_decimal(text: &str) -> bool {
     let bytes = text.as_bytes();
     let mut position = 0;
@@ -182,10 +172,6 @@ pub(super) fn is_js_unsigned_decimal(text: &str) -> bool {
     position == bytes.len()
 }
 
-/// JavaScript `Number(string)` (`StringToNumber`): trims JS whitespace, `""`
-/// becomes `0`, `0x`/`0o`/`0b` prefixes parse, `Infinity` parses (callers then
-/// reject it as non-finite), and anything else that isn't a decimal literal is
-/// `NaN`.
 pub fn js_string_to_number(text: &str) -> f64 {
     let trimmed = text.trim_matches(is_js_whitespace);
     if trimmed.is_empty() {
@@ -226,11 +212,6 @@ pub fn js_string_to_number(text: &str) -> f64 {
         .unwrap_or(f64::NAN)
 }
 
-/// JavaScript `Number(value)` for a JSON cell value.
-///
-/// `true`/`false` → `1`/`0`, `null` → `0`, strings per [`js_string_to_number`],
-/// arrays via their joined string (so a one-element array becomes its
-/// element), objects → `NaN`.
 pub fn js_number(value: &Value) -> f64 {
     match value {
         Value::Null => 0.0,
@@ -243,12 +224,10 @@ pub fn js_number(value: &Value) -> f64 {
     }
 }
 
-/// JS relational string comparison (UTF-16 code-unit order).
 pub(super) fn js_string_cmp(left: &str, right: &str) -> Ordering {
     left.encode_utf16().cmp(right.encode_utf16())
 }
 
-/// True for columns the frontend normalizes as TINYINT / boolean aliases.
 pub fn is_tinyint_boolean_alias(data_type: &str) -> bool {
     matches!(
         data_type.trim().to_ascii_uppercase().as_str(),
@@ -256,8 +235,6 @@ pub fn is_tinyint_boolean_alias(data_type: &str) -> bool {
     )
 }
 
-/// The same 0/1 normalization `normalizeTinyIntRows` applies for display:
-/// booleans and one-character strings with code 0 or 1 become numbers.
 pub fn normalize_tinyint_value(value: &Value) -> Cow<'_, Value> {
     match value {
         Value::Bool(boolean) => Cow::Owned(Value::from(u8::from(*boolean))),

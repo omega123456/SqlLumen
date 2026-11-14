@@ -15,13 +15,9 @@ export interface ExportDialogProps {
   connectionId: string
   tabId: string
   onClose: () => void
-  /** Optional result index for multi-result tabs. */
   resultIndex?: number
-  /** When provided, called instead of the built-in exportResults() for custom export logic. */
   onExport?: (options: Required<ExportOptions>) => Promise<void>
-  /** When provided, used as the initial table name instead of 'exported_results'. */
   defaultTableName?: string
-  /** When true, hides the SQL INSERT format option (views cannot be inserted into). */
   isView?: boolean
 }
 

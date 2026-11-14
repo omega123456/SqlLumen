@@ -1,8 +1,3 @@
-//! MySQL schema queries using INFORMATION_SCHEMA.
-//!
-//! This module contains SQL query helpers that run against a live MySQL/MariaDB
-//! server. It is intentionally separate from the `db/` module which is SQLite-only.
-
 use serde::{Deserialize, Serialize};
 use sqlx::mysql::MySqlRow;
 use sqlx::Row;
@@ -134,9 +129,6 @@ pub struct SchemaInfoResponse {
     pub metadata: Option<TableMetadata>,
 }
 
-/// Wraps a MySQL identifier in backticks, escaping any internal backticks
-/// by doubling them. Rejects empty identifiers and identifiers exceeding
-/// 64 characters.
 pub fn safe_identifier(name: &str) -> Result<String, String> {
     if name.is_empty() {
         return Err("Identifier cannot be empty".to_string());
@@ -151,9 +143,6 @@ pub fn safe_identifier(name: &str) -> Result<String, String> {
     Ok(format!("`{escaped}`"))
 }
 
-/// Decode a text-like cell that may be reported as `VARCHAR` or `VARBINARY` depending on
-/// server (e.g. MariaDB / some MySQL builds expose `information_schema` identifier columns as
-/// binary). Avoids `unwrap()` panics from sqlx type mismatches.
 pub(crate) fn decode_mysql_text_cell(row: &MySqlRow, index: usize) -> Result<String, String> {
     match row.try_get::<String, _>(index) {
         Ok(value) => Ok(value),
@@ -191,7 +180,6 @@ fn decode_mysql_optional_text_cell(row: &MySqlRow, index: usize) -> Result<Optio
     }
 }
 
-/// Wrappers for integration tests (`--features test-utils`) — exercise VARBINARY vs VARCHAR decode paths.
 #[cfg(all(not(coverage), any(test, feature = "test-utils")))]
 pub fn decode_mysql_text_cell_for_test(row: &MySqlRow, index: usize) -> Result<String, String> {
     decode_mysql_text_cell(row, index)

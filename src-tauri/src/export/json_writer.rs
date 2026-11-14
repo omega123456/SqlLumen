@@ -14,8 +14,6 @@ pub fn write_json<W: Write, R: AsRef<[serde_json::Value]>>(
     serde_json::to_writer_pretty(writer, &array).map_err(io::Error::other)
 }
 
-/// One row as a JSON object keyed by column name (missing cells are `null`).
-/// Shared by the slice writer and the streaming writer.
 pub fn json_row_object(columns: &[String], row: &[serde_json::Value]) -> serde_json::Value {
     let mut obj = serde_json::Map::new();
     for (column_index, col) in columns.iter().enumerate() {

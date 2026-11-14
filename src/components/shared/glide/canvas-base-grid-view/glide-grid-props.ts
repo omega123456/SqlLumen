@@ -27,7 +27,6 @@ interface ClipboardMenuParts {
 
 const EMPTY_GRID_ROWS: GridRow[] = []
 
-/** Windowed grids route Copy and Cut through the app's own async path (D21). */
 const WINDOWED_KEYBINDINGS = { copy: false, cut: false } as const
 
 function gridAriaLabel(testId: string | undefined): string {

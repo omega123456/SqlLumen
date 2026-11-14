@@ -1,29 +1,24 @@
 import { invokeArgumentCommand, invokeCommand } from './ipc/dispatch'
 import type { JobStatus } from './job-progress'
 
-/** A database with its exportable tables/views. */
 export interface ExportableDatabase {
   name: string
   tables: ExportableTable[]
 }
 
-/** The closed set of supported SQL dump object categories. */
 export type SqlDumpObjectType = 'table' | 'view'
 
-/** A table or view available for SQL dump export. */
 export interface ExportableTable {
   name: string
   objectType: SqlDumpObjectType
   estimatedRows: number
 }
 
-/** A selected table or view in the dump-start input. */
 export interface DumpTableEntry {
   name: string
   objectType: SqlDumpObjectType
 }
 
-/** Options controlling what gets included in the SQL dump. */
 export interface DumpOptions {
   includeStructure: boolean
   includeData: boolean
@@ -31,7 +26,6 @@ export interface DumpOptions {
   useTransaction: boolean
 }
 
-/** Input for starting a SQL dump export job. */
 export interface StartDumpInput {
   connectionId: string
   filePath: string
@@ -40,10 +34,8 @@ export interface StartDumpInput {
   options: DumpOptions
 }
 
-/** Status of a SQL dump export job. */
 export type DumpJobStatus = JobStatus
 
-/** Progress info for an active or completed SQL dump export job. */
 export interface DumpJobProgress {
   jobId: string
   status: DumpJobStatus
@@ -72,21 +64,14 @@ export async function cancelDump(jobId: string, connectionId: string): Promise<v
   return invokeCommand({ command: 'cancel_dump', payload: { jobId, connectionId } })
 }
 
-// ---------------------------------------------------------------------------
-// SQL Import types & IPC wrappers
-// ---------------------------------------------------------------------------
-
-/** Status of a SQL import job. */
 export type ImportJobStatus = JobStatus
 
-/** An error encountered during SQL import execution. */
 export interface ImportError {
   statementIndex: number
   sqlPreview: string
   errorMessage: string
 }
 
-/** Progress info for an active or completed SQL import job. */
 export interface ImportJobProgress {
   jobId: string
   status: ImportJobStatus

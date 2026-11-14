@@ -1,11 +1,8 @@
 use super::*;
 
-/// Run a full copy job to completion, writing terminal status into `jobs`.
 pub async fn run_copy(state: &AppState, params: CopyToHostParams, job: CopyJob) {
     let result = run_copy_inner(state, &params, &job).await;
     let CopyJob { jobs, job_id } = job;
-    // Terminal-status write must never be silently dropped on a poisoned
-    // lock — recover the guard so the job does not stay `Running` forever.
     let mut map = jobs
         .write()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -16,8 +13,6 @@ pub async fn run_copy(state: &AppState, params: CopyToHostParams, job: CopyJob) 
         );
         return;
     };
-    // Only set a terminal state if still running (cancel may have
-    // already set Cancelled inside the inner loop).
     if progress.status != CopyJobStatus::Running {
         return;
     }
@@ -28,8 +23,6 @@ pub async fn run_copy(state: &AppState, params: CopyToHostParams, job: CopyJob) 
     }
 }
 
-/// Inner copy orchestration. Returns `Ok(true)` on completion, `Ok(false)` if
-/// cancelled, `Err` on first error (stop-on-first-error).
 pub(super) async fn run_copy_inner(
     state: &AppState,
     params: &CopyToHostParams,
@@ -55,14 +48,6 @@ pub(super) async fn run_copy_inner(
     outcome
 }
 
-/// Copy body once both pools are resolved. FK checks are always restored.
-///
-/// A single target connection is pinned for the entire job so that all
-/// session-scoped statements (`USE`, `SET FOREIGN_KEY_CHECKS`) and every
-/// DDL/TRUNCATE/INSERT run on the *same* backend handle. Without pinning, a
-/// pool with `max_connections > 1` could apply `USE`/`SET` to one connection
-/// while the writes land on another, defeating both the default-database
-/// switch and the FK-check guarantee.
 pub(super) async fn run_copy_with_pools(
     params: &CopyToHostParams,
     job: &CopyJob,
@@ -75,8 +60,6 @@ pub(super) async fn run_copy_with_pools(
         &params.target_database,
     )?;
 
-    // Pin one target connection for the whole job (mirrors sql_dump's
-    // `pool.acquire()` + `&mut *conn` streaming pattern).
     let mut conn = pools
         .target
         .acquire()
@@ -92,16 +75,13 @@ pub(super) async fn run_copy_with_pools(
         byte_budget: batch_byte_budget(read_max_allowed_packet(&mut conn).await),
     };
 
-    // Disable FK checks for the duration; always restore.
     run_target_statement(&mut conn, FK_CHECKS_DISABLE).await?;
     let body = copy_objects(&run, &mut conn).await;
-    // Finally: restore FK checks regardless of the body outcome.
     let restore = run_target_statement(&mut conn, FK_CHECKS_ENABLE).await;
 
     match body {
         Ok(outcome) => restore.map(|()| outcome),
         Err(error) => {
-            // Surface the original error even if restore also failed.
             log_restore_failure(restore);
             Err(error)
         }
@@ -147,12 +127,10 @@ pub(super) async fn copy_one_object(
             Some(count_source_rows(run.source, &params.source_database, object.name).await?);
     }
 
-    // Cancel checkpoint at object boundary.
     if !begin_object_unless_cancelled(run.job, object, rows_total)? {
         return Ok(false);
     }
 
-    // Routines/triggers/events are always structure-only.
     let do_structure = opts.copy_structure || !is_table;
     if do_structure {
         copy_object_structure(run, &mut *target, object).await?;
@@ -169,8 +147,6 @@ pub(super) async fn copy_one_object(
     Ok(true)
 }
 
-/// Iterate the work list, copying each object and updating progress. All
-/// target writes go through the pinned connection `target`.
 pub(super) async fn copy_objects(
     run: &CopyRun<'_>,
     target: &mut MySqlConnection,

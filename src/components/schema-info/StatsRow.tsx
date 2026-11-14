@@ -9,7 +9,6 @@ function joinClasses(...parts: (string | undefined)[]): string {
 
 export interface StatsRowProps {
   metadata: TableMetadata
-  /** When set, shows a Columns card after Total rows. */
   columnCount?: number
 }
 

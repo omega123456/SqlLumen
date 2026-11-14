@@ -179,7 +179,6 @@ async fn embed_rebuilt_chunks(
     Ok(())
 }
 
-/// Rebuild the index for specific tables only (partial rebuild).
 pub async fn rebuild_tables(
     config: &BuildConfig,
     tables: &[(String, String)],

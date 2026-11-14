@@ -24,10 +24,8 @@ function hiddenTabSide(tabRect: DOMRect, bounds: ViewportBounds): 'start' | 'end
   return null
 }
 
-/** Width the start chip covers; matches `scroll-padding-inline-start` in the CSS. */
 const START_CHIP_CLEARANCE = 52
 
-/** Laid-out tabs of the row, looking through `display: contents` wrappers. */
 function tabItems(element: Element): Element[] {
   return Array.from(element.children).flatMap((child) =>
     getComputedStyle(child).display === 'contents' ? tabItems(child) : [child]
@@ -59,8 +57,6 @@ interface HiddenTabCounts {
 const NO_HIDDEN_TABS: HiddenTabCounts = { start: 0, end: 0 }
 
 function viewportBounds(viewport: HTMLElement): ViewportBounds {
-  // At either scroll extreme nothing more is hidden on that side, even when a fractional
-  // viewport width leaves the last tab a sub-pixel short.
   const { scrollLeft, scrollWidth, clientWidth } = viewport
   const atStart = scrollLeft <= 1
   const atEnd = scrollLeft + clientWidth >= scrollWidth - 1
@@ -102,7 +98,6 @@ function useKeepActiveTabVisible(
   contentRef: RefObject<HTMLDivElement | null>,
   overflowing: boolean
 ) {
-  // The end chip's slot narrows the viewport as overflow starts; keep the selected tab in view.
   useLayoutEffect(() => {
     if (!overflowing) return
     contentRef.current
@@ -127,9 +122,6 @@ function useVerticalWheelScrollsHorizontally(viewportRef: RefObject<HTMLDivEleme
   }, [viewportRef])
 }
 
-// scrollIntoView('nearest') leaves a tab where it is when it is wider than the visible strip and
-// already lines up with, or overhangs, the edge it would align to. The chips skip such a tab to
-// the next one, or scroll by its hidden part when it is the last one on that side.
 function scrollToStartTab(viewport: HTMLElement, content: HTMLElement) {
   const { left, right } = viewport.getBoundingClientRect()
   const edge = left + START_CHIP_CLEARANCE
@@ -222,8 +214,6 @@ export function ScrollableTabBar({
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const contentRef = useRef<HTMLDivElement | null>(null)
   const elements: TabStripElements = { viewportRef: viewportRef, contentRef: contentRef }
-  // Compare against the whole area, not the viewport the end chip narrows, so the chips
-  // go away as soon as every tab fits again.
   const overflowing = useElementSize(contentRef).width > useElementSize(areaRef).width
   const { hidden, sync } = useHiddenTabCounts(elements)
   useKeepActiveTabVisible(contentRef, overflowing)

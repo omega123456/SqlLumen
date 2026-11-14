@@ -1,5 +1,4 @@
 export const GEOMETRY_AND_MYSQL_FUNCTION_NAMES: readonly string[] = [
-  // --- Geometry constructors ---
   'GEOMETRYCOLLECTION',
   'LINESTRING',
   'MULTILINESTRING',
@@ -8,7 +7,6 @@ export const GEOMETRY_AND_MYSQL_FUNCTION_NAMES: readonly string[] = [
   'POINT',
   'POLYGON',
 
-  // --- Geometry functions (legacy pre-ST_ aliases) ---
   'AREA',
   'ASBINARY',
   'ASTEXT',
@@ -87,7 +85,6 @@ export const GEOMETRY_AND_MYSQL_FUNCTION_NAMES: readonly string[] = [
   'X',
   'Y',
 
-  // --- Geometry functions (ST_ namespace) ---
   'ST_AREA',
   'ST_ASBINARY',
   'ST_ASGEOJSON',
@@ -174,7 +171,6 @@ export const GEOMETRY_AND_MYSQL_FUNCTION_NAMES: readonly string[] = [
   'ST_X',
   'ST_Y',
 
-  // --- MySQL-specific built-ins not present in the MariaDB index ---
   'ANY_VALUE',
   'ASYNCHRONOUS_CONNECTION_FAILOVER_ADD_MANAGED',
   'ASYNCHRONOUS_CONNECTION_FAILOVER_ADD_SOURCE',

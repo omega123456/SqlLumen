@@ -1,18 +1,3 @@
-/**
- * Custom MySQL web worker that initializes in a single step.
- *
- * The stock `mysql.worker.js` from monaco-sql-languages uses a
- * two-step initialization protocol that is incompatible with
- * Monaco ≥ 0.55's ESM worker message flow (the second RPC
- * message gets consumed as the initialization trigger and never
- * reaches the WebWorkerServer, causing `$ping` to hang
- * and completions to stay "Loading…" forever).
- *
- * This worker calls `start()` from `editor.worker.start.js`
- * directly on the first message, passing the MySQLWorker
- * factory so `EditorWorker._foreignModule` is set immediately.
- */
-
 import { start } from 'monaco-editor/esm/vs/editor/editor.worker.start.js'
 import { MySQLWorker } from 'monaco-sql-languages/esm/languages/mysql/mysqlWorker.js'
 
@@ -26,9 +11,6 @@ class QuietMySQLWorker extends MySQLWorker {
   constructor(workerContext: MySQLWorkerContext, createData: { languageId: string }) {
     super(workerContext, createData)
 
-    // dt-sql-parser uses ConsoleErrorListener by default when no error listener is
-    // supplied. During autocomplete the parser intentionally sees incomplete SQL,
-    // so those console errors are just noise. Default to a no-op listener instead.
     const parser = this.parser as Partial<{
       createParser: (input: string, errorListener?: ParseErrorListener) => unknown
     }>

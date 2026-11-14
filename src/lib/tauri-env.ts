@@ -2,7 +2,6 @@ export function hasWindow(): boolean {
   return typeof window !== 'undefined'
 }
 
-/** Returns `true` when running inside a real Tauri webview with injected internals. */
 export function hasTauriApis(): boolean {
   if (!hasWindow()) return false
   return window.__TAURI_INTERNALS__ != null

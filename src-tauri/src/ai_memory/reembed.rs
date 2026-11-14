@@ -255,7 +255,6 @@ where
         total,
         "reembed_memories: embedding config ready — calling embed_texts"
     );
-    // Every embedding must succeed before the existing vec table is dropped.
     let batch = ReembedBatch {
         state,
         texts: &texts,
@@ -278,8 +277,6 @@ where
     Ok(())
 }
 
-/// Re-embed all memories for a connection. Behaviour-preserving wrapper around
-/// [`reembed_scope_impl`] for the connection scope.
 pub async fn reembed_memories_impl<F>(
     state: &AppState,
     connection_id: &str,

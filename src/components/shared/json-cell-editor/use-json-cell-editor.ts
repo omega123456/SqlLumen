@@ -245,7 +245,6 @@ function useJsonEditorMount(
         handleBlur(document.activeElement)
       })
       blurListenerDisposeRef.current = () => blurListener.dispose()
-      // Disable command palette (F1) — not useful in a cell editor
       editor.addCommand(monaco.KeyCode.F1, () => null)
       editor.focus()
     },

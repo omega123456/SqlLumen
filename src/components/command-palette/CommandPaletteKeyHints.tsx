@@ -8,7 +8,6 @@ interface KeyCapsProps {
   className: string
 }
 
-/** One `<kbd>` per label part of a binding (e.g. `Ctrl`, `K`). */
 export function KeyCaps({ binding, className }: KeyCapsProps) {
   return (
     <>
@@ -21,7 +20,6 @@ export function KeyCaps({ binding, className }: KeyCapsProps) {
   )
 }
 
-/** Trailing hint on table rows (prototype `.pi-row .kd`): "Search columns [Tab]". */
 export function SearchColumnsHint() {
   return (
     <span className={styles.rowHint}>
@@ -32,11 +30,9 @@ export function SearchColumnsHint() {
 }
 
 export interface CommandPaletteFooterProps {
-  /** Tab only scopes to columns from the object list, so the hint hides in column scope. */
   showColumnsHint: boolean
 }
 
-/** Key-hint footer (prototype `.pal .ft`). */
 export function CommandPaletteFooter({ showColumnsHint }: CommandPaletteFooterProps) {
   return (
     <div className={styles.footer} data-testid="command-palette-footer">

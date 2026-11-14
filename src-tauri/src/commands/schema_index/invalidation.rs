@@ -62,8 +62,6 @@ pub(super) async fn run_partial_rebuild_job(job: PartialRebuildJob) {
     let _ = job.app_handle.emit("schema-index-error", &payload);
 }
 
-/// Invalidate (partial rebuild) the schema index for specific tables.
-/// Returns immediately; the rebuild runs in a background task.
 #[cfg(not(coverage))]
 pub async fn invalidate_schema_index_impl(
     app_handle: tauri::AppHandle,
@@ -125,7 +123,6 @@ pub async fn invalidate_schema_index_impl(
     Ok(())
 }
 
-/// List all indexed table chunks for a session's connection profile.
 pub fn list_indexed_tables_impl(
     state: &AppState,
     session_id: String,

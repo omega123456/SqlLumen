@@ -1,14 +1,3 @@
-/**
- * Shared type definitions for the unified data view abstraction layer.
- *
- * These types form the foundation for shared grid, form, and toolbar components
- * that can be used by both the query result view and the table data browser.
- *
- * NOTE: Some types (e.g. RowEditState, ViewMode) have counterparts in schema.ts
- * with different shapes — those are consumer-specific while these are for the
- * shared abstraction layer. Import from the appropriate module.
- */
-
 import type { ReactNode } from 'react'
 import type {
   GridCellPosition,
@@ -17,79 +6,30 @@ import type {
 } from '../components/shared/glide/glide-grid-types'
 import type { ForeignKeyColumnInfo, TableDataColumnMeta } from './schema'
 
-// ---------------------------------------------------------------------------
-// Column descriptor
-// ---------------------------------------------------------------------------
-
-/**
- * Unified column descriptor that bridges TableDataColumnMeta and ColumnMeta.
- * Used by all shared data view components (grid, form, toolbar).
- */
 export interface GridColumnDescriptor {
-  /** Grid column key (real name or col_N for query results). */
   key: string
-  /** Header display name (always the real column name). */
   displayName: string
-  /** SQL data type string. */
   dataType: string
-  /** Whether editing is supported for this column. */
   editable: boolean
-  /** Binary/BLOB column. */
   isBinary: boolean
-  /** Allows NULL. */
   isNullable: boolean
-  /** Part of primary key. */
   isPrimaryKey: boolean
-  /** Part of unique key. */
   isUniqueKey: boolean
-  /** Enum options if applicable. */
   enumValues?: string[]
-  /** SET options if applicable. */
   setValues?: string[]
-  /** Optional full table-data column meta for editor factory. */
   tableColumnMeta?: TableDataColumnMeta
-  /** FK metadata for this column (set when the column is an FK source). */
   foreignKey?: ForeignKeyColumnInfo
-  /** Vendor-neutral editor type used by grid adapters. */
   editorType?: 'text' | 'enum' | 'set' | 'datetime' | 'fk' | 'json' | 'none'
-  /**
-   * Marks a binary column as opening the shared BLOB viewer on double-click.
-   * The inline editor stays `'none'`/`editable: false`; the host recognises the
-   * marker to launch `BlobViewerDialog` instead of an inline editor.
-   */
   blobViewer?: boolean
-  /**
-   * True when a binary column is editable through the shared BLOB viewer even
-   * though inline text editing remains disabled.
-   */
   blobViewerEditable?: boolean
-  /** Preferred column width in pixels. */
   width?: number
 }
 
-// ---------------------------------------------------------------------------
-// Row edit state (shared abstraction — lighter than schema.ts RowEditState)
-// ---------------------------------------------------------------------------
-
-/**
- * Simplified row edit state for the shared data view layer.
- *
- * Unlike the full RowEditState in schema.ts (which tracks modifiedColumns,
- * isNewRow, tempId, etc.), this version is minimal — consumers adapt their
- * rich edit state into this shape when passing props to shared components.
- */
 export interface RowEditState {
-  /** Serialised key identifying the row being edited. */
   rowKey: string
-  /** Current (possibly modified) values. */
   currentValues: Record<string, unknown>
-  /** Original values before editing started. */
   originalValues: Record<string, unknown>
 }
-
-// ---------------------------------------------------------------------------
-// Cell click guard
-// ---------------------------------------------------------------------------
 
 export interface CellClickGuardArgs {
   rowIdx: number
@@ -114,23 +54,11 @@ export interface CellClipboardEditArgs {
   text?: string
 }
 
-// ---------------------------------------------------------------------------
-// Auto-size configuration
-// ---------------------------------------------------------------------------
-
 export interface AutoSizeConfig {
   enabled: boolean
   computeWidth: (column: GridColumnDescriptor, rows: readonly Record<string, unknown>[]) => number
 }
 
-// ---------------------------------------------------------------------------
-// Shared grid view props
-// ---------------------------------------------------------------------------
-
-/**
- * Props for the shared grid component.
- * Consumers pre-build rows as Record<string, unknown>[] (NOT unknown[][]).
- */
 export interface BaseGridViewProps {
   rows: Record<string, unknown>[]
   columns: GridColumnDescriptor[]
@@ -141,11 +69,6 @@ export interface BaseGridViewProps {
   onCellClickGuard?: (args: CellClickGuardArgs) => Promise<CellClickGuardResult>
   onCellSelectionChange?: (args: CellClickGuardArgs) => void
   runCellClickGuardOnKeyboardSelection?: boolean
-  /**
-   * Apply a clipboard edit to a cell. Resolves `true` once the target row is
-   * the row being edited with the value applied (a paste then applies the rest
-   * of its line to that row), `false` when nothing was applied.
-   */
   onCellClipboardEdit?: (args: CellClipboardEditArgs) => Promise<boolean> | boolean
   onColumnResize?: (column: string, width: number) => void
   onRowsChange?: (
@@ -174,42 +97,25 @@ export interface BaseGridViewProps {
   showInfoColumn?: boolean
   isActive?: boolean
 
-  // Optional insert/delete capabilities (table-data exposes these, query-editor does not)
   onInsertRow?: () => void
   onDeleteRow?: (rowKey: string) => void
   canInsert?: boolean
   canDelete?: boolean
 
-  // General-purpose interaction callbacks
   onCellDoubleClick?: (rowData: Record<string, unknown>, columnKey: string) => void
   onRowClick?: (rowData: Record<string, unknown>, columnKey?: string) => void
 
-  // Column highlight (e.g. FK lookup dialog highlights the referenced column)
   highlightColumnKey?: string
 
-  /**
-   * Raw grid columns to prepend before the auto-generated data columns.
-   * Useful for adding selection checkboxes or other prefix columns.
-   */
   prefixColumns?: ReadonlyArray<GridColumn<Record<string, unknown>>>
 
-  /**
-   * Raw grid columns to append after the auto-generated data columns.
-   * Useful for adding custom action or display columns at the end.
-   */
   suffixColumns?: ReadonlyArray<GridColumn<Record<string, unknown>>>
 }
 
-// ---------------------------------------------------------------------------
-// Shared form view props
-// ---------------------------------------------------------------------------
-
-/** Props shared by known-total and unknown-total form modes. */
 interface BaseFormViewCommonProps {
   columns: GridColumnDescriptor[]
   currentRow: unknown[] | null
   currentRowData?: Record<string, unknown> | null
-  /** 0-based absolute index across all pages. */
   currentAbsoluteIndex: number
   isFirstRecord: boolean
   onNavigatePrev?: () => void
@@ -223,32 +129,17 @@ interface BaseFormViewCommonProps {
   readOnly?: boolean
   testId?: string
 
-  // Optional insert/delete capabilities (table-data exposes these, query-editor does not)
   onInsertRow?: () => void
   onDeleteRow?: (rowKey: string) => void
   canInsert?: boolean
   canDelete?: boolean
 
-  /** Passed to portal controls (DateTimePicker, Dropdown) so they auto-dismiss on tab deactivation. */
   workspaceTabId?: string
 
-  /**
-   * Invoked when the "View/Edit" affordance beside a binary (BLOB) field is
-   * clicked. The host opens the shared BlobViewerDialog for that column/row
-   * (edit mode for table-data, view-only for query results). When omitted, the
-   * button is not rendered.
-   */
   onBlobView?: (column: GridColumnDescriptor, rowData: Record<string, unknown> | null) => void
 
-  /**
-   * When true, the BLOB "View/Edit" button is rendered but disabled. Used by the
-   * table-data surface when the current row has no resolvable primary key (a
-   * read-only connection or a PK-less table), since the grid only holds the
-   * placeholder text and cannot lazily fetch the real bytes.
-   */
   blobViewDisabled?: boolean
 
-  /** Tooltip explaining why the BLOB "View/Edit" button is disabled. */
   blobViewDisabledReason?: string
 }
 
@@ -264,18 +155,9 @@ export interface UnknownTotalBaseFormViewProps extends BaseFormViewCommonProps {
   isLastRecord?: boolean
 }
 
-/** Props for the shared form component. */
 export type BaseFormViewProps = KnownTotalBaseFormViewProps | UnknownTotalBaseFormViewProps
 
-// ---------------------------------------------------------------------------
-// View mode
-// ---------------------------------------------------------------------------
-
 export type ViewMode = 'grid' | 'form' | 'text'
-
-// ---------------------------------------------------------------------------
-// Toolbar item props
-// ---------------------------------------------------------------------------
 
 export interface ViewModeGroupProps {
   currentMode: ViewMode
@@ -288,11 +170,8 @@ interface PaginationGroupCommonProps {
   currentPage: number
   pageSize: number
   disabled?: boolean
-  /** When false, hides the page-size dropdown while preserving existing defaults. */
   showPageSize?: boolean
-  /** When true, renders first/last navigation buttons in known-total mode. */
   showFirstLastButtons?: boolean
-  /** When true, the page-size dropdown is disabled (e.g. cache-only results). */
   pageSizeDisabled?: boolean
   onPageSizeChange: (size: number) => void
   onPrevPage: () => void
@@ -319,21 +198,12 @@ export interface ExportButtonProps {
   testId?: string
 }
 
-// ---------------------------------------------------------------------------
-// Status area
-// ---------------------------------------------------------------------------
-
 export type StatusType = 'idle' | 'loading' | 'success' | 'error'
 
 export interface StatusAreaProps {
   status: StatusType
   totalRows?: number
-  /**
-   * Preformatted row-count node shown in the **success** branch instead of the
-   * numeric `totalRows` text (e.g. "2,340 of 12,340 rows"). Optional and additive.
-   */
   countLabel?: ReactNode
-  /** Label shown in the **loading** branch instead of "Loading..." (e.g. "Copying… 4,000 of 12,340"). */
   loadingLabel?: ReactNode
   executionTimeMs?: number
   errorMessage?: string

@@ -28,7 +28,7 @@ function sortMemoriesByScope(memories: AiMemory[]): AiMemory[] {
     .map((entry) => entry.memory)
 }
 
-export const MEMORY_TOKEN_BUDGET = 500 // reserved tokens for memories in prompt
+export const MEMORY_TOKEN_BUDGET = 500
 
 const MEMORY_SEARCH_RESULT_LIMIT = 5
 

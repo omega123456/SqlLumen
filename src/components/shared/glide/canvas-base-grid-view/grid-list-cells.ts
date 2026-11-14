@@ -115,12 +115,6 @@ export function buildSetMultiSelectCell(
   }
 }
 
-/**
- * The edited cell Glide's paste would produce for `text` in `cell`, or
- * undefined when the cell is read-only or the value is unchanged (mirrors
- * Glide's `pasteToCell` for the text and enum/SET cells that descriptor
- * columns render; checkbox cells only exist for non-descriptor columns).
- */
 export function pasteTextIntoCell(cell: GridCell, text: string): EditableGridCell | undefined {
   if (cell.kind === GridCellKind.Text) {
     const isUnchangeable = cell.readonly === true || text === cell.data

@@ -12,28 +12,14 @@ const GLYPH: Record<InfoBarSeverity, string> = {
 
 export type InfoBarProps = Omit<HTMLAttributes<HTMLDivElement>, 'title'> & {
   severity: InfoBarSeverity
-  /** Bold lead-in, e.g. "Error 1146". */
   title?: ReactNode
   message?: ReactNode
-  /** Secondary line under the title and message. */
   detail?: ReactNode
-  /** Buttons on the right (e.g. retry, dismiss). */
   actions?: ReactNode
-  /**
-   * Opt-in polite announcement (`role="status"`, `aria-live="polite"`) for
-   * warnings and errors that must not interrupt, e.g. the truncation notice.
-   * By default warnings and errors are announced as alerts.
-   */
   polite?: boolean
-  /** Ref to the bar element (e.g. to move focus to a failure). */
   ref?: Ref<HTMLDivElement>
 }
 
-/**
- * Inline status bar (Fluent InfoBar). The severity always shows a glyph as well as a colour,
- * so status never relies on colour alone. Errors and warnings are announced as alerts unless
- * `polite` is set.
- */
 export function InfoBar({
   severity,
   title,

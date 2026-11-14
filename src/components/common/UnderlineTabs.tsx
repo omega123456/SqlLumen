@@ -60,11 +60,8 @@ export interface UnderlineTabProps {
   'aria-label'?: string
   title?: string
   autoScrollOnActive?: boolean
-  /** Simple tab: one button, use onClick. */
   onClick?: () => void
-  /** Split tab: main label action. */
   onSelect?: () => void
-  /** Middle-click (auxiliary button); use e.preventDefault() in the handler to suppress browser autoscroll. */
   onAuxClick?: (e: MouseEvent<HTMLElement>) => void
   onContextMenu?: (e: MouseEvent<HTMLElement>) => void
   onKeyDown?: (e: KeyboardEvent<HTMLElement>) => void

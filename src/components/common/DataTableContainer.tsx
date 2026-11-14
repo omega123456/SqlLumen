@@ -7,7 +7,6 @@ function joinClasses(...parts: (string | undefined)[]): string {
 }
 
 export interface DataTableContainerProps extends HTMLAttributes<HTMLDivElement> {
-  /** When false, only the horizontal scroll shell is rendered (parent supplies `.ui-elevated-surface`). */
   elevated?: boolean
 }
 

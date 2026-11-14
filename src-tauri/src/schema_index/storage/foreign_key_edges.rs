@@ -1,7 +1,5 @@
 use super::*;
 
-/// Replace all FK edges for an entire connection.
-/// Deletes all existing edges for `connection_id` then inserts the new edges.
 pub fn replace_fk_edges_for_connection(
     conn: &Connection,
     connection_id: &str,
@@ -29,9 +27,6 @@ pub fn replace_fk_edges_for_connection(
     Ok(())
 }
 
-/// Replace all FK edges for a specific table (as source).
-/// Deletes existing edges for this `(connection_id, src_db, src_tbl)` then
-/// inserts the new edges.
 pub fn replace_fk_edges_for_table(
     conn: &Connection,
     source_table: &IndexedTableRef<'_>,
@@ -65,7 +60,6 @@ pub fn replace_fk_edges_for_table(
     Ok(())
 }
 
-/// Get all FK edges for a connection.
 pub fn get_fk_edges_for_connection(conn: &Connection, connection_id: &str) -> Result<Vec<FkEdge>> {
     let mut stmt = conn.prepare(
         "SELECT connection_id, src_db, src_tbl, src_col, dst_db, dst_tbl, dst_col, constraint_name, on_delete, on_update
@@ -91,7 +85,6 @@ pub fn get_fk_edges_for_connection(conn: &Connection, connection_id: &str) -> Re
     Ok(rows)
 }
 
-/// Delete all FK edges for a connection.
 pub fn delete_fk_edges_for_connection(conn: &Connection, connection_id: &str) -> Result<()> {
     conn.execute(
         "DELETE FROM schema_index_fk_edges WHERE connection_id = ?1",

@@ -84,7 +84,6 @@ export function useGridEditorSession(model: GridViewModel) {
 
   const cancelActiveEditor = useCallback(() => {
     if (!editorRefs.isEditingCellRef.current) return
-    // Glide overlays do not auto-close when commitOnOutsideClick is disabled, so close before scrolling.
     dispatchEscapeToGridCanvas(gridRef)
     handleFinishedEditing()
   }, [editorRefs, gridRef, handleFinishedEditing])

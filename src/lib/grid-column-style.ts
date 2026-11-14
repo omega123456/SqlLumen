@@ -1,9 +1,3 @@
-/**
- * Column CSS classes and default widths for data grid body cells — matches
- * inline_editable_grid_*_pro_sync_v2
- * (mono + muted for PK/numeric, mono for temporal, body + primary for string types).
- */
-
 import { getTemporalColumnType } from './date-utils'
 import type { TableDataColumnMeta } from '../types/schema'
 import { isNullish } from './value-checks'
@@ -58,13 +52,6 @@ export function isStringishPrimarySqlType(dataType: string): boolean {
   )
 }
 
-/**
- * Consolidated cell class resolver for all data grids (table data + query result).
- *
- * When `pkColumnNames` is provided and `columnName` is in that list the column
- * gets the same mono-muted treatment as numeric types — matching the original
- * `getTableDataGridCellClass` behaviour.
- */
 export function getGridCellClass(
   columnName: string,
   dataType: string,
@@ -108,12 +95,6 @@ const DATE_AUTO_MIN_WIDTH: NullabilityWidths = { nullable: 250, notNull: 220 }
 const TIME_AUTO_MIN_WIDTH: NullabilityWidths = { nullable: 230, notNull: 200 }
 const DATE_OR_TIME_AUTO_PADDING: NullabilityWidths = { nullable: 96, notNull: 64 }
 
-/**
- * Maximum number of rows to sample when computing auto-sized column widths.
- * Scanning all rows is O(rows × columns) and creates a performance bottleneck
- * for large result sets. 100 rows provides a good approximation of the longest
- * value while keeping computation fast.
- */
 export const AUTO_SIZE_SAMPLE_LIMIT = 100
 
 interface ColumnWidthSizing {
@@ -271,18 +252,15 @@ export function getAutoSizedColumnWidth({
 }: AutoSizedColumn): number {
   const sizing = getColumnWidthSizing(column.dataType, column.isNullable)
 
-  // Header width: 10px bold font with 0.08-0.1em letter-spacing = ~8.5px/char.
-  // Cell padding uses 24px per side in light theme (worst case) = 48px total.
-  // An extra 12px buffer prevents off-by-one ellipsis at subpixel boundaries.
-  // headerIconWidthPx is added by the caller for FK/lock icon columns.
   const HEADER_CHAR_PX = 8.5
-  const HEADER_PADDING_PX = 60 // 48px cell padding (light theme) + 12px buffer
+  const HEADER_CELL_PADDING_PX = 48
+  const HEADER_SUBPIXEL_BUFFER_PX = 12
+  const HEADER_PADDING_PX = HEADER_CELL_PADDING_PX + HEADER_SUBPIXEL_BUFFER_PX
   const headerText = displayName ?? column.name
   const headerWidth = Math.ceil(
     headerText.length * HEADER_CHAR_PX + HEADER_PADDING_PX + headerIconWidthPx
   )
 
-  // Data width — scan a sample of rows for the longest value
   let maxTextLength = 0
   const sampleCount = Math.min(rows.length, AUTO_SIZE_SAMPLE_LIMIT)
 
@@ -300,7 +278,6 @@ export function getAutoSizedColumnWidth({
   return Math.max(sizing.autoMinWidth, Math.min(AUTO_WIDTH_MAX, measuredWidth))
 }
 
-/** Default column width (in px) based on SQL data type — used by shared grid columns. */
 export function getDefaultColumnWidth(dataType: string): number {
   return getColumnWidthSizing(dataType).defaultWidth
 }

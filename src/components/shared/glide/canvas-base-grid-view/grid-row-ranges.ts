@@ -12,12 +12,9 @@ export interface RowRangeLoadRequest {
   progress: RowProgress | undefined
 }
 
-/** Rows per fetch chunk; a cancel button appears for fetches spanning more than one. */
 export const ROW_FETCH_CHUNK = 2000
-/** Rows repainted after a page loads when the visible region isn't known yet. */
 const VISIBLE_REPAINT_FALLBACK_ROWS = 200
 
-/** The index in `next` that `previous` lacks (when exactly one was added). */
 function findAddedIndex(next: CompactSelection, previous: CompactSelection): number | undefined {
   for (const index of next) {
     if (!previous.hasIndex(index)) return index
@@ -48,17 +45,12 @@ function rangesFromIndexes(indexes: Iterable<number>): RowRange[] {
   return ranges
 }
 
-/**
- * Half-open row ranges covered by a row selection (a Glide `CompactSelection`,
- * with a fast path for one contiguous run, or any iterable of row indices).
- */
 export function selectionRowRanges(selection: CompactSelection | Iterable<number>): RowRange[] {
   const isCompactSelection = selection instanceof CompactSelection
   const contiguous = isCompactSelection ? contiguousSelectionRange(selection) : null
   return contiguous ?? rangesFromIndexes(selection)
 }
 
-/** Merge half-open ranges (clamped to `[0, rowCount)`), sorted and non-overlapping. */
 export function mergeRowRanges(ranges: readonly RowRange[], rowCount: number): MutableRowRange[] {
   const sorted = ranges
     .map(([start, end]): MutableRowRange => [Math.max(0, start), Math.min(rowCount, end)])

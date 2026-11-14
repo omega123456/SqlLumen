@@ -4,7 +4,6 @@ import { openPalette, togglePalette } from './command-palette-store/command-pale
 export interface CommandPaletteState {
   isOpen: boolean
   openInstance: number
-  /** When true, the palette opens pre-filled with the active table's database/table pills. */
   scopeToTable: boolean
   open: (scopeToTable?: boolean) => void
   close: () => void

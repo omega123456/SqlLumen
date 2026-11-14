@@ -11,7 +11,6 @@ use super::{read_embedding_config, EmbeddingConfig};
 
 use rusqlite::{params, Connection};
 
-/// One KNN result with its raw distance, so multi-table results can be merged.
 struct ScoredMemory {
     memory: AiMemory,
     distance: f64,

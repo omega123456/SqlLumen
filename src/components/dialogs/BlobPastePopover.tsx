@@ -1,17 +1,3 @@
-/**
- * BlobPastePopover — a compact popover anchored to the BLOB viewer's Paste
- * button. It hosts a mono textarea + a short hint + a primary Load action on a
- * `--ui-popover-*` surface positioned beneath the anchor button.
- *
- * The popover overlays the dialog rather than pushing its layout down. It owns
- * its open/close lifecycle (open from the Paste button via `isOpen`), focuses
- * the textarea on open, dismisses on Escape, on outside-click, and after a
- * successful Load, and returns focus to the anchor button on close. Pasted text
- * is parsed via the shared `parsePastedBytes`; success is reported through
- * `onApply`, parse failures through `onError` (the parent routes them to a
- * toast).
- */
-
 import {
   useCallback,
   useEffect,
@@ -36,15 +22,10 @@ const FOCUSABLE_SELECTOR = [
 ].join(', ')
 
 export interface BlobPastePopoverProps {
-  /** Whether the popover is open. */
   isOpen: boolean
-  /** Close the popover (Escape, outside-click, or after a successful Load). */
   onClose: () => void
-  /** Successful parse: hand the decoded bytes back to the dialog. */
   onApply: (bytes: Uint8Array) => void
-  /** Parse failure: surface a human-readable message (parent toasts it). */
   onError: (message: string) => void
-  /** The Paste button the popover anchors to; focus returns here on close. */
   anchorRef: React.RefObject<HTMLElement | null>
 }
 
@@ -221,8 +202,6 @@ export function BlobPastePopover({
     close()
   }
 
-  // Keep Escape from bubbling to the dialog's own Escape handler so it closes
-  // only the popover while the popover is open.
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape') {
       event.stopPropagation()

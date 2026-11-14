@@ -9,9 +9,7 @@ pub fn write_csv<W: Write, R: AsRef<[serde_json::Value]>>(
 ) -> io::Result<()> {
     let columns = table.columns;
     let rows = table.rows;
-    let mut wtr = WriterBuilder::new()
-        .has_headers(false) // we handle headers manually to control NULL behavior
-        .from_writer(writer);
+    let mut wtr = WriterBuilder::new().has_headers(false).from_writer(writer);
 
     if include_headers {
         wtr.write_record(columns)?;
@@ -25,9 +23,6 @@ pub fn write_csv<W: Write, R: AsRef<[serde_json::Value]>>(
     Ok(())
 }
 
-/// The CSV fields of one row: NULL is an empty field, booleans are `1`/`0`,
-/// strings are written as-is and other values use their JSON text. Shared by
-/// the slice writer and the streaming writer so their output is identical.
 pub fn csv_record(row: &[serde_json::Value]) -> Vec<String> {
     row.iter().map(csv_field).collect()
 }

@@ -1,8 +1,5 @@
 use super::*;
 
-/// Open an internal pool from a saved profile's stored credentials, reusing
-/// the same chain as `open_connection_impl`: read the profile from SQLite,
-/// resolve the password from the keychain, then create the pool.
 pub async fn open_pool_for_profile(
     state: &AppState,
     profile_id: &str,
@@ -29,10 +26,6 @@ pub async fn open_pool_for_profile(
         .map_err(|error| format!("Failed to connect to target: {error}"))
 }
 
-/// Resolve the target pool by reusing a live writable session for the saved
-/// profile when one exists, otherwise opening an internal pool from the
-/// stored credentials. The copy body never issues `USE`, so reusing a live
-/// pool cannot leak a changed default database back to the UI session.
 pub async fn resolve_target_pool(
     state: &AppState,
     target_profile_id: &str,
@@ -45,8 +38,6 @@ pub async fn resolve_target_pool(
     Ok(ResolvedTargetPool { pool, owned: true })
 }
 
-/// Read the source database's `(charset, collation)` from
-/// `information_schema.SCHEMATA` (used when creating a new target DB).
 pub async fn read_source_charset(
     source: &MySqlPool,
     database: &str,
@@ -70,7 +61,6 @@ pub async fn read_source_charset(
     })
 }
 
-/// Whether `database` exists on the target server.
 pub async fn target_database_exists(
     target: &mut MySqlConnection,
     database: &str,
@@ -91,11 +81,6 @@ pub async fn target_database_exists(
     Ok(row.is_some())
 }
 
-/// Create the target database (if absent) using the source DB's charset and
-/// collation. No-op when the database already exists.
-///
-/// All target writes run on the single pinned connection and fully qualify
-/// target objects so the copy job never changes session default schema.
 pub async fn ensure_target_database(
     source: &MySqlPool,
     target: &mut MySqlConnection,
@@ -120,8 +105,6 @@ pub async fn ensure_target_database(
     run_target_statement(&mut *target, &sql).await
 }
 
-/// Read the target's `max_allowed_packet`, returning `None` if it cannot be
-/// determined (the caller then uses the conservative fallback budget).
 pub async fn read_max_allowed_packet(target: &mut MySqlConnection) -> Option<u64> {
     let sql = "SELECT @@max_allowed_packet";
     query_log::log_outgoing_sql(sql);
@@ -138,9 +121,6 @@ pub async fn read_max_allowed_packet(target: &mut MySqlConnection) -> Option<u64
     }
 }
 
-/// Execute a single statement against the target's pinned connection, logging
-/// the SQL and result. Using one connection guarantees session-scoped state
-/// (`FOREIGN_KEY_CHECKS`) applies to the same backend handle as the DDL/INSERTs.
 pub async fn run_target_statement(target: &mut MySqlConnection, sql: &str) -> Result<(), String> {
     query_log::log_outgoing_sql(sql);
     match sqlx::query(sqlx::AssertSqlSafe(sql))

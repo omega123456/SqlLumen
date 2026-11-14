@@ -9,7 +9,6 @@ import { showErrorToast, showSuccessToast } from '../../../../stores/toast-store
 import type { GridRowActions, GridRowActionVerb } from './canvas-grid-types'
 import type { RowProgress } from './grid-row-ranges'
 
-/** Wireframe 8 failure copy per action verb (fetch and clipboard failures alike). */
 export const ROW_ACTION_FAILURES: Record<GridRowActionVerb, ClipboardActionFailure> = {
   Copying: CLIPBOARD_ACTION_FAILURES.copy,
   Cutting: CLIPBOARD_ACTION_FAILURES.cut,
@@ -43,7 +42,6 @@ function isAbort(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
 }
 
-/** `results_expired` failures route to the "Results expired" block, not a toast. */
 function isResultsExpired(error: unknown): boolean {
   return toErrorMessage(error).includes('results_expired')
 }

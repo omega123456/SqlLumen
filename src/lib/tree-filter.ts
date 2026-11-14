@@ -5,9 +5,6 @@ const UNFILTERED_NODE_TYPES: ReadonlySet<TreeNode['type']> = new Set<TreeNode['t
   'category',
 ])
 
-/**
- * True if `nodeId` is `scopeRootId` or a descendant of it in `nodes`.
- */
 export function isNodeUnderFilterScope(
   nodeId: string,
   scopeRootId: string,
@@ -23,10 +20,6 @@ export function isNodeUnderFilterScope(
   return false
 }
 
-/**
- * True if `matchIds` contains a node that is a strict descendant of `nodeId`
- * (walks from each candidate upward until root).
- */
 export function hasMatchingDescendantInFilter(
   nodeId: string,
   matchIds: Set<string>,
@@ -43,12 +36,6 @@ export function hasMatchingDescendantInFilter(
   return false
 }
 
-/**
- * Collect all node IDs that match the filter text (case-insensitive substring),
- * plus all their ancestor node IDs (so the tree context is preserved).
- * Column labels are intentionally excluded from direct matching: the filter chooses
- * which objects are visible, and expanded table columns remain browseable separately.
- */
 export function computeFilterMatchIds(
   nodes: Record<string, TreeNode>,
   filterText: string
@@ -73,10 +60,6 @@ export function computeFilterMatchIds(
   return matchIds
 }
 
-/**
- * Like `computeFilterMatchIds`, but ancestor paths stop at `scopeRootId`.
- * When `scopeRootId` is null or not in `nodes`, uses global matching.
- */
 export function computeScopedFilterMatchIds(
   nodes: Record<string, TreeNode>,
   filterText: string,
@@ -102,8 +85,6 @@ export function computeScopedFilterMatchIds(
     }
   }
 
-  // Always include the scope root and all its ancestors so the containing
-  // database/category nodes remain in the match set and the tree path stays open.
   for (const ancestorId of collectPathToTreeRoot(scopeRootId, nodes)) {
     matchIds.add(ancestorId)
   }

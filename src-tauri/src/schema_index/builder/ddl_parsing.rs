@@ -5,7 +5,6 @@ use super::super::types::FkInput;
 
 const DEFAULT_REFERENTIAL_ACTION: &str = "RESTRICT";
 
-/// Extract the table-level `COMMENT='...'` value from a `CREATE TABLE` DDL.
 pub fn extract_table_comment(ddl: &str) -> Option<String> {
     static TABLE_COMMENT_REGEX: OnceLock<Regex> = OnceLock::new();
     let re = TABLE_COMMENT_REGEX.get_or_init(|| {
@@ -15,8 +14,6 @@ pub fn extract_table_comment(ddl: &str) -> Option<String> {
     re.captures(ddl).map(|captures| captures[1].to_string())
 }
 
-/// Extract `(column_name, comment)` pairs from inline column `COMMENT '...'`
-/// clauses in a `CREATE TABLE` DDL.
 pub fn extract_column_comments(ddl: &str) -> Vec<(String, String)> {
     static COL_COMMENT_REGEX: OnceLock<Regex> = OnceLock::new();
     let re = COL_COMMENT_REGEX.get_or_init(|| {
@@ -35,12 +32,6 @@ fn referential_action(captures: &regex::Captures<'_>, group: usize) -> String {
         .unwrap_or_else(|| DEFAULT_REFERENTIAL_ACTION.to_string())
 }
 
-/// Parse foreign key definitions from a `SHOW CREATE TABLE` result.
-///
-/// Looks for lines matching:
-/// ```text
-/// CONSTRAINT `fk_name` FOREIGN KEY (`col1`, `col2`) REFERENCES `ref_table` (`ref_col1`, `ref_col2`) ON DELETE CASCADE ON UPDATE NO ACTION
-/// ```
 pub fn parse_fks_from_ddl(db_name: &str, table_name: &str, ddl: &str) -> Vec<FkInput> {
     static FK_REGEX: OnceLock<Regex> = OnceLock::new();
     let re = FK_REGEX.get_or_init(|| {
@@ -68,7 +59,6 @@ pub fn parse_fks_from_ddl(db_name: &str, table_name: &str, ddl: &str) -> Vec<FkI
         .collect()
 }
 
-/// Parse a backtick-delimited column list like `` `col1`,`col2` `` into `["col1", "col2"]`.
 fn parse_backtick_list(list: &str) -> Vec<String> {
     static BACKTICK_LIST_REGEX: OnceLock<Regex> = OnceLock::new();
     let re = BACKTICK_LIST_REGEX
@@ -115,9 +105,6 @@ fn parse_column_line(trimmed_line: &str) -> Option<(String, String, Option<Strin
     Some((captures[1].to_string(), captures[2].to_string(), comment))
 }
 
-/// Parse column definitions from a `CREATE TABLE` DDL.
-///
-/// Returns `(col_name, col_type, col_comment)` triples.
 pub fn parse_columns_from_ddl(ddl: &str) -> Vec<(String, String, Option<String>)> {
     ddl.lines()
         .map(str::trim)
@@ -126,7 +113,6 @@ pub fn parse_columns_from_ddl(ddl: &str) -> Vec<(String, String, Option<String>)
         .collect()
 }
 
-/// Parse primary key column names from a `CREATE TABLE` DDL.
 pub fn parse_pk_from_ddl(ddl: &str) -> Vec<String> {
     static PK_REGEX: OnceLock<Regex> = OnceLock::new();
     let re = PK_REGEX
@@ -137,7 +123,6 @@ pub fn parse_pk_from_ddl(ddl: &str) -> Vec<String> {
     }
 }
 
-/// Parse unique index names from a `CREATE TABLE` DDL.
 pub fn parse_unique_indexes_from_ddl(ddl: &str) -> Vec<String> {
     static UNIQUE_REGEX: OnceLock<Regex> = OnceLock::new();
     let re = UNIQUE_REGEX.get_or_init(|| {

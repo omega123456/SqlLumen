@@ -1,8 +1,5 @@
 use super::*;
 
-/// Custom moka `Expiry` that reads the current TTL from a shared atomic.
-/// Returns the same duration for create, read, and update so every
-/// interaction resets the idle timer to the latest configured value.
 pub(super) struct DynamicTtlExpiry {
     ttl_secs: Arc<AtomicU64>,
 }
@@ -48,15 +45,10 @@ where
 {
     const DEFAULT_RAM_PRESSURE_MIN_IDLE: Duration = Duration::from_secs(10 * 60);
 
-    /// Create a new `GenericCache`.
-    ///
-    /// - `ttl_seconds`: initial time-to-idle in seconds
-    /// - `spill_dir`: base directory for spill files (created lazily)
     pub fn new(ttl_seconds: u64, spill_dir: PathBuf) -> Self {
         Self::new_with_shared_ttl(Arc::new(AtomicU64::new(ttl_seconds)), spill_dir)
     }
 
-    /// Create a cache that reads TTL from a shared atomic source.
     pub fn new_with_shared_ttl(ttl: Arc<AtomicU64>, spill_dir: PathBuf) -> Self {
         Self::new_with_shared_ttl_and_ram_pressure_idle(
             ttl,
@@ -123,12 +115,10 @@ where
         }
     }
 
-    /// Test constructor that accepts a pre-created temporary directory path.
     pub fn new_for_test(ttl_seconds: u64, spill_dir: PathBuf) -> Self {
         Self::new(ttl_seconds, spill_dir)
     }
 
-    /// Test constructor with a custom RAM-pressure idle threshold.
     pub fn new_for_test_with_ram_pressure_idle(
         ttl_seconds: u64,
         spill_dir: PathBuf,

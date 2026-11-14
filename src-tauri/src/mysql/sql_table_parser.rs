@@ -1,6 +1,3 @@
-//! Extracts source table names from SQL SELECT statements by parsing
-//! `FROM` and `JOIN` clauses. Pure function — no database access required.
-
 use serde::{Deserialize, Serialize};
 
 use crate::mysql::query_executor::strip_non_executable_comments;
@@ -15,25 +12,13 @@ mod table_list;
 use keyword_scan::*;
 use table_list::*;
 
-/// A table reference extracted from a SQL statement.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TableReference {
-    /// Schema qualifier if present (e.g., `mydb` in `mydb.users`).
     pub database: Option<String>,
-    /// The table name.
     pub table: String,
 }
 
-/// Extract table references from a SQL SELECT statement.
-///
-/// Parses `FROM` and `JOIN` clauses to find direct table references.
-/// Handles backtick-quoted identifiers, schema-qualified names, aliases,
-/// and various JOIN types. Deduplicates results so a self-joined table
-/// appears only once.
-///
-/// Returns an empty `Vec` for non-SELECT statements, empty strings, or
-/// statements where no table references can be found.
 pub fn extract_tables(sql: &str) -> Vec<TableReference> {
     let stripped = strip_non_executable_comments(sql);
     let trimmed = stripped.trim();
@@ -42,7 +27,6 @@ pub fn extract_tables(sql: &str) -> Vec<TableReference> {
         return vec![];
     }
 
-    // Only parse SELECT statements (case-insensitive)
     let first_keyword = first_keyword_upper(trimmed);
     if first_keyword != "SELECT" {
         return vec![];
@@ -74,11 +58,9 @@ fn next_scan_step(chars: &[char], position: usize, tables: &mut Vec<TableReferen
     if is_string_quote_char(character) {
         return ScanStep::Continue(skip_quoted(chars, position));
     }
-    // Backtick identifiers only matter when extracting table names, so skip them here.
     if character == '`' {
         return ScanStep::Continue(skip_backtick(chars, position));
     }
-    // Parenthesized groups (subqueries, function calls) are skipped at top level.
     if character == '(' {
         return ScanStep::Continue(skip_parenthesized(chars, position));
     }

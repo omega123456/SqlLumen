@@ -97,7 +97,6 @@ export function AiCodeBlock({
 
   const isSql = language === 'sql' || language === 'mysql'
 
-  /** True when the SQL is exactly one statement (multi-statement diff is not supported). */
   const isSingleStatement = useMemo((): boolean => {
     if (!isSql) return false
     const text = getTextContent()

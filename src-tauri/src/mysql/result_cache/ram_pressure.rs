@@ -8,7 +8,6 @@ where
         now.saturating_duration_since(touched_at) >= self.ram_pressure_min_idle
     }
 
-    /// Run cache maintenance and RAM-pressure eviction.
     pub fn run_maintenance(&self, snapshot: &mut dyn MemorySnapshot) {
         self.cache.run_pending_tasks();
 
@@ -100,7 +99,6 @@ where
         self.remove_from_lru(key);
     }
 
-    /// Compute the spill file path for a given key.
     pub fn spill_file_path(&self, connection_id: &str, tab_id: &str) -> PathBuf {
         let safe_name = safe_spill_filename(connection_id, tab_id);
         self.spill_dir

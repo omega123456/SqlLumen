@@ -39,7 +39,6 @@ pub struct CancelDumpRequest {
 }
 
 pub(super) fn ensure_supported_object_type(object_type: &DumpObjectType) {
-    // Serde already rejects unknown variants; the exhaustive match keeps the closed enum checked at compile time.
     match object_type {
         DumpObjectType::Table | DumpObjectType::View => {}
     }
@@ -85,7 +84,6 @@ pub async fn start_sql_dump_impl(
     let progress = initial_dump_progress(&job_id, count_selected_tables(&input));
     {
         let mut jobs = dump_jobs.write().map_err(|error| error.to_string())?;
-        // Clean up stale terminal jobs (older than 5 minutes)
         cleanup_terminal_jobs(&mut jobs);
         jobs.insert(job_id.clone(), progress);
     }
@@ -298,7 +296,6 @@ impl DumpRun<'_> {
         let table_name = &object.entry.name;
         let data_query = format!("SELECT * FROM {}", object.qualified_name());
 
-        // Acquire a dedicated connection so we can track its thread ID for KILL QUERY
         let mut conn = self
             .pool
             .acquire()
@@ -325,7 +322,6 @@ impl DumpRun<'_> {
             .iter()
             .map(|column| column.name().to_string())
             .collect();
-        // Chain the first row back with the rest of the stream
         let first_row_stream = futures::stream::once(async { Ok(first_row) });
         let full_stream = Box::pin(first_row_stream.chain(stream));
         let target = DumpTarget {
@@ -346,8 +342,6 @@ pub(super) fn serialize_dump_row(row: &sqlx::mysql::MySqlRow) -> Vec<SqlDumpValu
         .collect()
 }
 
-/// Always write transaction end + footer + flush, even after cancellation, so the
-/// dump file stays well-formed (COMMIT, FK checks restored). The first error wins.
 pub(super) fn finish_dump_file(
     file: &mut std::fs::File,
     use_transaction: bool,
@@ -398,7 +392,6 @@ pub(super) fn execute_dump(
 
     let metadata = std::fs::metadata(&input.file_path)
         .map_err(|error| format!("Failed to read file size: {error}"))?;
-    // Store the cancelled flag so the completion handler can check it
     if outcome == DumpLoopOutcome::Cancelled {
         job.update_progress(|progress| progress.cancel_requested = true);
     }

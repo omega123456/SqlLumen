@@ -1,10 +1,5 @@
 use super::*;
 
-/// Enumerate the copyable objects (tables, procedures, functions, triggers, events)
-/// for `database` on the source `connection_id`.
-///
-/// Views and system schemas are excluded. Every query is logged via the shared
-/// `query_log` helpers.
 pub async fn list_copyable_objects_impl(
     state: &AppState,
     request: &crate::commands::requests::DatabaseRequest,

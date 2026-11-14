@@ -91,7 +91,6 @@ pub async fn start_result_export(
     start_result_export_in_background(app, payload)
 }
 
-/// Progress of a streaming full export.
 #[tauri::command]
 pub async fn get_result_export_progress(
     state: tauri::State<'_, AppState>,
@@ -100,7 +99,6 @@ pub async fn get_result_export_progress(
     crate::export::result_export::get_result_export_progress_impl(&state, &job_id)
 }
 
-/// Cancel a streaming full export (`KILL QUERY` on its re-run).
 #[tauri::command]
 pub async fn cancel_result_export(
     state: tauri::State<'_, AppState>,

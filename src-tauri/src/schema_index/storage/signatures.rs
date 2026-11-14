@@ -1,7 +1,5 @@
 use super::*;
 
-/// Fetch all stored `(db_name, table_name) -> mysql_signature` entries for the
-/// given connection. Returned as a `HashMap` for O(1) lookup during the diff.
 pub fn get_signatures_for_connection(
     conn: &Connection,
     connection_id: &str,
@@ -27,9 +25,6 @@ pub fn get_signatures_for_connection(
     Ok(out)
 }
 
-/// Insert or replace a batch of `(db_name, table_name, mysql_signature)` rows
-/// for the given connection. Uses a single prepared statement — the caller is
-/// responsible for wrapping in a transaction when the batch is large.
 pub fn upsert_signatures(
     conn: &Connection,
     connection_id: &str,
@@ -49,8 +44,6 @@ pub fn upsert_signatures(
     Ok(())
 }
 
-/// Delete a single signature row for `(connection_id, db_name, table_name)`.
-/// No-op if the row doesn't exist.
 pub fn delete_signature(conn: &Connection, table: &IndexedTableRef<'_>) -> Result<()> {
     conn.execute(
         "DELETE FROM schema_index_table_signatures
@@ -60,8 +53,6 @@ pub fn delete_signature(conn: &Connection, table: &IndexedTableRef<'_>) -> Resul
     Ok(())
 }
 
-/// Delete all signature rows for a connection. Called from `delete_all_chunks`
-/// so a force-rebuild triggers a full DDL re-fetch.
 pub fn delete_all_signatures(conn: &Connection, connection_id: &str) -> Result<()> {
     conn.execute(
         "DELETE FROM schema_index_table_signatures WHERE connection_id = ?1",

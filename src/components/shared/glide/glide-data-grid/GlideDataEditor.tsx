@@ -11,8 +11,6 @@ import { useGlideGridTheme } from '../../../../hooks/use-glide-grid-theme'
 import { useGridDimensions } from '../../../../hooks/use-grid-dimensions'
 import type { GlideDataGridProps, RowMarkerSettings } from './glide-data-grid-types'
 
-// Glide's default maxColumnWidth is 500px, which caps how wide a user can drag a
-// column. Lift it to an effectively-unreachable value so resizing is unbounded.
 const MAX_COLUMN_WIDTH = 100000
 
 interface GlideDataEditorProps<TRow> {
@@ -48,7 +46,6 @@ function useGlideCellHandlers<TRow>(gridProps: GlideDataGridProps<TRow>) {
 
   const handleCellClicked = useCallback(
     (cell: Item, event: CellClickedEventArgs) => {
-      // Glide flags any two mouse-ups within 500ms as a double-click, even across cells.
       const previous = lastClickedCellRef.current
       lastClickedCellRef.current = cell
       const isSameCellDoubleClick = event.isDoubleClick === true && isSameCell(previous, cell)

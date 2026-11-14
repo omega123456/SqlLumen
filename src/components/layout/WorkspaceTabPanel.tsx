@@ -68,8 +68,6 @@ function WorkspaceTabContent({ tab, isActive, connection }: WorkspaceTabContentP
   return null
 }
 
-// Memoized so switching tabs re-renders only the two panels whose isActive flips,
-// not every retained editor/grid.
 export const WorkspaceTabPanel = memo(function WorkspaceTabPanel({
   tab,
   isActive = true,

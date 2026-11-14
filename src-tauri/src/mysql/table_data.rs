@@ -1,9 +1,3 @@
-//! Table data operations: fetch paginated data, CRUD operations, and export.
-//!
-//! This module contains the business logic (`*_impl` functions) for browsing
-//! and editing table data. Each function takes a `MySqlPool` directly (the
-//! command wrappers in `commands::table_data` extract the pool from `AppState`).
-
 use crate::mysql::cache_status::{cache_status_json, CacheStatus};
 use crate::mysql::metadata_cache::{MetadataCache, MetadataTableKey, TableKeyMetadata};
 use crate::mysql::result_cache::{CacheKey, VersionedValue};
@@ -52,9 +46,6 @@ pub use filters::*;
 pub use paging::*;
 pub use serialization::*;
 
-// ── Data structures ────────────────────────────────────────────────────────────
-
-/// Column metadata for table data, including PK/UNIQUE and nullability info.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TableDataColumnMeta {
@@ -72,7 +63,6 @@ pub struct TableDataColumnMeta {
     pub is_auto_increment: bool,
 }
 
-/// Primary / unique key info for a table.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PrimaryKeyInfo {
@@ -81,25 +71,18 @@ pub struct PrimaryKeyInfo {
     pub is_unique_key_fallback: bool,
 }
 
-/// Response from `fetch_blob_value`: the raw bytes of a single binary cell,
-/// base64-encoded for transport, with a size guard.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct BlobValueResponse {
-    /// Base64-encoded bytes, or `None` for SQL NULL or when `too_large` is set.
     pub base64: Option<String>,
-    /// Stored byte count (always returned, even when `too_large`).
     pub byte_length: u64,
-    /// `true` when the stored size exceeds the 10 MB cap; bytes are then omitted.
     pub too_large: bool,
 }
 
-/// Paginated response from `fetch_table_data`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TableDataResponse {
     pub columns: Vec<TableDataColumnMeta>,
-    /// Shared so caching or restoring a page clones a pointer, not the rows.
     pub rows: Arc<Vec<Vec<serde_json::Value>>>,
     pub current_page: u32,
     pub page_size: u32,
@@ -120,7 +103,6 @@ pub struct TableDataCacheSyncResponse {
     pub status: CacheStatus,
 }
 
-/// Sort specification for a single column.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SortInfo {
@@ -128,7 +110,6 @@ pub struct SortInfo {
     pub direction: String,
 }
 
-/// A single filter condition from the frontend filter dialog.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FilterCondition {
@@ -137,7 +118,6 @@ pub struct FilterCondition {
     pub value: String,
 }
 
-/// A WHERE clause fragment with bound parameter values.
 #[derive(Debug, Clone)]
 pub struct FilterClause {
     pub sql: String,
@@ -282,11 +262,9 @@ pub struct ExportTableOptions {
     pub table_name_for_sql: String,
     pub filter_model: Vec<FilterCondition>,
     pub sort: Option<SortInfo>,
-    /// When set, limits the export to a single page of results (current visible rows).
     pub page: Option<u32>,
     pub page_size: Option<u32>,
 }
 
-/// Base64-encode bytes for export serialization.
 #[cfg(not(coverage))]
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};

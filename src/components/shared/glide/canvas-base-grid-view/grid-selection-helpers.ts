@@ -115,7 +115,6 @@ export function selectionWithFocusedCell(
   }
 }
 
-/** Rectangles covered by a selection (row selections become full-width row runs). */
 export function selectionRects(input: SelectionRectsInput): Rectangle[] {
   const { selection, columnCount, rowCount } = input
   const rects: Rectangle[] = []

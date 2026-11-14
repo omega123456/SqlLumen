@@ -1,12 +1,3 @@
-//! Bridge module for logging executed queries to the history table.
-//!
-//! History logging is now entirely backend-driven. The query command wrappers
-//! in `query.rs` call bridge functions here which:
-//! 1. Delegate to `execute_*_impl` for the actual MySQL query execution.
-//! 2. Fire-and-forget log history entries via `tauri::async_runtime::spawn`.
-//!
-//! The frontend never writes history; it only reads via `list_history` etc.
-
 use crate::db::history::{self, NewHistoryEntry};
 use crate::mysql::ddl_detector::{detect_ddl_tables, DdlDetectionResult};
 use crate::mysql::metadata_cache::{
@@ -24,7 +15,6 @@ use std::time::Instant;
 
 const MULTI_QUERY_BATCH_LABEL: &str = "(multi-query batch)";
 
-/// Fire-and-forget: insert a single history entry.
 pub(crate) fn single_row_count(succeeded: bool) -> i64 {
     if succeeded {
         return 1;
@@ -76,7 +66,6 @@ pub(crate) fn log_single_entry(db: &Arc<Mutex<Connection>>, entry: NewHistoryEnt
     });
 }
 
-/// Fire-and-forget: insert a batch of history entries.
 pub(crate) fn log_batch_entries(db: &Arc<Mutex<Connection>>, entries: Vec<NewHistoryEntry>) {
     if entries.is_empty() {
         return;
@@ -304,7 +293,6 @@ pub async fn execute_query_bridge(
     let sql = request.sql.as_str();
     let result = execute_query_impl(state, request).await;
 
-    // Still invalidate the metadata cache on success regardless of history logging.
     if result.is_ok() {
         invalidate_metadata_cache_for_executed_sql(state, session_id, sql);
     }
@@ -337,7 +325,6 @@ pub async fn execute_multi_query_bridge(
 
     match &result {
         Ok(multi) => {
-            // Still invalidate the metadata cache for successful statements regardless of history logging.
             invalidate_metadata_cache_for_successful_statements(state, session_id, multi);
             let records = multi
                 .results
@@ -347,7 +334,6 @@ pub async fn execute_multi_query_bridge(
             log_history_batch(state, session_id, records);
         }
         Err(error) => {
-            // A top-level error has no per-statement results, so the failing statement is unknown.
             let record = HistoryRecord::failed(MULTI_QUERY_BATCH_LABEL.to_string(), error);
             log_history_record(state, session_id, record);
         }

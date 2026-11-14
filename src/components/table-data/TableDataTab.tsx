@@ -1,10 +1,3 @@
-/**
- * TableDataTab — main container for the table data browser/editor.
- *
- * Replaces TableDataPlaceholder. Renders the toolbar, grid (or form view),
- * export dialog, and unsaved-changes dialog for a single table-data tab.
- */
-
 import { useTableDataStore } from '../../stores/table-data-store'
 import { useIsConnectionReadOnly } from '../../stores/connection-store'
 import { TableDataToolbar } from './TableDataToolbar'

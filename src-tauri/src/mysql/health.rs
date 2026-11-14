@@ -1,10 +1,3 @@
-//! Connection health monitoring with auto-reconnection and exponential backoff.
-//!
-//! After a connection is opened, a background tokio task is spawned that
-//! periodically pings the MySQL server. If a ping fails, the monitor sets
-//! the connection status to `Disconnected`, then enters a reconnection loop
-//! with a backoff schedule of 5 s → 15 s → 30 s (capped).
-
 #[cfg(any(not(coverage), test, feature = "test-utils"))]
 use crate::credentials;
 #[cfg(any(not(coverage), test, feature = "test-utils"))]
@@ -21,7 +14,6 @@ use tauri::{AppHandle, Runtime};
 use tauri::{Emitter, Manager};
 use tokio_util::sync::CancellationToken;
 
-/// Event payload emitted via `app_handle.emit()` when connection status changes.
 #[derive(serde::Serialize, Clone)]
 pub struct ConnectionStatusChangedPayload {
     #[serde(rename = "connectionId")]
@@ -30,8 +22,6 @@ pub struct ConnectionStatusChangedPayload {
     pub message: Option<String>,
 }
 
-/// Backoff schedule for reconnection attempts.
-/// Returns the delay before the next reconnection attempt based on the attempt number (0-indexed).
 pub fn backoff_duration(attempt: u32) -> Duration {
     match attempt {
         0 => Duration::from_secs(5),
@@ -40,14 +30,6 @@ pub fn backoff_duration(attempt: u32) -> Duration {
     }
 }
 
-/// Spawn a background health-check task for the given connection.
-///
-/// The task periodically pings the MySQL server at the configured keepalive
-/// interval. If a ping fails, it enters a reconnection loop with exponential
-/// backoff (5 s → 15 s → 30 s cap).
-///
-/// Returns a `CancellationToken` that can be used to stop the task (e.g., when
-/// the connection is closed).
 #[cfg(not(coverage))]
 pub fn spawn_health_monitor<R: Runtime>(
     connection_id: String,
@@ -118,11 +100,9 @@ async fn health_loop<R: Runtime>(
 ) {
     let connection_id = monitor.connection_id;
     let app_handle = monitor.app_handle;
-    // keepalive_secs is guaranteed > 0 here — the caller skips spawning when it's 0.
     let interval = Duration::from_secs(keepalive_secs);
 
     loop {
-        // Sleep for the keepalive interval, but exit early if cancelled.
         tokio::select! {
             _ = tokio::time::sleep(interval) => {}
             _ = token.cancelled() => { return; }
@@ -132,7 +112,6 @@ async fn health_loop<R: Runtime>(
             return;
         }
 
-        // Get pool from registry
         let pool = {
             let state = app_handle.state::<AppState>();
             state.registry.get_pool(connection_id)
@@ -141,12 +120,10 @@ async fn health_loop<R: Runtime>(
         let pool = match pool {
             Some(active_pool) => active_pool,
             None => {
-                // Connection was removed from registry (closed). Stop monitoring.
                 return;
             }
         };
 
-        // Attempt to ping the server
         query_log::log_outgoing_sql("SELECT 1");
         let ping_result = sqlx::query("SELECT 1").execute(&pool).await;
         if let Ok(ref result) = ping_result {
@@ -154,25 +131,18 @@ async fn health_loop<R: Runtime>(
         }
 
         if ping_result.is_ok() {
-            // Ping succeeded — connection is healthy. Continue.
             continue;
         }
 
-        // Ping failed — enter reconnection sequence.
         let ping_error = ping_result.unwrap_err().to_string();
 
-        // Set status to Disconnected
         monitor.update_and_emit(ConnectionStatus::Disconnected, Some(&ping_error));
 
-        // Enter reconnection loop
         let reconnected = reconnect_loop(monitor, token).await;
 
         if !reconnected {
-            // Cancelled during reconnection — exit the health loop
             return;
         }
-
-        // Reconnection succeeded — loop continues with normal health checks
     }
 }
 
@@ -183,8 +153,6 @@ enum ReconnectAttempt {
     Stop,
 }
 
-/// Reconnection loop with exponential backoff: 5 s → 15 s → 30 s (cap).
-/// Returns `true` if reconnection succeeded, `false` if cancelled.
 #[cfg(not(coverage))]
 async fn reconnect_loop<R: Runtime>(
     monitor: &HealthMonitor<'_, R>,
@@ -234,12 +202,10 @@ async fn reconnect_attempt<R: Runtime>(
         .state::<AppState>()
         .registry
         .get_connection_params(connection_id);
-    // The connection may have been removed from the registry while reconnecting.
     let Some(stored_params) = stored_params else {
         return ReconnectAttempt::Stop;
     };
 
-    // Build ConnectionParams from stored params, re-reading password by saved profile id.
     let password = match credentials::resolve_password(
         stored_params.profile_id.as_str(),
         stored_params.has_password,

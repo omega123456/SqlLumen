@@ -10,7 +10,6 @@ export interface QueryWorkspaceAiRailProps {
   tab: QueryEditorTabType
 }
 
-/** Fixed icon column on the right; opens the resizable AI chat panel. */
 export function QueryWorkspaceAiRail({ tab }: QueryWorkspaceAiRailProps) {
   const openPanel = useAiStore((state) => state.openPanel)
   const status = useQueryStore((state) => state.tabs[tab.id]?.tabStatus ?? 'idle')

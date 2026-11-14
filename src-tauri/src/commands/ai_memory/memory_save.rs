@@ -85,7 +85,6 @@ pub(super) async fn embed_saved_memory(
 }
 
 pub(super) fn discard_unembedded_memory(state: &AppState, memory: &AiMemory) {
-    // Best-effort cleanup: remove the orphaned memory row.
     if let Ok(conn) = state.db.lock() {
         let _ = storage::delete_memory_scoped(&conn, memory.scope, memory.id);
     }

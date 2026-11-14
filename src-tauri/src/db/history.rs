@@ -1,7 +1,6 @@
 use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
 
-/// A single query history entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryEntry {
@@ -17,7 +16,6 @@ pub struct HistoryEntry {
     pub error_message: Option<String>,
 }
 
-/// Data for inserting a new history entry.
 #[derive(Debug, Clone)]
 pub struct NewHistoryEntry {
     pub connection_id: String,
@@ -30,7 +28,6 @@ pub struct NewHistoryEntry {
     pub error_message: Option<String>,
 }
 
-/// Pagination result for history queries.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryPage {
@@ -40,7 +37,6 @@ pub struct HistoryPage {
     pub page_size: i64,
 }
 
-/// Insert a single history entry. Returns the new row id.
 pub fn insert_history(conn: &Connection, entry: &NewHistoryEntry) -> Result<i64> {
     let now = timestamp_now();
     conn.execute(
@@ -61,7 +57,6 @@ pub fn insert_history(conn: &Connection, entry: &NewHistoryEntry) -> Result<i64>
     Ok(conn.last_insert_rowid())
 }
 
-/// Insert multiple history entries in a single transaction.
 pub fn insert_history_batch(conn: &Connection, entries: &[NewHistoryEntry]) -> Result<()> {
     let tx = conn.unchecked_transaction()?;
     let now = timestamp_now();
@@ -110,8 +105,6 @@ pub fn list_history(conn: &Connection, query: &HistoryQuery<'_>) -> Result<Histo
 
     let offset = (page.max(1) - 1) * page_size;
 
-    // Build the shared WHERE clause and its bound parameters dynamically so the
-    // search/since filters compose without a combinatorial explosion of SQL.
     let mut where_clause = String::from("WHERE connection_id = ?1");
     let mut filter_params: Vec<Value> = vec![Value::Text(connection_id.to_string())];
     let mut next_index = 2;
@@ -159,13 +152,11 @@ pub fn list_history(conn: &Connection, query: &HistoryQuery<'_>) -> Result<Histo
     })
 }
 
-/// Delete a single history entry by ID.
 pub fn delete_history(conn: &Connection, id: i64) -> Result<bool> {
     let rows = conn.execute("DELETE FROM query_history WHERE id = ?1", params![id])?;
     Ok(rows > 0)
 }
 
-/// Delete all history entries for a connection.
 pub fn clear_history(conn: &Connection, connection_id: &str) -> Result<i64> {
     let rows = conn.execute(
         "DELETE FROM query_history WHERE connection_id = ?1",
@@ -174,8 +165,6 @@ pub fn clear_history(conn: &Connection, connection_id: &str) -> Result<i64> {
     Ok(rows as i64)
 }
 
-/// Prune history for a single connection: delete entries older than 90 days,
-/// then enforce max 10,000 entries.
 pub fn prune_history_for_connection(conn: &Connection, connection_id: &str) -> Result<i64> {
     let cutoff = chrono::Utc::now() - chrono::Duration::days(90);
     let cutoff_str = cutoff.to_rfc3339();
@@ -200,7 +189,6 @@ pub fn prune_history_for_connection(conn: &Connection, connection_id: &str) -> R
     Ok(age_deleted + count_deleted)
 }
 
-/// Prune history for all connections.
 pub fn prune_all_history(conn: &Connection) -> Result<i64> {
     let connection_ids: Vec<String> = {
         let mut stmt = conn.prepare("SELECT DISTINCT connection_id FROM query_history")?;
@@ -231,7 +219,6 @@ fn map_row(row: &rusqlite::Row) -> Result<HistoryEntry> {
     })
 }
 
-/// ISO-8601 timestamp string.
 fn timestamp_now() -> String {
     chrono::Utc::now().to_rfc3339()
 }

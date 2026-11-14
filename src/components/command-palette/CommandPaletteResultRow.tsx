@@ -95,7 +95,6 @@ export function CommandPaletteResultRow({
   onSelect,
 }: CommandPaletteResultRowProps) {
   const highlightedName = useMemo(() => renderHighlightedName(result), [result])
-  // Columns show their data type; objects show "<Kind> · <database>" (prototype `.pi-row .db`).
   const metaLabel = result.metaLabel ?? `${KIND_LABELS[result.objectType]} · ${result.database}`
 
   const hasTrailingContent = result.objectType === 'table' || isRecent

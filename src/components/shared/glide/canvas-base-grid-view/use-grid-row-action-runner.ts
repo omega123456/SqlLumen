@@ -71,13 +71,6 @@ async function runFetchingRowAction(request: FetchingRowActionRequest): Promise<
   return ok
 }
 
-/**
- * Run a grid action over `ranges` of view positions. Rows that are already
- * loaded are used directly; in windowed mode missing rows are fetched first
- * (in 2,000-row chunks, with progress after 1 s and Cancel for multi-chunk
- * fetches). Nothing is written until every row has loaded. `act` receives a
- * row lookup by view position. Returns true when `act` ran.
- */
 export function useGridRowActionRunner(model: GridViewModel): RowActionRunner {
   const { isWindowed, rowCount, source } = model
   const { rowActions } = model.props

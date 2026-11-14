@@ -1,12 +1,3 @@
-/**
- * Shared execute-query planning logic.
- *
- * Extracted from AppLayout.tsx so both the app's keyboard shortcut flow
- * and the query store's expired-result retry action can decide between
- * single-statement, CALL, and multi-statement execution using the same
- * routing rules.
- */
-
 import { isCallSql } from '../stores/query-store'
 import type { ConnectionTabRequest } from './ipc/requests'
 import {

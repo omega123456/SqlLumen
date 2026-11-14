@@ -3,7 +3,6 @@ import styles from './Switch.module.css'
 
 export type SwitchProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'role'>
 
-/** Fluent toggle switch with an On/Off caption, on the native checkbox (prototype `.sw-t`). */
 export const Switch = forwardRef<HTMLInputElement, SwitchProps>(function Switch(
   { className, checked, ...rest },
   ref

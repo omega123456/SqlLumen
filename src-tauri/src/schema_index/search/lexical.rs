@@ -2,8 +2,6 @@ use rusqlite::{params, Connection, Result};
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 
-// Lexical boost constants — normalized to [0, 1] range.
-// These are multiplied by λ (lexical_weight) before being added to cosine scores.
 const DIRECT_TABLE_MATCH_SCORE: f64 = 1.0;
 const IDENTIFIER_EXACT_MATCH_SCORE: f64 = 0.8;
 const DIRECT_TABLE_SEGMENT_MATCH_SCORE: f64 = 0.5;
@@ -97,7 +95,6 @@ const SQL_STOPWORDS: &[&str] = &[
     "min",
     "max",
     "id",
-    // NL filler words
     "list",
     "me",
     "get",
@@ -265,28 +262,19 @@ fn table_name_segment_matches(table_name: &str, token: &str) -> bool {
     table_name.split('_').any(|segment| segment == token)
 }
 
-/// Check if a token is a prefix of the table name or any of its segments,
-/// or if the table name matches after basic plural normalization.
-/// Returns a match quality: 1.0 for exact, 0.7 for prefix, 0.5 for
-/// substring, 0.0 for no match.
 fn fuzzy_name_match(table_name: &str, token: &str) -> f64 {
-    // Exact match
     if table_name == token {
         return 1.0;
     }
     if is_same_word_ignoring_plural(table_name, token) {
         return PLURAL_MATCH_QUALITY;
     }
-    // Token is a prefix of the table name (e.g. "rfx" → "rfxtracking")
-    // Require at least 3 chars for prefix matching to avoid noise
     let is_table_name_prefix =
         token.len() >= MIN_PREFIX_MATCH_CHARS && table_name.starts_with(token);
     if is_table_name_prefix {
-        // Score proportional to how much of the table name is covered
         let coverage = token.len() as f64 / table_name.len() as f64;
         return TABLE_PREFIX_BASE_QUALITY + PREFIX_COVERAGE_QUALITY_RANGE * coverage;
     }
-    // Token is a prefix of a segment
     for segment in table_name.split('_') {
         if segment == token {
             return 1.0;
@@ -307,7 +295,6 @@ fn is_same_word_ignoring_plural(word: &str, other_word: &str) -> bool {
     normalize_plural(word) == normalize_plural(other_word)
 }
 
-/// Naive plural normalization: strip trailing 's' if the word is long enough.
 fn normalize_plural(word: &str) -> &str {
     let is_plural = word.len() >= MIN_PLURAL_WORD_CHARS && word.ends_with('s');
     if !is_plural {
@@ -316,12 +303,9 @@ fn normalize_plural(word: &str) -> &str {
     &word[..word.len() - 1]
 }
 
-/// Compute IDF weight for a segment: log(N / df).
-/// Returns a value in roughly [0, log(N)] range, capped at 1.0 for normalization.
 fn idf_weight(segment: &str, segment_df: &HashMap<String, usize>, total_tables: usize) -> f64 {
     let df = segment_df.get(segment).copied().unwrap_or(1).max(1);
     let raw_idf = (total_tables as f64 / df as f64).ln();
-    // Normalize: cap at a reasonable max so IDF doesn't blow up scores
     raw_idf.clamp(0.0, MAX_RAW_IDF) / MAX_RAW_IDF
 }
 
@@ -341,7 +325,6 @@ fn direct_match_score(
     signals: &LexicalSignals<'_>,
 ) -> Option<f64> {
     let candidates = signals.direct_table_candidates;
-    // Direct table match (FROM users, schema.users) — full score, no IDF needed
     let qualified = QualifiedIdentifier {
         db_name: Some(table.db_name.to_string()),
         table_name: table.table_name.to_string(),
@@ -399,7 +382,6 @@ fn direct_candidate_terms<'a>(
         })
 }
 
-/// Fuzzy match: token "brand" matches table "brands" (plural) or "rfx" matches "rfxtracking" (prefix).
 fn best_fuzzy_score(table_name: &str, signals: &LexicalSignals<'_>) -> f64 {
     identifier_terms(signals)
         .chain(direct_candidate_terms(signals))
@@ -407,7 +389,6 @@ fn best_fuzzy_score(table_name: &str, signals: &LexicalSignals<'_>) -> f64 {
         .fold(0.0f64, f64::max)
 }
 
-/// Plain segment matching for cases the fuzzy match did not cover.
 fn segment_fallback_score(table_name: &str, signals: &LexicalSignals<'_>) -> f64 {
     let identifier_segment_terms = signals.identifier_tokens.iter().map(|token| ScoredTerm {
         text: token,

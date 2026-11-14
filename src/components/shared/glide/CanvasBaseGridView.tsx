@@ -11,7 +11,6 @@ export type {
   GridRowActionVerb,
 } from './canvas-base-grid-view/canvas-grid-types'
 
-/** Grid well (prototype `.p-grid`): a divider sits above the header row. */
 const GRID_WELL_STYLE: CSSProperties = {
   position: 'relative',
   width: '100%',

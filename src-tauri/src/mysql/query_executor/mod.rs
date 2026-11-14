@@ -1,6 +1,3 @@
-//! Query execution engine: runs SQL against MySQL connections,
-//! stores paginated results, and enforces read-only restrictions.
-
 use crate::commands::requests::ConnectionTabRequest;
 use crate::mysql::cache_status::cache_status_json;
 use crate::mysql::result_cache::{CacheKey, SlotWriteTarget};
@@ -38,14 +35,10 @@ pub use multi_query_types::*;
 pub use statement_rules::*;
 pub use value_ordering::*;
 
-/// One cached result row. Rows are shared by pointer between the cache, IPC
-/// payloads, sort output and exports, so editing one row never copies the rest.
 pub type SharedRow = Arc<[serde_json::Value]>;
 
-/// A full cached row set (serializes identically to `Vec<Vec<Value>>`).
 pub type SharedRows = Arc<Vec<SharedRow>>;
 
-/// Column metadata returned from a query result.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ColumnMeta {
@@ -53,68 +46,40 @@ pub struct ColumnMeta {
     pub data_type: String,
 }
 
-/// Why a truncated result cannot be exported in full by re-running its SQL.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum FullExportBlockedReason {
-    /// A `CALL`: re-running would repeat the procedure's writes.
     Call,
-    /// A locking `SELECT` (`FOR UPDATE`, `FOR SHARE`, `LOCK IN SHARE MODE`).
     Locking,
-    /// The database the query ran in could not be read back after truncation.
     UnknownDatabase,
 }
 
-/// The session database a result's SQL ran in (re-run context).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum RunDatabase {
-    /// Not captured: only truncated, re-runnable results read `SELECT DATABASE()`.
     #[default]
     NotCaptured,
-    /// `SELECT DATABASE()` returned NULL (no default database).
     NoDatabase,
-    /// The session's current database when the query ran.
     Named(String),
 }
 
-/// A stored result set in memory, keyed by (connection_id, tab_id).
-///
-/// `rows` are the base rows in their original order. `view` (when present) is a
-/// permutation of base-row indices encoding the current sort, filter and
-/// tombstone exclusion; `None` means the identity view (no sort, filter or
-/// tombstones). All view fields are written only through
-/// `ResultCache::modify_slot_in_place_if_current`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredResult {
     pub query_id: String,
     pub columns: Vec<ColumnMeta>,
     pub rows: SharedRows,
-    /// Server-execution-only time (narrow): up to first row / header availability.
     pub execution_time_ms: u64,
-    /// Combined time (execution + row transfer + serialization). Equals the
-    /// single value reported before the timing split.
     pub total_time_ms: u64,
     pub affected_rows: u64,
     pub auto_limit_applied: bool,
-    /// Current view over `rows` (`None` = identity).
     pub view: Option<Arc<Vec<u32>>>,
-    /// Sort and filters the current view was built from.
     pub view_spec: crate::mysql::result_view::ResultViewSpec,
-    /// Monotonic view version, bumped on every view or tombstone change.
     pub view_version: u64,
-    /// Base indices of deleted rows (excluded from every view).
     pub tombstones: Arc<std::collections::BTreeSet<u32>>,
-    /// True when at least one row beyond the ceiling was seen.
     pub truncated: bool,
-    /// Row ceiling in force when this result ran.
     pub row_ceiling: usize,
-    /// The LIMIT injected by auto-LIMIT (after clamping), if any.
     pub applied_row_limit: Option<usize>,
-    /// Re-run context: the SQL that produced this result.
     pub source_sql: String,
-    /// Re-run context: the session database when the query ran.
     pub run_database: RunDatabase,
-    /// Re-run context: why a full re-run export is not allowed, if it is not.
     pub full_export_blocked_reason: Option<FullExportBlockedReason>,
 }
 
@@ -169,23 +134,18 @@ impl StoredResult {
         Self::new(StoredResultParts::empty(query_id))
     }
 
-    /// Live base rows: all rows minus tombstones.
     pub fn live_row_count(&self) -> usize {
         self.rows.len().saturating_sub(self.tombstones.len())
     }
 }
 
-/// Response for `execute_query`.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecuteQueryResult {
     pub query_id: String,
     pub columns: Vec<ColumnMeta>,
-    /// Live base rows (tombstones excluded).
     pub total_rows: usize,
-    /// Server-execution-only time (narrow).
     pub execution_time_ms: u64,
-    /// Combined time (execution + transfer + serialization).
     pub total_time_ms: u64,
     pub affected_rows: u64,
     pub auto_limit_applied: bool,
@@ -219,7 +179,6 @@ impl From<MultiQueryResultItem> for ExecuteQueryResult {
     }
 }
 
-/// Table metadata for the autocomplete schema cache.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TableInfo {
@@ -230,7 +189,6 @@ pub struct TableInfo {
     pub data_size: u64,
 }
 
-/// Routine metadata for the autocomplete schema cache.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoutineMeta {
@@ -250,7 +208,6 @@ pub struct TriggerMeta {
     pub name: String,
 }
 
-/// Full schema metadata response for autocomplete cache.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SchemaMetadata {
@@ -260,7 +217,6 @@ pub struct SchemaMetadata {
     pub routines: std::collections::HashMap<String, Vec<RoutineMeta>>,
 }
 
-/// Full schema metadata response including foreign keys and indexes (for AI assistant context).
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SchemaMetadataFull {
@@ -275,7 +231,6 @@ pub struct SchemaMetadataFull {
     pub indexes: std::collections::HashMap<String, Vec<crate::mysql::schema_queries::IndexInfo>>,
 }
 
-/// Metadata for a table detected in a SQL query, used for inline editing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueryTableEditInfo {

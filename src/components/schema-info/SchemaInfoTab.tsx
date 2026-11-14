@@ -35,7 +35,6 @@ export interface SchemaInfoTabProps {
 
 type SubTab = NonNullable<SchemaInfoTabType['subTabId']>
 
-/** Which sub-tabs are visible per object type. */
 const SUB_TAB_VISIBILITY: Record<ObjectType, SubTab[]> = {
   table: ['columns', 'indexes', 'fks', 'ddl'],
   view: ['columns', 'ddl'],

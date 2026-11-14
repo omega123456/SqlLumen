@@ -143,10 +143,6 @@ export async function getRoutineParameters(
   return fetchPromise
 }
 
-/**
- * Remove all cache entries for a connection.
- * Also clears pending fetches and increments generation to prevent stale repopulation.
- */
 export function invalidateRoutineCache(connectionId: string): void {
   const prefix = `${connectionId}:`
 
@@ -165,14 +161,6 @@ export function invalidateRoutineCache(connectionId: string): void {
   incrementGeneration(connectionId)
 }
 
-/**
- * Synchronous cache getter — returns what is already in the cache without
- * triggering any IPC.
- *
- * - Returns a `RoutineParameterCacheEntry` if the entry is cached and valid.
- * - Returns `null` if the key was fetched but explicitly not found.
- * - Returns `undefined` if the key has not been fetched yet.
- */
 export function getCachedRoutineParameters(
   connectionId: string,
   database: string,
@@ -194,9 +182,6 @@ export function getCachedRoutineParameters(
   return anyFetched ? null : undefined
 }
 
-/**
- * Clear all caches. Primarily for test cleanup.
- */
 export function _clearAllRoutineCaches(): void {
   cacheMap.clear()
   pendingFetches.clear()

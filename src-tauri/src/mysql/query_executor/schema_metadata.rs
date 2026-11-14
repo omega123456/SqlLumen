@@ -1,7 +1,5 @@
 use super::*;
 
-// ── Row decoding ───────────────────────────────────────────────────────────────
-
 #[cfg(not(coverage))]
 fn decode_unchecked_string(row: &sqlx::mysql::MySqlRow, column_index: usize) -> Option<String> {
     if let Ok(value) = row.try_get_unchecked::<Option<String>, _>(column_index) {
@@ -230,8 +228,6 @@ pub async fn fetch_schema_metadata_impl(
     })
 }
 
-/// Coverage stub: validates connection lookup and constructs all metadata types
-/// (TableInfo, RoutineMeta, SchemaMetadata) to exercise their Serialize impls.
 #[cfg(coverage)]
 pub async fn fetch_schema_metadata_impl(
     state: &AppState,
@@ -242,7 +238,6 @@ pub async fn fetch_schema_metadata_impl(
         .get_pool(connection_id)
         .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
 
-    // Construct all metadata types to exercise their code paths
     let mut tables = std::collections::HashMap::new();
     tables.insert(
         "stub_db".to_string(),
@@ -292,7 +287,6 @@ fn batch_or_empty<T>(
     })
 }
 
-/// Full schema metadata including foreign keys and indexes — real implementation.
 #[cfg(not(coverage))]
 pub async fn fetch_schema_metadata_full_impl(
     state: &AppState,
@@ -303,7 +297,6 @@ pub async fn fetch_schema_metadata_full_impl(
         query_all_views_batch,
     };
 
-    // First get the base metadata (databases, tables, columns, routines)
     let base = fetch_schema_metadata_impl(state, connection_id).await?;
 
     let pool = state
@@ -311,10 +304,8 @@ pub async fn fetch_schema_metadata_full_impl(
         .get_pool(connection_id)
         .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
 
-    // Extract database names for batch queries
     let db_names: Vec<String> = base.databases.clone();
 
-    // Run all additive batch queries concurrently.
     let (foreign_keys, indexes, views, triggers) = tokio::join!(
         async {
             batch_or_empty(
@@ -339,7 +330,6 @@ pub async fn fetch_schema_metadata_full_impl(
     })
 }
 
-/// Coverage stub for `fetch_schema_metadata_full_impl`.
 #[cfg(coverage)]
 pub async fn fetch_schema_metadata_full_impl(
     state: &AppState,

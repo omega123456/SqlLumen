@@ -7,7 +7,6 @@ const EDITABLE_CONTENTEDITABLE_VALUES: ReadonlySet<string | null> = new Set([
   'plaintext-only',
 ])
 
-/** Input types that support text editing context actions (cut/copy/paste). */
 const EDITABLE_INPUT_TYPES = new Set([
   '',
   'email',
@@ -29,9 +28,6 @@ export interface MenuPlacement {
   margin?: number
 }
 
-/**
- * Keeps a fixed-position context menu inside the viewport.
- */
 export function clampContextMenuPosition({
   requestedX,
   requestedY,
@@ -63,11 +59,6 @@ export interface ContextMenuOpenPoint {
   anchor: Element | null
 }
 
-/**
- * Context menus use `position: fixed`. Inside a transformed `<dialog>` (e.g. centered with translate),
- * fixed is relative to the dialog — not the viewport — and modal dialogs paint in the top layer, so
- * menus must be portaled **into** the open dialog and positioned in **local** coordinates.
- */
 export function getContextMenuPortalRoot(anchor: Element | null): HTMLElement {
   if (typeof document === 'undefined') {
     throw new Error('document is not available')
@@ -96,9 +87,6 @@ export interface PortalMenuPlacement {
   margin?: number
 }
 
-/**
- * Computes `left` / `top` for a fixed menu inside `portalRoot` so it aligns with a viewport pointer.
- */
 export function positionContextMenuInPortal({
   portalRoot,
   clientX,
@@ -133,10 +121,6 @@ export function positionContextMenuInPortal({
   })
 }
 
-/**
- * Dialog-local menus should use absolute positioning because desktop webviews can anchor `position: fixed`
- * differently for top-layer dialog descendants than browsers do.
- */
 export function getContextMenuPositionMode(portalRoot: HTMLElement): 'fixed' | 'absolute' {
   return isDocumentBody(portalRoot) ? 'fixed' : 'absolute'
 }
@@ -169,17 +153,10 @@ function isContentEditableField(element: HTMLElement): boolean {
   return element.isContentEditable
 }
 
-/**
- * True when the event target is inside an editable field we handle with the global text menu.
- * Read-only text fields return true (copy may still apply); disabled fields return false.
- */
 export function isEditableFieldElement(target: EventTarget | null): boolean {
   return resolveEditableFieldFromTarget(target) !== null
 }
 
-/**
- * Returns the host element to focus for cut/copy/paste, or null if we should not show the text menu.
- */
 export function resolveEditableFieldFromTarget(target: EventTarget | null): HTMLElement | null {
   const startElement = startElementForTarget(target)
   if (!startElement) {
@@ -226,9 +203,6 @@ function editableTextControl(control: Element): HTMLElement | null {
   return control
 }
 
-/**
- * True when the target is inside a disabled text control (suppress native menu without opening group menus, etc.).
- */
 export function isInsideDisabledTextControl(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) {
     return false

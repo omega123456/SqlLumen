@@ -20,9 +20,6 @@ pub struct MemoryMove<'a> {
     pub embedding: &'a [f32],
 }
 
-/// The scope (level) a memory belongs to.
-///
-/// Serializes over IPC as `"connection" | "group" | "global"`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum MemoryScope {
@@ -32,7 +29,6 @@ pub enum MemoryScope {
 }
 
 impl MemoryScope {
-    /// Stable string representation, also used as a serde value and in owner keys.
     pub fn as_str(&self) -> &'static str {
         match self {
             MemoryScope::Connection => "connection",
@@ -42,10 +38,6 @@ impl MemoryScope {
     }
 }
 
-/// Unified row representation across all three levels for IPC.
-///
-/// Connection rows set `connection_id`; group rows set `group_id`; global rows
-/// set neither. `scope` is the discriminator.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiMemory {
@@ -58,10 +50,6 @@ pub struct AiMemory {
     pub source: String,
 }
 
-/// Progress event payload for re-embedding.
-///
-/// `owner_key` is a generic owner identifier — `"global"`, `"group_{id}"`, or a
-/// connection id — so the same event shape covers every scope.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MemoryReembedProgress {

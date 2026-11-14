@@ -6,7 +6,6 @@ const DEFAULT_EDITOR_FONT_SIZE = Number(SETTINGS_DEFAULTS['editor.fontSize'])
 const DEFAULT_EDITOR_LINE_HEIGHT = Number(SETTINGS_DEFAULTS['editor.lineHeight'])
 const DECIMAL_RADIX = 10
 
-// Hoisted so nested objects keep their identity: each Monaco updateOptions() walks every model.
 const STATIC_EDITOR_OPTIONS: MonacoType.editor.IStandaloneEditorConstructionOptions = {
   suggestFontSize: 14,
   suggestLineHeight: 36,

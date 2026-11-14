@@ -80,8 +80,6 @@ fn delete_chunks_then_drop_vec_table(
         .map_err(|error| format!("Failed to drop vec table: {error}"))
 }
 
-/// Handle model change: if the stored model differs from config, drop the vec table,
-/// clear all chunks, detect new dimension, and recreate.
 pub(super) async fn prepare_vector_storage(
     target: VectorStorageTarget<'_>,
     http_client: &reqwest::Client,

@@ -11,7 +11,6 @@ export async function setWindowTheme(theme: 'light' | 'dark' | null): Promise<vo
   await invokeArgumentCommand({ command: 'set_window_theme', argument: { theme } })
 }
 
-/** CSS `zoom` scales the page's px but not pointer or rect coordinates, so overlays drift. */
 export async function setWebviewZoom(level: number): Promise<void> {
   await invokeArgumentCommand({
     command: 'plugin:webview|set_webview_zoom',
@@ -23,7 +22,6 @@ export async function getWindowBackdrop(): Promise<WindowBackdrop> {
   return invokeArgumentCommand({ command: 'get_window_backdrop', argument: NO_ARGUMENTS })
 }
 
-/** Keeps the OS-drawn title bar in the app theme; `system` lets it follow the OS. */
 export async function syncNativeTheme(preference: WindowThemePreference): Promise<void> {
   try {
     await setWindowTheme(preference === 'system' ? null : preference)
@@ -32,10 +30,6 @@ export async function syncNativeTheme(preference: WindowThemePreference): Promis
   }
 }
 
-/**
- * Marks `<html>` with `mica` when Rust applied the Windows 11 backdrop, so the title and
- * connection strip base surfaces turn transparent and let it show through.
- */
 export async function applyWindowBackdrop(): Promise<void> {
   try {
     const backdrop = await getWindowBackdrop()

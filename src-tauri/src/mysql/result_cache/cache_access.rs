@@ -4,8 +4,6 @@ impl<V> GenericCache<V>
 where
     V: Clone + Send + Sync + Serialize + DeserializeOwned + std::fmt::Debug + 'static,
 {
-    /// Retrieve a cached value by connection and tab ID.
-    /// On cache miss, attempts to re-warm from a spill file.
     pub fn get(&self, connection_id: &str, tab_id: &str) -> CacheGet<V> {
         let key = (connection_id.to_string(), tab_id.to_string());
 
@@ -103,7 +101,6 @@ where
         let _ = self.insert_if_current(key, write);
     }
 
-    /// Returns the current invalidation version for the key.
     pub fn current_invalidation_version(&self, connection_id: &str, tab_id: &str) -> u64 {
         let key = (connection_id.to_string(), tab_id.to_string());
         let versions = self
@@ -158,7 +155,6 @@ where
         true
     }
 
-    /// Remove (invalidate) a cached value without spill cleanup.
     pub fn remove(&self, connection_id: &str, tab_id: &str) {
         let key = (connection_id.to_string(), tab_id.to_string());
         self.cache.invalidate(&key);
@@ -166,7 +162,6 @@ where
         self.remove_last_touched(&key);
     }
 
-    /// Remove a cached value and any associated spill artifacts.
     pub fn remove_with_spill_cleanup(&self, connection_id: &str, tab_id: &str) {
         let key = (connection_id.to_string(), tab_id.to_string());
         let invalidation_version = self.next_generation.fetch_add(1, Ordering::Relaxed);
@@ -205,32 +200,26 @@ where
         self.forget_spill_markers(&key);
     }
 
-    /// Update the TTL used for future cache interactions.
     pub fn set_ttl(&self, seconds: u64) {
         self.ttl_secs.store(seconds, Ordering::Relaxed);
     }
 
-    /// Current TTL in seconds (for testing).
     pub fn ttl_seconds(&self) -> u64 {
         self.ttl_secs.load(Ordering::Relaxed)
     }
 
-    /// Session UUID generated at construction.
     pub fn session_id(&self) -> &str {
         &self.session_id
     }
 
-    /// Base spill directory path.
     pub fn spill_dir(&self) -> &PathBuf {
         &self.spill_dir
     }
 
-    /// Run pending moka maintenance tasks (forces lazy eviction).
     pub fn run_pending_tasks(&self) {
         self.cache.run_pending_tasks();
     }
 
-    /// Block until spill writes already queued by the listener are completed.
     pub fn flush_spill_jobs(&self) {
         let (ack_tx, ack_rx) = mpsc::channel();
         if self
@@ -244,12 +233,10 @@ where
         let _ = ack_rx.recv();
     }
 
-    /// Current number of entries in the cache.
     pub fn entry_count(&self) -> u64 {
         self.cache.entry_count()
     }
 
-    /// Snapshot of the LRU order (front = least recently used).
     pub fn lru_snapshot(&self) -> Vec<(String, String)> {
         let lru = self.lru_order.read().expect("lru_order lock poisoned");
         lru.iter().cloned().collect()

@@ -1,15 +1,3 @@
-//! Batch SQL execution and stored procedure multi-result-set retrieval using `mysql_async`.
-//!
-//! This module handles:
-//! - **Batch execution** (`execute_multi_query`): Executes multiple SQL statements sequentially
-//!   on a single `mysql_async` connection, preserving session state.
-//! - **CALL execution** (`execute_call_query`): Executes a single `CALL` statement and collects
-//!   all returned result sets.
-//!
-//! Statements run on the connection's shared editor session (`crate::mysql::session`), so
-//! session state carries over between runs and query windows. Cancel support is provided via
-//! thread ID registration before any statements execute.
-
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 #[cfg(not(coverage))]
 use std::sync::Arc;
@@ -37,7 +25,6 @@ pub(crate) use row_stream::*;
 use statements::*;
 pub use value_serialization::*;
 
-/// Maximum safe integer in JavaScript (Number.MAX_SAFE_INTEGER = 2^53 - 1).
 pub const JS_SAFE_INTEGER_MAX: i64 = 9_007_199_254_740_991;
 
 pub fn json_from_i64(number: i64) -> serde_json::Value {
@@ -55,9 +42,6 @@ pub fn json_from_u64(number: u64) -> serde_json::Value {
     serde_json::Value::from(number)
 }
 
-/// Returns `true` if the SQL statement is a CALL statement.
-///
-/// Strips non-executable comments and checks the first keyword (case-insensitive).
 pub fn is_call_statement(sql: &str) -> bool {
     let stripped = crate::mysql::query_executor::strip_non_executable_comments(sql);
     let keyword = crate::mysql::query_executor::get_first_keyword(&stripped);

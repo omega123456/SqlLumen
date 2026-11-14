@@ -18,7 +18,6 @@ const COPIED_FEEDBACK_DURATION_MS = 1500
 export interface HistoryDetailPanelProps {
   entry: HistoryEntry | null
   onOpenInEditor: (entry: HistoryEntry) => void
-  /** Display name of the connection the history belongs to. */
   connectionName?: string
 }
 

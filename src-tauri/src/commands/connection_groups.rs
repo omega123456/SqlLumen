@@ -5,8 +5,6 @@ use serde::Deserialize;
 #[cfg(not(coverage))]
 use tauri::State;
 
-// --- Testable implementations (take &AppState instead of State<AppState>) ---
-
 pub fn create_connection_group_impl(state: &AppState, name: &str) -> Result<String, String> {
     let conn = lock_db(state)?;
     match connection_groups::insert_group(&conn, name) {
@@ -48,8 +46,6 @@ pub fn delete_connection_group_impl(state: &AppState, id: &str) -> Result<(), St
         Err(error) => Err(error.to_string()),
     }
 }
-
-// --- Thin Tauri command wrappers ---
 
 #[cfg(not(coverage))]
 #[tauri::command]

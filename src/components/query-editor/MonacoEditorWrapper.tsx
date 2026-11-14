@@ -40,7 +40,6 @@ function useMonacoShortcutBindings(): MonacoShortcutBindings {
   }
 }
 
-// Stable identity: @monaco-editor/react re-subscribes onDidChangeModelContent whenever onChange changes.
 function useEditorChangeHandler(tabId: string, overrideOnChange?: (value: string) => void) {
   const setContent = useQueryStore((state) => state.setContent)
   return useCallback(

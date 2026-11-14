@@ -1,12 +1,3 @@
-/**
- * Error-toast copy for failed Copy, Cut, Clear and Paste actions over result
- * rows (wireframe 8 of the windowed result delivery plan, verbatim).
- *
- * Every failure of one of these actions uses its action's string, whatever the
- * cause (rows that could not be fetched, or a clipboard read or write that was
- * refused). `results_expired` failures do not toast: they route to the
- * "Results expired" block instead.
- */
 export type ClipboardAction = 'copy' | 'cut' | 'clear' | 'paste'
 
 export interface ClipboardActionFailure {

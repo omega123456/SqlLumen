@@ -17,8 +17,6 @@ pub(super) fn update_job(
     }
 }
 
-/// Register a running job for `connection_id` (cleaning up stale ones first).
-/// Returns the job's shared cancel state.
 pub fn register_job(
     jobs: &ResultExportJobs,
     job_id: &str,
@@ -48,12 +46,10 @@ pub fn register_job(
     cancel
 }
 
-/// Record (or clear) the editor-session thread the job's re-run streams on.
 pub fn set_job_thread(jobs: &ResultExportJobs, job_id: &str, thread_id: Option<u64>) {
     update_job(jobs, job_id, |job| job.mysql_thread_id = thread_id);
 }
 
-/// True when cancel was requested for the job (or the job is unknown).
 pub fn is_cancel_requested(jobs: &ResultExportJobs, job_id: &str) -> bool {
     jobs.read()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -61,9 +57,6 @@ pub fn is_cancel_requested(jobs: &ResultExportJobs, job_id: &str) -> bool {
         .is_none_or(|job| job.cancel_requested)
 }
 
-/// A cancel `KILL QUERY` registered against a streaming job. The job waits
-/// for it (see [`wait_for_cancel_kills`]) before releasing the editor session.
-/// Dropping it marks the KILL finished, whether or not it was sent.
 #[derive(Debug)]
 pub struct CancelKill {
     pub thread_id: u64,
@@ -72,7 +65,6 @@ pub struct CancelKill {
 }
 
 impl CancelKill {
-    /// Record that the KILL reached the server.
     pub fn mark_sent(&self) {
         self.cancel.kill_sent.store(true, Ordering::SeqCst);
     }
@@ -85,10 +77,6 @@ impl Drop for CancelKill {
     }
 }
 
-/// Flag a job for cancellation. Returns the KILL to send when the job is
-/// running and its re-run is streaming. The KILL is registered under the
-/// job-map write lock, so once the job clears its thread id no new KILL can
-/// target its session.
 pub fn request_cancel(jobs: &ResultExportJobs, job_id: &str) -> Result<Option<CancelKill>, String> {
     let mut map = write_jobs(jobs);
     let job = map
@@ -109,8 +97,6 @@ pub fn request_cancel(jobs: &ResultExportJobs, job_id: &str) -> Result<Option<Ca
     }))
 }
 
-/// Wait until every registered cancel KILL of a job has finished, at most
-/// `timeout`. Returns `false` (with a warning) when the wait timed out.
 pub async fn wait_for_cancel_kills(
     cancel: &ResultExportCancel,
     job_id: &str,
@@ -118,8 +104,6 @@ pub async fn wait_for_cancel_kills(
 ) -> bool {
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
-        // Register for the notification before checking, so a KILL that
-        // finishes in between still wakes this task.
         let notified = cancel.kill_done.notified();
         let kills_in_flight = cancel.kills_in_flight.load(Ordering::SeqCst);
         if kills_in_flight == 0 {
@@ -139,7 +123,6 @@ pub(super) fn is_running_on_connection(job: &ResultExportJobProgress, connection
     job.status == ResultExportStatus::Running && job.connection_id == connection_id
 }
 
-/// Ids of the running jobs of one connection.
 pub fn running_job_ids_for_connection(jobs: &ResultExportJobs, connection_id: &str) -> Vec<String> {
     let map = jobs.read().unwrap_or_else(|poisoned| poisoned.into_inner());
     let mut ids: Vec<String> = map
@@ -151,8 +134,6 @@ pub fn running_job_ids_for_connection(jobs: &ResultExportJobs, connection_id: &s
     ids
 }
 
-/// Progress of a job (`get_result_export_progress`). A running job reports
-/// its live elapsed time.
 pub fn get_result_export_progress_impl(
     state: &AppState,
     job_id: &str,
@@ -169,8 +150,6 @@ pub fn get_result_export_progress_impl(
     Ok(progress)
 }
 
-/// Cancel a job: flag it, then `KILL QUERY` its re-run if it is streaming. A
-/// job still queued for the session sees the flag when it gets the session.
 pub async fn cancel_result_export_impl(state: &AppState, job_id: &str) -> Result<(), String> {
     if let Some(kill) = request_cancel(&state.result_export_jobs, job_id)? {
         tracing::info!(
@@ -191,8 +170,6 @@ pub async fn cancel_result_export_impl(state: &AppState, job_id: &str) -> Result
     Ok(())
 }
 
-/// Cancel every running export of a connection. Called by `close_connection`
-/// before the registry entry (and so the pool the KILL needs) is removed.
 pub async fn cancel_result_exports_for_connection(state: &AppState, connection_id: &str) {
     for job_id in running_job_ids_for_connection(&state.result_export_jobs, connection_id) {
         if let Err(error) = cancel_result_export_impl(state, &job_id).await {

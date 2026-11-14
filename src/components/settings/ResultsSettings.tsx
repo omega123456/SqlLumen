@@ -28,7 +28,6 @@ const MAX_TABS_PER_GROUP_OPTIONS = [
   { label: '20', value: '20' },
 ]
 
-/** The existing caption style (`--type-caption-size`, `--on-surface-variant`, 6px top margin). */
 const CAPTION_STYLE = {
   margin: '6px 0 0',
   fontSize: 'var(--type-caption-size)',
@@ -38,7 +37,6 @@ const CAPTION_STYLE = {
 
 const ERROR_CAPTION_STYLE = { ...CAPTION_STYLE, color: 'var(--error)' } as const
 
-/** The effective row ceiling for the cross-field caption, or null when invalid. */
 function parseMaxRows(value: string): number | null {
   if (!/^\d+$/.test(value.trim())) return null
   const parsed = Number(value.trim())

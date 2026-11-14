@@ -17,7 +17,6 @@ function readPxVar(name: string, fallback: number): number {
   return parseFloat(readCssVar(name)) || fallback
 }
 
-/** Re-renders when `data-theme` changes on the document element. */
 function useThemeVersion(): number {
   const [themeVersion, setThemeVersion] = useState(0)
 
@@ -33,10 +32,6 @@ function useThemeVersion(): number {
   return themeVersion
 }
 
-/**
- * Colour of the skeleton bar painted for rows that aren't loaded yet: the
- * resolved `--skeleton-base` token (Glide's theme has no skeleton colour).
- */
 export function useGlideSkeletonColor(): string {
   const themeVersion = useThemeVersion()
   return useMemo(() => {
@@ -51,9 +46,6 @@ export function useGlideGridTheme(): Partial<Theme> {
 
   return useMemo(() => {
     void themeVersion
-    // Glide builds every canvas font as `${style} ${fontFamily}`. The family is the UI font
-    // (headers); cell styles prepend the mono stack plus a trailing comma so cell text
-    // resolves to mono first: "13px <mono>, <ui>".
     const fontFamily = readCssVar('--font-body')
     const monoFamily = readCssVar('--font-mono')
     const cellFontSize = readCssVar('--type-mono-size') || '13px'

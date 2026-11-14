@@ -1,8 +1,5 @@
 use super::*;
 
-/// Generate, transform, and apply the DDL for a single object to the target.
-///
-/// All target writes go through the pinned connection.
 pub(super) async fn copy_object_structure(
     run: &CopyRun<'_>,
     target: &mut MySqlConnection,
@@ -39,12 +36,6 @@ pub(super) async fn copy_object_structure(
     ddl = rewrite_non_table_ddl_schema(&ddl, target_object);
 
     if options.drop_if_exists {
-        // Validate the identifier (length/shape) before interpolating it,
-        // matching the source-side SELECT / `ensure_target_database` path.
-        // `safe_identifier` returns the name wrapped in backticks with inner
-        // backticks doubled; `drop_if_exists_statement` re-wraps an already
-        // doubled-but-unwrapped name, so feed it the manually escaped form
-        // after the validation has run.
         safe_identifier(name)?;
         let escaped = name.replace('`', "``");
         safe_identifier(target_database)?;
@@ -60,8 +51,6 @@ pub(super) async fn copy_object_structure(
     run_target_statement(&mut *target, &ddl).await
 }
 
-/// Count the exact number of rows to copy from the source table so progress
-/// can report `rowsDone / rowsTotal` for the active table.
 pub async fn count_source_rows(
     source: &MySqlPool,
     source_database: &str,
@@ -91,8 +80,6 @@ pub(super) async fn truncate_target_table(
     target: &mut MySqlConnection,
     table: &str,
 ) -> Result<(), String> {
-    // Validate the target identifier the same way as the source-side
-    // SELECT instead of interpolating a raw, unvalidated name.
     let safe_target_table = safe_identifier(table)?;
     let safe_target_db = safe_identifier(&run.params.target_database)?;
     run_target_statement(
@@ -126,8 +113,6 @@ impl TableCopyBatch<'_> {
             .map(|column| format!("`{}`", column.name().replace('`', "``")))
             .collect::<Vec<_>>()
             .join(", ");
-        // Validate the target table identifier (length/shape) on the
-        // write path too, matching the source-side SELECT.
         let safe_target_table = safe_identifier(self.table)?;
         let safe_target_db = safe_identifier(&self.run.params.target_database)?;
         Ok(format!(
@@ -194,14 +179,6 @@ impl TableCopyBatch<'_> {
     }
 }
 
-/// Copy a single table's data as adaptive byte-budgeted multi-row INSERTs.
-///
-/// Streams source rows one at a time (never loading the whole table into
-/// RAM), accumulating rendered value-tuples into a batch and flushing the
-/// batch — to the pinned target connection — once the row cap or byte budget
-/// is reached. Updates `progress.rows_done` after each flushed batch and
-/// honors cancellation at batch boundaries. Returns `Ok(true)` if completed,
-/// `Ok(false)` if cancelled mid-way.
 pub(super) async fn copy_table_data(
     run: &CopyRun<'_>,
     target: &mut MySqlConnection,
@@ -211,8 +188,6 @@ pub(super) async fn copy_table_data(
         truncate_target_table(run, &mut *target, table).await?;
     }
 
-    // Stream rows from the source (never `fetch_all` — large tables would
-    // otherwise be loaded into RAM in full).
     let safe_db = safe_identifier(&run.params.source_database)?;
     let safe_table = safe_identifier(table)?;
     let select_sql = format!("SELECT * FROM {safe_db}.{safe_table}");
@@ -248,8 +223,6 @@ pub(super) async fn copy_table_data(
     Ok(true)
 }
 
-/// Render and execute one INSERT batch against the pinned target connection,
-/// then bump `progress.rows_done`. Returns the updated running row count.
 pub(super) async fn flush_batch(
     target: &mut MySqlConnection,
     insert: &PendingInsert<'_>,

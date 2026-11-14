@@ -1,8 +1,3 @@
-//! Tauri IPC command wrappers for structured application logs.
-//!
-//! Under `cfg(coverage)`, the Tauri command wrappers are excluded and tests
-//! exercise the `*_impl` functions directly.
-
 use crate::commands::helpers::lock_connection;
 #[cfg(not(coverage))]
 use crate::commands::run_blocking_with_state;

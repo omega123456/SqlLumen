@@ -27,7 +27,6 @@ export function openForeignKeyLookupFromKey(
   if (!foreignKeyLookup) return false
   event.preventDefault()
   event.stopPropagation()
-  // The glide overlay portal outranks the dialog z-index, so close it before opening the dialog.
   props.onClose(true, false)
   foreignKeyLookup.onFkLookup({
     columnKey: props.column.key,

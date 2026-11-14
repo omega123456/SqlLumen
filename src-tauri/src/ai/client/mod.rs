@@ -1,8 +1,3 @@
-//! HTTP streaming client for OpenAI-compatible chat completion endpoints.
-//!
-//! Sends a POST request and reads the SSE response, emitting Tauri events
-//! for each token chunk, completion, or error.
-
 use crate::ai::types::{
     AiChatRequest, AiTransport, ChunkKind, StreamChunkEvent, StreamDoneEvent, StreamErrorEvent,
 };
@@ -31,14 +26,10 @@ pub use responses_text::{
     merge_responses_event_type,
 };
 
-/// Buffer flush interval — tokens are accumulated and flushed roughly every 50ms
-/// to avoid flooding the IPC channel with per-token events.
 const FLUSH_INTERVAL: Duration = Duration::from_millis(50);
 
-/// Connect timeout for the HTTP client.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Overall request timeout (generous for long completions).
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(330);
 
 const STREAM_CANCELLED_MESSAGE: &str = "Stream cancelled";
@@ -59,11 +50,6 @@ impl ResponsesStreamError {
     }
 }
 
-/// Derive the chat completions URL from a base URL.
-///
-/// Thin wrapper around [`crate::ai::url::normalise_openai_url`] that pins the
-/// final segment to `chat/completions`. Kept `pub` so existing call sites and
-/// integration tests continue to have a single entry point for this use case.
 pub fn normalise_to_chat_completions_url(base_url: &str) -> String {
     crate::ai::url::normalise_openai_url(base_url, "chat/completions")
 }
@@ -168,15 +154,6 @@ async fn stream_with_preferred_api<R: Runtime>(
     }
 }
 
-/// Stream a chat completion from an OpenAI-compatible endpoint, emitting Tauri events.
-///
-/// The function makes a POST request with `stream: true`, reads SSE lines from
-/// the response body, buffers tokens at ~50ms intervals, and emits:
-/// - `ai-stream-chunk` with accumulated content
-/// - `ai-stream-done` on successful completion
-/// - `ai-stream-error` on any failure
-///
-/// Cancellation is supported via `tokio::select!` against the provided token.
 pub async fn stream_chat_completion<R: Runtime>(
     app_handle: &tauri::AppHandle<R>,
     request: AiChatRequest,
@@ -191,7 +168,6 @@ pub async fn stream_chat_completion<R: Runtime>(
         Ok(()) => {
             tracing::info!(stream_id = %stream_id, "AI stream completed");
         }
-        // Only emit error if not cancelled — cancellation is expected/normal.
         Err(error) if !cancellation_token.is_cancelled() => {
             tracing::error!(stream_id = %stream_id, error = %error, "AI stream error");
             let _ = app_handle.emit(

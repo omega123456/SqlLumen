@@ -255,9 +255,7 @@ pub(super) fn read_search_endpoints(
     profile_id: &str,
 ) -> Result<SearchEndpoints, String> {
     let embedding_model = read_setting(&state.db, EMBEDDING_MODEL_SETTING)?;
-    // Embedding endpoint (dedicated URL with chat-URL fallback) — used for query embedding.
     let embedding_endpoint = read_embedding_endpoint(&state.db)?;
-    // Chat endpoint (always the chat URL) — used for the LLM re-ranker (a chat model).
     let chat_endpoint = read_setting(&state.db, "ai.endpoint")?;
     tracing::debug!(
         profile_id = %profile_id,
@@ -273,8 +271,6 @@ pub(super) fn read_search_endpoints(
     })
 }
 
-/// Semantic search against the schema index — full multi-query pipeline
-/// with dedup, re-ranking, graph walk, and usage-signal boosts.
 #[cfg(not(coverage))]
 pub async fn semantic_search_impl(
     state: &AppState,
@@ -375,7 +371,6 @@ pub async fn semantic_search_impl(
         return Ok(vec![]);
     }
 
-    // Coverage stub — cannot embed without a real endpoint
     tracing::debug!(session_id = %session_id, "semantic_search (coverage stub): returning stub error");
     Err("Coverage stub: semantic search not available".to_string())
 }

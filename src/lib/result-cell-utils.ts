@@ -1,16 +1,5 @@
 import { isNullish } from './value-checks'
 
-/**
- * Shared utility for formatting result cell values across all view modes.
- *
- * Centralises the NULL/value rendering logic that was previously duplicated
- * in ResultGridView, ResultFormView, and ResultTextView.
- */
-
-/**
- * Formats a result cell value for display.
- * Returns { displayValue: string, isNull: boolean }
- */
 export function formatCellValue(value: unknown): { displayValue: string; isNull: boolean } {
   if (isNullish(value)) {
     return { displayValue: 'NULL', isNull: true }

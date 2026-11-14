@@ -20,7 +20,6 @@ export function HistoryFavoritesTab({ tab }: HistoryFavoritesTabProps) {
   const loadHistory = useHistoryStore((state) => state.loadHistory)
   const loadFavorites = useFavoritesStore((state) => state.loadFavorites)
 
-  // Load data when the tab mounts or connectionId changes
   useEffect(() => {
     if (connectionId) {
       loadHistory(connectionId)

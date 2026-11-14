@@ -13,9 +13,7 @@ export interface TabContextMenuItem {
   icon?: ReactNode
   disabled?: boolean
   destructive?: boolean
-  /** Keyboard shortcut hint shown right-aligned (e.g. `⇧ F1`). */
   shortcut?: string
-  /** Draw a separator below this item. */
   separatorAfter?: boolean
   onSelect: () => void
 }

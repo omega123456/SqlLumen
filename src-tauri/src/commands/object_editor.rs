@@ -36,8 +36,6 @@ pub struct RoutineParameter {
     pub ordinal_position: i32,
 }
 
-/// Response for `get_routine_parameters_with_return_type` — includes a `found` flag
-/// so the frontend can distinguish "zero-parameter routine" from "routine not found".
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoutineParametersWithFoundResponse {
@@ -98,7 +96,6 @@ fn check_not_read_only(state: &AppState, connection_id: &str) -> Result<(), Stri
     Ok(())
 }
 
-/// Map a lowercase object type string to its SQL keyword.
 fn object_type_keyword(object_type: &str) -> Result<&'static str, String> {
     match object_type {
         "view" => Ok("VIEW"),
@@ -122,12 +119,6 @@ pub struct ParsedDdlName {
 }
 
 pub fn parse_ddl_name(body: &str) -> Result<ParsedDdlName, String> {
-    // Capture groups:
-    //   1 = type keyword (PROCEDURE, FUNCTION, VIEW, TRIGGER, EVENT)
-    //   2 = backtick-quoted database
-    //   3 = unquoted database
-    //   4 = backtick-quoted name
-    //   5 = unquoted name
     let re = Regex::new(
         r"(?i)CREATE\s+(?:OR\s+REPLACE\s+)?(?:ALGORITHM\s*=\s*\w+\s+)?(?:DEFINER\s*=\s*\S+\s+)?(?:SQL\s+SECURITY\s+\w+\s+)?(\w+)\s+(?:(?:`((?:``|[^`])+)`|(\w+))\.)?(?:`((?:``|[^`])+)`|(\w+))",
     )
@@ -167,11 +158,6 @@ fn object_name_label(is_view: bool) -> &'static str {
     "Object"
 }
 
-/// Validate that a view DDL statement has the correct prefix for the given mode.
-///
-/// - **alter**: must start with `CREATE OR REPLACE [ALGORITHM=...] [DEFINER=...] [SQL SECURITY ...] VIEW`
-/// - **create**: must start with `CREATE [ALGORITHM=...] [DEFINER=...] [SQL SECURITY ...] VIEW`
-///   (rejects `CREATE OR REPLACE ...`)
 pub fn validate_view_ddl_prefix(body: &str, mode: &str) -> Result<(), String> {
     let trimmed = body.trim();
 

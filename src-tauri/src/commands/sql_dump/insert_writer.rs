@@ -86,15 +86,6 @@ impl<'a> TableInsertWriter<'a> {
     }
 }
 
-/// Stream rows from a `TryStream`, batch them, and write INSERT statements to the dump file.
-///
-/// This is the core streaming helper that replaces the old `fetch_all` + `write_data_inserts`
-/// approach. It writes LOCK TABLE once before the first batch, calls
-/// [`write_insert_batch`](sql_dump::write_insert_batch) per batch, and writes UNLOCK TABLE
-/// once after the last batch. Progress is updated after each batch flush.
-///
-/// Generic over the row type `R` so that tests can use `Vec<SqlDumpValue>` directly
-/// without constructing `MySqlRow`.
 pub async fn stream_to_dump<R, S, F, W>(
     stream: S,
     target: DumpTarget<'_, W>,
@@ -122,7 +113,6 @@ where
     };
     let loop_result = write_stream_rows(stream, &mut insert_writer, output).await;
 
-    // Always write UNLOCK if LOCK was written, regardless of success or error
     if insert_writer.header_written {
         writeln!(file, "UNLOCK TABLES;").map_err(write_error)?;
         writeln!(file).map_err(write_error)?;

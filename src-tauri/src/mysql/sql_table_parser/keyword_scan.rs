@@ -1,6 +1,5 @@
 use super::*;
 
-/// Get the first keyword (uppercased) from a trimmed SQL string.
 pub(super) fn first_keyword_upper(sql: &str) -> String {
     sql.chars()
         .take_while(|character| is_identifier_char(*character))
@@ -8,7 +7,6 @@ pub(super) fn first_keyword_upper(sql: &str) -> String {
         .to_uppercase()
 }
 
-/// Check if position `i` is at a word boundary (start of string, or previous char is not alphanumeric/underscore).
 pub(super) fn is_word_boundary_before(chars: &[char], position: usize) -> bool {
     if position == 0 {
         return true;
@@ -20,12 +18,10 @@ pub(super) fn is_keyword_at_word_start(chars: &[char], position: usize, keyword:
     is_word_boundary_before(chars, position) && matches_keyword_at(chars, position, keyword)
 }
 
-/// Check if position after keyword end is a word boundary.
 pub(super) fn is_word_boundary_after(chars: &[char], end: usize) -> bool {
     !is_identifier_char_at(chars, end)
 }
 
-/// Check if a keyword matches at position `i` (case-insensitive), with word boundaries.
 pub(super) fn matches_keyword_at(chars: &[char], position: usize, keyword: &str) -> bool {
     let keyword_end = position + keyword.len();
     has_text_at_ignore_ascii_case(chars, position, keyword)
@@ -101,9 +97,6 @@ pub(super) fn match_prefixed_join(
     join_keyword_end(chars, pos)
 }
 
-/// Try to match a JOIN keyword at position `i`. Returns the position after the keyword if matched.
-/// Handles: JOIN, INNER JOIN, LEFT [OUTER] JOIN, RIGHT [OUTER] JOIN, CROSS JOIN,
-/// NATURAL [LEFT|RIGHT] [OUTER] JOIN, STRAIGHT_JOIN
 pub(super) fn match_join_keyword(chars: &[char], position: usize) -> Option<usize> {
     if matches_keyword_at(chars, position, STRAIGHT_JOIN_KEYWORD) {
         return Some(position + STRAIGHT_JOIN_KEYWORD.len());
@@ -120,7 +113,6 @@ pub(super) fn match_join_keyword(chars: &[char], position: usize) -> Option<usiz
     join_keyword_end(chars, position)
 }
 
-/// Check if position matches any of the stop keywords that end the FROM/JOIN clause scanning.
 pub(super) fn matches_any_stop_keyword(chars: &[char], position: usize) -> bool {
     const STOP_KEYWORDS: &[&str] = &[
         "WHERE",
@@ -146,7 +138,6 @@ pub(super) fn matches_any_stop_keyword(chars: &[char], position: usize) -> bool 
     false
 }
 
-/// Skip whitespace characters starting at position `i`, return new position.
 pub(super) fn skip_whitespace(chars: &[char], mut position: usize) -> usize {
     while is_whitespace_at(chars, position) {
         position += 1;
@@ -154,8 +145,6 @@ pub(super) fn skip_whitespace(chars: &[char], mut position: usize) -> usize {
     position
 }
 
-/// Skip a quoted string (single or double quote) starting at position `i`.
-/// Returns the position after the closing quote.
 pub(super) fn skip_quoted(chars: &[char], position: usize) -> usize {
     let quote = chars[position];
     let mut pos = position + 1;
@@ -172,8 +161,6 @@ pub(super) fn skip_quoted(chars: &[char], position: usize) -> usize {
     pos
 }
 
-/// Skip a backtick-quoted identifier starting at position `i`.
-/// Returns the position after the closing backtick.
 pub(super) fn skip_backtick(chars: &[char], position: usize) -> usize {
     let mut pos = position + 1;
     while !is_past_end(chars, pos) {
@@ -190,9 +177,6 @@ pub(super) fn skip_backtick(chars: &[char], position: usize) -> usize {
     pos
 }
 
-/// Skip a parenthesized expression starting at position `i` (which must be '(').
-/// Handles nested parentheses and string/backtick literals within.
-/// Returns the position after the closing ')'.
 pub(super) fn skip_parenthesized(chars: &[char], position: usize) -> usize {
     let mut depth = 1;
     let mut pos = position + 1;

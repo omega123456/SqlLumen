@@ -1,7 +1,5 @@
 use super::*;
 
-/// Issue `KILL QUERY <thread_id>` over a pool connection (1 s acquire timeout).
-/// Returns `false`, with a warning, when it could not be sent.
 #[cfg(not(coverage))]
 pub async fn kill_export_query(state: &AppState, kill: &ExportKill<'_>) -> bool {
     let ExportKill {
@@ -58,13 +56,11 @@ pub async fn kill_export_query(state: &AppState, kill: &ExportKill<'_>) -> bool 
     }
 }
 
-/// Coverage stub: the KILL needs a live pool.
 #[cfg(coverage)]
 pub async fn kill_export_query(state: &AppState, kill: &ExportKill<'_>) -> bool {
     state.registry.get_pool(kill.connection_id).is_some()
 }
 
-/// Run a registered export job to its end: re-run, stream, restore, finalize.
 #[cfg(not(coverage))]
 pub async fn run_result_export_job(state: &AppState, prepared: PreparedResultExport) {
     let mut pipeline = ExportPipeline::new(&prepared);
@@ -72,8 +68,6 @@ pub async fn run_result_export_job(state: &AppState, prepared: PreparedResultExp
     pipeline.complete(rerun.outcome, rerun.restore_error);
 }
 
-/// Coverage stub: the re-run needs a live editor session, so the job fails
-/// (and cleans up) without touching MySQL.
 #[cfg(coverage)]
 pub async fn run_result_export_job(state: &AppState, prepared: PreparedResultExport) {
     if is_cancel_requested(&prepared.jobs, &prepared.job_id) {
@@ -92,8 +86,6 @@ pub(super) fn missing_live_session_message(state: &AppState, connection_id: &str
     format!("Connection '{connection_id}' not found in registry")
 }
 
-/// Acquire the editor session and stream the re-run into the pipeline.
-/// Returns the outcome and, if the database restore failed, its message.
 #[cfg(not(coverage))]
 pub(super) struct RerunEnd {
     pub(super) outcome: ExportOutcome,
@@ -169,15 +161,11 @@ pub(super) async fn rerun_into_pipeline(
         }
     }
 
-    // From here on no cancel KILL can target the session. Wait for the ones
-    // already registered, so none of them reaches the next query that runs on
-    // the shared session after it is released.
     set_job_thread(&prepared.jobs, &prepared.job_id, None);
     wait_for_cancel_kills(&prepared.cancel, &prepared.job_id, CANCEL_KILL_WAIT).await;
     let kill_sent = stream.own_kill_sent || prepared.cancel.kill_sent.load(Ordering::SeqCst);
     let has_unabsorbed_kill = kill_sent && !stream.interrupted;
     if has_unabsorbed_kill {
-        // The KILL may have arrived after the statement ended: absorb it here.
         crate::mysql::multi_result::absorb_late_kill(&mut session.conn, &prepared.connection_id)
             .await;
     }

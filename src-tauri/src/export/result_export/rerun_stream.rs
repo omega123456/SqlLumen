@@ -1,11 +1,8 @@
 use super::*;
 
-/// How the re-run's stream ended.
 pub(super) struct StreamEnd {
     pub(super) outcome: ExportOutcome,
-    /// The statement ended with error 1317, which consumed any KILL sent so far.
     pub(super) interrupted: bool,
-    /// The job sent its own KILL (sheet limit or write failure).
     pub(super) own_kill_sent: bool,
 }
 
@@ -49,7 +46,6 @@ pub(super) struct RerunStream<'a, 'b> {
     pub(super) pipeline: &'a mut ExportPipeline,
     pub(super) col_types: Vec<ColumnTypeAndFlags>,
     pub(super) failure: Option<String>,
-    /// Once set, rows are read and discarded until the stream ends.
     pub(super) stopping: bool,
     pub(super) interrupted: bool,
     pub(super) own_kill_sent: bool,
@@ -76,7 +72,6 @@ impl RerunStream<'_, '_> {
             return;
         }
         if self.cancel_requested() {
-            // The cancel KILL did not stop the stream: drain it instead.
             self.stopping = true;
             return;
         }
@@ -120,7 +115,6 @@ impl RerunStream<'_, '_> {
     }
 }
 
-/// Re-run the source SQL (no auto-LIMIT, no ceiling) and write every row.
 pub(super) async fn stream_rerun(
     rerun: &RerunContext<'_>,
     conn: &mut mysql_async::Conn,

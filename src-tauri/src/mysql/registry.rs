@@ -10,7 +10,6 @@ const MIN_CONNECT_TIMEOUT_SECS: i64 = 1;
 const DEFAULT_KEEPALIVE_INTERVAL_SECS: i64 = 60;
 const MIN_KEEPALIVE_INTERVAL_SECS: i64 = 0;
 
-/// Status of a MySQL connection in the registry.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ConnectionStatus {
@@ -29,15 +28,8 @@ pub struct OpenConnectionSession {
     pub session_database: Option<String>,
 }
 
-/// Parameters stored in memory for reconnection.
-/// Contains everything needed to recreate a MySQL pool except the password,
-/// which is re-read from the OS keychain on each reconnection attempt using
-/// the saved profile id instead of the runtime session id.
-/// This struct lives only in the in-memory registry — never persisted.
 #[derive(Debug, Clone)]
 pub struct StoredConnectionParams {
-    /// Saved connection profile id (SQLite row). This is the credential lookup key
-    /// for saved passwords and is distinct from runtime session ids.
     pub profile_id: String,
     pub host: String,
     pub port: u16,
@@ -77,10 +69,6 @@ impl StoredConnectionParams {
         }
     }
 
-    /// Convert to `ConnectionParams` for pool creation, injecting the password.
-    ///
-    /// Password is passed separately because `StoredConnectionParams` intentionally
-    /// does not store it — the password is re-read from the OS keychain on each use.
     pub fn to_connection_params(&self, password: String) -> ConnectionParams {
         ConnectionParams {
             host: self.host.clone(),
@@ -94,12 +82,9 @@ impl StoredConnectionParams {
     }
 }
 
-/// A registered MySQL connection with its pool and metadata.
 pub struct RegistryEntry {
     pub pool: MySqlPool,
-    /// Runtime session id (registry map key, health monitor id, IPC `connectionId`).
     pub session_id: String,
-    /// Saved profile id used for credential lookup and SQLite profile updates.
     pub profile_id: String,
     pub status: ConnectionStatus,
     pub server_version: String,
@@ -116,12 +101,6 @@ impl RegistryEntry {
     }
 }
 
-/// Thread-safe registry of active MySQL connections.
-///
-/// Uses `std::sync::RwLock` for interior mutability. Locks are held only
-/// for brief HashMap operations and never across await points.
-/// `MySqlPool` is `Clone + Send + Sync` (Arc internally) — clone it out
-/// before releasing the lock.
 pub struct ConnectionRegistry {
     entries: RwLock<HashMap<String, RegistryEntry>>,
 }
@@ -133,9 +112,6 @@ impl ConnectionRegistry {
         }
     }
 
-    /// Insert or replace a connection entry in the registry.
-    /// If an entry with this ID already exists, its cancellation token is cancelled
-    /// before replacement, and the old entry is returned so the caller can close its pool.
     pub fn insert(&self, id: String, entry: RegistryEntry) -> Option<RegistryEntry> {
         let mut map = self.entries.write().expect("registry lock poisoned");
         let old_entry = map.remove(&id);
@@ -146,19 +122,16 @@ impl ConnectionRegistry {
         old_entry
     }
 
-    /// Get a cheap Arc clone of the pool for the given connection ID.
     pub fn get_pool(&self, id: &str) -> Option<MySqlPool> {
         let map = self.entries.read().expect("registry lock poisoned");
         map.get(id).map(|entry| entry.pool.clone())
     }
 
-    /// Get the current status of a connection.
     pub fn get_status(&self, id: &str) -> Option<ConnectionStatus> {
         let map = self.entries.read().expect("registry lock poisoned");
         map.get(id).map(|entry| entry.status.clone())
     }
 
-    /// Update the status of an existing connection.
     pub fn update_status(&self, id: &str, status: ConnectionStatus) {
         let mut map = self.entries.write().expect("registry lock poisoned");
         if let Some(entry) = map.get_mut(id) {
@@ -166,7 +139,6 @@ impl ConnectionRegistry {
         }
     }
 
-    /// Replace the pool for an existing connection (used during reconnection).
     pub fn replace_pool(&self, id: &str, new_pool: MySqlPool) {
         let mut map = self.entries.write().expect("registry lock poisoned");
         if let Some(entry) = map.get_mut(id) {
@@ -174,13 +146,11 @@ impl ConnectionRegistry {
         }
     }
 
-    /// Get a clone of the stored connection params for reconnection.
     pub fn get_connection_params(&self, id: &str) -> Option<StoredConnectionParams> {
         let map = self.entries.read().expect("registry lock poisoned");
         map.get(id).map(|entry| entry.connection_params.clone())
     }
 
-    /// Update the stored default database for an active connection.
     pub fn set_default_database(&self, id: &str, default_database: Option<String>) {
         let mut map = self.entries.write().expect("registry lock poisoned");
         if let Some(entry) = map.get_mut(id) {
@@ -188,8 +158,6 @@ impl ConnectionRegistry {
         }
     }
 
-    /// Remove a connection from the registry, returning the entry if it existed.
-    /// Cancels the entry's cancellation token to stop any background health tasks.
     pub fn remove(&self, id: &str) -> Option<RegistryEntry> {
         let mut map = self.entries.write().expect("registry lock poisoned");
         let entry = map.remove(id);
@@ -199,27 +167,21 @@ impl ConnectionRegistry {
         entry
     }
 
-    /// Check whether a connection ID is registered.
     pub fn contains(&self, id: &str) -> bool {
         let map = self.entries.read().expect("registry lock poisoned");
         map.contains_key(id)
     }
 
-    /// Check whether a registered connection is read-only.
-    /// Returns `false` if the connection ID is not in the registry.
     pub fn is_read_only(&self, id: &str) -> bool {
         let map = self.entries.read().expect("registry lock poisoned");
         map.get(id).map(|entry| entry.read_only).unwrap_or(false)
     }
 
-    /// Get the saved profile id for a runtime session id.
-    /// Returns `None` if the connection is not in the registry.
     pub fn get_profile_id(&self, session_id: &str) -> Option<String> {
         let map = self.entries.read().expect("registry lock poisoned");
         map.get(session_id).map(|entry| entry.profile_id.clone())
     }
 
-    /// List live sessions in deterministic runtime-id order.
     pub fn list_sessions(&self) -> Vec<OpenConnectionSession> {
         let map = self.entries.read().expect("registry lock poisoned");
         let mut sessions = map
@@ -236,15 +198,6 @@ impl ConnectionRegistry {
         sessions
     }
 
-    /// Reverse lookup: find a live, *connected*, writable session bound to the
-    /// given saved profile id and return a cheap `Arc` clone of its pool.
-    ///
-    /// Used by the copy-to-host engine to reuse an already-open target session's
-    /// pool (the "reuse-if-open" half of target resolution) instead of opening a
-    /// fresh internal pool. Only entries whose status is
-    /// [`ConnectionStatus::Connected`] and whose live registry entry is not
-    /// read-only are considered, so a reconnecting, disconnected, or read-only
-    /// session is never reused. Returns `None` if no such session exists.
     pub fn get_pool_by_profile(&self, profile_id: &str) -> Option<MySqlPool> {
         let map = self.entries.read().expect("registry lock poisoned");
         map.values()

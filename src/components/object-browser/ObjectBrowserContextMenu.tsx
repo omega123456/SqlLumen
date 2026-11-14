@@ -25,7 +25,6 @@ export interface ObjectBrowserContextMenuProps {
   connectionId: string
   isReadOnly: boolean
   onClose: () => void
-  // Callbacks for mutating actions (wired in Phase 3.6)
   onCreateDatabase?: () => void
   onAlterDatabase?: (databaseName: string) => void
   onRenameDatabase?: (databaseName: string) => void
@@ -35,17 +34,14 @@ export interface ObjectBrowserContextMenuProps {
   onRenameTable?: (databaseName: string, tableName: string) => void
   onDesignTable?: (databaseName: string, tableName: string) => void
   onCreateTable?: (databaseName: string) => void
-  // Object editor callbacks (Phase 8.4)
   onAlterObject?: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
   onDropObject?: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
   onCreateObject?: (databaseName: string, objectType: EditableObjectType) => void
-  // Execute routine callback (Phase 8.5)
   onExecuteRoutine?: (
     databaseName: string,
     routineName: string,
     routineType: 'procedure' | 'function'
   ) => void
-  // SQL dump export callbacks (Phase 9.5a)
   onExportDump?: (databaseName: string, tableName?: string) => void
   onExportDdl?: (databaseName: string, tableName?: string) => void
   onCopyToHost?: (databaseName: string, objectSelection?: CopyObjectSelection) => void
@@ -72,7 +68,6 @@ function categoryTypeOf(node: TreeNode | undefined, parsed: ParsedNodeId): strin
   return undefined
 }
 
-// Use direct fields on node if available, fall back to parseNodeId (Simplification 5)
 function resolveMenuNodeInfo(nodes: Record<string, TreeNode> | null, nodeId: string): MenuNodeInfo {
   const node = nodes?.[nodeId]
   const parsed = parseNodeId(nodeId)

@@ -63,9 +63,6 @@ pub async fn select_database_impl(
         .await
         .map_err(|error| format!("Failed to select database '{database_name}': {error}"))?;
 
-    // Keep the query editor's session (and its variables) — just switch database.
-    // Commit the pool and default database only once the session has switched, so
-    // a failed switch leaves the connection on its previous database.
     crate::mysql::session::use_database(state, connection_id, database_name).await?;
 
     state.registry.replace_pool(connection_id, new_pool);

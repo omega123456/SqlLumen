@@ -1,10 +1,3 @@
-//! Shared MySQL session for the query editor.
-//!
-//! Every query-editor window of a connection runs on the same `mysql_async`
-//! connection, so session state (user variables, `USE`, temporary tables, open
-//! transactions) carries over between runs and windows. A session runs one
-//! statement at a time: concurrent runs queue on the slot mutex.
-
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, OwnedMutexGuard};
@@ -17,7 +10,6 @@ pub const QUEUED_RUN_CANCELLED_MESSAGE: &str =
 
 pub struct EditorSession {
     pub conn: mysql_async::Conn,
-    /// MySQL thread ID of `conn`, used for `KILL QUERY` cancellation.
     pub thread_id: u64,
 }
 
@@ -108,10 +100,6 @@ fn existing_slot(state: &AppState, connection_id: &str) -> Option<SessionSlot> {
         .cloned()
 }
 
-/// Lock the connection's editor session, waiting while another window's query
-/// runs. Connects on first use, and reconnects if the session died (in which
-/// case its variables and open transaction are gone). The guard always holds
-/// `Some` session on success.
 #[cfg(not(coverage))]
 pub async fn acquire(state: &AppState, connection_id: &str) -> Result<SessionGuard, String> {
     use mysql_async::prelude::Queryable;
@@ -195,11 +183,6 @@ async fn acquire_unless_cancelled(
     }
 }
 
-/// Switch an existing editor session to `database` so session state survives a
-/// database change. No-op when the connection has no session yet (a new one
-/// picks up the registry's default database). A session that turns out to be
-/// dead is discarded instead, so the next `acquire` reconnects on the registry's
-/// default database; only server errors (e.g. access denied) are returned.
 #[cfg(not(coverage))]
 pub async fn use_database(
     state: &AppState,
@@ -240,7 +223,6 @@ pub async fn use_database(
     Ok(())
 }
 
-/// Coverage stub for `use_database`.
 #[cfg(coverage)]
 pub async fn use_database(
     state: &AppState,
@@ -252,8 +234,6 @@ pub async fn use_database(
     Ok(())
 }
 
-/// Drop the connection's editor session. An idle session is disconnected right
-/// away; a busy one is dropped (and disconnected) when its running query ends.
 pub async fn close(state: &AppState, connection_id: &str) {
     let removed = state.editor_sessions.lock_slots().remove(connection_id);
     let Some(slot) = removed else {

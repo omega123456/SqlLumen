@@ -1,14 +1,8 @@
 import { useEffect, useState } from 'react'
 
-/** Attribute TreeNode sets on each top-level database section. */
 const SECTION_SELECTOR = '[data-database-section]'
 const SUBPIXEL_SCROLL_TOLERANCE_PX = 0.5
 
-/**
- * Return the id of the database section whose sticky row is currently pinned,
- * or null. A section is pinned when it is expanded, its top has scrolled above
- * the container's top edge, and some of it is still in view.
- */
 export function findPinnedDatabaseSection(container: HTMLElement): string | null {
   const containerTop = container.getBoundingClientRect().top
   const sections = container.querySelectorAll<HTMLElement>(SECTION_SELECTOR)
@@ -26,11 +20,6 @@ export function findPinnedDatabaseSection(container: HTMLElement): string | null
   return null
 }
 
-/**
- * Track which top-level database row is pinned to the top of a scrolling tree.
- * Recomputes on scroll (once per frame) and whenever the tree's rows change,
- * which covers expand, collapse, lazy loads and filtering.
- */
 export function usePinnedDatabase(container: HTMLElement | null): string | null {
   const [pinnedId, setPinnedId] = useState<string | null>(null)
 

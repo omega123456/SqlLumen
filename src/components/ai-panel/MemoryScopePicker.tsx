@@ -5,22 +5,9 @@ import type { MemoryScope } from '../../lib/ai-memory-commands'
 import styles from './MemoryScopePicker.module.css'
 
 export interface MemoryScopePickerProps {
-  /**
-   * Whether the active connection belongs to a group. When false the Group
-   * option is disabled (aria-disabled), visibly greyed, and skipped during
-   * keyboard navigation.
-   */
   hasGroup: boolean
-  /**
-   * The saved default scope. Used only to seed the initial highlight. When it
-   * is not a concrete level (e.g. `'ask'`) the highlight falls back to
-   * Connection. A disabled level (Group without a group) never seeds the
-   * highlight.
-   */
   defaultScope?: MemoryScope
-  /** Emitted when the user picks an (enabled) scope. */
   onSelect: (scope: MemoryScope) => void
-  /** Emitted when the picker is cancelled (Escape). */
   onCancel: () => void
 }
 
@@ -43,12 +30,6 @@ const BASE_OPTIONS: ScopeOption[] = [
   { scope: 'global', label: 'Global', icon: GlobeIcon },
 ]
 
-/**
- * Inline "Always ask" level chooser shown above the chat input when a
- * `/remember` save needs a scope. Mirrors the `SlashCommandDropdown` listbox
- * look + keyboard model; the Group option is visible but unselectable and
- * skipped in arrow-key navigation when the active connection has no group.
- */
 interface PickerKeyHandlers {
   moveHighlight: (delta: number) => void
   selectIndex: (index: number) => void
@@ -105,7 +86,6 @@ function usePickerKeyboard(handlers: PickerKeyHandlers): void {
   }, [moveHighlight, selectIndex, highlightedIndex, onCancel])
 
   useEffect(() => {
-    // The keydown that opened the picker is dispatched before this listener attaches; ignore it.
     const attachedAt = performance.now()
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.timeStamp <= attachedAt) {

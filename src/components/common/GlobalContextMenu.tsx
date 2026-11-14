@@ -20,7 +20,6 @@ interface OpenState {
   y: number
   field: HTMLElement
   portalRoot: HTMLElement
-  /** Snapshot for inputs/textareas — focus can move before the menu renders and clear selection. */
   textSelection?: TextSelectionRange
 }
 
@@ -293,10 +292,6 @@ function runMenuAction(action: () => Promise<void>, closeMenu: () => void) {
   })()
 }
 
-/**
- * Disables the native context menu app-wide and shows a custom Cut/Copy/Paste menu on editable fields.
- * Other surfaces rely on their own `onContextMenu` handlers (event must not be stopped in capture).
- */
 export function GlobalContextMenu() {
   const [open, setOpen] = useState<OpenState | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)

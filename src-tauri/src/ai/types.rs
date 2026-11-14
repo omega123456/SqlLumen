@@ -1,8 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-// ── IPC-facing types (frontend ↔ Rust, camelCase) ──────────────────────────
-
-/// A single chat message as received from / sent to the frontend.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IpcMessage {
@@ -10,7 +7,6 @@ pub struct IpcMessage {
     pub content: String,
 }
 
-/// The full chat request as received from the frontend via Tauri invoke.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiChatRequest {
@@ -32,9 +28,6 @@ fn default_true() -> bool {
     true
 }
 
-// ── API-facing types (Rust → OpenAI HTTP API, snake_case) ──────────────────
-
-/// A single chat message in OpenAI API format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ApiMessage {
@@ -42,7 +35,6 @@ pub struct ApiMessage {
     pub content: String,
 }
 
-/// The request body sent to the OpenAI-compatible chat completions endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ApiChatRequest {
@@ -51,14 +43,10 @@ pub struct ApiChatRequest {
     pub temperature: f64,
     pub max_tokens: u32,
     pub stream: bool,
-    /// Controls extended thinking / reasoning on the LLM side.
-    /// Values: `"high"`, `"medium"`, `"low"` when enabled; omitted when disabled.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<String>,
-    /// Compatibility hint for providers that expose Qwen thinking as a top-level field.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enable_thinking: Option<bool>,
-    /// Compatibility hint for providers that expect template kwargs for Qwen thinking.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chat_template_kwargs: Option<ChatTemplateKwargs>,
 }
@@ -69,7 +57,6 @@ pub struct ChatTemplateKwargs {
     pub enable_thinking: bool,
 }
 
-/// Input item for the OpenAI-compatible Responses API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ResponsesInputItem {
@@ -77,7 +64,6 @@ pub struct ResponsesInputItem {
     pub content: String,
 }
 
-/// Helper struct for the nested `reasoning` object in the Responses API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReasoningConfig {
     pub effort: String,
@@ -85,7 +71,6 @@ pub struct ReasoningConfig {
     pub summary: Option<String>,
 }
 
-/// The request body sent to the OpenAI-compatible `/v1/responses` endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ApiResponsesRequest {
@@ -96,17 +81,12 @@ pub struct ApiResponsesRequest {
     pub stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub previous_response_id: Option<String>,
-    /// Controls extended thinking / reasoning on the LLM side.
-    /// Serialized as `{ "reasoning": { "effort": "medium" } }` per the Responses API spec.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<ReasoningConfig>,
-    /// Convenience field for constructing the request — maps to `reasoning`.
-    /// Skipped during serialization; use `reasoning` for the wire format.
     #[serde(skip)]
     pub reasoning_effort: Option<String>,
 }
 
-/// The delta object inside an SSE stream choice.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ApiStreamDelta {
@@ -117,23 +97,18 @@ pub struct ApiStreamDelta {
     pub thinking: Option<String>,
 }
 
-/// A single choice in an SSE stream chunk.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ApiStreamChoice {
     pub delta: ApiStreamDelta,
 }
 
-/// A single SSE chunk from the streaming response.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ApiStreamChunk {
     pub choices: Vec<ApiStreamChoice>,
 }
 
-// ── Tauri event payload types (camelCase) ──────────────────────────────────
-
-/// Discriminates between normal response tokens and reasoning/thinking tokens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ChunkKind {
@@ -142,7 +117,6 @@ pub enum ChunkKind {
     Thinking,
 }
 
-/// Payload emitted for each buffered chunk of streamed tokens.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StreamChunkEvent {
@@ -152,7 +126,6 @@ pub struct StreamChunkEvent {
     pub kind: ChunkKind,
 }
 
-/// Payload emitted when the stream completes successfully.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StreamDoneEvent {
@@ -162,7 +135,6 @@ pub struct StreamDoneEvent {
     pub transport: AiTransport,
 }
 
-/// Payload emitted when the stream encounters an error.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StreamErrorEvent {
@@ -170,7 +142,6 @@ pub struct StreamErrorEvent {
     pub error: String,
 }
 
-/// Which upstream AI API transport fulfilled the request.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum AiTransport {
@@ -178,9 +149,6 @@ pub enum AiTransport {
     Responses,
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-
-/// Convert IPC messages to API messages.
 impl From<&IpcMessage> for ApiMessage {
     fn from(msg: &IpcMessage) -> Self {
         Self {
@@ -199,82 +167,57 @@ impl From<&IpcMessage> for ResponsesInputItem {
     }
 }
 
-// ── Model listing types ───────────────────────────────────────────────────
-
-/// IPC-facing type for a model entry returned by `list_ai_models`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiModelInfo {
     pub id: String,
     pub name: Option<String>,
-    /// `"chat"` or `"embedding"` — determined by server metadata or heuristic.
     pub category: String,
 }
 
-/// Response from `list_ai_models` — a list of available models.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiModelsResponse {
     pub models: Vec<AiModelInfo>,
 }
 
-/// A single model entry in the OpenAI `/v1/models` response.
 #[derive(Debug, Clone, Deserialize)]
 pub struct OpenAiModelEntry {
     pub id: String,
     #[serde(default)]
     pub object: String,
-    /// Some servers include a `type` field for categorisation.
     #[serde(rename = "type", default)]
     pub model_type: Option<String>,
-    /// Some servers include a `capabilities` object.
     #[serde(default)]
     pub capabilities: Option<serde_json::Value>,
 }
 
-/// The outer envelope of the OpenAI `/v1/models` response.
 #[derive(Debug, Clone, Deserialize)]
 pub struct OpenAiModelsApiResponse {
     pub data: Vec<OpenAiModelEntry>,
 }
 
-// ── Embedding API types ───────────────────────────────────────────────────
-
-/// Request body for the `/v1/embeddings` endpoint.
 #[derive(Debug, Serialize)]
 pub struct EmbeddingApiRequest {
     pub model: String,
     pub input: Vec<String>,
-    /// Ollama (llama.cpp) requires `truncate: true` to properly mark input tokens
-    /// as embedding outputs; without it, bge-m3 and similar models emit a warning
-    /// per token ("embeddings required but some input tokens were not marked as outputs").
     pub truncate: bool,
-    /// Specifies the output format for embeddings.  The OpenAI-compatible
-    /// `/v1/embeddings` endpoint (used by Ollama) expects `"float"` to return
-    /// raw float arrays and suppress per-token output warnings.
     pub encoding_format: String,
-    /// Optional dimension override for models that support variable-dimension
-    /// output (e.g. Matryoshka embeddings).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dimensions: Option<u32>,
 }
 
-/// Response from the `/v1/embeddings` endpoint.
 #[derive(Debug, Deserialize)]
 pub struct EmbeddingApiResponse {
     pub data: Vec<EmbeddingData>,
 }
 
-/// A single embedding vector in the API response.
 #[derive(Debug, Deserialize)]
 pub struct EmbeddingData {
     pub embedding: Vec<f32>,
     pub index: usize,
 }
 
-// ── Query expansion types ─────────────────────────────────────────────────
-
-/// Request for non-streaming query expansion via `ai_query_expand`.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiQueryExpandRequest {
@@ -282,53 +225,38 @@ pub struct AiQueryExpandRequest {
     pub model: String,
     pub system_prompt: String,
     pub user_message: String,
-    /// Optional pre-formatted conversation context (last ~4 turns + attached SQL).
     #[serde(default)]
     pub conversation_context: Option<String>,
 }
 
-/// Response from `ai_query_expand`.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiQueryExpandResponse {
     pub text: String,
 }
 
-/// Result of parsing a single SSE line.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SseParsed {
-    /// A data line that was parsed into a stream chunk.
     Chunk(ApiStreamChunk),
-    /// The `data: [DONE]` sentinel — stream is finished.
     Done,
-    /// An empty line, comment, or `event:` line — skip.
     Skip,
 }
 
-/// Parse a single SSE line from the streaming response.
-///
-/// Returns [`SseParsed::Chunk`] for `data: {...}` lines,
-/// [`SseParsed::Done`] for `data: [DONE]`, and [`SseParsed::Skip`]
-/// for anything else (empty lines, `event:` lines, etc.).
 pub fn parse_sse_line(line: &str) -> Result<SseParsed, String> {
     let trimmed = line.trim();
 
-    // Empty lines
     if trimmed.is_empty() {
         return Ok(SseParsed::Skip);
     }
 
-    // SSE event type lines (e.g., `event: message`)
     if trimmed.starts_with("event:") {
         return Ok(SseParsed::Skip);
     }
 
-    // SSE comment lines
     if trimmed.starts_with(':') {
         return Ok(SseParsed::Skip);
     }
 
-    // Data lines
     if let Some(data) = trimmed.strip_prefix("data:") {
         let data = data.trim();
 
@@ -341,6 +269,5 @@ pub fn parse_sse_line(line: &str) -> Result<SseParsed, String> {
         return Ok(SseParsed::Chunk(chunk));
     }
 
-    // Unknown lines — skip gracefully
     Ok(SseParsed::Skip)
 }

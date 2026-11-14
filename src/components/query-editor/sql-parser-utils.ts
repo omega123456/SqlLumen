@@ -1,28 +1,12 @@
 const BACKSLASH_ESCAPE_LENGTH = 2
 const BLOCK_COMMENT_DELIMITER_LENGTH = 2
 
-/**
- * SQL statement splitting with full MySQL DELIMITER support.
- * Reusable utility for query editor and stored procedure editors.
- */
-
 export interface StatementRange {
-  /** Start character offset (inclusive) */
   start: number
-  /** End character offset (exclusive) */
   end: number
-  /** The SQL text of this statement (trimmed) */
   sql: string
 }
 
-/**
- * Split SQL content into individual statements, supporting:
- * - Standard semicolon delimiters
- * - MySQL DELIMITER changes (DELIMITER $$, DELIMITER //, etc.)
- * - BEGIN...END blocks (stored routines)
- * - String literal awareness (no splitting inside strings)
- * - Comment awareness (no splitting inside comments)
- */
 export function splitStatements(sql: string): StatementRange[] {
   return new StatementSplitter(sql).split()
 }
@@ -130,8 +114,6 @@ class StatementSplitter {
     return this.position === 0 || this.sql[this.position - 1] === '\n'
   }
 
-  // A DELIMITER directive only counts at the start of a line; strings and comments
-  // are already skipped before this check.
   private applyDelimiterDirective(): boolean {
     if (!this.isAtLineStart()) return false
     const directive = this.sql.slice(this.position).match(DELIMITER_DIRECTIVE_PATTERN)
@@ -162,15 +144,10 @@ class StatementSplitter {
   }
 }
 
-/**
- * Find the statement that contains the given cursor offset.
- * Returns null if no statement contains the cursor.
- */
 export function findStatementAtCursor(
   statements: StatementRange[],
   cursorOffset: number
 ): StatementRange | null {
-  // Find the last statement whose start <= cursor
   let best: StatementRange | null = null
   for (const statement of statements) {
     const containsCursor = statement.start <= cursorOffset && cursorOffset <= statement.end
@@ -185,9 +162,6 @@ export function findStatementAtCursor(
   return best
 }
 
-/**
- * Convert (line, column) cursor position (1-indexed) to a character offset in the text.
- */
 export function cursorToOffset(sql: string, line: number, column: number): number {
   return lineStartOffset(sql, line) + column - 1
 }

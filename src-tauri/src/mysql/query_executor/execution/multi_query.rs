@@ -1,10 +1,5 @@
 use super::*;
 
-/// Execute multiple SQL statements sequentially on the shared editor session.
-///
-/// Stores all results in `state.results` under `(connection_id, tab_id)` and
-/// returns a `MultiQueryResult` with one entry per statement (plus extra entries
-/// for CALL statements that return multiple result sets).
 #[cfg(not(coverage))]
 pub async fn execute_multi_query_impl(
     state: &AppState,
@@ -43,9 +38,6 @@ pub async fn execute_multi_query_impl(
     })
 }
 
-/// Coverage stub for `execute_multi_query_impl`: exercises connection validation,
-/// read-only enforcement, statement classification, the row-limit clamp, the
-/// first-window builder and result storage without a live MySQL connection.
 #[cfg(coverage)]
 pub async fn execute_multi_query_impl(
     state: &AppState,
@@ -84,7 +76,6 @@ pub async fn execute_multi_query_impl(
             break;
         }
 
-        // Exercise statement classification
         let is_call = crate::mysql::multi_result::is_call_statement(sql);
         let _is_result_set = returns_result_set(&strip_non_executable_comments(sql));
         let auto_limit_applied = needs_auto_limit(sql);
@@ -100,7 +91,6 @@ pub async fn execute_multi_query_impl(
         stored_results.push(stored);
     }
 
-    // Track a dummy thread ID to exercise the running_queries path
     let key = (connection_id.to_string(), tab_id.to_string());
     state
         .running_queries
@@ -109,7 +99,6 @@ pub async fn execute_multi_query_impl(
         .insert(key.clone(), 42u64);
     state.running_queries.write().await.remove(&key);
 
-    // Store results in state
     state
         .result_cache
         .insert(CacheKey::new(connection_id, tab_id), stored_results);
@@ -119,10 +108,6 @@ pub async fn execute_multi_query_impl(
     })
 }
 
-/// Execute a single CALL statement and return all result sets.
-///
-/// Delegates to `execute_multi_query_internal` with a single-element slice.
-/// Stores all results in `state.results` under `(connection_id, tab_id)`.
 #[cfg(not(coverage))]
 pub async fn execute_call_query_impl(
     state: &AppState,
@@ -137,7 +122,6 @@ pub async fn execute_call_query_impl(
 
     let is_read_only = state.registry.is_read_only(connection_id);
 
-    // CALL is blocked on read-only connections
     if is_read_only {
         return Err("This connection is read-only. CALL statements are not allowed on read-only connections.".to_string());
     }
@@ -167,9 +151,6 @@ pub async fn execute_call_query_impl(
     })
 }
 
-/// Coverage stub for `execute_call_query_impl`: exercises connection validation,
-/// read-only enforcement, CALL detection, the row-limit clamp and the
-/// first-window builder without requiring a live MySQL connection.
 #[cfg(coverage)]
 pub async fn execute_call_query_impl(
     state: &AppState,
@@ -185,17 +166,14 @@ pub async fn execute_call_query_impl(
 
     let is_read_only = state.registry.is_read_only(connection_id);
 
-    // CALL is blocked on read-only connections
     if is_read_only {
         return Err("This connection is read-only. CALL statements are not allowed on read-only connections.".to_string());
     }
 
-    // Exercise CALL detection and the row-limit clamp
     let is_call = crate::mysql::multi_result::is_call_statement(sql);
     let ceiling = state.result_cache.row_ceiling();
     let _row_limit = effective_row_limit(row_limit_or_default(request.row_limit), ceiling);
 
-    // Track a dummy thread ID to exercise the running_queries path
     let key = (connection_id.to_string(), tab_id.to_string());
     state
         .running_queries
@@ -210,7 +188,6 @@ pub async fn execute_call_query_impl(
     stored.full_export_blocked_reason = statement_blocked_reason(sql, is_call);
     let item = MultiQueryResultItem::from_stored(&stored, None, false);
 
-    // Store result in state
     state
         .result_cache
         .insert(CacheKey::new(connection_id, tab_id), vec![stored]);

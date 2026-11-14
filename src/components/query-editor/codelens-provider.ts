@@ -1,18 +1,3 @@
-/**
- * Monaco CodeLens provider for "Run" and "Ask AI" per SQL statement.
- *
- * Registered as a module side-effect (import './codelens-provider').
- * The provider is global — it inspects each model's URI to determine
- * the tab context via the completion-service model registry.
- *
- * - "Run" appears above each detected SQL statement and executes it.
- * - "Ask AI" appears only when `ai.enabled` is true and opens the
- *   AI panel with the statement attached as context.
- *
- * Both actions work through direct store calls to avoid coupling to
- * the shortcut system.
- */
-
 import * as monaco from 'monaco-editor'
 import type { editor, CancellationToken } from 'monaco-editor'
 import { getModelContext } from './completion-service'
@@ -22,14 +7,6 @@ import { useSettingsStore } from '../../stores/settings-store'
 import { useQueryStore, isCallSql, isExecutionLocked } from '../../stores/query-store'
 import { useAiStore } from '../../stores/ai-store'
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Convert a character offset in `text` to a 1-indexed line number.
- * The offset is clamped to the text length.
- */
 export function offsetToLineNumber(text: string, offset: number): number {
   let line = 1
   const maxOffset = Math.min(offset, text.length)
@@ -39,9 +16,6 @@ export function offsetToLineNumber(text: string, offset: number): number {
   return line
 }
 
-/**
- * Convert a character offset in `text` to a 1-indexed column number.
- */
 export function offsetToColumn(text: string, offset: number): number {
   let lastNewline = -1
   const maxOffset = Math.min(offset, text.length)
@@ -51,14 +25,6 @@ export function offsetToColumn(text: string, offset: number): number {
   return offset - lastNewline
 }
 
-// ---------------------------------------------------------------------------
-// Command handlers for CodeLens actions
-// ---------------------------------------------------------------------------
-
-/**
- * Execute a specific SQL statement via the query store.
- * Exported for testing.
- */
 export interface CodeLensStatementTarget {
   connectionId: string
   tabId: string
@@ -92,41 +58,23 @@ export function handleRunStatement({
   })
 }
 
-/**
- * Open the AI panel and attach the statement as context.
- * Exported for testing.
- *
- * The range is computed to cover exactly `stmt.sql` within the editor text.
- * `stmt.start`/`stmt.end` from `splitStatements` may include leading
- * whitespace and a trailing delimiter (`;`), so we locate the trimmed SQL
- * content inside `fullText.slice(stmt.start, stmt.end)` to derive a tight
- * range.  This ensures that `getValueInRange(range)` returns exactly
- * `stmt.sql`, which is what `applyDiff` expects for its staleness check.
- */
 export function handleAskAi({ tabId, statement, fullText }: CodeLensAskAiTarget): void {
   const aiStore = useAiStore.getState()
 
-  // Open the AI panel if not already open
   if (!aiStore.tabs[tabId]?.isPanelOpen) {
     aiStore.openPanel(tabId)
   }
 
-  // Locate the exact position of the trimmed SQL within the raw segment
-  // covered by stmt.start..stmt.end.  This strips leading whitespace and
-  // the trailing delimiter that splitStatements includes in the range but
-  // NOT in stmt.sql.
   const rawSegment = fullText.slice(statement.start, statement.end)
   const sqlOffset = rawSegment.indexOf(statement.sql)
   const actualStart = statement.start + (sqlOffset >= 0 ? sqlOffset : 0)
   const actualEnd = actualStart + statement.sql.length
 
-  // Compute the editor range for the statement
   const startLine = offsetToLineNumber(fullText, actualStart)
   const startColumn = offsetToColumn(fullText, actualStart)
   const endLine = offsetToLineNumber(fullText, actualEnd)
   const endColumn = offsetToColumn(fullText, actualEnd)
 
-  // Attach the statement as context
   aiStore.setAttachedContext(tabId, {
     sql: statement.sql,
     range: {
@@ -138,15 +86,9 @@ export function handleAskAi({ tabId, statement, fullText }: CodeLensAskAiTarget)
   })
 }
 
-// ---------------------------------------------------------------------------
-// CodeLens provider implementation
-// ---------------------------------------------------------------------------
-
-// Unique, stable command IDs for CodeLens actions (registered below)
 const RUN_COMMAND_ID = 'sqllumen.codelens.run'
 const ASK_AI_COMMAND_ID = 'sqllumen.codelens.askAi'
 
-/** @internal Exported for testing. */
 export function provideCodeLenses(
   model: editor.ITextModel,
   _unusedToken: CancellationToken
@@ -176,7 +118,6 @@ export function provideCodeLenses(
       statement: statement,
     }
 
-    // "Run" CodeLens — always present
     lenses.push({
       range: lensRange,
       command: {
@@ -186,7 +127,6 @@ export function provideCodeLenses(
       },
     })
 
-    // "Ask AI" CodeLens — only when AI is enabled
     if (aiEnabled) {
       lenses.push({
         range: lensRange,
@@ -202,15 +142,7 @@ export function provideCodeLenses(
   return { lenses: lenses, dispose: () => {} }
 }
 
-// ---------------------------------------------------------------------------
-// Change emitter — fires when settings change so Monaco re-queries lenses
-// ---------------------------------------------------------------------------
-
 const onDidChangeEmitter = new monaco.Emitter<monaco.languages.CodeLensProvider>()
-
-// ---------------------------------------------------------------------------
-// Build and register the CodeLens provider object
-// ---------------------------------------------------------------------------
 
 const codeLensProvider: monaco.languages.CodeLensProvider = {
   onDidChange: onDidChangeEmitter.event,
@@ -219,9 +151,6 @@ const codeLensProvider: monaco.languages.CodeLensProvider = {
 
 const disposable = monaco.languages.registerCodeLensProvider('mysql', codeLensProvider)
 
-// Subscribe to the settings store and fire the emitter when ai.enabled changes.
-// This must happen AFTER the provider is defined so the emitter fires with the
-// correct provider reference.
 let lastAiEnabled = useSettingsStore.getState().getSetting('ai.enabled') === 'true'
 useSettingsStore.subscribe((state) => {
   const current = state.getSetting('ai.enabled') === 'true'
@@ -230,16 +159,6 @@ useSettingsStore.subscribe((state) => {
     onDidChangeEmitter.fire(codeLensProvider)
   }
 })
-
-// ---------------------------------------------------------------------------
-// Register global commands for CodeLens actions
-// ---------------------------------------------------------------------------
-
-// Register commands in the global StandaloneCommandService so that CodeLens
-// click dispatch can find them.  `monaco.editor.registerCommand` registers
-// in the *global* command registry — the only registry CodeLens uses.
-// (Using `addAction` via `onDidCreateEditor` only registers in the per-editor
-// action registry, which CodeLens dispatch cannot reach.)
 
 monaco.editor.registerCommand(
   RUN_COMMAND_ID,
@@ -257,5 +176,4 @@ monaco.editor.registerCommand(
   }
 )
 
-// Export for testing
 export { onDidChangeEmitter, disposable }

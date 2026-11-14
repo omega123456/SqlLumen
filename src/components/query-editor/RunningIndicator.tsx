@@ -1,9 +1,3 @@
-/**
- * Running indicator shown in place of Execute/Execute All buttons
- * while a query is executing. Displays a spinner, "RUNNING" label,
- * elapsed timer, and a Cancel button.
- */
-
 import { useState, useEffect } from 'react'
 import { Stop } from '@phosphor-icons/react'
 import { useQueryStore } from '../../stores/query-store'
@@ -48,7 +42,6 @@ export function RunningIndicator({ connectionId, tabId }: RunningIndicatorProps)
 
   return (
     <div className={styles.container} data-testid="running-indicator">
-      {/* One-time accessibility announcement — just announce running state */}
       <div
         role="status"
         aria-live="polite"
@@ -56,7 +49,6 @@ export function RunningIndicator({ connectionId, tabId }: RunningIndicatorProps)
       >
         Running
       </div>
-      {/* Visual elements — timer is aria-hidden to prevent per-second re-announcement */}
       <span className={styles.spinner} aria-hidden="true" />
       <span className={styles.label}>Running</span>
       <span className={styles.timer} data-testid="running-timer" aria-hidden="true">

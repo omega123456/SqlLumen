@@ -39,8 +39,6 @@ const RDS_KILL_PROCEDURE_CHECK_SQL: &str = "SELECT ROUTINE_NAME \
       AND ROUTINE_TYPE = 'PROCEDURE' \
     LIMIT 1";
 
-// ── get_processlist ──────────────────────────────────────────────────────────
-
 pub async fn get_processlist_impl(
     state: &AppState,
     session_id: &str,
@@ -60,7 +58,6 @@ pub async fn get_processlist_impl(
 
     let mut result = Vec::with_capacity(rows.len());
 
-    // Column-reading helpers to reduce repetitive try_get boilerplate
     let get_string =
         |row: &sqlx::mysql::MySqlRow, col: &str| -> String { row.try_get(col).unwrap_or_default() };
     let get_opt_string = |row: &sqlx::mysql::MySqlRow, col: &str| -> Option<String> {
@@ -100,8 +97,6 @@ pub async fn get_processlist(
 ) -> Result<Vec<ProcessRow>, String> {
     get_processlist_impl(&state, &session_id).await
 }
-
-// ── kill_queries ─────────────────────────────────────────────────────────────
 
 fn kill_query_sql(id: u64, has_rds_kill: bool) -> String {
     if has_rds_kill {

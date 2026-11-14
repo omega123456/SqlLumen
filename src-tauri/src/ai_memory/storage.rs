@@ -12,26 +12,18 @@ fn now_secs() -> i64 {
         .as_secs() as i64
 }
 
-// ── Vec-table naming (one per scope/owner) ──────────────────────────────────
-
-/// Compute the per-connection ai_memory vec0 virtual table name (unchanged).
 pub fn vec_table_name(connection_id: &str) -> String {
     format!("ai_memory_vectors_{}", sanitize_table_name(connection_id))
 }
 
-/// Compute the per-group ai_memory vec0 virtual table name.
 pub fn group_vec_table_name(group_id: &str) -> String {
     format!("ai_memory_vectors_group_{}", sanitize_table_name(group_id))
 }
 
-/// Compute the single global ai_memory vec0 virtual table name.
 pub fn global_vec_table_name() -> String {
     "ai_memory_vectors_global".to_string()
 }
 
-/// Resolve the vec table name for a scope + optional owner.
-///
-/// Returns an error when the owner id required by the scope is missing.
 pub fn vec_table_for_scope(scope: MemoryScope, owner_id: Option<&str>) -> Result<String, String> {
     match scope {
         MemoryScope::Connection => owner_id
@@ -44,9 +36,6 @@ pub fn vec_table_for_scope(scope: MemoryScope, owner_id: Option<&str>) -> Result
     }
 }
 
-// ── Connection-scope row CRUD (table renamed to connection_memories) ─────────
-
-/// Insert a memory row into `connection_memories`. Returns the new row id.
 pub fn insert_memory(conn: &Connection, connection_id: &str, content: &str) -> Result<i64> {
     conn.execute(
         "INSERT INTO connection_memories (connection_id, content, created_at, source) VALUES (?1, ?2, ?3, 'manual')",
@@ -55,7 +44,6 @@ pub fn insert_memory(conn: &Connection, connection_id: &str, content: &str) -> R
     Ok(conn.last_insert_rowid())
 }
 
-/// List all memories for a connection, ordered by created_at descending.
 pub fn list_memories(conn: &Connection, connection_id: &str) -> Result<Vec<AiMemory>> {
     let mut stmt = conn.prepare(
         "SELECT id, connection_id, content, created_at, source FROM connection_memories WHERE connection_id = ?1 ORDER BY created_at DESC",
@@ -66,7 +54,6 @@ pub fn list_memories(conn: &Connection, connection_id: &str) -> Result<Vec<AiMem
     Ok(rows)
 }
 
-/// Delete a single connection-scope memory row by id.
 pub fn delete_memory(conn: &Connection, memory_id: i64) -> Result<()> {
     conn.execute(
         "DELETE FROM connection_memories WHERE id = ?1",
@@ -79,7 +66,6 @@ pub fn delete_memory(conn: &Connection, memory_id: i64) -> Result<()> {
     Ok(())
 }
 
-/// Delete all memories for a connection and drop the vec0 table.
 pub fn delete_memories_for_connection(conn: &Connection, connection_id: &str) -> Result<()> {
     conn.execute(
         "DELETE FROM connection_memories WHERE connection_id = ?1",
@@ -90,7 +76,6 @@ pub fn delete_memories_for_connection(conn: &Connection, connection_id: &str) ->
     Ok(())
 }
 
-/// Get all (id, content) pairs for a connection — used for re-embedding.
 pub fn get_memory_texts(conn: &Connection, connection_id: &str) -> Result<Vec<(i64, String)>> {
     let mut stmt = conn.prepare(
         "SELECT id, content FROM connection_memories WHERE connection_id = ?1 ORDER BY id",
@@ -103,7 +88,6 @@ pub fn get_memory_texts(conn: &Connection, connection_id: &str) -> Result<Vec<(i
     Ok(rows)
 }
 
-/// Get a single connection-scope memory by id.
 pub fn get_memory_by_id(conn: &Connection, memory_id: i64) -> Result<Option<AiMemory>> {
     let mut stmt = conn.prepare(
         "SELECT id, connection_id, content, created_at, source FROM connection_memories WHERE id = ?1",
@@ -115,8 +99,6 @@ pub fn get_memory_by_id(conn: &Connection, memory_id: i64) -> Result<Option<AiMe
         None => Ok(None),
     }
 }
-
-// ── Group-scope row CRUD ────────────────────────────────────────────────────
 
 pub fn insert_group_memory(conn: &Connection, group_id: &str, content: &str) -> Result<i64> {
     conn.execute(
@@ -167,8 +149,6 @@ pub fn get_group_memory_by_id(conn: &Connection, memory_id: i64) -> Result<Optio
     }
 }
 
-// ── Global-scope row CRUD ───────────────────────────────────────────────────
-
 pub fn insert_global_memory(conn: &Connection, content: &str) -> Result<i64> {
     conn.execute(
         "INSERT INTO global_memories (content, created_at, source) VALUES (?1, ?2, 'manual')",
@@ -216,8 +196,6 @@ pub fn get_global_memory_by_id(conn: &Connection, memory_id: i64) -> Result<Opti
     }
 }
 
-// ── Scope-dispatching helpers ───────────────────────────────────────────────
-
 pub fn insert_memory_scoped(
     conn: &Connection,
     owner: MemoryOwner<'_>,
@@ -240,7 +218,6 @@ pub fn insert_memory_scoped(
     }
 }
 
-/// List memories at the given scope/owner, newest first.
 pub fn list_memories_scoped(
     conn: &Connection,
     scope: MemoryScope,
@@ -260,7 +237,6 @@ pub fn list_memories_scoped(
     }
 }
 
-/// Get a single memory at the given scope by id.
 pub fn get_memory_by_id_scoped(
     conn: &Connection,
     scope: MemoryScope,
@@ -274,7 +250,6 @@ pub fn get_memory_by_id_scoped(
     .map_err(|error| error.to_string())
 }
 
-/// Get (id, content) pairs at the given scope/owner — used for re-embedding.
 pub fn get_memory_texts_scoped(
     conn: &Connection,
     scope: MemoryScope,
@@ -294,7 +269,6 @@ pub fn get_memory_texts_scoped(
     }
 }
 
-/// Delete a memory row at the given scope by id.
 pub fn delete_memory_scoped(
     conn: &Connection,
     scope: MemoryScope,
@@ -308,14 +282,10 @@ pub fn delete_memory_scoped(
     .map_err(|error| error.to_string())
 }
 
-// ── Vector table operations (scope-aware) ───────────────────────────────────
-
-/// Create the vec0 virtual table for a connection if it doesn't exist. Returns the table name.
 pub fn ensure_vec_table(conn: &Connection, connection_id: &str, dim: usize) -> Result<String> {
     ensure_vec_table_named(conn, &vec_table_name(connection_id), dim)
 }
 
-/// Create a named vec0 virtual table if it doesn't exist. Returns the table name.
 pub fn ensure_vec_table_named(conn: &Connection, table: &str, dim: usize) -> Result<String> {
     conn.execute_batch(&format!(
         "CREATE VIRTUAL TABLE IF NOT EXISTS {table} USING vec0(id INTEGER PRIMARY KEY, embedding FLOAT[{dim}] distance_metric=cosine)"
@@ -353,7 +323,6 @@ pub fn insert_memory_vector(
     Ok(())
 }
 
-/// Delete a memory's vector from a named vec table. Gracefully handles a missing table.
 pub fn delete_vector_from_table(conn: &Connection, table: &str, memory_id: i64) -> Result<()> {
     let result = conn.execute(
         &format!("DELETE FROM {table} WHERE id = ?1"),
@@ -373,7 +342,6 @@ pub fn delete_vector_from_table(conn: &Connection, table: &str, memory_id: i64) 
     }
 }
 
-/// Delete a connection memory's vector. Gracefully handles a missing table.
 pub fn delete_memory_vector(conn: &Connection, connection_id: &str, memory_id: i64) -> Result<()> {
     delete_vector_from_table(conn, &vec_table_name(connection_id), memory_id)
 }
@@ -387,18 +355,6 @@ pub fn delete_memory_vector_scoped(
     delete_vector_from_table(conn, &table, memory_id).map_err(|error| error.to_string())
 }
 
-// ── Move + cascade ──────────────────────────────────────────────────────────
-
-/// Move a memory from a source scope/owner to a target scope/owner.
-///
-/// The embedding is computed by the caller (command layer) and passed in as
-/// `embedding`. This helper inserts the source row's content into the target
-/// row table (under a new id), ensures the target vec table, inserts the
-/// vector, then deletes the source row + its vector. Returns the new
-/// (target-scope) memory.
-///
-/// Runs inside its own transaction so a partial move never leaves orphaned
-/// rows/vectors.
 pub fn move_memory(conn: &mut Connection, request: &MemoryMove<'_>) -> Result<AiMemory, String> {
     let MemoryMove {
         memory_id,
@@ -433,7 +389,6 @@ pub fn move_memory(conn: &mut Connection, request: &MemoryMove<'_>) -> Result<Ai
         .ok_or_else(|| "Failed to read back moved memory".to_string())
 }
 
-/// Delete all `group_memories` for a group and drop its group vec0 table.
 pub fn delete_memories_for_group(conn: &Connection, group_id: &str) -> Result<()> {
     conn.execute(
         "DELETE FROM group_memories WHERE group_id = ?1",
@@ -443,8 +398,6 @@ pub fn delete_memories_for_group(conn: &Connection, group_id: &str) -> Result<()
     conn.execute_batch(&format!("DROP TABLE IF EXISTS {table}"))?;
     Ok(())
 }
-
-// ── Row mappers ─────────────────────────────────────────────────────────────
 
 fn map_connection_row(row: &rusqlite::Row) -> Result<AiMemory> {
     Ok(AiMemory {

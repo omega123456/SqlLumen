@@ -9,6 +9,8 @@ import {
 } from '../connection-store/connection-reducers'
 import { useConnectionStore } from '../connection-store'
 
+const KEEP_EXISTING_PASSWORD = ''
+
 export async function setActiveDatabase(sessionId: string, databaseName: string): Promise<void> {
   const active = useConnectionStore.getState().activeConnections[sessionId]
   const trimmedName = databaseName.trim()
@@ -62,7 +64,7 @@ export async function updateDefaultDatabase(
       host: updatedProfile.host,
       port: updatedProfile.port,
       username: updatedProfile.username,
-      password: '', // empty = don't change existing password
+      password: KEEP_EXISTING_PASSWORD,
       defaultDatabase: newDefaultDb,
       sslEnabled: updatedProfile.sslEnabled,
       sslCaPath: updatedProfile.sslCaPath,

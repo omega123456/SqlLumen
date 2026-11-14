@@ -1,6 +1,3 @@
-//! Application logging: stderr output, reloadable `EnvFilter`, and a dedicated
-//! SQLite sink for structured log storage.
-
 use std::sync::OnceLock;
 use tracing::Subscriber;
 use tracing_subscriber::fmt::format::{Format, FormatEvent, FormatFields, Full, Writer};
@@ -15,15 +12,12 @@ use tracing_subscriber::{EnvFilter, Registry};
 pub mod log_store;
 pub mod sqlite_layer;
 
-/// SQLite settings key for persisted log level (`trace` | `debug` | `info` | `warn` | `error`).
 pub const LOG_LEVEL_SETTING_KEY: &str = "log.level";
 
 static SQLITE_LOG_WRITER_GUARD: OnceLock<sqlite_layer::SqliteLogWriterGuard> = OnceLock::new();
 
-/// Handle to reload the global `EnvFilter` (e.g. when `log.level` changes in settings).
 pub type LogFilterReloadHandle = reload::Handle<EnvFilter, Registry>;
 
-/// Result of [`init_logging`].
 pub struct LoggingInit {
     pub filter_reload: LogFilterReloadHandle,
     pub rust_log_env_set: bool,
@@ -40,7 +34,6 @@ fn env_filter_from_rust_log() -> Option<EnvFilter> {
     EnvFilter::try_from_default_env().ok()
 }
 
-/// Parse a `log.level` setting value into an `EnvFilter` (with `sqlx=warn`).
 pub fn parse_log_level_setting(setting: &str) -> Option<EnvFilter> {
     let level = setting.trim().to_lowercase();
     let directive = match level.as_str() {
@@ -54,7 +47,6 @@ pub fn parse_log_level_setting(setting: &str) -> Option<EnvFilter> {
     EnvFilter::try_new(directive).ok()
 }
 
-/// Apply `log.level` from SQLite when `RUST_LOG` is not set. Ignores invalid values.
 pub fn apply_log_level_from_settings(conn: &rusqlite::Connection, handle: &LogFilterReloadHandle) {
     if std::env::var("RUST_LOG").is_ok() {
         return;
@@ -72,7 +64,6 @@ pub fn apply_log_level_from_settings(conn: &rusqlite::Connection, handle: &LogFi
     }
 }
 
-/// Reload log filter after the user saves `log.level` (no-op if `RUST_LOG` is set).
 pub fn reload_log_level_from_setting_value(handle: Option<&LogFilterReloadHandle>, value: &str) {
     if std::env::var("RUST_LOG").is_ok() {
         return;
@@ -90,24 +81,15 @@ pub fn reload_log_level_from_setting_value(handle: Option<&LogFilterReloadHandle
     }
 }
 
-/// ANSI reset sequence.
 const ANSI_RESET: &str = "\x1b[0m";
 
-/// Return the opening ANSI colour escape sequence for a given tracing level.
-///
-/// Colours are chosen to be legible on both dark and light terminal backgrounds:
-/// - `TRACE` → dim (grey)
-/// - `DEBUG` → cyan
-/// - `INFO`  → green
-/// - `WARN`  → bold yellow
-/// - `ERROR` → bold red
 fn level_ansi_prefix(level: &tracing::Level) -> &'static str {
     match *level {
-        tracing::Level::TRACE => "\x1b[2m",    // dim
-        tracing::Level::DEBUG => "\x1b[36m",   // cyan
-        tracing::Level::INFO => "\x1b[32m",    // green
-        tracing::Level::WARN => "\x1b[1;33m",  // bold yellow
-        tracing::Level::ERROR => "\x1b[1;31m", // bold red
+        tracing::Level::TRACE => "\x1b[2m",
+        tracing::Level::DEBUG => "\x1b[36m",
+        tracing::Level::INFO => "\x1b[32m",
+        tracing::Level::WARN => "\x1b[1;33m",
+        tracing::Level::ERROR => "\x1b[1;31m",
     }
 }
 
@@ -118,11 +100,6 @@ fn bracket_level_event_format() -> Format<Full, SystemTime> {
         .with_target(true)
 }
 
-/// Writes `[LEVEL]` first, then the standard full line (timestamp, target, fields).
-///
-/// When `colored` is `true` the level token is wrapped in the appropriate ANSI
-/// colour escape sequence.  The flag is resolved once at subscriber construction
-/// time so there is no per-event syscall overhead.
 struct BracketLevelFormat {
     inner: Format<Full, SystemTime>,
     colored: bool,
@@ -174,19 +151,6 @@ fn build_initial_filter() -> EnvFilter {
     env_filter_from_rust_log().unwrap_or_else(default_env_filter)
 }
 
-/// Attempt to enable ANSI escape-sequence processing on the Windows console
-/// attached to stderr.
-///
-/// On Windows 10 1607+ the console must have `ENABLE_VIRTUAL_TERMINAL_PROCESSING`
-/// set on its mode flags before ANSI escape codes render as colour; without it
-/// they appear as literal characters (`^[[32m` etc.).
-///
-/// When stderr is a pipe (e.g. running via `pnpm tauri dev`) `GetConsoleMode`
-/// returns zero and this function is a silent no-op — the ANSI bytes will still
-/// pass through the pipe and be rendered correctly by the terminal at the other
-/// end of the chain.
-///
-/// On non-Windows platforms this compiles away to nothing.
 #[cfg(target_os = "windows")]
 fn try_enable_windows_ansi_stderr() {
     use std::os::windows::io::AsRawHandle;
@@ -195,9 +159,7 @@ fn try_enable_windows_ansi_stderr() {
         fn GetConsoleMode(hConsoleHandle: *mut core::ffi::c_void, lpMode: *mut u32) -> i32;
         fn SetConsoleMode(hConsoleHandle: *mut core::ffi::c_void, dwMode: u32) -> i32;
     }
-    // SAFETY: we call standard Win32 console APIs with the stderr handle
-    // obtained from the stdlib.  SetConsoleMode is guarded behind a successful
-    // GetConsoleMode check, so we never call it on a non-console handle.
+    // SAFETY: the stderr handle comes from the stdlib and SetConsoleMode only runs after GetConsoleMode succeeds on it.
     unsafe {
         let handle = std::io::stderr().as_raw_handle() as *mut core::ffi::c_void;
         let mut mode: u32 = 0;
@@ -210,27 +172,13 @@ fn try_enable_windows_ansi_stderr() {
 #[cfg(not(target_os = "windows"))]
 fn try_enable_windows_ansi_stderr() {}
 
-/// Decide whether to emit ANSI colour codes on stderr.
-///
-/// Rules (evaluated in order):
-/// 1. `NO_COLOR` env var is set → **off** (<https://no-color.org/>)
-/// 2. Otherwise → **on**
-///
-/// Colour is on by default because `pnpm tauri dev` pipes stderr through
-/// Node.js, which makes `std::io::IsTerminal` return `false` inside the Rust
-/// process even though the output ultimately reaches a colour-capable terminal.
-/// ANSI escape bytes pass through pipes unmodified and are rendered by the
-/// terminal at the far end. Set `NO_COLOR=1` in your shell to suppress them.
 fn stderr_wants_color() -> bool {
     std::env::var_os("NO_COLOR").is_none()
 }
 
-/// Initialize global tracing subscriber (stderr + SQLite sink). Call once at app startup.
 pub fn init_logging(log_db_path: &std::path::Path) -> Result<LoggingInit, String> {
     let rust_log_env_set = std::env::var("RUST_LOG").is_ok();
 
-    // Enable ANSI processing on Windows consoles before the subscriber starts
-    // emitting events.
     try_enable_windows_ansi_stderr();
 
     let sqlite_layer::SqliteLogging {

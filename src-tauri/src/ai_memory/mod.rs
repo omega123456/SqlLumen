@@ -8,7 +8,6 @@ use rusqlite::Connection;
 
 pub use types::{AiMemory, MemoryReembedProgress, MemoryScope};
 
-/// Convert a slice of f32 values to little-endian bytes for sqlite-vec storage/queries.
 pub fn embedding_to_bytes(embedding: &[f32]) -> Vec<u8> {
     embedding
         .iter()
@@ -16,14 +15,6 @@ pub fn embedding_to_bytes(embedding: &[f32]) -> Vec<u8> {
         .collect()
 }
 
-/// Resolves the *effective* embedding endpoint from SQLite settings.
-///
-/// Returns the trimmed value of `ai.embeddingEndpoint` when it is non-empty;
-/// otherwise falls back to the trimmed value of `ai.endpoint` (the chat URL).
-///
-/// Both a missing row (`None`) and a stored-but-blank/whitespace-only value are
-/// treated as "blank → fall back to the chat URL". This is the single source of
-/// truth for the embedding-endpoint fallback rule; call sites must not inline it.
 pub fn resolve_embedding_endpoint(db: &Connection) -> Result<String, String> {
     let embedding =
         settings::get_setting(db, "ai.embeddingEndpoint").map_err(|error| error.to_string())?;

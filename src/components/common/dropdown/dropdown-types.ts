@@ -58,10 +58,8 @@ export type CommonDropdownProps<TValue extends string = string> = DropdownLabelP
   renderTriggerValue?: (selectedOptions: DropdownOption<TValue>[]) => ReactNode
   renderOptionLabel?: (option: DropdownOption<TValue>, context: DropdownRenderContext) => ReactNode
   workspaceTabId?: string
-  /** Trigger chevron size and weight; defaults to 16px bold. */
   chevronSize?: number
   chevronWeight?: IconWeight
-  /** Minimum flyout width in px; defaults to the Fluent 140px. */
   minPanelWidth?: number
 }
 

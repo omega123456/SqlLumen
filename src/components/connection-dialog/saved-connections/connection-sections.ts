@@ -58,8 +58,6 @@ export function filterConnectionsByQuery(
 
   const fuse = new Fuse(savedConnections, {
     keys: ['name', 'host'],
-    // threshold 0 = exact (case-insensitive) substring match anywhere in the
-    // name or host. No typo tolerance, so unrelated entries never sneak in.
     threshold: 0,
     ignoreLocation: true,
     isCaseSensitive: false,

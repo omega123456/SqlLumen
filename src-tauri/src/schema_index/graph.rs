@@ -1,19 +1,11 @@
-//! Bounded BFS traversal over the `schema_index_fk_edges` adjacency table.
-//!
-//! Given a set of seed `(db, table)` pairs, expand outward along FK edges
-//! up to `depth` hops, respecting a total `edge_budget`.
-
 use rusqlite::{params, Connection, Result};
 use std::collections::{HashSet, VecDeque};
 
-/// A table discovered by graph walk, with its hop distance from the nearest seed
-/// and the index of the originating seed in the `seeds` slice.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GraphNode {
     pub db_name: String,
     pub table_name: String,
     pub hop: u32,
-    /// Index into the `seeds` slice that first discovered this node.
     pub seed_index: usize,
 }
 

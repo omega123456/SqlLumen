@@ -17,9 +17,7 @@ export interface ApplySchemaChangesDialogProps {
   warnings: string[]
   connectionId: string
   database: string
-  /** Whether this apply creates a new table or alters an existing one (toast copy). */
   schemaMode: 'create' | 'alter'
-  /** Qualified label for toasts, e.g. `db.table`. */
   tableLabel: string
   onSuccess: () => void
   onCancel: () => void

@@ -90,8 +90,6 @@ export async function deleteConnection(id: string): Promise<void> {
   return invokeArgumentCommand({ command: 'delete_connection', argument: { id } })
 }
 
-// --- Group CRUD ---
-
 export async function createConnectionGroup(name: string): Promise<string> {
   return invokeArgumentCommand({ command: 'create_connection_group', argument: { name } })
 }
@@ -107,8 +105,6 @@ export async function updateConnectionGroup(id: string, name: string): Promise<v
 export async function deleteConnectionGroup(id: string): Promise<void> {
   return invokeArgumentCommand({ command: 'delete_connection_group', argument: { id } })
 }
-
-// --- MySQL connectivity ---
 
 export async function testConnection(
   params: ConnectionFormData,

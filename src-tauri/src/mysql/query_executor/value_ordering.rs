@@ -1,10 +1,3 @@
-/// Compare two `serde_json::Value` items for sorting purposes.
-///
-/// - `Null` sorts **after** all non-null values (for ascending order;
-///   callers reverse the result for descending).
-/// - Two `Number` values are compared as f64.
-/// - Two `String` values are compared lexicographically.
-/// - Mixed types (or booleans / arrays / objects) fall back to `to_string()` comparison.
 pub fn compare_json_values(
     left: &serde_json::Value,
     right: &serde_json::Value,
@@ -14,7 +7,7 @@ pub fn compare_json_values(
 
     match (left, right) {
         (Value::Null, Value::Null) => Ordering::Equal,
-        (Value::Null, _) => Ordering::Greater, // NULLs sort LAST in ASC
+        (Value::Null, _) => Ordering::Greater,
         (_, Value::Null) => Ordering::Less,
 
         (Value::Number(na), Value::Number(nb)) => {
@@ -25,7 +18,6 @@ pub fn compare_json_values(
 
         (Value::String(sa), Value::String(sb)) => sa.cmp(sb),
 
-        // Mixed types: compare as strings
         _ => {
             let sa = left.to_string();
             let sb = right.to_string();

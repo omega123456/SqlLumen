@@ -1,11 +1,9 @@
-/// Abstraction over system memory for testability.
 pub trait MemorySnapshot: Send + Sync {
     fn refresh(&mut self) {}
     fn available_bytes(&self) -> u64;
     fn total_bytes(&self) -> u64;
 }
 
-/// Production implementation using `sysinfo`.
 pub struct SysinfoMemorySnapshot {
     sys: sysinfo::System,
 }
@@ -23,7 +21,6 @@ impl SysinfoMemorySnapshot {
         Self { sys }
     }
 
-    /// Refresh memory stats before reading.
     pub fn refresh(&mut self) {
         self.sys.refresh_memory();
     }
@@ -35,10 +32,7 @@ impl MemorySnapshot for SysinfoMemorySnapshot {
     }
 
     fn available_bytes(&self) -> u64 {
-        // macOS: sysinfo's available_memory() excludes the large pool of
-        // inactive (reclaimable) pages, so on a machine with plenty of free
-        // RAM it reports only a few GB and spuriously triggers RAM-pressure
-        // eviction. Read the reclaimable total straight from Mach instead.
+        // sysinfo's available_memory() omits macOS inactive pages and spuriously triggers RAM-pressure eviction.
         if let Some(bytes) = platform_reclaimable_bytes() {
             return bytes;
         }
@@ -47,7 +41,6 @@ impl MemorySnapshot for SysinfoMemorySnapshot {
         if available > 0 {
             return available;
         }
-        // Fallback: approximate as total − used.
         self.sys
             .total_memory()
             .saturating_sub(self.sys.used_memory())
@@ -68,12 +61,6 @@ pub(super) fn platform_reclaimable_bytes() -> Option<u64> {
     None
 }
 
-/// Reclaimable memory on macOS = (free + inactive + speculative) pages.
-///
-/// These are the pages the kernel can hand back under pressure. We
-/// deliberately exclude `compressor` pages (holding live compressed data)
-/// and `wired`/`active` pages. Returns `None` if the Mach call fails, so the
-/// caller can fall back to `sysinfo`.
 #[cfg(target_os = "macos")]
 pub(super) fn macos_reclaimable_bytes() -> Option<u64> {
     use std::mem;

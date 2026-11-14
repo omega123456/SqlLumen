@@ -42,9 +42,6 @@ pub async fn execute_query_impl(
     Ok(ExecuteQueryResult::from(item))
 }
 
-/// Coverage stub: exercises connection validation, read-only enforcement, the
-/// row-limit clamp, auto-limit detection, the view-spec path and the first
-/// window builder without requiring a live MySQL pool.
 #[cfg(coverage)]
 pub async fn execute_query_impl(
     state: &AppState,
@@ -66,12 +63,9 @@ pub async fn execute_query_impl(
     let row_limit = effective_row_limit(row_limit_or_default(request.row_limit), ceiling);
     let auto_limit_applied = needs_auto_limit(sql);
     let query_id = Uuid::new_v4().to_string();
-    // Exercise the same pure-function paths as the real impl so they are
-    // covered without a live MySQL connection.
     let _is_result = returns_result_set(&strip_non_executable_comments(sql));
     let _sql_to_execute = sql_with_auto_limit(sql, auto_limit_applied, row_limit);
 
-    // Track a dummy thread ID to exercise the running_queries path
     let key = (connection_id.to_string(), tab_id.to_string());
     state
         .running_queries
@@ -93,7 +87,6 @@ pub async fn execute_query_impl(
         .result_cache
         .insert(CacheKey::new(connection_id, tab_id), vec![stored]);
 
-    // Remove dummy thread ID
     state.running_queries.write().await.remove(&key);
 
     Ok(ExecuteQueryResult::from(item))
@@ -114,7 +107,6 @@ pub async fn cancel_query_impl(
     let tab_id = request.tab_id.as_str();
     let key = (connection_id.to_string(), tab_id.to_string());
 
-    // Look up the MySQL thread ID for the running query
     let thread_id = {
         let running = state.running_queries.read().await;
         running.get(&key).copied()
@@ -125,13 +117,11 @@ pub async fn cancel_query_impl(
         return Ok(state.editor_sessions.cancel_queued_run(&queued_run));
     };
 
-    // Resolve the pool from the registry (only needed when we actually issue KILL)
     let pool = state
         .registry
         .get_pool(connection_id)
         .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
 
-    // Acquire a different connection from the pool to issue the KILL command
     let mut conn = tokio::time::timeout(std::time::Duration::from_secs(5), pool.acquire())
         .await
         .map_err(|_| "Cancel timed out waiting for a pool connection".to_string())?
@@ -154,8 +144,6 @@ pub async fn cancel_query_impl(
     Ok(true)
 }
 
-/// Coverage stub: exercises thread-ID lookup and connection validation without
-/// requiring a live MySQL pool to issue the actual KILL QUERY command.
 #[cfg(coverage)]
 pub async fn cancel_query_impl(
     state: &AppState,
@@ -165,7 +153,6 @@ pub async fn cancel_query_impl(
     let tab_id = request.tab_id.as_str();
     let key = (connection_id.to_string(), tab_id.to_string());
 
-    // Look up the MySQL thread ID for the running query
     let thread_id = {
         let running = state.running_queries.read().await;
         running.get(&key).copied()
@@ -176,13 +163,11 @@ pub async fn cancel_query_impl(
         return Ok(state.editor_sessions.cancel_queued_run(&queued_run));
     };
 
-    // Validate connection exists (matches real impl behavior)
     state
         .registry
         .get_pool(connection_id)
         .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
 
-    // Exercise the KILL SQL formatting to cover that code path
     let _kill_sql = format!("KILL QUERY {}", thread_id);
 
     Ok(true)

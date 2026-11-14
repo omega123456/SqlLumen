@@ -5,7 +5,6 @@ use serde::Deserialize;
 #[cfg(not(coverage))]
 use tauri::State;
 
-/// Input for saving a new connection. Includes password field for secure-storage persistence.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveConnectionInput {
@@ -27,8 +26,6 @@ pub struct SaveConnectionInput {
     pub keepalive_interval_secs: Option<i64>,
 }
 
-/// Input for updating an existing connection. Includes password field for secure-storage persistence.
-/// When password is None, the existing password is left unchanged.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateConnectionInput {
@@ -52,8 +49,6 @@ pub struct UpdateConnectionInput {
     pub keepalive_interval_secs: Option<i64>,
 }
 
-// --- Testable implementations (take &AppState instead of State<AppState>) ---
-
 pub fn save_connection_impl(state: &AppState, data: SaveConnectionInput) -> Result<String, String> {
     let password = data.password.clone();
     let conn = lock_db(state)?;
@@ -76,14 +71,12 @@ pub fn save_connection_impl(state: &AppState, data: SaveConnectionInput) -> Resu
         keepalive_interval_secs: data.keepalive_interval_secs,
     };
 
-    // insert_connection sets keychain_ref to the profile id as a password-presence marker
     let id = match connections::insert_connection(&conn, &new_data) {
         Ok(id) => id,
         Err(error) => return Err(error.to_string()),
     };
 
     let Some(pw) = password else {
-        // No password provided — clear keychain_ref so has_password is false
         conn.execute(
             "UPDATE connections SET keychain_ref = NULL WHERE id = ?1",
             rusqlite::params![id],
@@ -92,9 +85,7 @@ pub fn save_connection_impl(state: &AppState, data: SaveConnectionInput) -> Resu
         return Ok(id);
     };
 
-    // Store password in OS secure storage/shared vault using the saved profile id
     if let Err(error) = crate::credentials::store_password(&id, &pw) {
-        // Rollback: delete the connection we just inserted
         let _ = connections::delete_connection(&conn, &id);
         return Err(error);
     }
@@ -168,13 +159,10 @@ pub fn update_connection_impl(
         crate::credentials::delete_password(id)?;
         return connections::set_keychain_ref(&conn, id, None).map_err(|error| error.to_string());
     }
-    // If password is None, leave existing password/keychain_ref unchanged
     let Some(pw) = password else {
         return Ok(());
     };
-    // Store/update password in OS secure storage
     crate::credentials::store_password(id, &pw)?;
-    // Ensure keychain_ref is set (may have been NULL if no previous password)
     if let Err(error) = connections::set_keychain_ref(&conn, id, Some(id)) {
         let _ = crate::credentials::delete_password(id);
         return Err(error.to_string());
@@ -189,21 +177,10 @@ pub fn delete_connection_impl(state: &AppState, id: &str) -> Result<(), String> 
         .map_err(|error| error.to_string())?
         .is_some();
 
-    // Credential/password removal targets an external secure store, so it stays
-    // outside the database transaction below.
     if has_password_marker {
         crate::credentials::delete_password(id)?;
     }
 
-    // Atomically remove all per-connection database data:
-    //   * the dynamically-named AI-memory vector table + connection_memories rows
-    //   * the dynamically-named schema-index vector table
-    //   * the connections row, whose FK ON DELETE CASCADE removes the static
-    //     child rows (schema_cache_snapshots, schema_index_*, query_history,
-    //     favorites).
-    // The dynamic `..._vectors_<id>` virtual tables are not FK children of
-    // `connections`, so they must be dropped explicitly here. If any step fails
-    // the transaction rolls back, leaving the connection and its data intact.
     let tx = conn.unchecked_transaction().map_err(|error| {
         tracing::error!(
             connection_id = id,
@@ -249,8 +226,6 @@ pub fn delete_connection_impl(state: &AppState, id: &str) -> Result<(), String> 
         error.to_string()
     })
 }
-
-// --- Thin Tauri command wrappers ---
 
 #[cfg(not(coverage))]
 #[tauri::command]

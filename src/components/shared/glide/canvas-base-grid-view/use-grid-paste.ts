@@ -76,12 +76,6 @@ function warnAboutSkippedLines(values: PasteValues): void {
   )
 }
 
-/**
- * Paste one line of values into a row, starting at column `targetColumn`. The
- * first editable cell goes through `onCellClipboardEdit`, which saves the row
- * being edited (if any) and starts editing this one; the rest of the line is
- * applied only once that resolved `true`, so no value lands in another row.
- */
 function usePasteLineIntoRow(
   model: GridViewModel,
   operations: GridPasteOperations
@@ -139,13 +133,6 @@ function canPasteAt(guard: PasteGuardInput, target: Item, values: PasteValues): 
   return !isUnloadedRowOutsideEditMode(guard, rowIndex)
 }
 
-/**
- * Paste a block at `target`. Rows are edited one at a time, so only the
- * first pasted line is applied, to the target row, and a warning says the
- * other lines were skipped. Glide's own block paste is never used (it would
- * write every line into the row being edited); an unloaded target row is
- * fetched first.
- */
 function usePasteHandler(model: GridViewModel, operations: GridPasteOperations): PasteHandler {
   const { gridColumns, isWindowed, rowCount, source } = model
   const { isEditMode } = model.props

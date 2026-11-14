@@ -1,13 +1,6 @@
-//! Tauri IPC command wrappers for query favorites.
-//!
-//! Under `cfg(coverage)`, all Tauri command wrappers are excluded — tests exercise
-//! the `*_impl` functions directly.
-
 use crate::commands::helpers::lock_db;
 use crate::db::favorites::{self, CreateFavoriteInput, FavoriteEntry, UpdateFavoriteInput};
 use crate::state::AppState;
-
-// ── create_favorite ──────────────────────────────────────────────────────────
 
 pub fn create_favorite_impl(
     state: &AppState,
@@ -33,8 +26,6 @@ pub fn create_favorite(
     create_favorite_impl(&state, input)
 }
 
-// ── list_favorites ───────────────────────────────────────────────────────────
-
 pub fn list_favorites_impl(
     state: &AppState,
     connection_id: &str,
@@ -55,8 +46,6 @@ pub fn list_favorites(
 ) -> Result<Vec<FavoriteEntry>, String> {
     list_favorites_impl(&state, &connection_id)
 }
-
-// ── update_favorite ──────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -89,8 +78,6 @@ pub fn update_favorite(
 ) -> Result<bool, String> {
     update_favorite_impl(&state, payload)
 }
-
-// ── delete_favorite ──────────────────────────────────────────────────────────
 
 pub fn delete_favorite_impl(state: &AppState, id: i64) -> Result<bool, String> {
     let conn = lock_db(state)?;

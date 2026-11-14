@@ -14,7 +14,6 @@ export function Sidebar() {
   const [panelState, setPanelState] = useState<{
     tabId: string | null
     favouritesOpen: boolean
-    /** Reveal request seq at the time favourites was toggled. */
     revealSeq: number
   }>({
     tabId: activeTabId,
@@ -22,8 +21,6 @@ export function Sidebar() {
     revealSeq: 0,
   })
 
-  // A reveal request for this connection made after favourites was opened
-  // switches the sidebar back to the tree so the object can be shown.
   const revealedSinceToggle =
     revealRequest !== null &&
     revealRequest.connectionId === activeTabId &&

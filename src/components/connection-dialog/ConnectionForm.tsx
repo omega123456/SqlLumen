@@ -24,7 +24,6 @@ export type { ConnectionFormSeed }
 interface ConnectionFormProps {
   editingConnection?: SavedConnection
   onDeleteConnection?: (id: string) => void
-  /** Prefill the form as a new, unsaved connection (used by Duplicate). */
   initialData?: ConnectionFormSeed
 }
 

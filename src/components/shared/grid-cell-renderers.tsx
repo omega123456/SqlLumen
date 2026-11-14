@@ -1,31 +1,8 @@
-/**
- * Shared cell value renderers for grid surfaces.
- *
- * - renderCellValue: shared NULL/BLOB/normal value display logic
- * - TableDataCellRenderer: displays NULL/BLOB indicators with styled spans
- */
-
 import { useSettingsStore } from '../../stores/settings-store'
 import type { GridColumn } from './glide/glide-grid-types'
 import { isBlobPlaceholderText } from '../../lib/blob-utils'
 import { isNullish } from '../../lib/value-checks'
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// renderCellValue — shared NULL/BLOB/normal value display
-// ---------------------------------------------------------------------------
-
-/**
- * Renders a cell value as a React node with consistent NULL/BLOB handling.
- *
- * - null / undefined → `<span class="td-cell-value td-null-value">{nullDisplay}</span>`
- *   where nullDisplay is read from the settings store (`results.nullDisplay`).
- * - string starting with "[BLOB" → `<span class="td-cell-value td-blob-value">{value}</span>`
- * - anything else → `<span class="td-cell-value">{String(value)}</span>`
- */
 function renderCellValue(value: unknown): React.ReactNode {
   if (isNullish(value)) {
     const nullDisplay = useSettingsStore.getState().getSetting('results.nullDisplay')
@@ -39,16 +16,6 @@ function renderCellValue(value: unknown): React.ReactNode {
   return <span className="td-cell-value">{String(value)}</span>
 }
 
-// ---------------------------------------------------------------------------
-// TableDataCellRenderer — NULL/BLOB display for grid adapters
-// ---------------------------------------------------------------------------
-
-/**
- * Cell renderer that displays NULL values with muted styling and BLOB values
- * distinctively. Designed for vendor-neutral grid render props.
- *
- * Reads the cell value from `row[column.key]`.
- */
 export function TableDataCellRenderer<R extends Record<string, unknown>>(props: {
   row: R
   column: GridColumn<R>

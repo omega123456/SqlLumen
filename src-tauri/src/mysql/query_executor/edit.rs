@@ -1,11 +1,5 @@
 use super::*;
 
-// ── Analyze query for edit ─────────────────────────────────────────────────────
-
-/// Analyze a SQL query and return table metadata for inline editing.
-///
-/// Extracts table references from the SQL, resolves their databases, and
-/// fetches primary key / column metadata for each table via `fetch_table_pk_impl`.
 #[cfg(not(coverage))]
 async fn query_session_current_database(pool: &sqlx::MySqlPool) -> Option<String> {
     match sqlx::query("SELECT DATABASE()").fetch_one(pool).await {
@@ -164,8 +158,6 @@ async fn fetch_table_edit_info(
     })
 }
 
-/// Coverage stub: exercises the SQL parser and connection validation without
-/// calling `fetch_table_pk_impl` (which is gated behind `#[cfg(not(coverage))]`).
 #[cfg(coverage)]
 pub async fn analyze_query_for_edit_impl(
     state: &AppState,
@@ -175,23 +167,18 @@ pub async fn analyze_query_for_edit_impl(
     let sql = request.sql.as_str();
     use crate::mysql::sql_table_parser;
 
-    // Exercise the parser — mirrors the real impl's early return for empty tables
     let table_refs = sql_table_parser::extract_tables(sql);
     if table_refs.is_empty() {
         return Ok(vec![]);
     }
 
-    // Validate connection exists (only reached when tables were found)
     state
         .registry
         .get_pool(connection_id)
         .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
 
-    // Cannot call fetch_table_pk_impl under coverage — return empty
     Ok(vec![])
 }
-
-// ── Update result cell ─────────────────────────────────────────────────────────
 
 struct CellEdit {
     row_index: usize,
@@ -235,19 +222,6 @@ fn apply_cell_edit(slot: &mut StoredResult, edit: CellEdit) -> Result<(), String
     Ok(())
 }
 
-/// Update specific cells in a cached result set after a save operation.
-///
-/// `row_index` is a **base** row index (the index into the result's original
-/// rows), never a view position, so a save under any sort or filter targets the
-/// right row. A tombstoned (deleted) row is refused.
-///
-/// Builds a fresh `SharedRow` for the edited row and a new pointer list that
-/// shares every other row with the previous one, then swaps it in through the
-/// version-checked, lock-serialized slot modifier. Rows already returned over
-/// IPC are never mutated, and an edit that races a re-run is refused instead of
-/// resurrecting the old result: the slot must still hold `query_id`, so a save
-/// that lands after a re-run replaced the slot never edits the new result at
-/// the old base index. The view (and its version) is unchanged.
 pub fn update_result_cell_impl(
     state: &AppState,
     request: UpdateResultCellRequest,

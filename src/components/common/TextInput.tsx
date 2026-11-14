@@ -10,7 +10,6 @@ export type TextInputVariant = 'default' | 'mono' | 'formField' | 'tableCell' | 
 export type TextInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> & {
   variant?: TextInputVariant
   invalid?: boolean
-  /** Extra right padding when a password visibility toggle overlaps the field */
   passwordToggleGutter?: boolean
 }
 

@@ -190,14 +190,6 @@ async fn hash_signature_query(
     Ok(())
 }
 
-/// Fetch a per-table MySQL "schema fingerprint" for every user table in a
-/// single sweep. Three bulk queries (one each against `COLUMNS`, `STATISTICS`,
-/// `KEY_COLUMN_USAGE` joined with `REFERENTIAL_CONSTRAINTS`) are issued
-/// regardless of table count, and the raw rows are SHA-256'd client-side per
-/// table — this avoids any `group_concat_max_len` truncation and keeps the
-/// signature logic testable in pure Rust.
-///
-/// Returned map is `(db_name, table_name) -> signature_hex`.
 pub(super) async fn fetch_all_table_signatures(
     pool: &sqlx::MySqlPool,
 ) -> Result<HashMap<TableKey, String>, String> {

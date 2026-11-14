@@ -50,8 +50,6 @@ pub fn create_session_snapshot(
     create_session_snapshot_impl(&state, payload)
 }
 
-// ── list_session_snapshots ──────────────────────────────────────────────────
-
 pub fn list_session_snapshots_impl(state: &AppState) -> Result<Vec<SnapshotSummary>, String> {
     let conn = lock_db(state)?;
     session_snapshots::list_summaries(&conn).map_err(|error| {
@@ -67,8 +65,6 @@ pub fn list_session_snapshots(
 ) -> Result<Vec<SnapshotSummary>, String> {
     list_session_snapshots_impl(&state)
 }
-
-// ── get_session_snapshot ────────────────────────────────────────────────────
 
 pub fn get_session_snapshot_impl(state: &AppState, id: i64) -> Result<Option<String>, String> {
     let conn = lock_db(state)?;
@@ -86,8 +82,6 @@ pub fn get_session_snapshot(
 ) -> Result<Option<String>, String> {
     get_session_snapshot_impl(&state, id)
 }
-
-// ── delete_session_snapshot ─────────────────────────────────────────────────
 
 pub fn delete_session_snapshot_impl(state: &AppState, id: i64) -> Result<bool, String> {
     let conn = lock_db(state)?;

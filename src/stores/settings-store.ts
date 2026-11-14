@@ -272,14 +272,6 @@ export const useSettingsStore = create<SettingsState>()(() => ({
   closeDialog: closeDialog,
 }))
 
-/**
- * React hook that returns the effective value for a single settings key.
- *
- * Unlike selecting `s.getSetting` (which returns a stable function reference
- * and therefore never triggers re-renders), this hook's selector returns the
- * computed **string value**, so Zustand correctly re-renders the component
- * whenever `pendingChanges` or `settings` changes the resolved value.
- */
 export function useSettingValue(key: string): string {
   return useSettingsStore((state) => {
     if (key in state.pendingChanges) return state.pendingChanges[key]

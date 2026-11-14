@@ -1,23 +1,13 @@
 use super::*;
 
-/// Normalize a host string for same-host comparison: trim surrounding
-/// whitespace and lower-case it (host names are case-insensitive). Pure helper
-/// so the comparison rule is unit-testable.
 pub fn normalize_host(host: &str) -> String {
     host.trim().to_ascii_lowercase()
 }
 
-/// `true` when the two hosts refer to the same server for the purpose of the
-/// same-host copy guard.
 pub fn is_same_host(source_host: &str, target_host: &str) -> bool {
     normalize_host(source_host) == normalize_host(target_host)
 }
 
-/// Resolve the source and target host strings for the same-host validation.
-///
-/// The source is a runtime **session id** (its host lives in the registry's
-/// stored connection params); the target is a saved **profile id** (its host is
-/// read from the SQLite connection store).
 pub(super) struct CopyHosts {
     pub(super) source_host: String,
     pub(super) target_host: String,
@@ -83,12 +73,6 @@ pub(super) fn validate_target_connection_is_writable(
     Ok(())
 }
 
-/// Validate params, register a new job in `copy_jobs`, spawn the engine task,
-/// and return the new job id.
-///
-/// Same-host copy is rejected eagerly here based on a literal host-string
-/// comparison; aliased addresses (e.g. `localhost` vs `127.0.0.1`) bypass it.
-/// The target must live on a *different* host than the source.
 pub fn start_copy_to_host_impl(
     state: &AppState,
     params: CopyToHostParams,
@@ -138,21 +122,17 @@ pub fn start_copy_to_host_impl(
     Ok(job_id)
 }
 
-/// Return the stored progress for `job_id`. Errors if the job is unknown.
 pub fn get_copy_progress_impl(state: &AppState, job_id: &str) -> Result<CopyJobProgress, String> {
     let mut jobs = state
         .copy_jobs
         .write()
         .map_err(|error| format!("Failed to lock copy jobs: {error}"))?;
-    // Lazy cleanup of stale terminal entries, mirroring the dump job model.
     cleanup_terminal_jobs(&mut jobs);
     jobs.get(job_id)
         .cloned()
         .ok_or_else(|| format!("Copy job '{job_id}' not found"))
 }
 
-/// Request cancellation of `job_id` by setting its `cancel_requested` flag. The
-/// engine observes the flag at the next safe checkpoint. Errors if unknown.
 pub fn cancel_copy_impl(state: &AppState, job_id: &str) -> Result<(), String> {
     let mut jobs = state
         .copy_jobs
@@ -167,20 +147,6 @@ pub fn cancel_copy_impl(state: &AppState, job_id: &str) -> Result<(), String> {
     }
 }
 
-/// Spawn the background copy engine task for an already-registered job.
-///
-/// The engine entry point [`run_copy`](crate::export::copy_to_host::run_copy)
-/// borrows `&AppState`, which is not `'static`. The spawned task therefore
-/// reacquires the managed `AppState` from the app handle (Tauri keeps it alive
-/// for the whole app lifetime) and calls the engine with that reference.
-///
-/// When no app handle is available (e.g. in unit tests) the engine is *not*
-/// spawned — the job entry is still registered so `start_copy_to_host_impl`
-/// remains fully testable; only the live engine execution is skipped.
-///
-/// Excluded from coverage: it requires the Tauri async runtime and a real MySQL
-/// pool. The registration/validation logic in `start_copy_to_host_impl` carries
-/// the tested behavior.
 #[cfg(not(coverage))]
 pub(super) fn spawn_copy_job(state: &AppState, params: CopyToHostParams, job_id: String) {
     use tauri::Manager;
@@ -202,6 +168,5 @@ pub(super) fn spawn_copy_job(state: &AppState, params: CopyToHostParams, job_id:
     });
 }
 
-/// No-op stub for coverage builds (the engine needs a real pool).
 #[cfg(coverage)]
 pub(super) fn spawn_copy_job(_state: &AppState, _params: CopyToHostParams, _job_id: String) {}

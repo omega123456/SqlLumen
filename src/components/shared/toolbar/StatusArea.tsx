@@ -1,11 +1,3 @@
-/**
- * StatusArea — shared toolbar component for displaying query/data status.
- *
- * Shows a loading spinner, success text with row count and timing,
- * an error message, or nothing (idle state).
- * Purely presentational — no store imports.
- */
-
 import type { StatusAreaProps } from '../../../types/shared-data-view'
 import styles from './toolbar-items.module.css'
 
@@ -57,7 +49,6 @@ export function StatusArea({
         </span>
       )}
 
-      {/* idle: render nothing */}
 
       {customContent}
     </div>

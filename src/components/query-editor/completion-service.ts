@@ -194,7 +194,6 @@ async function provideCompletions({
     })
   }
 
-  // Completion must never await schema loading: Monaco shows "loading..." until this resolves.
   const cache = getCache(connectionId)
   if (cache.status === 'error') {
     return schemaUnavailableItems()
@@ -214,7 +213,6 @@ async function provideCompletions({
   )
   if (dotCompletions !== null) return dotCompletions
 
-  // dt-sql-parser degrades to empty syntax and keywords when it chokes earlier in the statement.
   if (!hasUsableSuggestions(suggestions)) {
     return buildParseFallback({
       cache: cache,

@@ -69,10 +69,6 @@ export interface ObjectTreeTarget {
   name: string
 }
 
-/**
- * Load, expand and select an object's node in the object browser tree.
- * Resolves to true when the node exists and was selected.
- */
 export async function revealObjectInTree({
   connectionId,
   database,
@@ -105,18 +101,12 @@ export async function revealObjectInTree({
   return true
 }
 
-/** The database object a workspace tab shows, if it shows an existing one. */
 export interface TabRevealTarget {
   database: string
   objectType: ObjectType
   name: string
 }
 
-/**
- * Resolve the tree object behind a workspace tab. Returns null for tabs without
- * one (query editor, history, process list) and for create-mode designers and
- * editors, whose object does not exist yet.
- */
 export function getTabRevealTarget(tab: WorkspaceTab): TabRevealTarget | null {
   switch (tab.type) {
     case 'schema-info':
@@ -135,7 +125,6 @@ export function getTabRevealTarget(tab: WorkspaceTab): TabRevealTarget | null {
   }
 }
 
-/** True for tab types that show a database object, even one not created yet. */
 export function isObjectTab(tab: WorkspaceTab): boolean {
   return (
     tab.type === 'schema-info' ||
@@ -145,10 +134,6 @@ export function isObjectTab(tab: WorkspaceTab): boolean {
   )
 }
 
-/**
- * Select a tab's object in the object browser, make its database the active one
- * (the same as clicking it in the tree), then scroll to and focus the row.
- */
 export async function revealTabInObjectBrowser(tab: WorkspaceTab): Promise<void> {
   const target = getTabRevealTarget(tab)
   if (!target) {

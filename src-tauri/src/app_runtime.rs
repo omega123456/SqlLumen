@@ -54,7 +54,6 @@ fn register_plugins(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(prevent_default_plugin());
-    // Hypothesi MCP bridge: WebSocket for @hypothesi/tauri-mcp-server (see .cursor/mcp.json, opencode.json).
     #[cfg(debug_assertions)]
     let builder = builder.plugin(
         tauri_plugin_mcp_bridge::Builder::new()
@@ -72,7 +71,6 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
     let dir = resolved_app_data_dir(&base);
     let log_db_path = dir.join(crate::logging::log_store::LOG_DB_FILE_NAME);
 
-    // The logs database must be initialised before the log-writer thread opens its own connection.
     let logs_conn = crate::logging::log_store::initialize_log_database(&log_db_path).map_err(
         |error| -> Box<dyn Error> { format!("failed to initialize log database: {error}").into() },
     )?;
@@ -173,7 +171,6 @@ async fn run_cache_maintenance_pass(
 
 fn build_http_client() -> reqwest::Client {
     crate::http_client_builder()
-        // Ollama and other local LLM servers may need this long to load a model before accepting connections.
         .connect_timeout(HTTP_CONNECT_TIMEOUT)
         .timeout(HTTP_REQUEST_TIMEOUT)
         .build()
@@ -252,7 +249,6 @@ async fn run_recurring_vacuum(main_db: &SharedConnection, logs_db: &SharedConnec
     let mut interval = tokio::time::interval(Duration::from_secs(
         crate::db::vacuum::VACUUM_STALENESS_SECS,
     ));
-    // The first tick fires immediately and would duplicate the startup pass.
     interval.tick().await;
     loop {
         interval.tick().await;
@@ -316,15 +312,7 @@ fn prevent_default_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
                     .password_autosave(false)
                     // WebView2 disables F12/Ctrl+Shift+I when false; keep true in debug so DevTools work with `tauri dev`.
                     .browser_accelerator_keys(cfg!(debug_assertions))
-                    // Always enable at the WebView2 level to prevent a black screen
-                    // in production builds.  WRY sets `AreDevToolsEnabled(false)` when
-                    // the Tauri `devtools` feature is off, and some WebView2 runtime
-                    // versions fail to render the page in that state.  Re-enabling it
-                    // here is safe because all shortcuts that open DevTools are already
-                    // blocked: `Flags::DEV_TOOLS` prevents Ctrl+Shift+I via the
-                    // injected JS, `browser_accelerator_keys(false)` disables F12 and
-                    // other browser shortcuts, and `Flags::CONTEXT_MENU` removes the
-                    // right-click menu.
+                    // WRY disables WebView2 DevTools without the Tauri devtools feature, which blanks the page on some runtimes.
                     .dev_tools(true),
             )
             .build()

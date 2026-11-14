@@ -1,9 +1,5 @@
 use super::*;
 
-/// Map a `mysql_async::consts::ColumnType` to a human-readable display name
-/// that matches the strings returned by `sqlx` for consistency.
-///
-/// Uses the column flags to distinguish UNSIGNED variants and BINARY types.
 pub fn column_type_display_name(
     col_type: mysql_async::consts::ColumnType,
     flags: mysql_async::consts::ColumnFlags,
@@ -54,11 +50,6 @@ pub fn column_type_display_name(
     }
 }
 
-/// Serialize raw bytes from a Bytes value, using context from the column type.
-///
-/// This handles the dispatch logic for `mysql_async::Value::Bytes(...)` which is
-/// used for strings, DECIMAL, BIT, BLOB/BINARY types, and — over the text
-/// protocol — every numeric and temporal column.
 pub fn serialize_bytes_value(
     bytes: &[u8],
     col_type: mysql_async::consts::ColumnType,
@@ -69,7 +60,6 @@ pub fn serialize_bytes_value(
     let is_binary = flags.contains(mysql_async::consts::ColumnFlags::BINARY_FLAG);
 
     match col_type {
-        // BIT: convert bytes to u64 integer
         MYSQL_TYPE_BIT => {
             let mut value: u64 = 0;
             for &byte in bytes {
@@ -78,8 +68,6 @@ pub fn serialize_bytes_value(
             json_from_u64(value)
         }
 
-        // Text protocol sends numbers as ASCII — parse them so they serialize the
-        // same as binary-protocol `Int`/`UInt`/`Double` values.
         MYSQL_TYPE_TINY | MYSQL_TYPE_SHORT | MYSQL_TYPE_INT24 | MYSQL_TYPE_LONG
         | MYSQL_TYPE_LONGLONG | MYSQL_TYPE_YEAR => {
             let text = String::from_utf8_lossy(bytes);
@@ -102,13 +90,11 @@ pub fn serialize_bytes_value(
             }
         }
 
-        // DECIMAL/NUMERIC: string to preserve precision
         MYSQL_TYPE_DECIMAL | MYSQL_TYPE_NEWDECIMAL => {
             let text = String::from_utf8_lossy(bytes);
             serde_json::Value::String(text.into_owned())
         }
 
-        // BLOB/BINARY types: base64-encode if binary flag is set
         MYSQL_TYPE_TINY_BLOB
         | MYSQL_TYPE_BLOB
         | MYSQL_TYPE_MEDIUM_BLOB
@@ -120,16 +106,12 @@ pub fn serialize_bytes_value(
             serde_json::Value::String(BASE64_STANDARD.encode(bytes))
         }
 
-        // JSON type — return as string (it's already JSON text, but we wrap it)
         MYSQL_TYPE_JSON => serde_json::Value::String(String::from_utf8_lossy(bytes).into_owned()),
 
-        // All other Bytes values (VARCHAR, TEXT, ENUM, SET, etc.) — UTF-8 string
         _ => serde_json::Value::String(String::from_utf8_lossy(bytes).into_owned()),
     }
 }
 
-/// Serialize a single `mysql_async::Value` to a `serde_json::Value`,
-/// matching the output format of the existing sqlx `serialize_value` function.
 pub fn serialize_mysql_value(
     value: &mysql_async::Value,
     col_type: mysql_async::consts::ColumnType,

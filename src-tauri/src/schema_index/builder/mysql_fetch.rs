@@ -5,7 +5,6 @@ use tokio_util::sync::CancellationToken;
 use super::super::types::{BuildPhase, BuildProgress, ProgressCallback, TableDdlInput};
 use super::SHOW_CREATE_TABLE_CONCURRENCY;
 
-/// MySQL system schemas that should never be indexed.
 const SYSTEM_SCHEMAS: &[&str] = &["information_schema", "mysql", "performance_schema", "sys"];
 
 pub(super) type TableKey = (String, String);
@@ -43,8 +42,6 @@ fn show_create_routine_keyword(routine_type: &str) -> &'static str {
     "FUNCTION"
 }
 
-/// Enumerate every user (non-system) base table in one `information_schema`
-/// round-trip. Returns `(schema, table)` pairs sorted by `(schema, table)`.
 pub(super) async fn fetch_all_user_tables(pool: &sqlx::MySqlPool) -> Result<Vec<TableKey>, String> {
     let rows = sqlx::query(
         "SELECT TABLE_SCHEMA, TABLE_NAME \
@@ -61,7 +58,6 @@ pub(super) async fn fetch_all_user_tables(pool: &sqlx::MySqlPool) -> Result<Vec<
     for row in &rows {
         let schema = decode_string(row, 0).map_err(|error| format!("schema: {error}"))?;
         let table = decode_string(row, 1).map_err(|error| format!("table: {error}"))?;
-        // Double-check: bind does not work with NOT IN (tuple) so guard in Rust too.
         if is_system_schema(&schema) {
             continue;
         }
@@ -70,9 +66,6 @@ pub(super) async fn fetch_all_user_tables(pool: &sqlx::MySqlPool) -> Result<Vec<
     Ok(out)
 }
 
-/// Tolerant UTF-8 column decoder: try `String`, fall back to bytes → lossy UTF-8.
-/// Used everywhere we read MySQL identifier / metadata columns that the server
-/// may hand back as either depending on collation.
 pub(super) fn decode_string(
     row: &sqlx::mysql::MySqlRow,
     index: usize,
@@ -84,9 +77,6 @@ pub(super) fn decode_string(
     })
 }
 
-/// Fetch approximate row counts for all user base tables.
-///
-/// Returns a map of `(schema, table) -> row_count` from `information_schema.TABLES`.
 pub(super) async fn fetch_row_counts(
     pool: &sqlx::MySqlPool,
 ) -> Result<HashMap<(String, String), i64>, String> {
@@ -112,9 +102,6 @@ pub(super) async fn fetch_row_counts(
     Ok(out)
 }
 
-/// Fetch all user-created views with their DDL.
-///
-/// Returns `(db_name, view_name, create_view_ddl)` tuples.
 pub(super) async fn fetch_all_user_views(
     pool: &sqlx::MySqlPool,
 ) -> Result<Vec<(String, String, String)>, String> {
@@ -173,10 +160,6 @@ pub(super) async fn fetch_all_user_views(
     Ok(out)
 }
 
-/// Fetch all user-created routines (procedures and functions) with their DDL.
-///
-/// Returns `(db_name, routine_name, routine_type, create_ddl)` tuples where
-/// `routine_type` is `"PROCEDURE"` or `"FUNCTION"`.
 pub(super) async fn fetch_all_user_routines(
     pool: &sqlx::MySqlPool,
 ) -> Result<Vec<(String, String, String, String)>, String> {
@@ -237,7 +220,6 @@ pub(super) async fn fetch_all_user_routines(
     Ok(out)
 }
 
-/// Fetch `SHOW CREATE TABLE` output.
 pub(super) async fn fetch_create_table(
     pool: &sqlx::MySqlPool,
     database: &str,
@@ -298,11 +280,6 @@ async fn fetch_counted_create_table(
     })
 }
 
-/// Parallel `SHOW CREATE TABLE` fetch for a set of `(db, table)` pairs.
-///
-/// Uses `buffer_unordered` bounded by `SHOW_CREATE_TABLE_CONCURRENCY` so the
-/// MySQL pool can't be exhausted. Per-table heartbeats log every 10 completed
-/// fetches so the previously silent phase is visible in tracing output.
 pub(super) async fn fetch_create_tables_parallel(
     source: DdlSource<'_>,
     targets: Vec<(String, String)>,

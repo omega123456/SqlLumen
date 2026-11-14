@@ -1,17 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-// ── Build progress callback type ─────────────────────────────────────────
-
-/// Callback invoked during index builds to report progress.
 pub type ProgressCallback = Box<dyn Fn(BuildProgress) + Send + Sync>;
 
-// ── Build progress / result / config ─────────────────────────────────────
-
-/// Current phase of an in-flight index build.
-///
-/// `LoadingSchema` covers MySQL enumeration + `SHOW CREATE TABLE` fetches
-/// (can take minutes for large instances). `Embedding` covers the embedding
-/// API calls and SQLite writes.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum BuildPhase {
@@ -30,7 +20,6 @@ impl BuildPhase {
     }
 }
 
-/// Incremental progress reported during an index build.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BuildProgress {
@@ -40,7 +29,6 @@ pub struct BuildProgress {
     pub tables_total: usize,
 }
 
-/// Summary returned when an index build completes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BuildResult {
@@ -49,43 +37,32 @@ pub struct BuildResult {
     pub duration_ms: u64,
 }
 
-/// Configuration for an index build (explicit deps, no AppState).
 #[derive(Debug, Clone)]
 pub struct BuildConfig {
-    /// The saved connection profile id.
     pub connection_id: String,
-    /// The embedding model to use (e.g. "nomic-embed-text").
     pub model_id: String,
-    /// Base URL for the embedding endpoint (e.g. "http://localhost:11434/v1").
     pub endpoint: String,
 }
 
-/// Raw DDL input for chunk generation (used in builder + tests).
 #[derive(Debug, Clone)]
 pub struct TableDdlInput {
     pub db_name: String,
     pub table_name: String,
-    /// Output of `SHOW CREATE TABLE`.
     pub create_table_sql: String,
 }
 
-/// A foreign key relationship extracted from DDL or INFORMATION_SCHEMA.
 #[derive(Debug, Clone)]
 pub struct FkInput {
     pub db_name: String,
     pub table_name: String,
     pub constraint_name: String,
-    /// Source columns.
     pub columns: Vec<String>,
     pub ref_db_name: String,
     pub ref_table_name: String,
-    /// Referenced columns.
     pub ref_columns: Vec<String>,
     pub on_delete: String,
     pub on_update: String,
 }
-
-// ── Existing types ───────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -98,7 +75,6 @@ pub enum ChunkType {
 }
 
 impl ChunkType {
-    /// Convert to the SQLite storage string.
     pub fn as_str(&self) -> &'static str {
         match self {
             ChunkType::Table => "table",
@@ -109,7 +85,6 @@ impl ChunkType {
         }
     }
 
-    /// Parse from the SQLite storage string.
     pub fn from_storage_str(text: &str) -> Option<Self> {
         match text {
             "table" => Some(ChunkType::Table),
@@ -133,7 +108,6 @@ pub enum IndexStatus {
 }
 
 impl IndexStatus {
-    /// Convert to the SQLite storage string.
     pub fn as_str(&self) -> &'static str {
         match self {
             IndexStatus::NotConfigured => "not_configured",
@@ -144,7 +118,6 @@ impl IndexStatus {
         }
     }
 
-    /// Parse from the SQLite storage string.
     pub fn from_storage_str(text: &str) -> Option<Self> {
         match text {
             "not_configured" => Some(IndexStatus::NotConfigured),
@@ -184,9 +157,6 @@ pub struct IndexMeta {
     pub embedding_dimension: i64,
     pub last_build_at: Option<String>,
     pub status: IndexStatus,
-    /// Schema version of the vec0 virtual table layout.
-    /// `None` (NULL in SQLite) means the row was written before versioning was
-    /// introduced and should be treated as version 0 (L2 distance).
     pub vec_schema_version: Option<i64>,
 }
 
@@ -218,7 +188,6 @@ pub struct ChunkEmbeddingUpdate<'a> {
     pub row_count_approx: Option<i64>,
 }
 
-/// A foreign key edge stored in the `schema_index_fk_edges` adjacency table.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FkEdge {

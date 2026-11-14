@@ -1,18 +1,3 @@
-/**
- * BlobViewerDialog — shared modal for viewing and editing binary (BLOB) cells.
- *
- * The dialog renders three always-present tabs — Image, Text, Hex — over the
- * cell's working bytes. In `edit` mode it also exposes acquire actions (Load
- * from file, Paste, drag-and-drop), destructive actions (Set NULL, Clear), and
- * an Apply/Cancel footer that stages a self-describing blob envelope. In `view`
- * mode only the tabs, Save-to-file, and Close remain.
- *
- * Byte source: either an injected `loader` (lazy `fetchBlobValue` for the
- * table-data surface) or a pre-supplied `initialBase64` (`null` for SQL NULL)
- * for query-result rows that already inline the bytes. The 10 MB cap only applies to the loader
- * path and to file loads; query-result inlined bytes keep Save-to-file enabled.
- */
-
 import { DialogShell } from './DialogShell'
 import type { BlobEnvelope, BlobValueResponse } from '../../types/schema'
 import styles from './BlobViewerDialog.module.css'
@@ -39,18 +24,10 @@ import { useBlobContent, useBlobViewerSession } from './blob-viewer-dialog/use-b
 export interface BlobViewerDialogProps {
   isOpen: boolean
   onClose: () => void
-  /** `edit` exposes acquire/destructive actions + Apply/Cancel; `view` is read-only. */
   mode: 'edit' | 'view'
-  /** Human-readable column name shown in the header (e.g. `photo`). */
   columnLabel: string
-  /**
-   * Lazy byte source for the table-data surface. Called once on open; manages
-   * loading/cap/error states. Mutually exclusive with `initialBase64`.
-   */
   loader?: () => Promise<BlobValueResponse>
-  /** Pre-supplied base64 bytes (query-result inlined path). `null` for SQL NULL. */
   initialBase64?: string | null
-  /** Edit mode: stage the built envelope and close. */
   onApply?: (envelope: BlobEnvelope) => void
 }
 

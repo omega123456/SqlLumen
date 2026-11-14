@@ -18,13 +18,8 @@ pub use index_meta::*;
 pub use segment_frequencies::*;
 pub use signatures::*;
 
-/// Current schema version of the vec0 virtual table layout.
-/// Increment this when the vec0 CREATE statement changes (e.g. distance metric).
-/// Version 1 = cosine distance metric.
 pub const VEC_SCHEMA_VERSION: u32 = 2;
 
-/// Sanitize an ID string for use in a SQL table name by replacing
-/// non-alphanumeric characters with underscores.
 pub fn sanitize_table_name(id: &str) -> String {
     id.chars().map(table_name_safe_char).collect()
 }
@@ -36,13 +31,10 @@ fn table_name_safe_char(character: char) -> char {
     '_'
 }
 
-/// Compute the per-profile vec0 virtual table name.
 pub fn vec_table_name(profile_id: &str) -> String {
     format!("schema_index_vectors_{}", sanitize_table_name(profile_id))
 }
 
-/// Create a per-profile `schema_index_vectors_{profile}` vec0 virtual table
-/// with the given dimension.
 pub fn create_vec_table(conn: &Connection, profile_id: &str, dimension: usize) -> Result<()> {
     let table = vec_table_name(profile_id);
     conn.execute_batch(&format!(
@@ -51,15 +43,12 @@ pub fn create_vec_table(conn: &Connection, profile_id: &str, dimension: usize) -
     Ok(())
 }
 
-/// Drop the per-profile `schema_index_vectors_{profile}` virtual table.
 pub fn drop_vec_table(conn: &Connection, profile_id: &str) -> Result<()> {
     let table = vec_table_name(profile_id);
     conn.execute_batch(&format!("DROP TABLE IF EXISTS {table}"))?;
     Ok(())
 }
 
-/// Insert a chunk into `schema_index_chunks` and its embedding into the
-/// profile-specific vector table. Returns the inserted chunk ID.
 pub fn insert_chunk(conn: &Connection, chunk: &ChunkInsert) -> Result<i64> {
     conn.execute(
         "INSERT INTO schema_index_chunks (connection_id, chunk_key, db_name, table_name, chunk_type, ddl_text, ddl_hash, model_id, ref_db_name, ref_table_name, text_for_embedding, row_count_approx)
@@ -91,7 +80,6 @@ pub fn insert_chunk(conn: &Connection, chunk: &ChunkInsert) -> Result<i64> {
     Ok(chunk_id)
 }
 
-/// Update an existing chunk's DDL, hash, model_id, embedded_at, and vector embedding.
 pub fn update_chunk_embedding(
     conn: &Connection,
     profile_id: &str,

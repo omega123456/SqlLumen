@@ -1,12 +1,3 @@
-//! Optional cross-encoder re-ranking via LLM.
-//!
-//! When `ai.retrieval.rerankEnabled` is true, the top-N search candidates are
-//! sent to the configured LLM endpoint with a ranking prompt. The LLM returns
-//! a JSON object `{"ranked": [chunkId, ...]}` that reorders the candidates.
-//!
-//! On any failure (timeout, malformed JSON, missing IDs), the original order is
-//! preserved silently.
-
 use super::search::SearchResult;
 use serde::{Deserialize, Serialize};
 
@@ -25,19 +16,6 @@ fn candidate_summary(ddl_text: &str) -> String {
 }
 const BODY_PREVIEW_MAX_CHARS: usize = 200;
 
-/// Rerank search results using an LLM cross-encoder.
-///
-/// Sends the candidate chunk IDs and summaries to the LLM, which returns a
-/// reordered subset. Falls back to the original order on any error.
-///
-/// # Arguments
-/// * `candidates` — top-N search results to rerank
-/// * `question` — the user's original question
-/// * `client` — HTTP client for the LLM call
-/// * `endpoint` — base URL for the LLM API
-/// * `model` — model name for the chat completion
-///
-/// Returns the candidates in re-ranked order, or the original order on failure.
 #[derive(Debug, Clone, Copy)]
 pub struct RerankBackend<'a> {
     pub endpoint: &'a str,
@@ -135,7 +113,6 @@ pub async fn rerank_with_llm(
         return candidates;
     };
 
-    // Parse response: look for {"ranked": [...]} in the assistant message content
     match parse_rerank_response(&body) {
         Some(ids) if !ids.is_empty() => reorder_by_ids(candidates, &ids),
         _ => {
@@ -160,9 +137,7 @@ struct RerankOutput {
     ranked: Vec<i64>,
 }
 
-/// Parse the LLM chat completion response to extract ranked chunk IDs.
 pub fn parse_rerank_response(response_body: &str) -> Option<Vec<i64>> {
-    // Try to parse as OpenAI-style chat completion
     #[derive(Deserialize)]
     struct ChatCompletion {
         choices: Vec<ChatChoice>,
@@ -178,17 +153,13 @@ pub fn parse_rerank_response(response_body: &str) -> Option<Vec<i64>> {
 
     let content = match serde_json::from_str::<ChatCompletion>(response_body) {
         Ok(completion) => completion.choices.first()?.message.content.clone(),
-        // Maybe the response body IS the content directly
         Err(_) => response_body.to_string(),
     };
 
-    // Try to parse the content as RerankOutput
-    // First try direct parse, then look for JSON in the text
     if let Ok(output) = serde_json::from_str::<RerankOutput>(&content) {
         return Some(output.ranked);
     }
 
-    // Try to find JSON object in the text
     let start = content.find('{')?;
     let end = content.rfind('}')?;
     let json_str = content.get(start..=end)?;
@@ -197,8 +168,6 @@ pub fn parse_rerank_response(response_body: &str) -> Option<Vec<i64>> {
         .map(|output| output.ranked)
 }
 
-/// Reorder candidates according to the given ID order.
-/// IDs not in the ranked list are appended at the end in their original order.
 pub fn reorder_by_ids(candidates: Vec<SearchResult>, ranked_ids: &[i64]) -> Vec<SearchResult> {
     use std::collections::HashMap;
 
@@ -209,14 +178,12 @@ pub fn reorder_by_ids(candidates: Vec<SearchResult>, ranked_ids: &[i64]) -> Vec<
 
     let mut reordered = Vec::new();
 
-    // Add results in the ranked order
     for id in ranked_ids {
         if let Some(result) = id_to_result.remove(id) {
             reordered.push(result);
         }
     }
 
-    // Append remaining results not in the ranked list
     let mut remaining: Vec<SearchResult> = id_to_result.into_values().collect();
     remaining.sort_by(|left, right| {
         right

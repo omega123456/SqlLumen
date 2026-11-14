@@ -139,7 +139,6 @@ impl<R: Runtime> ChatStream<'_, R> {
         Err(error)
     }
 
-    /// Accumulate reasoning fields into the thinking buffer when reasoning is enabled.
     fn accumulate_thinking(&mut self, chunk: &ApiStreamChunk) {
         if !self.enable_reasoning {
             return;

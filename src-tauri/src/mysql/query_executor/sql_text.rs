@@ -1,10 +1,5 @@
 use super::*;
 
-// ── SQL comment stripping & keyword helpers ─────────────────────────────────────
-
-/// Strip non-executable SQL comments from a SQL string.
-/// Preserves MySQL executable comments (`/*! ... */`) and optimizer hints (`/*+ ... */`).
-/// Removes standard block comments (`/* ... */`), line comments (`-- ...`), and hash comments (`# ...`).
 fn is_block_comment_start(character: char, next_character: Option<char>) -> bool {
     character == '/' && next_character == Some('*')
 }
@@ -110,17 +105,12 @@ fn copy_quoted_literal(quote: char, chars: &mut SqlChars<'_>, result: &mut Strin
     }
 }
 
-/// Get the first SQL keyword from a (comment-stripped) SQL string.
-/// Handles executable comments (`/*!50001 SELECT ... */`) by extracting the keyword inside.
 pub fn get_first_keyword(sql: &str) -> String {
     let trimmed = sql.trim();
 
-    // Handle executable comments: /*!50001 keyword ... */
     if let Some(inner) = trimmed.strip_prefix("/*!") {
-        // Skip optional version number (digits)
         let after_version = inner.trim_start_matches(|character: char| character.is_ascii_digit());
         let after_ws = after_version.trim_start();
-        // Extract first word
         let first_word: String = after_ws
             .chars()
             .take_while(|character| is_identifier_char(*character))
@@ -196,9 +186,6 @@ fn identifier_end(chars: &[char], start: usize) -> usize {
     position
 }
 
-/// Given a WITH statement (comment-stripped), find the main DML keyword after all CTE definitions.
-/// Scans past parenthesized CTE bodies to find the first DML verb at depth 0.
-/// Returns the uppercased keyword (e.g., "SELECT", "INSERT") or "" if not found.
 pub fn find_with_main_keyword(sql: &str) -> String {
     let chars: Vec<char> = sql.chars().collect();
     let mut position = 0;
@@ -247,8 +234,6 @@ fn is_limit_keyword_at(chars: &[char], position: usize) -> bool {
     is_limit_word && is_word_start && is_word_end
 }
 
-/// Check whether a LIMIT keyword appears at the top level of a SQL string.
-/// Skips LIMIT tokens inside string literals and parenthesized subqueries.
 pub fn has_top_level_limit(sql: &str) -> bool {
     let chars: Vec<char> = sql.chars().collect();
     let mut scan = TopLevelScan {
@@ -265,8 +250,6 @@ pub fn has_top_level_limit(sql: &str) -> bool {
     false
 }
 
-/// Returns true if a `;` outside string literals and comments is followed by
-/// more SQL (trailing semicolons alone do not count).
 pub fn has_multiple_statements(sql: &str) -> bool {
     let stripped = strip_non_executable_comments(sql);
     let mut quote: Option<char> = None;
@@ -290,15 +273,11 @@ pub fn has_multiple_statements(sql: &str) -> bool {
     false
 }
 
-/// Check whether a SQL string contains INTO OUTFILE at the top level.
 pub(super) fn has_into_outfile(sql: &str) -> bool {
     let upper = sql.to_uppercase();
-    // Simple check — INTO OUTFILE is rarely inside strings
     upper.contains("INTO OUTFILE")
 }
 
-/// Check whether a SQL string ends with a trailing locking clause.
-/// Returns the byte offset of the clause start if found, or None.
 pub(super) fn find_trailing_lock_clause(sql: &str) -> Option<usize> {
     let upper = sql.trim_end().to_uppercase();
     let patterns = ["FOR UPDATE", "FOR SHARE", "LOCK IN SHARE MODE"];
@@ -310,20 +289,7 @@ pub(super) fn find_trailing_lock_clause(sql: &str) -> Option<usize> {
     None
 }
 
-/// Returns true if `sql` contains a row-locking clause anywhere outside string
-/// literals and comments: `FOR UPDATE`, `FOR SHARE` or `LOCK IN SHARE MODE`.
-///
-/// Deliberately conservative (it also matches inside subqueries and CTEs, and
-/// covers `NOWAIT`, `SKIP LOCKED`, `OF tbl` and trailing `;` variants), because a
-/// re-run of a locking query would take its locks again. Unlike
-/// [`find_trailing_lock_clause`], which only positions an injected LIMIT, this
-/// decides whether a truncated result may be re-run for a full export.
 pub fn has_locking_clause(sql: &str) -> bool {
-    // One pass over the raw SQL that skips strings and comments with MySQL's
-    // rules, so the two can never fall out of step: `--` only starts a comment
-    // when followed by whitespace, a control character or the end of input, and
-    // backticks have no backslash escapes. The contents of executable comments
-    // (`/*! */`) and optimizer hints (`/*+ */`) are scanned like normal SQL.
     let tokens = LockingClauseTokenizer::new(sql).tokenize();
     (0..tokens.len()).any(|token_index| is_locking_clause_at(&tokens, token_index))
 }

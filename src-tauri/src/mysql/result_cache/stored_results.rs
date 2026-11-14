@@ -32,36 +32,14 @@ where
 }
 
 impl GenericCache<Vec<StoredResult>> {
-    /// Hard ceiling on rows kept per query-editor result.
     pub fn row_ceiling(&self) -> usize {
         self.row_ceiling.load(Ordering::Relaxed)
     }
 
-    /// Set the ceiling used by runs that start after this call. Does not clamp
-    /// (the settings layer clamps), so tests can use small ceilings.
     pub fn set_row_ceiling(&self, rows: usize) {
         self.row_ceiling.store(rows, Ordering::Relaxed);
     }
 
-    /// Read-modify-write one whole result slot in place (rows, view, view
-    /// spec, view version, tombstones), only when the invalidation version still
-    /// matches `expected_invalidation_version`.
-    ///
-    /// This is the only write path to a cached slot. The version check, read,
-    /// `f` and write-back run under one mutex shared by every in-place write, so
-    /// cell edits and view or tombstone writes can't lose each other's change.
-    /// A concurrent [`GenericCache::insert_if_current`] does not take this lock,
-    /// so a narrow race with a re-run remains; pass `expected_query_id` to
-    /// refuse a write that lands after a re-run replaced the slot. Unlike
-    /// `insert`, it does not bump the generation, remove spill files, or churn
-    /// LRU bookkeeping. In addition it optionally checks that:
-    /// - the slot still holds `expected_query_id` ([`SlotWrite::QueryIdMismatch`]);
-    /// - the slot's `view_version` still equals `base_view_version`
-    ///   (compare-and-swap, [`SlotWrite::ViewSuperseded`] with the current version).
-    ///
-    /// `f` mutates a clone of the slot; the clone replaces the slot only when
-    /// `f` succeeds, so an `Err` from `f` leaves the cache unchanged. Rows that
-    /// were handed out are never mutated: `f` must build new `SharedRows`.
     pub fn modify_slot_in_place_if_current<T, F>(
         &self,
         target: &SlotWriteTarget<'_>,

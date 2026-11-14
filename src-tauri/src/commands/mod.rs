@@ -30,11 +30,6 @@ pub mod window_chrome;
 use crate::state::AppState;
 use tauri::Manager;
 
-/// Run a synchronous `*_impl` on the blocking thread pool.
-///
-/// Tauri runs non-async commands on the main (UI) thread, so commands that copy
-/// or scan large cached results use this from an async wrapper to keep the
-/// window responsive.
 pub async fn run_blocking_with_state<R, T, F>(
     app: tauri::AppHandle<R>,
     operation: F,

@@ -6,11 +6,6 @@ function isQueryEditorTabWithId(tab: WorkspaceTab, tabId: string | null): boolea
   return tab.id === tabId && tab.type === 'query-editor'
 }
 
-/**
- * Inserts the given SQL into the connection's active query-editor tab,
- * appending to any existing content (separated by a blank line). When no
- * active query-editor tab exists, a new one is created with the SQL.
- */
 export function insertSqlIntoEditor(connectionId: string, sqlText: string, label?: string): void {
   const { activeTabByConnection, tabsByConnection, openQueryTab } = useWorkspaceStore.getState()
   const activeTabId = activeTabByConnection[connectionId]

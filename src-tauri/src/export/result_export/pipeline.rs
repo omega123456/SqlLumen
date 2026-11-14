@@ -1,8 +1,5 @@
 use super::*;
 
-/// The export's output side: the sink on the temp file, progress reporting,
-/// and the final rename or cleanup. Coverage-visible, so tests drive it with
-/// synthetic rows.
 pub struct ExportPipeline {
     pub(super) jobs: ResultExportJobs,
     pub(super) job_id: String,
@@ -30,13 +27,11 @@ impl ExportPipeline {
         }
     }
 
-    /// Override the XLSX sheet row limit (test seam).
     pub fn with_sheet_row_limit(mut self, sheet_row_limit: u32) -> Self {
         self.sheet_row_limit = sheet_row_limit;
         self
     }
 
-    /// Create the temp file and write the header for the re-run's columns.
     pub fn open(&mut self, columns: &[String]) -> Result<(), String> {
         let spec = RowSinkSpec {
             format: &self.format,
@@ -50,8 +45,6 @@ impl ExportPipeline {
         Ok(())
     }
 
-    /// Write one row and publish progress on the first row and every
-    /// [`PROGRESS_REPORT_EVERY_ROWS`] rows.
     pub fn accept_row(&mut self, row: &[serde_json::Value]) -> Result<RowWrite, String> {
         let sink = self
             .sink
@@ -75,11 +68,6 @@ impl ExportPipeline {
         });
     }
 
-    /// Finish the job: on success, finish the file and rename it onto the
-    /// target; otherwise delete the temp file and leave the target untouched.
-    /// A cancel request turns a completed re-run into a cancelled export.
-    /// `restore_error` (a failed database restore) is reported in the job's
-    /// error without failing a completed export. Returns the final status.
     pub fn complete(
         mut self,
         outcome: ExportOutcome,

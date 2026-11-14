@@ -1,6 +1,3 @@
-// MySQL 8.4 / MariaDB 11.x built-in function signature data
-// Reference: https://dev.mysql.com/doc/refman/8.4/en/built-in-function-reference.html
-//            https://mariadb.com/kb/en/built-in-functions/
 import type { BuiltinFunctionSignature } from './builtin-function-signatures/signature-types'
 import { NUMERIC_FUNCTION_SIGNATURES } from './builtin-function-signatures/numeric-functions'
 import { STRING_FUNCTION_ASCII_TO_LTRIM_SIGNATURES } from './builtin-function-signatures/string-functions-ascii-to-ltrim'
@@ -36,10 +33,6 @@ import { MYSQL_SPECIFIC_FUNCTION_REGEXP_INSTR_TO_WAIT_FOR_EXECUTED_GTID_SET_SIGN
 
 export type { BuiltinFunctionSignature }
 
-/**
- * Auto-generate a signature label from the function name and parameter labels.
- * Returns the explicit `label` when provided, otherwise builds `NAME(p1, p2, ...)`.
- */
 export function getSignatureLabel(name: string, signature: BuiltinFunctionSignature): string {
   if (signature.label) return signature.label
   const parameterList = signature.parameters.map((parameter) => parameter.label).join(', ')

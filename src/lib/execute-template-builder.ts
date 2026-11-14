@@ -7,17 +7,6 @@ export interface ExecuteTemplateInputs {
   parameters: RoutineParameter[]
 }
 
-/**
- * Build a SQL template for executing a stored procedure or function.
- *
- * - Procedures use `CALL`, functions use `SELECT`.
- * - IN parameters get `NULL` as a placeholder value.
- * - OUT parameters get `@param_name` (user variable).
- * - INOUT parameters get `@param_name` (user variable).
- * - Function parameters (no mode) get `NULL` as a placeholder value.
- * - dataType is lowercased in the comment.
- * - Parameters are sorted by ordinalPosition.
- */
 export function buildExecuteTemplate({
   databaseName,
   routineName,
@@ -31,7 +20,6 @@ export function buildExecuteTemplate({
     return `${keyword} ${qualifiedName}();`
   }
 
-  // Sort by ordinal position
   const sorted = [...parameters].sort((left, right) => left.ordinalPosition - right.ordinalPosition)
 
   const paramLines = sorted.map((param) => {
@@ -51,7 +39,6 @@ export function buildExecuteTemplate({
       return `  /* INOUT ${param.name} ${dataTypeLower} */ @${param.name}`
     }
 
-    // IN (default)
     return `  /* IN ${param.name} ${dataTypeLower} */ NULL`
   })
 

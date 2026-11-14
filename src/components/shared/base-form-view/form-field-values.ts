@@ -18,14 +18,6 @@ import type {
   UnknownTotalBaseFormViewProps,
 } from '../../../types/shared-data-view'
 
-/**
- * Format a cell value for *input* fields (not display labels).
- *
- * Unlike `formatCellValue()` from result-cell-utils (which returns the string
- * "NULL" for null values, appropriate for read-only display), this helper
- * returns an empty string for null/undefined so that `<input value={…}>` and
- * enum `<Dropdown value={…}>` receive a valid controlled-component value.
- */
 export function displayValue(value: unknown): string {
   if (isNullish(value)) return ''
   if (typeof value === 'string') return value
@@ -45,9 +37,6 @@ function getJsonFormDefaultValue(currentValue: unknown): string {
 export function getBlobFieldDisplayValue(value: unknown): string {
   if (value == null) return '(BLOB data)'
   if (typeof value === 'string') {
-    // Table-data rows arrive with a backend-baked `[BLOB - <size>]` placeholder;
-    // query-result rows inline the bytes as base64, so derive the size here to
-    // keep both surfaces identical.
     if (isBlobPlaceholderText(value)) return value
     return blobPlaceholder(base64ByteLength(value))
   }

@@ -1,60 +1,25 @@
-//! SQL dump generation engine for exporting databases/tables as SQL dump files.
-//!
-//! Produces mysqldump-compatible output with:
-//! - Header/footer comments with metadata
-//! - `SHOW CREATE TABLE`/`SHOW CREATE VIEW` output
-//! - Batched multi-row INSERT statements (up to 1000 rows per statement)
-//! - Proper identifier and value escaping
-//! - Type-aware value serialization preserving leading zeros, binary data, etc.
-
 use std::io::{self, Write};
 
-/// Maximum number of rows per INSERT statement for batched inserts.
 pub const INSERT_BATCH_SIZE: usize = 1000;
 
-/// Represents a cell value in a SQL dump with enough type information
-/// to serialize it correctly in INSERT statements.
-///
-/// Unlike `serde_json::Value`, this preserves the distinction between
-/// numeric types, quoted strings, binary data, and decimal precision.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SqlDumpValue {
-    /// SQL NULL.
     Null,
-    /// Signed integer (TINYINT, SMALLINT, MEDIUMINT, INT, BIGINT).
-    /// Emitted as an unquoted number.
     Int(i64),
-    /// Unsigned integer (BIGINT UNSIGNED, etc.).
-    /// Emitted as an unquoted number.
     UInt(u64),
-    /// Floating-point value (FLOAT, DOUBLE).
-    /// Emitted as an unquoted number.
     Float(f64),
-    /// Exact numeric string for DECIMAL/NUMERIC.
-    /// Emitted unquoted to preserve the exact representation from MySQL.
     Decimal(String),
-    /// Quoted string value (VARCHAR, TEXT, DATE/TIME, ENUM, SET, JSON, etc.).
-    /// Emitted as a properly SQL-escaped, single-quoted string.
     QuotedString(String),
-    /// Binary data (BLOB, BINARY, VARBINARY).
-    /// Emitted as a hex literal: `0xABCDEF`.
     HexBytes(Vec<u8>),
-    /// Boolean value from BIT(1).
-    /// Emitted as `1` or `0`.
     Bool(bool),
 }
 
-/// Options controlling what gets included in the SQL dump.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DumpOptions {
-    /// Whether to include table structure (CREATE TABLE/VIEW).
     pub include_structure: bool,
-    /// Whether to include data (INSERT statements).
     pub include_data: bool,
-    /// Whether to include DROP TABLE IF EXISTS before CREATE.
     pub include_drop: bool,
-    /// Whether to wrap in a transaction (SET AUTOCOMMIT=0, COMMIT).
     pub use_transaction: bool,
 }
 
@@ -69,14 +34,10 @@ impl Default for DumpOptions {
     }
 }
 
-/// Escape a SQL identifier by doubling any embedded backtick characters.
 pub fn escape_identifier(name: &str) -> String {
     name.replace('`', "``")
 }
 
-/// Escape a SQL string value for use inside single quotes.
-///
-/// Handles: single quotes, backslashes, null bytes, newlines, and carriage returns.
 pub fn escape_string_value(text: &str) -> String {
     let mut out = String::with_capacity(text.len() + 8);
     for ch in text.chars() {
@@ -92,7 +53,6 @@ pub fn escape_string_value(text: &str) -> String {
     out
 }
 
-/// Write the SQL dump file header.
 pub fn write_header<W: Write>(
     writer: &mut W,
     database_name: &str,
@@ -124,7 +84,6 @@ pub fn write_header<W: Write>(
     Ok(())
 }
 
-/// Write the SQL dump file footer.
 pub fn write_footer<W: Write>(writer: &mut W) -> io::Result<()> {
     writeln!(writer)?;
     writeln!(
@@ -209,11 +168,6 @@ pub fn write_structure<W: Write>(writer: &mut W, structure: &DumpStructure<'_>) 
     Ok(())
 }
 
-/// Write a single `INSERT INTO ... VALUES ...;` statement for one batch of rows.
-///
-/// This is the low-level writer that handles only the INSERT statement itself —
-/// no LOCK/UNLOCK, no comment header. Called internally by [`write_data_inserts`]
-/// and by the streaming helper [`stream_to_dump`](crate::commands::sql_dump::stream_to_dump).
 pub fn write_insert_batch<W: Write>(
     writer: &mut W,
     target: &InsertTarget<'_>,
@@ -258,10 +212,6 @@ fn write_row_values<W: Write>(writer: &mut W, row: &[SqlDumpValue]) -> io::Resul
     Ok(())
 }
 
-/// Write batched INSERT statements for a table's data.
-///
-/// Rows are written in batches of up to `INSERT_BATCH_SIZE` rows per INSERT statement
-/// using multi-row VALUES syntax for efficiency.
 pub fn write_data_inserts<W: Write>(writer: &mut W, table: &DumpTableRows<'_>) -> io::Result<u64> {
     let DumpTableRows {
         table_name,
@@ -303,14 +253,6 @@ pub fn write_data_inserts<W: Write>(writer: &mut W, table: &DumpTableRows<'_>) -
     Ok(total_rows)
 }
 
-/// Render a single [`SqlDumpValue`] as the exact SQL literal it produces inside
-/// an `INSERT ... VALUES` row (e.g. `'abc'`, `42`, `NULL`, `0xAB`).
-///
-/// Shared between the file-based dump writer ([`write_value`]) and the
-/// copy-to-host engine, which builds `INSERT` statements as in-memory strings
-/// for a target pool and needs to measure each literal's serialized byte size
-/// for adaptive batching. Keeping a single source of truth guarantees the
-/// measured size matches the bytes actually sent.
 pub fn value_to_literal(value: &SqlDumpValue) -> String {
     match value {
         SqlDumpValue::Null => "NULL".to_string(),
@@ -334,18 +276,14 @@ pub fn value_to_literal(value: &SqlDumpValue) -> String {
     }
 }
 
-/// Serialized byte length of a single value's SQL literal (as produced by
-/// [`value_to_literal`]). Used by the copy engine's byte-budgeted batching.
 pub fn value_byte_len(value: &SqlDumpValue) -> usize {
     value_to_literal(value).len()
 }
 
-/// Write a single SQL dump value with correct quoting and escaping.
 fn write_value<W: Write>(writer: &mut W, value: &SqlDumpValue) -> io::Result<()> {
     write!(writer, "{}", value_to_literal(value))
 }
 
-/// Write transaction wrappers (SET AUTOCOMMIT=0 at start, COMMIT at end).
 pub fn write_transaction_start<W: Write>(writer: &mut W) -> io::Result<()> {
     writeln!(writer, "SET AUTOCOMMIT = 0;")?;
     writeln!(writer, "SET FOREIGN_KEY_CHECKS = 0;")?;
@@ -353,7 +291,6 @@ pub fn write_transaction_start<W: Write>(writer: &mut W) -> io::Result<()> {
     Ok(())
 }
 
-/// Write transaction end markers.
 pub fn write_transaction_end<W: Write>(writer: &mut W) -> io::Result<()> {
     writeln!(writer)?;
     writeln!(writer, "SET FOREIGN_KEY_CHECKS = 1;")?;

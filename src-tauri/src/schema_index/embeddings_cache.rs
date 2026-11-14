@@ -1,12 +1,6 @@
-//! Simple LRU cache for embedding vectors, keyed by `(model_id, text)`.
-//!
-//! Used by `semantic_search_impl` to avoid re-embedding identical query strings.
-//! The build path bypasses this cache entirely.
-
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-/// Default capacity of the embedding cache.
 const DEFAULT_CAPACITY: usize = 256;
 
 #[derive(Debug, Clone, Copy)]
@@ -21,11 +15,6 @@ impl<'a> EmbeddingCacheKey<'a> {
     }
 }
 
-/// A simple LRU-like cache for embedding vectors.
-///
-/// Uses a `HashMap` with a counter-based eviction: when the cache is full, the
-/// entry with the smallest `last_used` counter is evicted. This is O(n) for
-/// eviction but the cache is small (256 entries) so it's fine.
 pub struct EmbeddingCache {
     inner: Mutex<CacheInner>,
 }
@@ -65,12 +54,10 @@ impl Default for EmbeddingCache {
 }
 
 impl EmbeddingCache {
-    /// Create a new embedding cache with the default capacity (256).
     pub fn new() -> Self {
         Self::with_capacity(DEFAULT_CAPACITY)
     }
 
-    /// Create a new embedding cache with the given capacity.
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             inner: Mutex::new(CacheInner {
@@ -81,7 +68,6 @@ impl EmbeddingCache {
         }
     }
 
-    /// Look up a cached embedding vector.
     pub fn get(&self, model_id: &str, text: &str) -> Option<Vec<f32>> {
         let mut inner = self.inner.lock().ok()?;
         inner.counter += 1;

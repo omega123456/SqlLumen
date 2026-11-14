@@ -10,7 +10,6 @@ use super::decode_mysql_optional_text_cell;
 #[cfg(not(coverage))]
 use super::{decode_mysql_text_cell, RoutineRef};
 
-/// Row returned by `query_routine_parameters`.
 #[derive(Debug)]
 pub struct RoutineParameterRow {
     pub name: String,

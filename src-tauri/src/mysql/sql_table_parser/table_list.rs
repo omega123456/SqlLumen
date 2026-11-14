@@ -39,8 +39,6 @@ pub(super) fn parse_table_list_entry(
     continue_after_comma(chars, skip_whitespace(chars, after_reference))
 }
 
-/// Parse a comma-separated list of table references after FROM.
-/// Stops when encountering a JOIN keyword, a stop keyword, or end of input.
 pub(super) fn parse_table_list(
     chars: &[char],
     mut position: usize,
@@ -54,14 +52,10 @@ pub(super) fn parse_table_list(
     }
 }
 
-/// Check if position looks like the start of a subquery (SELECT keyword).
 pub(super) fn is_subquery_start(chars: &[char], position: usize) -> bool {
     matches_keyword_at(chars, position, "SELECT")
 }
 
-/// Parse a single table reference (possibly schema-qualified, possibly backtick-quoted).
-/// Adds the table to `tables` if found. Skips any alias.
-/// Returns the new position after the table ref and alias.
 pub(super) fn parse_single_table_ref(
     chars: &[char],
     mut position: usize,
@@ -73,22 +67,18 @@ pub(super) fn parse_single_table_ref(
         return position;
     }
 
-    // Check for parenthesized expression (subquery in JOIN position)
     if chars[position] == '(' {
         let inner_start = skip_whitespace(chars, position + 1);
         if is_subquery_start(chars, inner_start) {
-            // Skip subquery — don't extract table
             position = skip_parenthesized(chars, position);
             position = skip_alias(chars, position);
             return position;
         }
-        // Parenthesized join group — skip gracefully
         position = skip_parenthesized(chars, position);
         position = skip_alias(chars, position);
         return position;
     }
 
-    // Read the first identifier (could be database or table)
     let first_read = read_identifier(chars, position);
     let Some(first_ident) = first_read.name else {
         return position;
@@ -141,7 +131,6 @@ impl IdentifierRead {
     }
 }
 
-/// Read an identifier (plain or backtick-quoted) at position `i`.
 pub(super) fn read_identifier(chars: &[char], position: usize) -> IdentifierRead {
     if is_past_end(chars, position) {
         return IdentifierRead::missing_at(position);
@@ -196,8 +185,6 @@ pub(super) fn non_empty_name(name: String) -> Option<String> {
     Some(name).filter(|name| !name.is_empty())
 }
 
-/// Skip an optional alias (AS alias_name or just alias_name).
-/// Must be careful not to consume JOIN keywords or other SQL keywords as aliases.
 pub(super) fn skip_alias(chars: &[char], mut position: usize) -> usize {
     let saved = position;
     position = skip_whitespace(chars, position);
@@ -213,7 +200,6 @@ pub(super) fn skip_alias(chars: &[char], mut position: usize) -> usize {
     if is_keyword_at_word_start(chars, position, "AS") {
         position += 2;
         position = skip_whitespace(chars, position);
-        // Read alias name
         return read_identifier(chars, position).end;
     }
 
@@ -233,7 +219,6 @@ pub(super) fn skip_alias(chars: &[char], mut position: usize) -> usize {
     alias_read.end
 }
 
-/// Check if a word is a SQL keyword that should NOT be treated as an alias.
 pub(super) fn is_sql_keyword(word: &str) -> bool {
     matches!(
         word,
@@ -267,7 +252,6 @@ pub(super) fn is_sql_keyword(word: &str) -> bool {
     )
 }
 
-/// Deduplicate table references in-place, preserving first occurrence order.
 pub(super) fn deduplicate(tables: &mut Vec<TableReference>) {
     let mut seen: Vec<(Option<String>, String)> = Vec::new();
     tables.retain(|table| {

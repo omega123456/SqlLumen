@@ -33,7 +33,6 @@ use tokio_util::sync::CancellationToken;
 #[cfg(not(coverage))]
 use uuid::Uuid;
 
-/// Input parameters for testing a MySQL connection.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestConnectionInput {
@@ -41,8 +40,6 @@ pub struct TestConnectionInput {
     pub port: u16,
     pub username: String,
     pub password: String,
-    /// Saved connection profile id. When set and `password` is empty, the saved
-    /// password is resolved from secure storage (mirrors `open_connection`).
     #[serde(default)]
     pub profile_id: Option<String>,
     pub default_database: Option<String>,
@@ -53,7 +50,6 @@ pub struct TestConnectionInput {
     pub connect_timeout_secs: Option<u64>,
 }
 
-/// Result of testing a MySQL connection.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestConnectionResult {
@@ -65,7 +61,6 @@ pub struct TestConnectionResult {
     pub error_message: Option<String>,
 }
 
-/// Result of opening a MySQL connection.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenConnectionResult {
@@ -73,8 +68,6 @@ pub struct OpenConnectionResult {
     pub session_id: String,
     pub server_version: String,
 }
-
-// --- Testable implementations ---
 
 #[cfg(not(coverage))]
 fn health_monitor_token(
@@ -181,12 +174,8 @@ async fn fetch_diagnostic_value(
     row.try_get::<String, _>(column.column_index).ok()
 }
 
-/// Test a MySQL connection with the given parameters.
-/// Creates a temporary pool, runs diagnostic queries, and drops the pool.
 #[cfg(not(coverage))]
 pub async fn test_connection_impl(input: TestConnectionInput) -> TestConnectionResult {
-    // When testing a saved connection without a freshly typed password, resolve the
-    // stored password from secure storage so the test uses real credentials.
     let password = match resolve_test_connection_password(&input) {
         Ok(password) => password,
         Err(error) => return failed_test_connection(error),
@@ -200,7 +189,6 @@ pub async fn test_connection_impl(input: TestConnectionInput) -> TestConnectionR
     };
     let connection_time_ms = start.elapsed().as_millis() as u64;
 
-    // Run diagnostic queries — failures are non-fatal (report what we can)
     let server_version = fetch_diagnostic_value(&pool, SERVER_VERSION_COLUMN).await;
     let ssl_cipher_column = DiagnosticColumn {
         sql: "SHOW STATUS LIKE 'Ssl_cipher'",
@@ -215,7 +203,6 @@ pub async fn test_connection_impl(input: TestConnectionInput) -> TestConnectionR
     };
     let auth_method = fetch_diagnostic_value(&pool, current_user_column).await;
 
-    // Always close the temp pool
     pool.close().await;
 
     TestConnectionResult {
@@ -240,14 +227,11 @@ pub async fn test_connection_impl(_input: TestConnectionInput) -> TestConnection
     }
 }
 
-/// Open a saved connection: reads from SQLite, retrieves password from secure storage,
-/// creates pool, registers it under a new session id, and spawns a health monitor task.
 #[cfg(not(coverage))]
 pub async fn open_connection_impl(
     state: &AppState,
     profile_id: &str,
 ) -> Result<OpenConnectionResult, String> {
-    // Read connection profile from SQLite
     let record = {
         let conn = lock_db(state)?;
         match connections::get_connection(&conn, profile_id) {
@@ -257,7 +241,6 @@ pub async fn open_connection_impl(
         }
     };
 
-    // Retrieve password from secure storage/shared vault using the saved profile id.
     let password = credentials::resolve_password(profile_id, record.has_password)?;
 
     let stored_params = StoredConnectionParams::from_connection_record(profile_id, &record);
@@ -265,18 +248,14 @@ pub async fn open_connection_impl(
 
     let params = stored_params.to_connection_params(password);
 
-    // Create pool
     let pool = pool::create_pool(&params)
         .await
         .map_err(|error| format!("Failed to connect: {error}"))?;
 
-    // Get server version
     let server_version = fetch_server_version(&pool).await;
 
     let session_id = Uuid::new_v4().to_string();
 
-    // Spawn health monitor (requires AppHandle — only available in real Tauri runtime)
-    // If keepalive_interval_secs is 0, health monitoring is disabled for this connection.
     let cancellation_token = health_monitor_token(state, &session_id, keepalive_secs);
 
     let entry = RegistryEntry {
@@ -331,12 +310,7 @@ pub async fn open_connection_impl(
     })
 }
 
-/// Clean up schema index session tracking for a closing connection.
-///
-/// Decrements the ref count for the associated profile. When the count
-/// reaches zero, cancels any in-progress build and removes tracking state.
 fn cleanup_schema_index_session(state: &AppState, connection_id: &str) {
-    // Look up profile_id from session_profile_map
     let profile_id = match state.session_profile_map.lock() {
         Ok(map) => map.get(connection_id).cloned(),
         Err(_) => None,
@@ -348,7 +322,6 @@ fn cleanup_schema_index_session(state: &AppState, connection_id: &str) {
 
     let should_cleanup = release_profile_session_reference(state, &profile_id);
 
-    // Remove session → profile mapping
     if let Ok(mut map) = state.session_profile_map.lock() {
         map.remove(connection_id);
     }
@@ -384,15 +357,12 @@ fn cancel_profile_index_build(state: &AppState, profile_id: &str) {
 
 #[cfg(coverage)]
 pub async fn close_connection_impl(state: &AppState, connection_id: &str) -> Result<(), String> {
-    // Cancel running full exports first, while the pool their KILL needs exists.
     crate::export::result_export::cancel_result_exports_for_connection(state, connection_id).await;
     if !state.has_open_connection(connection_id) {
         return Err(format!("Connection '{connection_id}' is not open"));
     }
-    // Clean up schema index session tracking
     cleanup_schema_index_session(state, connection_id);
 
-    // Clean up any running_queries entries for this connection
     {
         let mut rq = state.running_queries.write().await;
         rq.retain(|(conn_id, _), _| conn_id != connection_id);
@@ -402,16 +372,10 @@ pub async fn close_connection_impl(state: &AppState, connection_id: &str) -> Res
     Ok(())
 }
 
-/// Close an open connection: removes pool from registry and drops it.
-/// The registry's `remove()` cancels the health monitor's cancellation token.
 #[cfg(not(coverage))]
 pub async fn close_connection_impl(state: &AppState, connection_id: &str) -> Result<(), String> {
-    // Cancel running full exports first: their KILL QUERY needs the registry's
-    // pool, which `registry.remove` below drops.
     crate::export::result_export::cancel_result_exports_for_connection(state, connection_id).await;
 
-    // Clean up schema index session tracking before removing from registry
-    // (we need the registry entry to still exist for profile_id lookup in some paths)
     cleanup_schema_index_session(state, connection_id);
 
     let entry = state
@@ -419,7 +383,6 @@ pub async fn close_connection_impl(state: &AppState, connection_id: &str) -> Res
         .remove(connection_id)
         .ok_or_else(|| format!("Connection '{connection_id}' is not open"))?;
 
-    // Clean up any running_queries entries for this connection
     {
         let mut rq = state.running_queries.write().await;
         rq.retain(|(conn_id, _), _| conn_id != connection_id);
@@ -428,12 +391,10 @@ pub async fn close_connection_impl(state: &AppState, connection_id: &str) -> Res
     evict_metadata_cache_for_connection(state, connection_id);
     crate::mysql::session::close(state, connection_id).await;
 
-    // Explicitly close the pool before dropping
     close_pool(entry.pool).await;
     Ok(())
 }
 
-/// Get the current status of a connection from the registry.
 pub fn get_connection_status_impl(
     state: &AppState,
     connection_id: &str,
@@ -441,12 +402,9 @@ pub fn get_connection_status_impl(
     state.registry.get_status(connection_id)
 }
 
-/// List sessions that remain open in the native connection registry.
 pub fn list_open_connection_sessions_impl(state: &AppState) -> Vec<OpenConnectionSession> {
     state.registry.list_sessions()
 }
-
-// --- Thin Tauri command wrappers ---
 
 #[cfg(not(coverage))]
 #[tauri::command]
@@ -454,7 +412,6 @@ pub async fn test_connection(input: TestConnectionInput) -> Result<TestConnectio
     Ok(test_connection_impl(input).await)
 }
 
-/// Open IPC payload: `profileId` is the saved connection row id (SQLite).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenConnectionPayload {

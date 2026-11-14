@@ -1,26 +1,3 @@
-/**
- * ConnectionWorkspace — one open connection session's retained workspace subtree.
- *
- * `WorkspaceArea` renders one `ConnectionWorkspace` per open runtime session and
- * keeps every instance mounted for the lifetime of the connection. Exactly one
- * connection workspace is visible and interactive at a time; the others remain
- * mounted but hidden, pointer-disabled, removed from the accessibility tree, and
- * inert to keyboard focus.
- *
- * When `isActive` is false the component:
- *   - hides its root and pauses descendant animations (`visibility: hidden`,
- *     `content-visibility: hidden`,
- *     `animation-play-state: paused`, `pointer-events: none`,
- *     `aria-hidden`, `inert`)
- *   - passes no visible active workspace tab into `WorkspaceBody`
- *   - marks every descendant `WorkspaceTabPanel` inactive
- *   - tells `WorkspaceTabs` its connection is inactive so the tab rail suppresses
- *     visible-only focus and scroll-into-view side effects
- *
- * Stable panel DOM order is maintained independently per session so retained
- * grids and editors keep their immediate scroll position and local UI state when
- * the user switches connections and returns.
- */
 import { useState } from 'react'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'

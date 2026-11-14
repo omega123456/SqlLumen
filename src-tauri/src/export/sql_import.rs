@@ -1,7 +1,3 @@
-//! SQL script import engine — parses .sql files into individual statements
-//! (handling DELIMITER directives, comments, string literals, backticks)
-//! and executes them sequentially against a MySQL connection pool.
-
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 

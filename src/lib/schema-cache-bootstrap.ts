@@ -8,41 +8,20 @@ import { logFrontend } from './app-log-commands'
 import { loadSchemaCacheSnapshot, saveSchemaCacheSnapshot } from './schema-cache-commands'
 import { toErrorMessage } from './error-message'
 
-/** In-flight bootstrap promises — one per connection. */
 const _pendingBootstraps = new Map<string, Promise<void>>()
 
-/**
- * Returns the in-flight bootstrap promise for a connection, or null if not bootstrapping.
- * Used by the completion service to await the initial cache population when the cache
- * is still empty (bootstrapSchemaCache hasn't hydrated the snapshot yet).
- */
 export function getPendingBootstrap(connectionId: string): Promise<void> | null {
   return _pendingBootstraps.get(connectionId) ?? null
 }
 
-/** Clear all pending bootstraps. For test cleanup only. */
 export function _clearPendingBootstraps(): void {
   _pendingBootstraps.clear()
 }
 
-/**
- * Hydrates the live in-memory schema cache for a session and persists a snapshot
- * for the saved connection.
- *
- * @param sessionId The ephemeral per-connect session id. Keys the in-memory cache
- *   and the pending-bootstrap map (metadata fetches run against a live session).
- * @param savedConnectionId The stable saved-connection id. Keys snapshot
- *   persistence (load/save), so reconnects hit one bounded row per connection.
- */
 export async function bootstrapSchemaCache(
   sessionId: string,
   savedConnectionId: string
 ): Promise<void> {
-  // The "initial load" promise covers only the fast path: loading and hydrating
-  // the persisted snapshot (or a full rebuild if no snapshot exists). The
-  // background refresh runs independently and does NOT block the pending
-  // bootstrap. This lets the completion service unblock as soon as the cache
-  // becomes usable, rather than waiting for the full schema re-fetch.
   let resolveInitial!: () => void
   const initialLoadPromise = new Promise<void>((resolve) => {
     resolveInitial = resolve
@@ -74,7 +53,6 @@ export async function bootstrapSchemaCache(
   }
 
   if (hasHydratedSnapshot) {
-    // The stale cache is already usable, so waiters unblock before the background refresh.
     resolveInitial()
     releasePendingBootstrap()
     await refreshAndPersistCache(sessionId, savedConnectionId)

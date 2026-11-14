@@ -254,5 +254,4 @@ export const useProcessListStore = create<ProcessListState>()(() => ({
   resetConnection: resetConnection,
 }))
 
-/** Default refresh interval in milliseconds. */
 export { DEFAULT_EXCLUDE_IDLE_CONNECTIONS, DEFAULT_REFRESH_INTERVAL_MS }

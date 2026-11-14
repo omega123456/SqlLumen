@@ -261,8 +261,6 @@ export function visibleTableRows(tableData: TableDataTabState | null): number | 
   return tableData.rows.length
 }
 
-// Query info follows the active result's status, not the tab-level status, which may be
-// 'success' even for partial-error multi-results.
 export function resolveQueryInfo(queryPane: QueryPane): QueryInfoState | null {
   if (!queryPane.isActive) return null
   const result = queryPane.result

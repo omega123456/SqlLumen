@@ -26,10 +26,7 @@ function scheduleLayerRefresh(host: HTMLDivElement): () => void {
   }
 }
 
-// WebKit (seen with scaled HiDPI modes) intermittently composites a freshly drawn canvas
-// from a stale low-res layer, leaving the grid blurry until the tab is hidden and shown.
-// Briefly promoting the host to its own compositing layer forces a rebuild without hiding
-// anything; re-run once the size settles since every resize reallocates the canvas.
+// WebKit intermittently composites a freshly drawn canvas from a stale low-res layer, blurring the grid.
 export function useCompositingLayerRefresh(input: CompositingLayerRefreshInput): void {
   const { hostRef, hasSize, size } = input
   useEffect(() => {

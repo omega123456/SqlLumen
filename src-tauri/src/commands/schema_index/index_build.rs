@@ -206,8 +206,6 @@ pub(super) fn report_index_build_failure(job: &IndexBuildJob, error: String) {
     let _ = job.app_handle.emit("schema-index-error", &payload);
 }
 
-/// Force-wipe all existing schema index chunks for a connection profile,
-/// then trigger a full fresh rebuild. Cancels any in-flight build first.
 #[cfg(not(coverage))]
 pub async fn force_rebuild_schema_index_impl(
     app_handle: tauri::AppHandle,
@@ -272,8 +270,6 @@ pub async fn force_rebuild_schema_index_impl(
     Ok(())
 }
 
-/// Build the schema index for a connection session. Returns immediately;
-/// the actual build runs in a background task.
 #[cfg(not(coverage))]
 pub async fn build_schema_index_impl(
     app_handle: tauri::AppHandle,

@@ -1,23 +1,3 @@
-/**
- * useCellEditor — shared hook for grid cell editors with NULL toggle support.
- *
- * Encapsulates the common logic shared between NullableCellEditor and
- * DateTimeCellEditor:
- * - Initial value/null state derivation from row data
- * - Focus-on-mount behavior
- * - Store syncing (updateCellValue on value change)
- * - Null toggle logic with temporal pre-fill
- * - Restore original value helper (for Escape handling)
- *
- * The hook does NOT handle Escape key events directly — each consumer
- * implements its own key handling (e.g., DateTimeCellEditor has two-stage
- * Escape: close picker first, then cancel edit).
- *
- * The hook is decoupled from any specific store — it receives its
- * update callbacks as parameters (typically provided via closures in
- * column definitions).
- */
-
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { getTemporalColumnType, getTodayMysqlString } from '../../lib/date-utils'
 import { useCellStoreSync } from '../shared/editor-callbacks-context'
@@ -25,11 +5,6 @@ import type { EditorCallbacksContextType } from '../shared/editor-callbacks-cont
 import type { TableDataColumnMeta } from '../../types/schema'
 import { isNullish } from '../../lib/value-checks'
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-/** Props that grid adapters pass to editor components. */
 export interface GridEditorProps {
   row: Record<string, unknown>
   column: { key: string }
@@ -45,31 +20,17 @@ export interface CellEditorParams extends GridEditorProps {
 }
 
 export interface CellEditorResult {
-  /** Current string value (null when the cell is in NULL state). */
   value: string | null
-  /** Set the value directly. Prefer handleChange for most cases. */
   setValue: (v: string | null) => void
-  /** Whether the cell is currently in NULL state. */
   isNull: boolean
-  /** Set the null state directly. Prefer handleToggleNull for most cases. */
   setIsNull: (v: boolean) => void
-  /** Toggle NULL on/off. When turning NULL off, temporal columns get today's date. */
   handleToggleNull: () => void
-  /** Update the value and sync to the store. Clears NULL state if active. */
   handleChange: (nextValue: string) => void
-  /** Restore the original value from when editing started. */
   restoreOriginalValue: () => void
-  /** Ref for the text input — auto-focused on mount. */
   inputRef: React.RefObject<HTMLInputElement | null>
-  /** Whether the cell started in NULL state. */
   initialNull: boolean
-  /** The original value from row data. */
   initialValue: unknown
 }
-
-// ---------------------------------------------------------------------------
-// Hook
-// ---------------------------------------------------------------------------
 
 function initialEditorValue(
   rawValue: unknown,

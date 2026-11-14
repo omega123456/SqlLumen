@@ -167,11 +167,6 @@ export interface SkeletonCellDrawing {
   lineHeight: number
 }
 
-/**
- * Skeleton for a row that isn't loaded yet (wireframe 2): a flat bar in the
- * resolved `--skeleton-base` colour, one text line high, inset by the cell
- * padding. No shimmer and no gradient, and deliberately unlike NULL text.
- */
 export function drawSkeletonCell({
   context,
   rect,

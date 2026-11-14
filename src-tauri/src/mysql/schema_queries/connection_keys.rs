@@ -12,8 +12,6 @@ use std::collections::HashMap;
 use super::decode_mysql_text_cell;
 use super::{ForeignKeyInfo, IndexInfo};
 
-/// Query all foreign keys for every table in a database at once via INFORMATION_SCHEMA.
-/// Returns a `HashMap<String, Vec<ForeignKeyInfo>>` keyed by table name.
 #[cfg(not(coverage))]
 pub async fn query_all_foreign_keys(
     pool: &MySqlPool,
@@ -60,7 +58,6 @@ pub async fn query_all_foreign_keys(
     Ok(result)
 }
 
-/// Coverage stub for `query_all_foreign_keys`.
 #[cfg(coverage)]
 pub async fn query_all_foreign_keys(
     _pool: &(),
@@ -130,8 +127,6 @@ pub(super) fn aggregate_index_rows(
     result
 }
 
-/// Query all indexes for every table in a database at once via INFORMATION_SCHEMA.STATISTICS.
-/// Returns a `HashMap<String, Vec<IndexInfo>>` keyed by table name.
 #[cfg(not(coverage))]
 pub async fn query_all_indexes(
     pool: &MySqlPool,
@@ -155,7 +150,6 @@ pub async fn query_all_indexes(
         .map_err(|error| format!("Failed to get all indexes: {error}"))?;
     query_log::log_mysql_rows(&rows);
 
-    // Columns: 0=TABLE_NAME, 1=INDEX_NAME, 2=NON_UNIQUE, 3=INDEX_TYPE, 4=COLUMN_NAME, 5=CARDINALITY
     Ok(aggregate_index_rows(
         &rows,
         |row| decode_mysql_text_cell(row, 0).unwrap_or_default(),
@@ -169,7 +163,6 @@ pub async fn query_all_indexes(
     ))
 }
 
-/// Coverage stub for `query_all_indexes`.
 #[cfg(coverage)]
 pub async fn query_all_indexes(
     _pool: &(),

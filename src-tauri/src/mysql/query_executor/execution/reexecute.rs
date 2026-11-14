@@ -85,12 +85,6 @@ pub(super) fn replace_reexecuted_slot(
     Ok(())
 }
 
-/// Re-execute a single SQL statement and replace only the targeted entry in the
-/// `Vec<StoredResult>` for a given tab. Runs on the shared editor session.
-///
-/// When `view_spec` is given, the fresh result is stored with that sort and
-/// filter and its first window comes back already sorted and filtered.
-/// Conditions or a sort on columns the new result lacks are dropped.
 #[cfg(not(coverage))]
 pub async fn reexecute_single_result_impl(
     state: &AppState,
@@ -131,9 +125,6 @@ pub async fn reexecute_single_result_impl(
     Ok(item)
 }
 
-/// Coverage stub for `reexecute_single_result_impl`: exercises connection validation,
-/// read-only enforcement, the row-limit clamp, result index validation, the
-/// view-spec path and result replacement without requiring a live MySQL pool.
 #[cfg(coverage)]
 pub async fn reexecute_single_result_impl(
     state: &AppState,

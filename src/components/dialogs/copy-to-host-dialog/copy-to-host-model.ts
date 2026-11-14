@@ -10,14 +10,10 @@ import {
 } from '../../../lib/copy-to-host-commands'
 import { isPlaywrightBuild } from '../../../lib/tauri-env'
 
-// Skip focus management in deterministic test environments (Playwright + Vitest/jsdom) so the
-// focus trap's rAF-driven focus restoration cannot interfere with portalled dropdown interactions.
 export const skipFocusManagement = isPlaywrightBuild() || import.meta.env.VITEST === true
 
-/** Sentinel value used by the target database dropdown to mean "create a new database". */
 export const NEW_DB_SENTINEL = '__new__'
 
-/** Copy type controls which of structure / data are transferred. */
 export type CopyType = 'both' | 'structureOnly' | 'dataOnly'
 
 export const CATEGORY_LABELS = COPY_OBJECT_CATEGORY_LABELS
@@ -50,7 +46,6 @@ export interface CopyToHostDialogProps {
   sourceConnectionId: string
   sourceConnectionLabel: string
   sourceDatabase: string
-  /** Optional object pre-selected from a single-object context menu launch. */
   preSelectedObject?: CopyObjectSelection
 }
 

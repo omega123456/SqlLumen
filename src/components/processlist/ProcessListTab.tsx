@@ -27,8 +27,6 @@ export default function ProcessListTab({
   const isSummaryDialogOpen = useProcessListStore(
     (state) => state.isSummaryDialogOpenByConnection[connectionId] ?? false
   )
-  // Refresh immediately whenever the tab is opened or brought into focus, instead of
-  // waiting for the next auto-refresh tick
   useEffect(() => {
     if (isActive) {
       fetchProcessList(connectionId, sessionId, false)
@@ -46,7 +44,6 @@ export default function ProcessListTab({
     handleRefresh(true)
   }, [handleRefresh])
 
-  // Auto-refresh interval — pause when any dialog is open
   useEffect(() => {
     if (!isActive) return
     if (refreshIntervalMs <= 0) return

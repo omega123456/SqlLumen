@@ -8,14 +8,9 @@ function mergeClassNames(...parts: (string | undefined)[]): string {
 }
 
 export type IconButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  /** Visual size: sm (24px), md (28px), lg (32px). Defaults to md. */
   size?: IconButtonSize
 }
 
-/**
- * A minimal icon-only action button with consistent hit areas and focus rings.
- * Use for toolbar/panel icon actions (close, copy, clear, etc.).
- */
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
   { size = 'md', className, type = 'button', ...rest },
   ref

@@ -1,12 +1,8 @@
-//! Debug logging for SQL sent to MySQL and raw rows before app serialization.
-
 use sqlx::mysql::MySqlRow;
 use sqlx::{Column, Row, TypeInfo, Value, ValueRef};
 
 pub const TARGET: &str = "mysql_traffic";
 
-/// Whether debug-level logging for `TARGET` is currently enabled. Callers should use this to
-/// skip expensive row formatting / buffering work when nothing will consume it.
 pub fn is_enabled() -> bool {
     tracing::enabled!(target: TARGET, tracing::Level::DEBUG)
 }
@@ -15,12 +11,10 @@ pub fn log_outgoing_sql(sql: &str) {
     tracing::debug!(target: TARGET, %sql, "mysql outgoing query");
 }
 
-/// Log a parameterized statement with bound values (for visibility into what the client sends).
 pub fn log_outgoing_sql_bound(sql: &str, binds: &[String]) {
     tracing::debug!(target: TARGET, %sql, ?binds, "mysql outgoing query (bound)");
 }
 
-/// Secondary client call for metadata (e.g. sqlx `describe`), not a separate MySQL text protocol query string.
 pub fn log_sqlx_describe(sql: &str) {
     tracing::debug!(target: TARGET, %sql, "mysql sqlx describe (column metadata)");
 }
@@ -179,7 +173,6 @@ pub fn log_mysql_rows(rows: &[MySqlRow]) {
     }
 }
 
-/// Log a single row (e.g. `fetch_one` / `COUNT(*)`).
 pub fn log_mysql_row(row: &MySqlRow) {
     log_mysql_rows(std::slice::from_ref(row));
 }
@@ -201,8 +194,6 @@ pub fn log_execute_error(error: &sqlx::Error) {
     );
 }
 
-/// Log one streamed `mysql_async` row (query editor session). Text-protocol
-/// values arrive as raw bytes.
 pub fn log_mysql_async_row(row_index: usize, row: &mysql_async::Row) {
     if !is_enabled() {
         return;
@@ -226,7 +217,6 @@ pub fn log_mysql_async_row(row_index: usize, row: &mysql_async::Row) {
     tracing::debug!(target: TARGET, row_index, row = %formatted, "mysql row");
 }
 
-/// Log the row count of a fully streamed `mysql_async` result set.
 pub fn log_mysql_async_row_count(row_count: usize) {
     if !is_enabled() {
         return;

@@ -1,37 +1,20 @@
-//! HTTP client for OpenAI-compatible `/v1/embeddings` endpoints.
-//!
-//! Provides batch embedding generation with automatic retry on payload-too-large
-//! errors, and dimension detection for model configuration.
-
 use crate::ai::types::{EmbeddingApiRequest, EmbeddingApiResponse};
 use std::fmt;
 use std::time::{Duration, Instant};
 
-/// Maximum number of texts per embedding API call.
 const MAX_BATCH_SIZE: usize = 32;
 
-/// Maximum number of retry attempts when halving batch size.
 const MAX_RETRIES: u32 = 3;
 
-/// HTTP request timeout for embedding calls.
 const EMBED_TIMEOUT: Duration = Duration::from_secs(300);
 
-// ── Error type ────────────────────────────────────────────────────────────
-
-/// Errors that can occur when calling the embedding API.
 #[derive(Debug)]
 pub enum EmbeddingError {
-    /// Failed to build the HTTP client.
     ClientBuild(String),
-    /// HTTP request failed (network error, timeout, etc.).
     HttpRequest(String),
-    /// Server returned a non-success status code that is not retryable.
     HttpStatus { status: u16, body: String },
-    /// Failed to parse the JSON response.
     ParseError(String),
-    /// The response contained no embedding data.
     EmptyResponse,
-    /// All retry attempts exhausted after batch-size halving.
     RetriesExhausted(String),
 }
 
@@ -59,8 +42,6 @@ impl fmt::Display for EmbeddingError {
 }
 
 impl std::error::Error for EmbeddingError {}
-
-// ── Core functions ────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy)]
 pub struct EmbeddingModel<'a> {
@@ -314,7 +295,6 @@ async fn retry_with_smaller_batches(
     Err(EmbeddingError::RetriesExhausted(last_error.to_string()))
 }
 
-/// Detect the embedding dimension of a model by embedding a test string.
 pub async fn detect_embedding_dimension(
     client: &reqwest::Client,
     base_url: &str,
@@ -336,8 +316,6 @@ pub async fn detect_embedding_dimension(
     tracing::debug!(model = %model, dimension = dim, "detect_embedding_dimension: resolved vector size");
     Ok(dim)
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────
 
 async fn send_embedding_request(
     client: &reqwest::Client,

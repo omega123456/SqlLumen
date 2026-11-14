@@ -14,7 +14,6 @@ import type {
 import { invokeArgumentCommand, invokeCommand } from './ipc/dispatch'
 import type { ResultSlotRequest } from './ipc/requests'
 
-/** `execute_query` response: metadata plus the first window of the view. */
 export interface ExecuteQueryResult extends QueryResultMeta, ResultWindowMeta {}
 
 export interface ExecuteQueryRequest {

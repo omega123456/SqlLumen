@@ -35,10 +35,8 @@ pub(super) async fn stop_rows_after_ceiling<P>(
 where
     P: mysql_async::prelude::Protocol,
 {
-    // If the KILL can't be sent, the drain still reads (and discards) the rest.
     let kill_sent = kill_for_ceiling(context).await;
     let interrupted = drain_after_ceiling(result, context).await;
-    // The stream ended on its own after the KILL was sent: the KILL may still be pending.
     kill_sent && !interrupted
 }
 
@@ -84,7 +82,6 @@ pub(super) async fn execute_single_select_statement(
         .await
         .map_err(|error| map_mysql_error(&error))?;
 
-    // Result header is available — record execution time before row transfer.
     let execution_time_ms = start.elapsed().as_millis() as u64;
     let columns = result_columns(result.columns_ref());
     let limits = RowBufferLimits {
@@ -95,13 +92,11 @@ pub(super) async fn execute_single_select_statement(
     let late_kill_possible =
         decoded.overflowed && stop_rows_after_ceiling(&mut result, context).await;
 
-    // Drop remaining result sets (if any unexpected ones)
     drop(result);
     if late_kill_possible {
         absorb_late_kill(conn, context.connection_id).await;
     }
 
-    // All rows streamed and serialized — record total time.
     let total_time_ms = start.elapsed().as_millis() as u64;
     let mut stored = StoredResult::new(StoredResultParts {
         query_id: uuid::Uuid::new_v4().to_string(),
@@ -137,15 +132,12 @@ pub(super) async fn execute_single_dml_statement(
         .await
         .map_err(|error| map_mysql_error(&error))?;
 
-    // Statement executed (header available) — record execution time.
     let execution_time_ms = start.elapsed().as_millis() as u64;
 
     let affected = result.affected_rows();
     crate::mysql::query_log::log_mysql_async_result(affected, result.last_insert_id());
-    // Drain remaining result
     drain_result_set(&mut result).await;
 
-    // No row-transfer phase for DML; total time is measured after draining.
     let total_time_ms = start.elapsed().as_millis() as u64;
     let query_id = uuid::Uuid::new_v4().to_string();
 
@@ -181,7 +173,6 @@ impl CallRun<'_> {
             FullExportBlockedReason, StoredResult, StoredResultParts,
         };
 
-        // Execution time is the shared header time; each set's total time is taken here.
         let mut stored = StoredResult::new(StoredResultParts {
             query_id: uuid::Uuid::new_v4().to_string(),
             columns: rows.columns,
@@ -236,7 +227,6 @@ where
 {
     let columns_ref = result.columns_ref();
     if columns_ref.is_empty() {
-        // No columns — DML-like result or trailing OK packet.
         let affected = result.affected_rows();
         drain_result_set(result).await;
         return Ok(CallResultSet::Affected(affected));
@@ -259,13 +249,6 @@ where
     Ok(CallResultSet::Rows(Box::new(call.stored_outcome(rows))))
 }
 
-/// Execute a CALL statement and collect all returned result sets.
-///
-/// Returns one outcome per row-bearing result set, or a single synthetic
-/// DML-style entry if the procedure produced no row results. A result set over
-/// the ceiling is drained (never killed, so the procedure's writes are not
-/// aborted) and marked truncated; later result sets are still read.
-/// Row collection errors propagate via `?`.
 pub(super) async fn execute_call_statement(
     conn: &mut mysql_async::Conn,
     sql: &str,
@@ -280,7 +263,6 @@ pub(super) async fn execute_call_statement(
         .await
         .map_err(|error| map_mysql_error(&error))?;
 
-    // The first result-set header is available — all result sets share this execution time.
     let call = CallRun {
         sql,
         context,
@@ -299,7 +281,6 @@ pub(super) async fn execute_call_statement(
         }
     }
 
-    // If no row-bearing result was seen, emit a single synthetic DML-style success entry.
     if outcomes.is_empty() {
         let rows = CallRows {
             columns: vec![],

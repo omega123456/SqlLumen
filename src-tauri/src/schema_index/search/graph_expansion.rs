@@ -94,8 +94,6 @@ struct GraphWalkResult<'a> {
     seen_chunk_ids: &'a HashSet<i64>,
 }
 
-/// Apply graph expansion to an existing set of results.
-/// This is the graph-walk portion extracted from `multi_query_search_extended`.
 pub fn apply_graph_expansion(
     conn: &Connection,
     mut results: Vec<SearchResult>,
@@ -127,8 +125,6 @@ pub fn apply_graph_expansion(
     Ok(results)
 }
 
-/// Extended search pipeline: runs the base pipeline, then applies hint boosts
-/// and replaces 1-hop FK fan-out with bounded BFS graph walk.
 pub fn multi_query_search_extended(
     conn: &Connection,
     queries: &SearchQueries<'_>,

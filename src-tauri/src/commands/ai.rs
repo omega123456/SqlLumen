@@ -1,5 +1,3 @@
-//! Tauri commands for AI chat — streaming completions, cancellation, model listing, and query expansion.
-
 use crate::ai::client::stream_chat_completion;
 use crate::ai::types::{
     AiChatRequest, AiModelInfo, AiModelsResponse, AiQueryExpandRequest, AiQueryExpandResponse,
@@ -13,10 +11,6 @@ use tokio_util::sync::CancellationToken;
 #[cfg(not(coverage))]
 use tauri::State;
 
-/// Spawn a streaming AI chat completion task. Returns immediately.
-///
-/// The task reads the SSE stream from the configured endpoint and emits
-/// `ai-stream-chunk`, `ai-stream-done`, or `ai-stream-error` events.
 pub async fn ai_chat_impl<R: Runtime>(
     state: &AppState,
     app_handle: tauri::AppHandle<R>,
@@ -25,7 +19,6 @@ pub async fn ai_chat_impl<R: Runtime>(
     let stream_id = request.stream_id.clone();
     let token = CancellationToken::new();
 
-    // Store the cancellation token so `ai_cancel` can find it.
     {
         let mut map = state
             .ai_requests
@@ -40,7 +33,6 @@ pub async fn ai_chat_impl<R: Runtime>(
     tokio::task::spawn(async move {
         let _ = stream_chat_completion(&app_handle, request, task_token).await;
 
-        // Clean up the token from state when done (whether success, error, or cancel).
         if let Ok(mut map) = ai_requests.lock() {
             map.remove(&stream_id);
         }
@@ -49,7 +41,6 @@ pub async fn ai_chat_impl<R: Runtime>(
     Ok(())
 }
 
-/// Cancel an in-progress AI chat stream by its stream ID.
 pub fn ai_cancel_impl(state: &AppState, stream_id: String) -> Result<(), String> {
     let mut map = state
         .ai_requests
@@ -69,8 +60,6 @@ pub fn ai_cancel_impl(state: &AppState, stream_id: String) -> Result<(), String>
     Ok(())
 }
 
-// ── Thin Tauri command wrappers ────────────────────────────────────────────
-
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn ai_chat(
@@ -87,22 +76,14 @@ pub fn ai_cancel(state: State<'_, AppState>, stream_id: String) -> Result<(), St
     ai_cancel_impl(&state, stream_id)
 }
 
-// ── Model listing ─────────────────────────────────────────────────────────
-
-/// Timeout for the model listing HTTP request (quick probe).
 const LIST_MODELS_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// Timeout for the non-streaming query expansion request.
 const QUERY_EXPAND_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// Connect timeout for the one-off retry client.
 const QUERY_EXPAND_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Heuristic keywords that indicate an embedding model.
 const EMBEDDING_KEYWORDS: &[&str] = &["embed", "nomic", "bge", "e5-", "e5_", "minilm", "jina"];
 
-/// Determine the category of a model (`"chat"` or `"embedding"`).
-///
 const CHAT_MODEL_TYPE_MARKERS: [&str; 3] = ["chat", "completion", "generate"];
 
 fn has_embedding_capability_flag(
@@ -127,14 +108,10 @@ fn capabilities_declare_embedding(capabilities: Option<&serde_json::Value>) -> b
     let Some(capabilities) = capabilities.and_then(|value| value.as_object()) else {
         return false;
     };
-    // Some servers expose { "embedding": true } or { "type": "embedding" }
     has_embedding_capability_flag(capabilities) || has_embedding_capability_type(capabilities)
 }
 
-/// First checks server-provided metadata (type field, capabilities),
-/// then falls back to a keyword heuristic on the model ID.
 pub fn categorise_model(entry: &crate::ai::types::OpenAiModelEntry) -> String {
-    // 1. Check server-provided `type` field
     if let Some(ref model_type) = entry.model_type {
         let mt = model_type.to_lowercase();
         if mt.contains("embed") {
@@ -148,12 +125,10 @@ pub fn categorise_model(entry: &crate::ai::types::OpenAiModelEntry) -> String {
         }
     }
 
-    // 2. Check capabilities object
     if capabilities_declare_embedding(entry.capabilities.as_ref()) {
         return "embedding".to_string();
     }
 
-    // 3. Fall back to keyword heuristic on the model ID
     let id_lower = entry.id.to_lowercase();
     for keyword in EMBEDDING_KEYWORDS {
         if id_lower.contains(keyword) {
@@ -164,10 +139,6 @@ pub fn categorise_model(entry: &crate::ai::types::OpenAiModelEntry) -> String {
     "chat".to_string()
 }
 
-/// List available models from an OpenAI-compatible `/v1/models` endpoint.
-///
-/// Makes a GET request, parses the standard `{ "data": [{ "id": "..." }] }`
-/// response, categorises each model, and returns a simplified list.
 pub async fn list_ai_models_impl(endpoint_base: String) -> Result<AiModelsResponse, String> {
     let url = crate::ai::url::normalise_openai_url(&endpoint_base, "models");
 
@@ -217,24 +188,12 @@ pub async fn list_ai_models(endpoint: String) -> Result<AiModelsResponse, String
     list_ai_models_impl(endpoint).await
 }
 
-// ── Query expansion (non-streaming) ───────────────────────────────────────
-
-/// Non-streaming chat completion for query expansion.
-///
-/// Sends a single system+user message pair to the chat completions endpoint
-/// and returns the assistant's response text.
-///
-/// Uses `state.http_client` first, then retries once with a fresh non-pooled
-/// client if the initial send fails. This avoids intermittent failures from
-/// stale keep-alive connections while still allowing longer local-model cold
-/// starts to complete.
 pub async fn ai_query_expand_impl(
     state: &AppState,
     req: AiQueryExpandRequest,
 ) -> Result<AiQueryExpandResponse, String> {
     tracing::info!(endpoint = %req.endpoint, model = %req.model, "query expansion request");
 
-    // Build user message, optionally prepending conversation context.
     let effective_user_message = match &req.conversation_context {
         Some(context) if !context.is_empty() => {
             format!("{context}\n\nCurrent question: {}", req.user_message)

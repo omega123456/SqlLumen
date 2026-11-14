@@ -16,21 +16,14 @@ import type {
 
 export type GlideRowMarkerKind = 'none' | 'checkbox' | 'number' | 'both'
 
-/** Synchronous `getCellsForSelection`: the cells of a rectangle, row by row. */
 export type GetCellsForSelection = (selection: Rectangle) => readonly (readonly GridCell[])[]
 
 export type GlideDataGridProps<TRow> = {
   columns: GlideGridColumn[]
   rows: readonly TRow[]
-  /** Row count when rows come from a row source instead of `rows` (windowed grids). */
   rowCount?: number
   getCellContent: (cell: Item) => GridCell
-  /**
-   * Cells for a selection. Defaults to `true` (Glide reads `getCellContent`).
-   * Windowed grids pass a synchronous, loaded-rows-only function.
-   */
   getCellsForSelection?: GetCellsForSelection
-  /** Glide keybinding overrides (windowed grids turn off Glide's own copy). */
   keybindings?: DataEditorProps['keybindings']
   onCellEdited?: (cell: Item, newValue: EditableGridCell) => void
   onDelete?: (selection: GridSelection) => boolean | GridSelection
@@ -64,9 +57,6 @@ export interface RowMarkerSettings {
 
 const DEFAULT_ROW_MARKER_WIDTH = 32
 
-// Glide only paints an *unchecked* 'checkbox' marker at hover opacity, which makes the
-// column look empty (white, borderless) until the pointer is over a row. Promote it to
-// 'checkbox-visible' so every row's box is always drawn at full opacity.
 export function rowMarkerSettings(rowMarkers: GlideRowMarkerKind): RowMarkerSettings {
   if (rowMarkers === 'none') {
     return { width: 0, editorRowMarkers: rowMarkers, rowSelect: 'none' }

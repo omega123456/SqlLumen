@@ -39,7 +39,6 @@ export function useMemoryDropTarget(inputs: MemoryDropTargetInputs) {
     const isMemoryDrag = payload !== null || hasMemoryDragType(event.dataTransfer)
     if (!isMemoryDrag) return
     event.stopPropagation()
-    // Browsers only fire `drop` on elements whose `dragover` called preventDefault.
     event.preventDefault()
     const dropAccepted = payload ? acceptsPayload(owner, payload) : true
     event.dataTransfer.dropEffect = dropAccepted ? 'move' : 'none'

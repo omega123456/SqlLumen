@@ -1,13 +1,5 @@
 use super::*;
 
-/// Execute multiple SQL statements sequentially on the connection's shared editor session.
-///
-/// Returns a tuple of `(Vec<StoredResult>, Vec<MultiQueryResultItem>)`.
-/// Stops on first error (which is included as the last result item).
-///
-/// Thread ID is registered with `state.running_queries` before execution starts
-/// and removed on completion. `row_limit` is the (already clamped) auto-LIMIT;
-/// decoding is capped by the cache's row ceiling.
 pub async fn execute_multi_query_internal(
     state: &crate::state::AppState,
     run: &crate::mysql::session::TabRun,
@@ -63,9 +55,6 @@ pub async fn execute_multi_query_internal(
     Ok(results)
 }
 
-/// Execute one non-CALL statement on the connection's shared editor session,
-/// registering the session thread ID for cancellation while it runs.
-/// `row_limit` is the (already clamped) auto-LIMIT.
 pub async fn execute_single_on_session(
     state: &crate::state::AppState,
     run: &crate::mysql::session::TabRun,
@@ -89,7 +78,6 @@ pub async fn execute_single_on_session(
     result
 }
 
-/// Execute a SELECT-like or DML/DDL statement (anything but CALL).
 pub(super) async fn execute_batch_statement(
     conn: &mut mysql_async::Conn,
     statement: SessionStatement<'_>,

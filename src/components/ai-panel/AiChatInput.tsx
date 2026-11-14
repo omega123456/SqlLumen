@@ -136,15 +136,10 @@ function SendOrStopButton({ isGenerating, canSend, onSend, onStop }: SendOrStopB
 export interface AiChatInputProps {
   tabId: string
   connectionId: string | null
-  /** External text to fill into the textarea (e.g. from suggestion chip). */
   suggestionText?: string
-  /** Called after the suggestion text has been consumed. */
   onSuggestionConsumed?: () => void
-  /** When true, the entire input is disabled (no typing, no sending). */
   disabled?: boolean
-  /** Override the default placeholder text. */
   placeholder?: string
-  /** Owning workspace tab, used for focus tracking and dropdown dismissal. */
   workspaceTabId?: string
 }
 
@@ -269,7 +264,6 @@ function useChatInputKeyDown({ scopePrompt, dropdown, handleSend }: AiChatInputC
   const { handleDropdownKey } = dropdown
   return useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      // The open scope picker owns these keys at document level; swallow them here.
       if (pendingRememberContent !== null) {
         if (SCOPE_PICKER_OWNED_KEYS.has(event.key)) event.preventDefault()
         return

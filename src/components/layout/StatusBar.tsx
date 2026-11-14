@@ -59,8 +59,6 @@ function StatusBarTrailing({ activity, updateIndicator, serverVersion }: StatusB
   return (
     <div className={styles.right}>
       <ActivityRegion activity={activity} />
-      {/* Query row count, Exec and Total sit outside the polite live region so count
-          changes aren't re-announced (wireframe 3). */}
       {activity.queryInfo && (
         <QueryInfo result={activity.queryInfo.result} rowCount={activity.queryInfo.rowCount} />
       )}

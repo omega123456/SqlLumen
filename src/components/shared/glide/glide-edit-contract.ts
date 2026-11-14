@@ -7,7 +7,6 @@ export interface EditEligibilityCheck {
 }
 
 export type EditLifecycleEvent =
-  // onCellEdited → preview/commit
   | { type: 'preview'; rowIdx: number; columnKey: string; value: string | null }
   | {
       type: 'commit'
@@ -21,14 +20,10 @@ export type EditLifecycleEvent =
   | { type: 'focus-restore'; rowIdx: number; columnKey: string }
 
 export type ClipboardAction =
-  // getCellsForSelection → copy selection
   | { type: 'copy'; cells: Array<{ rowIdx: number; columnKey: string; value: string }> }
-  // onDelete → cut/delete
   | { type: 'cut'; cells: Array<{ rowIdx: number; columnKey: string }> }
-  // onPaste → paste
   | { type: 'paste'; cells: Array<{ rowIdx: number; columnKey: string; value: string | null }> }
 
-// onRowAppended → new row creation event handled by Phase 5 adapter.
 export const EDIT_CONTRACT_NATIVE_GLIDE_FEATURES: string[] = [
   'onCellEdited can deliver committed cell values from overlay editors',
   'onRowAppended can request creation of a new row',

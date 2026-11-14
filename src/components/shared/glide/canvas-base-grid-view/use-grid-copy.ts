@@ -81,11 +81,6 @@ function useCopyRects(operations: GridCopyOperations): CopyRects {
   )
 }
 
-/**
- * Copy `rects` to the clipboard (Cmd/Ctrl+C in windowed mode, the context
- * menu, and Cut). Unloaded rows are fetched first. Cut clears only once the
- * text reached the clipboard, so a failed fetch or write keeps the cells.
- */
 export function useGridCopy(input: GridCopyInput) {
   const { model, activeGridSelection, operations } = input
   const { rowCount } = model

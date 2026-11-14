@@ -1,8 +1,5 @@
 use super::*;
 
-/// Map a `mysql_async::Error` to a user-friendly error string.
-///
-/// MySQL error 1317 (ER_QUERY_INTERRUPTED) is mapped to "Query cancelled".
 pub(crate) fn map_mysql_error(error: &mysql_async::Error) -> String {
     crate::mysql::query_log::log_mysql_async_error(error);
     if is_query_interrupted(error) {
@@ -11,14 +8,9 @@ pub(crate) fn map_mysql_error(error: &mysql_async::Error) -> String {
     format!("Query failed: {error}")
 }
 
-/// Build a new `mysql_async` connection from stored connection parameters.
-///
-/// Retrieves the password from OS-native secure storage using the saved `profile_id`.
-/// Configures SSL/TLS to match the existing sqlx pool configuration.
 pub async fn build_connection(
     params: &crate::mysql::registry::StoredConnectionParams,
 ) -> Result<mysql_async::Conn, String> {
-    // Retrieve password from secure storage
     let password = crate::credentials::resolve_password(&params.profile_id, params.has_password)?;
 
     let mut builder = mysql_async::OptsBuilder::default()
@@ -33,7 +25,6 @@ pub async fn build_connection(
         }
     }
 
-    // SSL/TLS configuration
     if params.ssl.enabled {
         let mut ssl_opts = mysql_async::SslOpts::default();
 

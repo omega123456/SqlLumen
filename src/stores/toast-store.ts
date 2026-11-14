@@ -103,7 +103,6 @@ export const useToastStore = create<ToastState>()((set, get) => ({
   },
 }))
 
-/** For use outside React (e.g. Zustand connection store). */
 export function showSuccessToast(title: string, message?: string, durationMs?: number) {
   return useToastStore.getState().showSuccess(title, message, durationMs)
 }
@@ -116,7 +115,6 @@ export function showWarningToast(title: string, message?: string, durationMs?: n
   return useToastStore.getState().showWarning(title, message, durationMs)
 }
 
-/** Clear all timers — for tests. */
 export function _resetToastTimeoutsForTests() {
   for (const id of [...timeouts.keys()]) {
     clearScheduled(id)

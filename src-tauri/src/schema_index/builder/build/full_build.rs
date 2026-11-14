@@ -382,17 +382,6 @@ fn report_finalizing_step(context: &BuildContext<'_>, tracker: &mut EmbeddingPro
     context.report(progress);
 }
 
-/// Build (or incrementally update) the schema index for a connection.
-///
-/// Algorithm:
-/// 1. Check model change → drop and recreate vec table if needed
-/// 2. Set status = "building"
-/// 3. Fetch all databases and tables via MySQL
-/// 4. For each table: SHOW CREATE TABLE → compact DDL → compute hash
-/// 5. Diff against stored hashes
-/// 6. Embed new/changed chunks in batches
-/// 7. Store results, report progress
-/// 8. Set status = "ready"
 pub async fn build_index(
     config: &BuildConfig,
     resources: &IndexBuildResources<'_>,

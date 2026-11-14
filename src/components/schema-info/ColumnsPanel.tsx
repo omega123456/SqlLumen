@@ -6,7 +6,6 @@ export interface ColumnsPanelProps {
   columns: ColumnInfo[]
 }
 
-/** Primary keys get the accent pill (prototype `.pill.acc`); other keys the neutral pill. */
 function keyBadgeClass(columnKey: string): string {
   return columnKey === 'PRI' ? styles.keyPri : styles.keyOther
 }

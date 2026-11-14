@@ -1,10 +1,3 @@
-/**
- * PaginationGroup — shared toolbar component for page navigation.
- *
- * Renders a page-size selector, prev/next buttons, and a page indicator.
- * Purely presentational — no store imports.
- */
-
 import { useCallback, useEffect, useState } from 'react'
 import { CaretLeftIcon, CaretRightIcon, SkipBackIcon, SkipForwardIcon } from '@phosphor-icons/react'
 import { IconButton } from '../../common/IconButton'

@@ -62,7 +62,6 @@ pub(super) fn compare_cell(cell: &Value, op: CompareOp, target: CompareTarget<'_
     op.holds(js_string_cmp(&js_string(cell), target.text))
 }
 
-/// A filter condition compiled once for fast per-row evaluation.
 #[derive(Debug)]
 pub struct CompiledFilter {
     pub(super) column: usize,
@@ -78,7 +77,6 @@ impl CompiledFilter {
         Cow::Borrowed(raw)
     }
 
-    /// Evaluate the condition against one row.
     pub fn matches(&self, row: &[Value]) -> bool {
         let raw = row.get(self.column).unwrap_or(&Value::Null);
         let cell = self.comparable_cell(raw);
@@ -100,9 +98,6 @@ impl CompiledFilter {
     }
 }
 
-/// Translate a SQL `LIKE` pattern into an anchored, case-insensitive regex in
-/// which `%` and `_` also match newlines (MySQL semantics). Other characters
-/// are literal.
 pub fn like_pattern_to_regex(pattern: &str) -> Result<Regex, String> {
     let mut source = String::from("(?is)^");
     for ch in pattern.chars() {

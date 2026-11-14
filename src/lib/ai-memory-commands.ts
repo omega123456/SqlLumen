@@ -1,9 +1,5 @@
 import { invokeArgumentCommand, invokeCommand, NO_ARGUMENTS } from './ipc/dispatch'
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 export type MemoryScope = 'connection' | 'group' | 'global'
 
 const MEMORY_SCOPES: ReadonlySet<unknown> = new Set<MemoryScope>(['global', 'group', 'connection'])

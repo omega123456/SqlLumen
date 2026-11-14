@@ -63,7 +63,6 @@ function parseFunctionContextAtCursor(
   const cursorOffset = model.getOffsetAt(position)
   const statement = findStatementAtCursor(splitStatements(fullSql), cursorOffset)
   if (!statement) return null
-  // Parse the raw slice: statement.sql is trimmed and would shift the cursor offset.
   const statementSlice = fullSql.slice(statement.start, statement.end)
   return _parseFunctionContext(statementSlice, cursorOffset - statement.start)
 }
@@ -176,7 +175,6 @@ async function provideSignatureHelp(
   const context = parseFunctionContextAtCursor(model, position)
   if (!context) return undefined
 
-  // A CALL or database-qualified name targets a stored routine, never a built-in.
   if (isBuiltinCandidate(context)) {
     const builtinResult = buildBuiltinSignatureResult(context.functionName, context.activeParameter)
     if (builtinResult) return builtinResult

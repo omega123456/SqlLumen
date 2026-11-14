@@ -43,8 +43,6 @@ pub async fn list_history(
         .await?
 }
 
-// ── delete_history_entry ─────────────────────────────────────────────────────
-
 pub fn delete_history_entry_impl(state: &AppState, id: i64) -> Result<bool, String> {
     let conn = lock_db(state)?;
     history::delete_history(&conn, id).map_err(|error| error.to_string())
@@ -55,8 +53,6 @@ pub fn delete_history_entry_impl(state: &AppState, id: i64) -> Result<bool, Stri
 pub fn delete_history_entry(id: i64, state: tauri::State<'_, AppState>) -> Result<bool, String> {
     delete_history_entry_impl(&state, id)
 }
-
-// ── clear_history ─────────────────────────────────────────────────────────────
 
 pub fn clear_history_impl(state: &AppState, connection_id: &str) -> Result<i64, String> {
     let resolved_id = state

@@ -11,11 +11,6 @@ use super::ddl_text::{compact_ddl_for_llm, normalize_table_ddl};
 const UNASSIGNED_CONNECTION_ID: &str = "";
 const DEFAULT_ON_DELETE_RULE: &str = "RESTRICT";
 
-/// Build the rich prose description of a table for the embedding model.
-///
-/// The output is a human-readable paragraph that captures table identity,
-/// column names/types/comments, primary key, unique indexes, foreign keys,
-/// and approximate row count.
 pub struct TableEmbeddingDescription<'a> {
     pub db_name: &'a str,
     pub table_name: &'a str,
@@ -96,7 +91,6 @@ pub fn generate_text_for_embedding(description: &TableEmbeddingDescription<'_>) 
     parts.join("\n")
 }
 
-/// Generate a human-readable chunk text describing a foreign key relationship.
 pub fn generate_fk_chunk_text(foreign_key: &FkInput) -> String {
     let cols = foreign_key.columns.join(", ");
     let ref_cols = foreign_key.ref_columns.join(", ");
@@ -111,16 +105,12 @@ pub fn generate_fk_chunk_text(foreign_key: &FkInput) -> String {
     )
 }
 
-/// Compute a SHA-256 hex digest of the given text.
 pub fn compute_hash(text: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(text.as_bytes());
     hex::encode(hasher.finalize())
 }
 
-/// Split an identifier into segments by underscore and camelCase boundaries.
-/// E.g. "user_order_items" → ["user", "order", "items"]
-///      "userOrderItems" → ["user", "order", "items"]
 pub fn split_identifier_segments(name: &str) -> Vec<String> {
     name.split('_')
         .filter(|part| !part.is_empty())
@@ -145,17 +135,14 @@ fn split_camel_case(part: &str) -> Vec<String> {
     segments
 }
 
-/// Chunk key for a table DDL chunk.
 pub fn table_chunk_key(db_name: &str, table_name: &str) -> String {
     format!("table:{db_name}.{table_name}")
 }
 
-/// Chunk key for a foreign key chunk.
 pub fn fk_chunk_key(db_name: &str, table_name: &str, constraint_name: &str) -> String {
     format!("fk:{db_name}.{table_name}:{constraint_name}")
 }
 
-/// A generated table chunk with enriched embedding text.
 #[derive(Debug, Clone)]
 pub struct GeneratedTableChunk {
     pub chunk_key: String,
@@ -264,7 +251,6 @@ fn generate_fk_chunk(foreign_key: FkInput) -> GeneratedFkChunk {
     )
 }
 
-/// Like [`generate_all_chunks`] but accepts optional row counts.
 pub fn generate_all_chunks_with_row_counts(
     ddl_inputs: &[TableDdlInput],
     row_counts: &HashMap<(String, String), i64>,

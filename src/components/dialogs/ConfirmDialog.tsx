@@ -12,15 +12,8 @@ export interface ConfirmDialogProps {
   isDestructive?: boolean
   isLoading?: boolean
   error?: string | null
-  /** Warning text below the message. Defaults to "This action cannot be undone." Pass `null` to hide. */
   warningText?: string | null
-  /** When true, prevent dismissal via Cancel button, Escape key, and backdrop click. */
   nonDismissible?: boolean
-  /**
-   * When true, the Cancel button is not rendered and the confirm button sits
-   * alone in the right-hand action slot (e.g. an "OK" acknowledgement).
-   * Escape and the backdrop still call `onCancel`.
-   */
   hideCancel?: boolean
   onConfirm: () => void
   onCancel: () => void

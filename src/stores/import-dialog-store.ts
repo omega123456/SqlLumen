@@ -1,11 +1,8 @@
 import { create } from 'zustand'
 
 interface ImportDialogState {
-  /** When non-null, the import dialog should be shown. */
   request: { connectionId: string; filePath: string } | null
-  /** Open the import dialog with the given connection and file path. */
   openImportDialog: (connectionId: string, filePath: string) => void
-  /** Close the import dialog. */
   closeImportDialog: () => void
 }
 

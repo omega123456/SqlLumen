@@ -1,18 +1,3 @@
-/**
- * Shared cell editor components for grid adapters.
- *
- * Both editors follow the shared declarative editor protocol:
- * - Accept { row, column, onRowChange, onClose } props
- * - Plus explicit callback props for store updates
- *
- * - NullableCellEditor: text input with optional NULL toggle
- * - EnumCellEditor: Dropdown with optional NULL toggle
- *
- * Also exports getCellEditorForColumn — a factory that selects the correct
- * editor (DateTimeCellEditor / EnumCellEditor / NullableCellEditor) based on
- * column metadata, used by both TableDataGrid and ResultGridView.
- */
-
 import { useRef } from 'react'
 import { TextInput } from '../common/TextInput'
 import { Textarea } from '../common/Textarea'

@@ -1,6 +1,5 @@
 use super::*;
 
-/// List databases and their tables/views that can be exported.
 pub async fn list_exportable_objects_impl(
     state: &AppState,
     connection_id: &str,
@@ -10,8 +9,6 @@ pub async fn list_exportable_objects_impl(
         .get_pool(connection_id)
         .ok_or_else(|| format!("Connection '{connection_id}' not found in registry"))?;
 
-    // Consolidated metadata query: retrieve all non-system schemas and their
-    // optional table/view metadata in a single round trip.
     let metadata_query = "\
         SELECT s.SCHEMA_NAME, t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_ROWS \
         FROM information_schema.SCHEMATA s \
@@ -27,7 +24,6 @@ pub async fn list_exportable_objects_impl(
         .await
         .map_err(|error| format!("Failed to list exportable objects: {error}"))?;
 
-    // Group rows by schema name, preserving deterministic ordering.
     let mut result: Vec<ExportableDatabase> = Vec::new();
     for row in &rows {
         append_exportable_row(&mut result, row);
@@ -41,7 +37,6 @@ pub(super) fn starts_new_database(databases: &[ExportableDatabase], schema_name:
 }
 
 pub(super) fn exportable_table_from_row(row: &sqlx::mysql::MySqlRow) -> Option<ExportableTable> {
-    // LEFT JOIN produces NULL TABLE_NAME for empty databases
     let name = decode_mysql_text_cell_named(row, "TABLE_NAME").ok()?;
     if name.is_empty() {
         return None;

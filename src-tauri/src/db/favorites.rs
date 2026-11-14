@@ -1,7 +1,6 @@
 use rusqlite::{params, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
 
-/// A saved favorite query.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FavoriteEntry {
@@ -15,7 +14,6 @@ pub struct FavoriteEntry {
     pub updated_at: String,
 }
 
-/// Data for creating a new favorite.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateFavoriteInput {
@@ -26,7 +24,6 @@ pub struct CreateFavoriteInput {
     pub connection_id: Option<String>,
 }
 
-/// Data for updating an existing favorite.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateFavoriteInput {
@@ -37,7 +34,6 @@ pub struct UpdateFavoriteInput {
     pub connection_id: Option<String>,
 }
 
-/// Insert a new favorite. Returns the new row id.
 pub fn insert_favorite(conn: &Connection, input: &CreateFavoriteInput) -> Result<i64> {
     let now = timestamp_now();
     conn.execute(
@@ -56,7 +52,6 @@ pub fn insert_favorite(conn: &Connection, input: &CreateFavoriteInput) -> Result
     Ok(conn.last_insert_rowid())
 }
 
-/// Get a favorite by ID.
 pub fn get_favorite(conn: &Connection, id: i64) -> Result<Option<FavoriteEntry>> {
     conn.query_row(
         "SELECT id, name, sql_text, description, category, connection_id, created_at, updated_at
@@ -67,8 +62,6 @@ pub fn get_favorite(conn: &Connection, id: i64) -> Result<Option<FavoriteEntry>>
     .optional()
 }
 
-/// List all favorites for a connection, newest first.
-/// If connection_id is provided, returns favorites for that connection plus global (NULL connection_id) favorites.
 pub fn list_favorites(conn: &Connection, connection_id: &str) -> Result<Vec<FavoriteEntry>> {
     let mut stmt = conn.prepare(
         "SELECT id, name, sql_text, description, category, connection_id, created_at, updated_at
@@ -80,7 +73,6 @@ pub fn list_favorites(conn: &Connection, connection_id: &str) -> Result<Vec<Favo
     rows.collect::<Result<Vec<_>>>()
 }
 
-/// Update a favorite.
 pub fn update_favorite(conn: &Connection, id: i64, input: &UpdateFavoriteInput) -> Result<bool> {
     let now = timestamp_now();
     let rows = conn.execute(
@@ -91,7 +83,6 @@ pub fn update_favorite(conn: &Connection, id: i64, input: &UpdateFavoriteInput) 
     Ok(rows > 0)
 }
 
-/// Delete a favorite by ID.
 pub fn delete_favorite(conn: &Connection, id: i64) -> Result<bool> {
     let rows = conn.execute("DELETE FROM favorites WHERE id = ?1", params![id])?;
     Ok(rows > 0)
@@ -110,7 +101,6 @@ fn map_row(row: &rusqlite::Row) -> Result<FavoriteEntry> {
     })
 }
 
-/// ISO-8601 timestamp string.
 fn timestamp_now() -> String {
     chrono::Utc::now().to_rfc3339()
 }

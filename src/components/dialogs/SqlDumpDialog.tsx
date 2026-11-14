@@ -38,11 +38,8 @@ function initialDumpOptions(schemaOnly: boolean): DumpOptions {
 
 export interface SqlDumpDialogProps {
   connectionId: string
-  /** Pre-selected database name (e.g. from context menu on a specific database). */
   initialDatabase?: string
-  /** Pre-selected table name (only when a specific table node was right-clicked). */
   initialTable?: string
-  /** Whether to only include DDL (schema-only). When true, "Include data" is unchecked. */
   schemaOnly?: boolean
   onClose: () => void
 }

@@ -1,10 +1,3 @@
-/**
- * ViewModeGroup — shared toolbar component for toggling between view modes.
- *
- * Renders icon buttons for each available mode (grid / form / text).
- * Purely presentational — no store imports.
- */
-
 import { Table, Rows, Code } from '@phosphor-icons/react'
 import type { ViewModeGroupProps, ViewMode } from '../../../types/shared-data-view'
 import { Button } from '../../common/Button'

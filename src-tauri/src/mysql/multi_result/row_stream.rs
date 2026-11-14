@@ -1,7 +1,5 @@
 use super::*;
 
-/// Upper bound for the up-front row `Vec` reservation when an auto-LIMIT tells
-/// us roughly how many rows to expect. Larger results grow normally.
 pub(super) const ROW_CAPACITY_HINT_MAX: usize = 10_000;
 
 pub(super) fn row_capacity_hint(auto_limit_applied: bool, row_limit_used: usize) -> usize {
@@ -11,14 +9,6 @@ pub(super) fn row_capacity_hint(auto_limit_applied: bool, row_limit_used: usize)
     row_limit_used.min(ROW_CAPACITY_HINT_MAX)
 }
 
-/// Stream the current result set, serializing each row as it arrives, and stop
-/// storing at `ceiling` rows.
-///
-/// Each driver row is logged, converted to a `SharedRow` and dropped before the
-/// next one is read, so driver rows and JSON rows are never all alive at once.
-/// Reading stops right after the first row beyond the ceiling (which is not
-/// stored), so the caller can KILL or drain while rows remain unread.
-/// On error (including a user `KILL`), the partial rows are dropped.
 pub(super) async fn stream_serialized_rows<P>(
     result: &mut mysql_async::QueryResult<'_, '_, P>,
     col_types: &[(
@@ -56,9 +46,6 @@ where
     })
 }
 
-/// Read and discard the rest of the current result set (DML responses and
-/// column-less CALL result sets). Errors are tolerated, matching the previous
-/// best-effort drain.
 pub(super) async fn drain_result_set<P>(result: &mut mysql_async::QueryResult<'_, '_, P>)
 where
     P: mysql_async::prelude::Protocol,
@@ -68,7 +55,6 @@ where
     }
 }
 
-/// Serialize a single `mysql_async::Row` to a `SharedRow`, borrowing each cell.
 pub(crate) fn serialize_row(
     row: &mysql_async::Row,
     col_types: &[(

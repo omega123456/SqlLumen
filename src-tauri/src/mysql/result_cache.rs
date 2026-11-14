@@ -1,7 +1,3 @@
-//! In-memory result cache backed by moka with time-to-idle eviction,
-//! disk spill on expiry, transparent re-warm, parallel LRU tracking
-//! for RAM-pressure eviction, and a pluggable memory snapshot source.
-
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::PathBuf;
@@ -28,8 +24,6 @@ mod stored_results;
 pub use memory_snapshot::*;
 use spill_worker::*;
 
-/// Default hard ceiling on rows kept per query-editor result
-/// (`results.maxRows`); see `commands::settings` for the setting bounds.
 pub const DEFAULT_ROW_CEILING: usize = 100_000;
 
 const RAM_PRESSURE_MAX_THRESHOLD_BYTES: u64 = 4_294_967_296;
@@ -70,22 +64,14 @@ pub struct SlotWriteTarget<'a> {
     pub base_view_version: Option<u64>,
 }
 
-/// Outcome of [`GenericCache::modify_slot_in_place_if_current`].
 #[derive(Debug, PartialEq, Eq)]
 pub enum SlotWrite<T> {
-    /// The closure ran and its changes were written back.
     Applied(T),
-    /// The invalidation version changed, or the entry or slot is gone.
     Invalidated,
-    /// The slot holds a different query id than the request expected.
     QueryIdMismatch,
-    /// The slot's view version no longer equals the request's base version.
     ViewSuperseded { current: u64 },
 }
 
-/// Wrapper stored in the moka cache. Holds the cached value plus a
-/// monotonically increasing generation token used for stale-listener
-/// protection.
 #[derive(Debug, Clone)]
 pub struct CachedEntry<V> {
     pub value: V,
@@ -127,22 +113,15 @@ enum SpillWorkerMessage<V> {
     Shutdown,
 }
 
-/// Result of a `GenericCache::get()` call.
 #[derive(Debug)]
 pub enum CacheGet<V> {
-    /// Entry was found in the in-memory cache.
     Found(Arc<CachedEntry<V>>),
-    /// Entry was re-warmed from a spill file on disk.
     ReWarmed(Arc<CachedEntry<V>>),
-    /// Key was never stored in this session.
     NeverStored,
-    /// Key was previously stored but is no longer available (neither in
-    /// cache nor on disk).
     Expired,
 }
 
 impl<V> CacheGet<V> {
-    /// Convenience: extract the entry if `Found` or `ReWarmed`, else `None`.
     pub fn into_entry(self) -> Option<Arc<CachedEntry<V>>> {
         match self {
             Self::Found(entry) | Self::ReWarmed(entry) => Some(entry),
@@ -150,19 +129,15 @@ impl<V> CacheGet<V> {
         }
     }
 
-    /// Returns `true` when an entry is available (found or re-warmed).
     pub fn is_available(&self) -> bool {
         matches!(self, Self::Found(_) | Self::ReWarmed(_))
     }
 
-    /// Returns `true` when the key was known but results are gone.
     pub fn is_expired(&self) -> bool {
         matches!(self, Self::Expired)
     }
 }
 
-/// Thread-safe cache with time-to-idle eviction, disk spill,
-/// re-warm, and RAM-pressure eviction.
 pub struct GenericCache<V>
 where
     V: Clone + Send + Sync + Serialize + DeserializeOwned + std::fmt::Debug + 'static,
@@ -172,29 +147,17 @@ where
     session_id: String,
     ttl_secs: Arc<AtomicU64>,
     ram_pressure_min_idle: Duration,
-    /// Parallel LRU order for RAM-pressure eviction (front = least recent).
     lru_order: RwLock<VecDeque<(String, String)>>,
-    /// Last access time per key used to debounce RAM-pressure spill attempts.
     last_touched_at: RwLock<HashMap<(String, String), Instant>>,
-    /// Next generation token (monotonically increasing per cache instance).
     next_generation: AtomicU64,
-    /// Keys that have ever been inserted (to distinguish NeverStored vs Expired).
     known_keys: RwLock<HashSet<(String, String)>>,
-    /// Current generation per key (for stale-listener protection).
     generations: Arc<RwLock<HashMap<(String, String), u64>>>,
-    /// Keys+generations pre-approved for spill by RAM-pressure eviction.
     spillable_removals: Arc<RwLock<HashSet<(String, String, u64)>>>,
-    /// Per-key invalidation version used to drop late writes after explicit cleanup.
     invalidation_versions: Arc<RwLock<HashMap<(String, String), u64>>>,
-    /// Keys that have been explicitly cleaned up (tab close). The eviction
-    /// listener must not write spill files for these keys.
     cleaned_keys: Arc<RwLock<HashSet<(String, String)>>>,
     spill_worker_tx: Sender<SpillWorkerMessage<V>>,
     spill_worker_handle: Mutex<Option<std::thread::JoinHandle<()>>>,
-    /// Serializes in-place read-modify-write updates (cell edits, view and
-    /// tombstone write-backs) so concurrent callers cannot lose each other's changes.
     in_place_write_lock: Mutex<()>,
-    /// Hard ceiling on rows kept per result (read by the editor decode loop).
     row_ceiling: Arc<AtomicUsize>,
 }
 
@@ -211,8 +174,6 @@ fn removal_cause_label(cause: RemovalCause) -> &'static str {
     }
 }
 
-/// Derive a filesystem-safe filename from connection_id and tab_id
-/// using hex-encoded SHA-256. Contains no path separators.
 fn safe_spill_filename(connection_id: &str, tab_id: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(connection_id.as_bytes());

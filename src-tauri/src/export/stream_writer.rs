@@ -1,14 +1,3 @@
-//! Incremental row sinks for the streaming full export of a truncated result.
-//!
-//! Each sink takes the header once (at creation), then rows one at a time,
-//! then finishes. CSV, JSON and SQL INSERT output is byte-identical to the
-//! slice writers (`csv_writer`, `json_writer`, `sql_writer`) for the same
-//! columns and rows, because both use the same per-row helpers. XLSX streams
-//! through `rust_xlsxwriter`'s constant-memory mode: it buffers the first
-//! [`XLSX_WIDTH_SAMPLE_ROWS`] rows to size the columns with the slice writer's
-//! width rule, then writes rows straight through, and stops at the sheet row
-//! limit (reported through [`RowSink::stopped_at_sheet_limit`]).
-
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -17,34 +6,25 @@ use rust_xlsxwriter::{Format, Workbook};
 
 use super::{csv_writer, json_writer, sql_writer, xlsx_writer, ExportFormat};
 
-/// Excel's sheet row limit, header row included.
 pub const XLSX_SHEET_ROW_LIMIT: u32 = 1_048_576;
 
-/// Rows buffered before an XLSX stream sizes its columns and starts writing.
 pub const XLSX_WIDTH_SAMPLE_ROWS: usize = 1_000;
 
-/// Table name used for SQL INSERT output when none is given (as the slice writer).
 pub const DEFAULT_SQL_TABLE_NAME: &str = "exported_results";
 
-/// What happened to a row handed to [`RowSink::write_row`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RowWrite {
-    /// The row was written (or buffered for the XLSX width sample).
     Written,
-    /// The XLSX sheet is full; the row was not written and no further row will be.
     SheetLimitReached,
 }
 
-/// Totals reported once a sink has finished.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StreamSummary {
     pub rows_written: u64,
-    /// Size of the finished file.
     pub bytes_written: u64,
     pub stopped_at_sheet_limit: bool,
 }
 
-/// A `Write` adapter that counts the bytes passed through it.
 struct CountingWriter<W: Write> {
     inner: W,
     bytes: u64,
@@ -64,12 +44,10 @@ impl<W: Write> Write for CountingWriter<W> {
 
 type FileOut = CountingWriter<BufWriter<File>>;
 
-/// Map an I/O (or CSV) error to the user-facing message for `context`.
 fn io_err<E: std::fmt::Display>(context: &'static str) -> impl FnOnce(E) -> String {
     move |error| format!("{context}: {error}")
 }
 
-/// Map an XLSX writer error to a message.
 fn xlsx_err(error: rust_xlsxwriter::XlsxError) -> String {
     format!("Failed to write XLSX: {error}")
 }
@@ -85,11 +63,8 @@ fn create_file(path: &Path) -> Result<FileOut, String> {
 struct XlsxSink {
     workbook: Workbook,
     columns: Vec<String>,
-    /// Rows held back until the width sample is complete (`None` once flushed).
     sample: Option<Vec<Vec<serde_json::Value>>>,
-    /// Sheet row of the next row to write (1 after a header row, else 0).
     next_row: u32,
-    /// Sheet row limit, header included (an injectable test seam).
     row_limit: u32,
     stopped: bool,
 }
@@ -149,7 +124,6 @@ impl XlsxSink {
         Ok(RowWrite::Written)
     }
 
-    /// Size the columns from the buffered sample, then write the sample rows.
     fn flush_sample(&mut self) -> Result<(), String> {
         let Some(sample) = self.sample.take() else {
             return Ok(());
@@ -222,7 +196,6 @@ fn create_sql_sink(spec: &RowSinkSpec<'_>) -> Result<SinkKind, String> {
     })
 }
 
-/// An incremental writer for one export file.
 pub struct RowSink {
     kind: SinkKind,
     path: PathBuf,
@@ -274,8 +247,6 @@ impl RowSink {
         })
     }
 
-    /// Write one row. Once an XLSX sheet is full every call returns
-    /// [`RowWrite::SheetLimitReached`] and nothing more is written.
     pub fn write_row(&mut self, row: &[serde_json::Value]) -> Result<RowWrite, String> {
         let first = self.rows_written == 0;
         let outcome = match &mut self.kind {
@@ -302,12 +273,10 @@ impl RowSink {
         Ok(outcome)
     }
 
-    /// Rows written (or buffered) so far.
     pub fn rows_written(&self) -> u64 {
         self.rows_written
     }
 
-    /// Bytes handed to the file so far. XLSX reports 0 until it is saved.
     pub fn bytes_written(&self) -> u64 {
         match &self.kind {
             SinkKind::Csv(wtr) => wtr.get_ref().bytes,
@@ -316,12 +285,10 @@ impl RowSink {
         }
     }
 
-    /// True once an XLSX sheet hit its row limit.
     pub fn stopped_at_sheet_limit(&self) -> bool {
         matches!(&self.kind, SinkKind::Xlsx(sink) if sink.stopped)
     }
 
-    /// Finish the file (closing JSON, saving XLSX) and report its size.
     pub fn finish(self) -> Result<StreamSummary, String> {
         let stopped_at_sheet_limit = self.stopped_at_sheet_limit();
         let rows_written = self.rows_written;
@@ -368,11 +335,6 @@ fn json_row_prefix(first: bool) -> &'static [u8] {
     b",\n  "
 }
 
-/// Write one element of the top-level JSON array exactly as
-/// `serde_json::to_writer_pretty` lays it out inside an array: `[` and a
-/// newline before the first element, `,` and a newline between elements, and
-/// every line of the element indented by two spaces. Serialized strings never
-/// contain raw newlines, so indenting after each newline is exact.
 fn write_json_row<W: Write>(
     out: &mut W,
     first: bool,

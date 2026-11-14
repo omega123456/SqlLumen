@@ -20,13 +20,6 @@ pub use export_history::*;
 pub use page_fetch::*;
 pub use row_writes::*;
 
-/// Replaces `?` placeholders in a SQL string with their formatted values for display in history.
-/// Values are formatted as:
-///   - null/None → NULL
-///   - strings → 'value' (single-quoted, with internal single quotes escaped as '')
-///   - numbers → the number as-is
-///   - booleans → 1 / 0
-///   - everything else → 'value' (via Display)
 pub fn interpolate_sql_params(sql: &str, params: &[serde_json::Value]) -> String {
     let mut result = String::with_capacity(sql.len() + params.len() * 8);
     let mut param_iter = params.iter();

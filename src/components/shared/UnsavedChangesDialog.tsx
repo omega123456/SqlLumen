@@ -1,11 +1,3 @@
-/**
- * UnsavedChangesDialog — confirmation dialog shown when the user
- * attempts navigation (page change, refresh, etc.) with unsaved edits.
- *
- * This is a generic, reusable dialog that receives all data as props —
- * no store dependencies.
- */
-
 import { useState, useCallback } from 'react'
 import { Button } from '../common/Button'
 import { DialogShell } from '../dialogs/DialogShell'

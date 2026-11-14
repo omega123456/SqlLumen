@@ -57,8 +57,6 @@ pub fn apply_reasoning_off_compatibility(body: &mut serde_json::Map<String, serd
     apply_no_think_to_json_messages(body);
 }
 
-/// Append `/no_think` to content unless it already contains the directive as a
-/// standalone whitespace-delimited token.
 pub fn append_no_think_directive(content: &str) -> String {
     if content.split_whitespace().any(|token| token == "/no_think") {
         return content.to_string();
@@ -66,7 +64,6 @@ pub fn append_no_think_directive(content: &str) -> String {
     format!("{content}\n\n/no_think")
 }
 
-/// Find the last user message in a slice and append the `/no_think` directive.
 pub fn apply_no_think_to_last_user_message(messages: &mut [ApiMessage]) {
     if let Some(msg) = messages
         .iter_mut()
@@ -77,10 +74,6 @@ pub fn apply_no_think_to_last_user_message(messages: &mut [ApiMessage]) {
     }
 }
 
-/// Apply `/no_think` to the last user message in a JSON body's `messages` array.
-///
-/// No-op if `messages` is missing, not an array, or has no user message with
-/// string content.
 pub fn apply_no_think_to_json_messages(body: &mut serde_json::Map<String, serde_json::Value>) {
     let Some(messages) = body
         .get_mut("messages")

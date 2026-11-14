@@ -8,7 +8,6 @@ use super::lexical::{
 use super::{row_to_search_result, SearchConfig, SearchQueries, SearchResult};
 use crate::schema_index::embedding_to_bytes;
 
-/// RRF constant (standard value from the original RRF paper).
 const RRF_K: f64 = 60.0;
 const CROSS_DATABASE_DUPLICATE_SCORE_RATIO: f64 = 0.05;
 const MIN_SCORE_DIVISOR: f64 = 1e-9;
@@ -36,7 +35,6 @@ impl KnnScores {
             let best = self.best_cosine.entry(hit.chunk_id).or_insert(hit.score);
             *best = best.max(hit.score);
         }
-        // Accumulate RRF scores: rrf_score(chunk) += 1 / (k + rank), with 1-based ranks.
         for (rank_index, hit) in hits.iter().enumerate() {
             let rank = (rank_index + 1) as f64;
             *self.rrf.entry(hit.chunk_id).or_insert(0.0) += 1.0 / (RRF_K + rank);
@@ -97,7 +95,6 @@ impl SearchPipeline<'_> {
         Ok(scores)
     }
 
-    /// Blend lexical boosts from the original queries: final = rrf_score + λ · lexical_boost.
     fn blend_lexical_scores(
         &self,
         mut best_scores: HashMap<i64, f64>,
@@ -149,7 +146,6 @@ impl SearchPipeline<'_> {
             .ok()
     }
 
-    /// Boost tables from the "active" database — the one(s) behind the top-scoring candidates.
     fn apply_database_affinity(&self, best_scores: &mut HashMap<i64, f64>) {
         let chunk_db: HashMap<i64, String> = best_scores
             .keys()
@@ -200,7 +196,6 @@ fn add_lexical_matches(
         let lexical = lexical_matches.get(chunk_id).copied().unwrap_or(0.0);
         *blended_score += lexical_weight * lexical;
     }
-    // Lexical-only entries (not in KNN)
     for (chunk_id, lexical_score) in lexical_matches {
         best_scores
             .entry(*chunk_id)
@@ -283,8 +278,6 @@ struct SelectedTable {
     db_name: String,
 }
 
-/// Top-N selection with cross-database dedup: when the same table name appears from
-/// several databases with scores within 5%, only the first (best) one is kept.
 #[derive(Default)]
 struct TopResultSelection {
     results: Vec<SearchResult>,

@@ -33,11 +33,6 @@ function scheduleScrollRestore(request: ScrollRestoreRequest): () => void {
     if (!isSameScrollCell(pendingInitialScrollRestoreRef.current, target)) return
     gridRef.current?.scrollToCell({ rowIdx: target.scrollRow, idx: target.scrollCol })
     releaseSuppressionFrameId = requestAnimationFrame(() => {
-      // Only release suppression if the pending restore already resolved
-      // (handleVisibleRegionChanged saw the target position). When the
-      // DataEditor was not yet mounted during the scrollToCell call above,
-      // pendingInitialScrollRestoreRef is still set and suppression must stay
-      // active so handleVisibleRegionChanged can retry the scroll.
       if (pendingInitialScrollRestoreRef.current === null) {
         suppressScrollPersistenceRef.current = false
       }

@@ -1,17 +1,10 @@
-/// Per-run decode settings passed down from the session-holding entry points.
 pub struct DecodeContext<'a> {
-    /// Hard row ceiling: the only cap on stored rows.
     pub ceiling: usize,
-    /// Registry connection id (for KILL logging).
     pub connection_id: &'a str,
-    /// MySQL thread id of the held editor session (the KILL target).
     pub thread_id: u64,
-    /// Pool used to issue `KILL QUERY` on a separate connection.
     pub pool: Option<sqlx::MySqlPool>,
 }
 
-/// Pool-acquire timeout for the ceiling KILL. Short, so a KILL that can't be
-/// issued (e.g. an exhausted pool) falls back to draining quickly.
 pub(super) const CEILING_KILL_ACQUIRE_TIMEOUT: std::time::Duration =
     std::time::Duration::from_secs(1);
 
@@ -29,7 +22,6 @@ pub(super) struct RowBufferLimits {
 
 pub(super) struct DecodedRows {
     pub(super) rows: Vec<crate::mysql::query_executor::SharedRow>,
-    /// True when at least one row beyond the ceiling was seen (not stored).
     pub(super) overflowed: bool,
 }
 
@@ -39,9 +31,6 @@ pub(crate) fn is_query_interrupted(error: &mysql_async::Error) -> bool {
     matches!(error, mysql_async::Error::Server(server_err) if server_err.code == ER_QUERY_INTERRUPTED)
 }
 
-/// Issue `KILL QUERY <thread_id>` over a pool connection after the ceiling was
-/// reached. Returns `false` (with a warning) when the KILL could not be sent,
-/// in which case the caller drains the rest of the stream instead.
 pub(super) async fn kill_for_ceiling(context: &DecodeContext<'_>) -> bool {
     let Some(pool) = context.pool.as_ref() else {
         tracing::warn!(
@@ -100,11 +89,6 @@ pub(super) async fn kill_for_ceiling(context: &DecodeContext<'_>) -> bool {
     }
 }
 
-/// Read and discard the rest of a SELECT after the ceiling. The stream ends
-/// normally, or with error 1317 from the ceiling KILL; either way the result
-/// is a truncated success. Other errors are logged and also end the drain:
-/// the stored rows up to the ceiling are complete. Returns `true` when the
-/// stream ended with 1317 (the KILL was consumed by this statement).
 pub(super) async fn drain_after_ceiling<P>(
     result: &mut mysql_async::QueryResult<'_, '_, P>,
     context: &DecodeContext<'_>,
@@ -136,11 +120,6 @@ where
     }
 }
 
-/// Absorb a `KILL QUERY` that may have reached the session after the statement
-/// it targeted had already ended, so it can't interrupt the next statement
-/// (another statement of the batch, or another tab's query on the shared
-/// session). Runs a logged `DO 0`: error 1317 means the late KILL landed here,
-/// which is the point; any other error is logged and ignored.
 pub(crate) async fn absorb_late_kill(conn: &mut mysql_async::Conn, connection_id: &str) {
     use mysql_async::prelude::Queryable;
 
@@ -165,10 +144,6 @@ pub(crate) async fn absorb_late_kill(conn: &mut mysql_async::Conn, connection_id
     }
 }
 
-/// Read `SELECT DATABASE()` on the held session to record the database a
-/// truncated, re-runnable result ran in. A failure (e.g. a late ceiling KILL
-/// landing on this statement with 1317) is a warning, never a statement error,
-/// and yields `None` (the caller marks the export blocked: `unknownDatabase`).
 pub(super) async fn capture_session_database(
     conn: &mut mysql_async::Conn,
     connection_id: &str,

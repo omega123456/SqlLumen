@@ -1,6 +1,5 @@
 use super::*;
 
-/// Issue a logged `USE` for `database` on the held connection.
 pub(super) async fn use_database_on(
     conn: &mut mysql_async::Conn,
     database: &str,
@@ -23,10 +22,6 @@ pub(super) fn is_other_database(current: Option<&str>, database: &str) -> bool {
     current != Some(database)
 }
 
-/// Read the session's current database and switch to the stored run
-/// database when it differs. Returns what to restore afterwards: `None` when
-/// no `USE` was issued, `Some(previous)` otherwise (`previous` is `None` when
-/// the session had no database).
 pub(super) async fn switch_to_run_database(
     conn: &mut mysql_async::Conn,
     prepared: &PreparedResultExport,
@@ -61,9 +56,6 @@ pub(super) async fn switch_to_run_database(
     }
 }
 
-/// Restore the session's previous database after the re-run. Retries once on
-/// error 1317, which a late export `KILL QUERY` can cause. A NULL previous
-/// database can't be restored and is skipped with a warning.
 pub(super) async fn restore_database(
     conn: &mut mysql_async::Conn,
     connection_id: &str,

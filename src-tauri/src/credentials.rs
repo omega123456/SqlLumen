@@ -1,13 +1,3 @@
-//! OS-native credential storage for connection passwords.
-//!
-//! Uses the `keyring` crate to store passwords in OS-native secure storage:
-//! - macOS: Keychain (`apple-native` feature — see `Cargo.toml`)
-//! - Windows: Credential Manager (`windows-native`)
-//! - Linux: keyutils + Secret Service (`linux-native-sync-persistent`, etc.)
-//!
-//! On macOS all saved connection passwords are consolidated into one shared
-//! keychain item. Other platforms continue to store one item per connection id.
-
 use tracing::warn;
 
 const SERVICE_NAME: &str = "sqllumen";
@@ -152,7 +142,6 @@ fn write_shared_vault(entry: &keyring::Entry, vault: &SharedVault) -> Result<(),
     })
 }
 
-/// Store a password in OS-native secure storage for the given saved connection profile id.
 pub fn store_password(profile_id: &str, password: &str) -> Result<(), String> {
     #[cfg(any(test, feature = "test-utils"))]
     if let Some(backend) = *TEST_CREDENTIAL_BACKEND
@@ -191,7 +180,6 @@ fn store_password_in_secure_storage(profile_id: &str, password: &str) -> Result<
     })
 }
 
-/// Retrieve a password from OS-native secure storage for the given saved connection profile id.
 pub fn get_password(profile_id: &str) -> Result<Option<String>, String> {
     #[cfg(any(test, feature = "test-utils"))]
     if let Some(backend) = *TEST_CREDENTIAL_BACKEND
@@ -231,10 +219,6 @@ fn get_password_from_secure_storage(profile_id: &str) -> Result<Option<String>, 
     }
 }
 
-/// Resolve the password for a saved connection profile.
-///
-/// Returns an empty string when the profile does not use a saved password.
-/// When `has_password` is true, the password must exist in secure storage.
 pub fn resolve_password(profile_id: &str, has_password: bool) -> Result<String, String> {
     if !has_password {
         return Ok(String::new());
@@ -243,7 +227,6 @@ pub fn resolve_password(profile_id: &str, has_password: bool) -> Result<String, 
     get_password(profile_id)?.ok_or_else(|| secure_storage_missing_entry_error("retrieve password"))
 }
 
-/// Delete a password from OS-native secure storage for the given saved connection profile id.
 pub fn delete_password(profile_id: &str) -> Result<(), String> {
     #[cfg(any(test, feature = "test-utils"))]
     if let Some(backend) = *TEST_CREDENTIAL_BACKEND

@@ -1,8 +1,3 @@
-/**
- * DDL templates for creating new database objects in the object editor.
- * Pure frontend utility — no IPC calls.
- */
-
 import type { EditableObjectType } from '../../types/schema'
 
 type ObjectTemplateBuilder = (databaseName: string) => string[]

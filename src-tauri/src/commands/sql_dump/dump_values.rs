@@ -1,10 +1,5 @@
 use super::*;
 
-/// Serialize a single cell from a MySQL result row into a [`SqlDumpValue`],
-/// using the column's type metadata to choose the correct representation.
-///
-/// This avoids the old bug where every cell was read as `Option<String>` and
-/// then parsed back into a number (destroying leading zeros, failing on BLOBs, etc.).
 pub fn serialize_dump_value(row: &sqlx::mysql::MySqlRow, column_index: usize) -> SqlDumpValue {
     let raw_value = match row.try_get_raw(column_index) {
         Ok(value) => value,
@@ -147,21 +142,17 @@ impl DumpCell<'_, '_> {
     }
 }
 
-/// Try multiple ways to decode a cell as a string (unchecked, then raw bytes).
 pub(super) fn decode_dump_string(
     row: &sqlx::mysql::MySqlRow,
     column_index: usize,
     raw: &MySqlValueRef<'_>,
 ) -> Option<String> {
-    // Try unchecked string (bypasses type checking)
     if let Ok(Some(text)) = row.try_get_unchecked::<Option<String>, _>(column_index) {
         return Some(text);
     }
-    // Try unchecked bytes → lossy UTF-8
     if let Ok(Some(bytes)) = row.try_get_unchecked::<Option<Vec<u8>>, _>(column_index) {
         return Some(String::from_utf8_lossy(&bytes).into_owned());
     }
-    // Try decoding via Value trait
     let owned = sqlx::ValueRef::to_owned(raw);
     if let Ok(text) = owned.try_decode::<String>() {
         return Some(text);
@@ -173,7 +164,6 @@ pub(super) fn decode_dump_string(
         .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
 }
 
-/// Serialize a temporal (date/time) column value to its string representation.
 pub(super) fn serialize_dump_temporal(value: MySqlValueRef<'_>) -> Option<String> {
     use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
     use sqlx::mysql::types::MySqlTime;
@@ -198,6 +188,5 @@ pub(super) fn serialize_dump_temporal(value: MySqlValueRef<'_>) -> Option<String
         return Some(crate::mysql::query_log::format_mysql_time(value));
     }
 
-    // Last resort: raw string decode
     sqlx::ValueRef::to_owned(&value).try_decode::<String>().ok()
 }

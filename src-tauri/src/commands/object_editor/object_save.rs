@@ -31,7 +31,6 @@ pub(super) fn validate_save_request(request: &SaveObjectRequest) -> Result<Valid
     } = parse_ddl_name(&request.body)?;
     validate_ddl_database(parsed_db.as_deref(), &request.database)?;
 
-    // DDL type validation — reject if the DDL keyword doesn't match the requested object type
     let type_keyword = object_type_keyword(&request.object_type)?;
     if !parsed_type.eq_ignore_ascii_case(type_keyword) {
         return Err(format!(
@@ -136,12 +135,8 @@ pub async fn save_object_impl(
     schema_queries::safe_identifier(&request.object_name)?;
     let validated = validate_save_request(&request)?;
 
-    // Acquire a single connection so that USE, DROP, and CREATE all run on
-    // the same session.  With a pool, each `.execute(&pool)` may pick a
-    // different connection, making the USE ineffective.
     let mut conn = pool.acquire().await.map_err(|error| error.to_string())?;
 
-    // Set session database to ensure the object is created in the correct schema
     let use_sql = format!("USE {safe_db}");
     if let Err(error) = execute_simple_sql(&mut conn, &use_sql).await {
         return Err(format!("Failed to set database context: {error}"));

@@ -20,14 +20,10 @@ pub fn returns_result_set(stripped_sql: &str) -> bool {
     is_select_like(&main_keyword) || main_keyword.is_empty()
 }
 
-/// The auto-LIMIT actually injected for a requested `row_limit`: `0` falls back
-/// to 1,000 (as before), and the result is clamped to the hard row ceiling.
-/// Only the injected LIMIT uses this; decoding is capped by the ceiling itself.
 pub fn effective_row_limit(row_limit: usize, ceiling: usize) -> usize {
     requested_row_limit(row_limit).min(ceiling.max(1))
 }
 
-/// The blocked reason implied by a statement alone (before truncation is known).
 pub fn statement_blocked_reason(sql: &str, is_call: bool) -> Option<FullExportBlockedReason> {
     if is_call {
         return Some(FullExportBlockedReason::Call);
@@ -38,15 +34,10 @@ pub fn statement_blocked_reason(sql: &str, is_call: bool) -> Option<FullExportBl
     None
 }
 
-/// Returns true if the statement is SELECT-like (returns rows).
-/// Note: CALL is intentionally excluded — it is handled via a dedicated
-/// `execute_call_query` path that supports multiple result sets.
 pub fn is_select_like(keyword: &str) -> bool {
     matches!(keyword, "SELECT" | "SHOW" | "DESCRIBE" | "DESC" | "EXPLAIN")
 }
 
-/// Returns true if a SELECT statement needs an auto-LIMIT injected.
-/// Returns true for SELECT and WITH...SELECT statements without an explicit top-level LIMIT.
 pub fn needs_auto_limit(sql: &str) -> bool {
     let stripped = strip_non_executable_comments(sql);
     let keyword = get_first_keyword(&stripped);
@@ -54,7 +45,6 @@ pub fn needs_auto_limit(sql: &str) -> bool {
     match keyword.as_str() {
         "SELECT" => !has_top_level_limit(&stripped),
         "WITH" => {
-            // Only auto-limit if the main verb after CTEs is SELECT
             let main_kw = find_with_main_keyword(&stripped);
             main_kw == "SELECT" && !has_top_level_limit(&stripped)
         }
@@ -69,17 +59,13 @@ pub fn sql_with_auto_limit(sql: &str, auto_limit_applied: bool, limit: usize) ->
     inject_limit_into_select(sql, limit)
 }
 
-/// Injects `LIMIT {limit}` into a SELECT statement at the correct position.
-/// Handles trailing FOR UPDATE / FOR SHARE / LOCK IN SHARE MODE / INTO OUTFILE clauses.
 pub fn inject_limit_into_select(sql: &str, limit: usize) -> String {
     let trimmed = sql.trim_end_matches(';').trim_end();
 
-    // Check for INTO OUTFILE — don't inject LIMIT after it
     if has_into_outfile(trimmed) {
         return format!("{trimmed};");
     }
 
-    // Check for trailing locking clauses
     if let Some(lock_start) = find_trailing_lock_clause(trimmed) {
         let before = trimmed[..lock_start].trim_end();
         let after = &trimmed[lock_start..];
@@ -98,18 +84,13 @@ pub(super) fn is_blocked_by_read_only(state: &AppState, connection_id: &str, sql
     state.registry.is_read_only(connection_id) && !is_read_only_allowed(sql)
 }
 
-/// Returns true if this SQL is allowed on a read-only connection.
-/// Uses an allowlist: SELECT, SHOW, DESCRIBE, DESC, EXPLAIN, USE, SET (non-GLOBAL/PERSIST/PASSWORD).
-/// WITH CTEs are allowed only if the main verb is SELECT.
 pub fn is_read_only_allowed(sql: &str) -> bool {
     let stripped = strip_non_executable_comments(sql);
     let trimmed = stripped.trim();
     if trimmed.is_empty() {
-        return true; // empty statement, allow
+        return true;
     }
 
-    // The editor session uses the text protocol, which runs every `;`-separated
-    // statement — only the first would be vetted below.
     if has_multiple_statements(trimmed) {
         return false;
     }
@@ -118,20 +99,16 @@ pub fn is_read_only_allowed(sql: &str) -> bool {
     match keyword.as_str() {
         "SELECT" | "SHOW" | "DESCRIBE" | "DESC" | "EXPLAIN" | "USE" => true,
         "WITH" => {
-            // WITH CTEs: check the main verb — only allow if SELECT
             let main_kw = find_with_main_keyword(trimmed);
-            // If we can't determine the verb, allow (safe default for edge cases)
             main_kw.is_empty() || main_kw == "SELECT"
         }
         "SET" => {
-            // Allow SET unless it targets global/persist scope or password
             let words: Vec<&str> = trimmed.split_whitespace().collect();
             let Some(second_word) = words.get(1) else {
                 return true;
             };
             let second = second_word.to_uppercase();
 
-            // Block SET GLOBAL, SET PERSIST, SET PERSIST_ONLY, SET PASSWORD
             if matches!(
                 second.as_str(),
                 "GLOBAL" | "PERSIST" | "PERSIST_ONLY" | "PASSWORD"
@@ -147,7 +124,6 @@ pub fn is_read_only_allowed(sql: &str) -> bool {
                 return false;
             }
 
-            // Allow everything else: SET SESSION, SET LOCAL, SET @@session., SET @var, plain SET var = ...
             true
         }
         _ => false,

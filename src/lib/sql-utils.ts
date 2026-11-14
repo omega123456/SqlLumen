@@ -7,12 +7,6 @@ const BLOCK_COMMENT_DELIMITER_LENGTH = 2
 const EXECUTABLE_COMMENT_MARKERS = new Set(['!', '+'])
 const LINE_COMMENT_PREFIXES = ['--', '#'] as const
 
-/**
- * Shared SQL parsing utilities used by query-store and query-edit-utils.
- *
- * These are pure functions with no side effects or external dependencies.
- */
-
 function blockCommentEndIndex(text: string): number {
   let depth = 0
   let scanIndex = 0
@@ -56,15 +50,6 @@ function startsWithLineComment(text: string): boolean {
   return LINE_COMMENT_PREFIXES.some((prefix) => text.startsWith(prefix))
 }
 
-/**
- * Strip leading SQL comments (block, line `-- ...`, and `# ...`)
- * so we can identify the first real keyword.
- *
- * Supports nested block comments, including nested inner/outer block-comment pairs.
- *
- * Preserves MySQL executable comments (`/*! ... *\/`) and optimizer hints
- * (`/*+ ... *\/`). These are treated as part of the SQL statement.
- */
 export function stripLeadingSqlComments(sql: string): string {
   let remaining = sql.trimStart()
   while (true) {
@@ -74,22 +59,13 @@ export function stripLeadingSqlComments(sql: string): string {
   }
 }
 
-/**
- * Extract the first SQL keyword from a string after stripping leading comments.
- * Returns the keyword uppercased, or '' if none found.
- *
- * Handles MySQL executable comments (e.g. `/*!50001 CALL proc() *\/`).
- */
 export function getFirstSqlKeyword(sql: string): string {
   const stripped = stripLeadingSqlComments(sql).trimStart()
 
-  // Handle executable comments: /*!<optional-version-digits> keyword ... */
   if (stripped.startsWith(EXECUTABLE_COMMENT_OPEN)) {
     const inner = stripped.slice(EXECUTABLE_COMMENT_OPEN.length)
-    // Skip optional version number (digits)
     const afterVersion = inner.replace(/^\d+/, '')
     const afterWhitespace = afterVersion.trimStart()
-    // Extract first word
     const match = afterWhitespace.match(/^[a-zA-Z_]\w*/)
     if (match) {
       return match[0].toUpperCase()

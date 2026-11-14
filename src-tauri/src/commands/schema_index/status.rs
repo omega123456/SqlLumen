@@ -51,7 +51,6 @@ pub(super) fn stored_index_status(
     Ok(index_status(meta.status.as_str()))
 }
 
-/// Get the current status of the schema index for a session.
 pub fn get_index_status_impl(
     state: &AppState,
     session_id: String,

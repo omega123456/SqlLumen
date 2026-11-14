@@ -15,7 +15,6 @@ export interface AiChatMessagesProps {
   onSqlAccepted?: (sql: string) => void
 }
 
-/** Stable empty array to avoid re-render loops when tab state doesn't exist. */
 const EMPTY_MESSAGES: AiMessage[] = []
 const HIDDEN_PROMPT_ONLY_KINDS = new Set<NonNullable<AiMessage['kind']>>([
   'schema-context',
@@ -135,7 +134,6 @@ export function AiChatMessages({
 
       <div ref={scrollAnchorRef} className={styles.scrollAnchor} />
 
-      {/* Hidden element for suggestion fill synchronization in tests */}
       {internalSuggestion && (
         <span data-testid="ai-internal-suggestion" className={styles.hidden}>
           {internalSuggestion}

@@ -46,7 +46,6 @@ pub fn write_xlsx<R: AsRef<[serde_json::Value]>>(
         current_row += 1;
     }
 
-    // Auto-size column widths based on header + data content (capped at 50 chars)
     let col_widths: Vec<f64> = columns
         .iter()
         .enumerate()
@@ -72,9 +71,6 @@ pub fn write_xlsx<R: AsRef<[serde_json::Value]>>(
     Ok(metadata.len())
 }
 
-/// Write one cell: NULL leaves the cell empty, numbers are numeric when they
-/// fit an `f64`, booleans are booleans and everything else is a string.
-/// Shared by the slice writer and the streaming writer.
 pub fn write_xlsx_cell(
     worksheet: &mut Worksheet,
     position: CellPosition,
@@ -82,7 +78,7 @@ pub fn write_xlsx_cell(
 ) -> Result<(), String> {
     let CellPosition { row, col } = position;
     match value {
-        serde_json::Value::Null => {} // empty cell
+        serde_json::Value::Null => {}
         serde_json::Value::Number(number) => match number.as_f64() {
             Some(float) => {
                 worksheet
@@ -114,9 +110,6 @@ pub fn write_xlsx_cell(
     Ok(())
 }
 
-/// Column width rule: the longest of the header and the given cells, plus 2
-/// characters of padding, capped at 50. Shared by the slice writer (all rows)
-/// and the streaming writer (its first-rows sample).
 pub fn xlsx_column_width<'a>(
     header: &str,
     cells: impl Iterator<Item = Option<&'a serde_json::Value>>,

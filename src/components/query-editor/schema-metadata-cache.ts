@@ -1,9 +1,3 @@
-/**
- * Per-connection schema metadata cache.
- * Module-level singleton — NOT a React component.
- * Manages fetching, caching, and filtering of schema metadata for autocomplete.
- */
-
 import { listen } from '@tauri-apps/api/event'
 import type {
   TableInfo,
@@ -43,13 +37,10 @@ export interface SchemaCache {
   lastRefreshAt?: number
 }
 
-/** Internal cache map — one entry per connection. */
 const cacheMap = new Map<string, SchemaCache>()
 
-/** In-flight load promises — prevents concurrent callers from racing. */
 const _pendingLoads = new Map<string, Promise<void>>()
 
-/** Per-connection generation counter — prevents stale fetches from repopulating after invalidation. */
 const _generationMap = new Map<string, number>()
 
 function getGeneration(connectionId: string): number {
@@ -168,24 +159,14 @@ export function sanitizeSchemaMetadata(data: SchemaMetadataFull): SchemaMetadata
   }
 }
 
-/**
- * Get current cache for a connection. Returns an empty cache if none exists.
- */
 export function getCache(connectionId: string): SchemaCache {
   return cacheMap.get(connectionId) ?? emptyCache()
 }
 
-/**
- * Fetch and populate the cache for a connection.
- * No-op if cache status is already 'ready'.
- * Retries on 'error' status.
- * Concurrent callers await the same in-flight promise.
- */
 export async function loadCache(connectionId: string): Promise<void> {
   const existing = cacheMap.get(connectionId)
   if (existing?.status === 'ready') return
 
-  // If already loading, return the existing promise so callers await the same fetch
   const pendingLoad = _pendingLoads.get(connectionId)
   if (pendingLoad) {
     return pendingLoad
@@ -249,12 +230,6 @@ export async function rebuildCache(connectionId: string): Promise<void> {
   await loadCache(connectionId)
 }
 
-/**
- * Refresh the cache in the background without invalidating existing data.
- * Does NOT register as a pending load, so autocomplete will not block on it.
- * On success, atomically replaces the cached data.
- * On failure, preserves the existing (stale) cache.
- */
 export async function refreshCacheInBackground(connectionId: string): Promise<void> {
   const capturedGeneration = getGeneration(connectionId)
   const data = sanitizeSchemaMetadata(await fetchSchemaMetadataFull(connectionId))
@@ -333,19 +308,12 @@ export function serializeCacheSnapshot(connectionId: string): string | null {
   } satisfies SchemaMetadataFull)
 }
 
-/**
- * Remove cache entry for a connection (forces re-fetch on next loadCache call).
- * Also clears pending loads and increments generation to prevent stale repopulation.
- */
 export function invalidateCache(connectionId: string): void {
   cacheMap.delete(connectionId)
   _pendingLoads.delete(connectionId)
   incrementGeneration(connectionId)
 }
 
-/**
- * Filter databases by case-insensitive prefix.
- */
 export function filterDatabases(connectionId: string, prefix: string): string[] {
   const cache = getReadyCache(connectionId)
   if (!cache) return []
@@ -353,9 +321,6 @@ export function filterDatabases(connectionId: string, prefix: string): string[] 
   return cache.databases.filter((db) => db.toLowerCase().startsWith(lowerPrefix))
 }
 
-/**
- * Filter tables for a given database by case-insensitive prefix.
- */
 export function filterTables(connectionId: string, database: string, prefix: string): TableInfo[] {
   const cache = getReadyCache(connectionId)
   if (!cache) return []
@@ -371,9 +336,6 @@ export interface ColumnPrefixQuery {
   prefix: string
 }
 
-/**
- * Filter columns for a given database.table by case-insensitive prefix.
- */
 export function filterColumns({
   connectionId,
   database,
@@ -388,9 +350,6 @@ export function filterColumns({
   return columns.filter((column) => column.name.toLowerCase().startsWith(lowerPrefix))
 }
 
-/**
- * Filter routines for a given database by case-insensitive prefix.
- */
 export function filterRoutines(
   connectionId: string,
   database: string,
@@ -450,18 +409,10 @@ export function getSearchableObjects(connectionId: string): SearchableObject[] {
   ]
 }
 
-/**
- * Returns the in-flight load promise for a connection, or null if not loading.
- * Used by the completionService to await pending schema fetches before
- * returning completions, so the user sees schema items instead of "Loading schema…".
- */
 export function getPendingLoad(connectionId: string): Promise<void> | null {
   return _pendingLoads.get(connectionId) ?? null
 }
 
-/**
- * Clear all caches. Primarily for test cleanup.
- */
 export function _clearAllCaches(): void {
   cacheMap.clear()
   _pendingLoads.clear()

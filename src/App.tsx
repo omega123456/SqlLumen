@@ -11,7 +11,6 @@ import { useSystemTheme } from './hooks/use-system-theme'
 import { setupSchemaInvalidationListener } from './components/query-editor/schema-metadata-cache'
 import { applyWindowBackdrop } from './lib/window-commands'
 
-// Glide Data Grid base styles + Precision Studio custom theme
 import '@glideapps/glide-data-grid/dist/index.css'
 import '@glideapps/glide-data-grid-cells/dist/index.css'
 import './styles/data-grid-precision.css'
@@ -47,7 +46,6 @@ function App() {
     }
   }, [initialize, initializeShortcuts, setupEventListeners, restoreSession])
 
-  // When system theme changes and user preference is 'system', re-apply
   useEffect(() => {
     if (theme === 'system') {
       void setTheme('system')

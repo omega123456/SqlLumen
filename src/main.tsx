@@ -14,12 +14,15 @@ import { logBootstrapFailure, logFrontend } from './lib/app-log-commands'
 import type * as Monaco from 'monaco-editor'
 import { isBlank } from './lib/value-checks'
 
-// Canvas grids (glide) only repaint when `document.fonts.ready` settles, and webfonts are
-// fetched lazily on first DOM use. Request the grid's mono faces up front so the first
-// canvas paint isn't stuck on a fallback font until the grid remounts.
-for (const font of ['13px', '700 10px', 'italic 13px']) {
-  void document.fonts?.load(`${font} "JetBrains Mono"`)
+const GRID_MONO_FONT_SIZES = ['13px', '700 10px', 'italic 13px']
+
+function preloadGridMonoFonts(): void {
+  for (const font of GRID_MONO_FONT_SIZES) {
+    void document.fonts?.load(`${font} "JetBrains Mono"`)
+  }
 }
+
+preloadGridMonoFonts()
 
 document.documentElement.dataset.windowFocused = String(document.hasFocus())
 window.addEventListener('focus', () => (document.documentElement.dataset.windowFocused = 'true'))

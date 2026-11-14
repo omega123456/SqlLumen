@@ -4,7 +4,6 @@ import type { BlobValueResponse } from '../../../types/schema'
 import { BYTES_PER_MEGABYTE } from '../../../lib/units'
 import { toErrorMessage } from '../../../lib/error-message'
 
-/** Hard cap (10 MB) enforced on file loads inside the dialog. */
 const FILE_LOAD_CAP_MEGABYTES = 10
 export const FILE_LOAD_CAP = FILE_LOAD_CAP_MEGABYTES * BYTES_PER_MEGABYTE
 export const HEX_DUMP_GROUP_SIZE = 8
@@ -17,15 +16,9 @@ export const TABS: { id: BlobTab; label: string }[] = [
   { id: 'hex', label: 'Hex' },
 ]
 
-/**
- * The dialog's working value. `bytes` carries actual content; `null` is a
- * staged SQL NULL; `tooLarge` means no bytes are held (table-data fetch refused
- * them) so content and Save-to-file are suppressed.
- */
 export type WorkingValue =
   { kind: 'bytes'; bytes: Uint8Array } | { kind: 'null' } | { kind: 'tooLarge'; byteLength: number }
 
-/** Resolve a `WorkingValue` from a fetched/inlined `BlobValueResponse`. */
 export function workingFromResponse(response: BlobValueResponse): WorkingValue {
   if (response.tooLarge) {
     return { kind: 'tooLarge', byteLength: response.byteLength }

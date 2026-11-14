@@ -22,10 +22,6 @@ pub enum ExportFormat {
 }
 
 impl ExportFormat {
-    /// Parse a format string into an `ExportFormat`.
-    ///
-    /// Accepts both the kebab-case serde names (`"sql-insert"`) and the
-    /// short names used by the table-data export path (`"sql"`).
     pub fn from_format_str(format: &str) -> Result<Self, String> {
         match format {
             "csv" => Ok(Self::Csv),
@@ -70,11 +66,6 @@ fn write_export_file(
     Ok(metadata.len())
 }
 
-/// Write columns/rows to disk using the specified format.
-///
-/// This is the shared export dispatcher used by both the query-result export
-/// path (`commands::export`) and the table-data export path
-/// (`mysql::table_data::export_table_data_impl`).
 pub struct ExportRows<'a, R> {
     pub columns: &'a [String],
     pub rows: &'a [R],

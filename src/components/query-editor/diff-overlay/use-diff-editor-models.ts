@@ -25,7 +25,6 @@ function detachAcceptWidgets(refs: DiffEditorRefs): void {
   refs.acceptWidgetsRef.current = []
 }
 
-// Monaco crashes with "TextModel got disposed before DiffEditorWidget model got reset" unless models are detached first.
 function disposeDiffModels(refs: DiffEditorRefs): void {
   detachAcceptWidgets(refs)
   removeAllHunkViewZones(refs.diffEditorRef.current, refs.hunkZoneIdsRef)

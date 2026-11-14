@@ -1,8 +1,6 @@
 use super::*;
 
-/// INSERT OR REPLACE into `schema_index_meta`.
 pub fn upsert_index_meta(conn: &Connection, meta: &IndexMeta) -> Result<()> {
-    // Ensure the vec_schema_version column exists (added after the initial migration).
     ensure_vec_schema_version_column(conn)?;
     conn.execute(
         "INSERT OR REPLACE INTO schema_index_meta (connection_id, model_id, embedding_dimension, last_build_at, status, vec_schema_version)
@@ -19,9 +17,7 @@ pub fn upsert_index_meta(conn: &Connection, meta: &IndexMeta) -> Result<()> {
     Ok(())
 }
 
-/// Get the index metadata for a connection.
 pub fn get_index_meta(conn: &Connection, connection_id: &str) -> Result<Option<IndexMeta>> {
-    // Ensure the vec_schema_version column exists (added after the initial migration).
     ensure_vec_schema_version_column(conn)?;
     let mut stmt = conn.prepare(
         "SELECT connection_id, model_id, embedding_dimension, last_build_at, status, vec_schema_version
@@ -46,7 +42,6 @@ pub fn get_index_meta(conn: &Connection, connection_id: &str) -> Result<Option<I
     }
 }
 
-/// Update the status of an index for a connection.
 pub fn update_index_status(
     conn: &Connection,
     connection_id: &str,
@@ -59,14 +54,7 @@ pub fn update_index_status(
     Ok(())
 }
 
-/// Ensure the `vec_schema_version` column exists on the `schema_index_meta` table.
-///
-/// Old databases created by migration 005 don't have this column. Adding it
-/// via `ALTER TABLE … ADD COLUMN` is a no-op if the column already exists
-/// (SQLite returns an error that we can safely ignore).
 pub(super) fn ensure_vec_schema_version_column(conn: &Connection) -> Result<()> {
-    // SQLite doesn't have IF NOT EXISTS for ADD COLUMN, so we attempt the
-    // ALTER and ignore the "duplicate column name" error.
     let res = conn.execute_batch(
         "ALTER TABLE schema_index_meta ADD COLUMN vec_schema_version INTEGER DEFAULT NULL",
     );

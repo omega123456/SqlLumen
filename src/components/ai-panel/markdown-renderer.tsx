@@ -11,14 +11,6 @@ export interface MarkdownRendererProps {
   onSqlAccepted?: (sql: string) => void
 }
 
-/**
- * Renders markdown content with GFM support and syntax highlighting.
- *
- * Code blocks get rehype-highlight syntax classes and the hljs-theme.css
- * custom-property mapping automatically adapts to light/dark theme.
- *
- * SQL code blocks render as AiCodeBlock with copy + optional diff buttons.
- */
 export function MarkdownRenderer({
   content,
   onTriggerDiff,

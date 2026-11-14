@@ -64,7 +64,6 @@ function useCellClick(model: GridViewModel, pointerActions: PointerActions) {
       const position = { rowIdx: rowIndex, idx: columnIndex }
       lastInteractedCellRef.current = position
       if (isForeignKeyAffordanceClick(column, event)) {
-        // Glide treats a click on the selected cell as a second click and would also open its editor.
         event.preventDefault()
         openForeignKeyLookupFromPointer(position, row, column.key)
         return

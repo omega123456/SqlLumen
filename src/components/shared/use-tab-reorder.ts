@@ -24,9 +24,6 @@ function isNoOpDrop(
   return draggingIndex === targetIndex || draggingIndex + 1 === targetIndex
 }
 
-/**
- * Computes where a dragged tab should be inserted in a horizontal tab list.
- */
 export function computeHorizontalTabReorderTarget(
   args: ComputeHorizontalTabReorderTargetArgs
 ): HorizontalTabReorderTarget | null {

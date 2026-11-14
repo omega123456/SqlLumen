@@ -12,7 +12,6 @@ use super::{
     ForeignKeyInfo, IndexInfo, SchemaInfoResponse, SchemaObjectRef, TableMetadata,
 };
 
-/// Full column details from INFORMATION_SCHEMA.COLUMNS (used by get_schema_info).
 #[cfg(not(coverage))]
 pub async fn query_full_columns(
     pool: &MySqlPool,
@@ -50,7 +49,6 @@ pub async fn query_full_columns(
     Ok(columns)
 }
 
-/// Index info via `SHOW INDEX FROM db.table` (works across MySQL versions).
 #[cfg(not(coverage))]
 pub async fn query_indexes(
     pool: &MySqlPool,
@@ -79,7 +77,6 @@ pub async fn query_indexes(
             decode_mysql_text_cell_named(row, "Index_type").unwrap_or_default();
         let cardinality: Option<i64> = row.try_get("Cardinality").ok();
 
-        // MySQL 8.0+ has a Visible column; older versions and MariaDB do not.
         let is_visible = decode_mysql_text_cell_named(row, "Visible")
             .map(|value| value == "YES")
             .unwrap_or(true);
@@ -110,7 +107,6 @@ pub async fn query_indexes(
         .collect())
 }
 
-/// Foreign key info from INFORMATION_SCHEMA.
 #[cfg(not(coverage))]
 pub async fn query_foreign_keys(
     pool: &MySqlPool,
@@ -153,7 +149,6 @@ pub async fn query_foreign_keys(
     Ok(out)
 }
 
-/// Table metadata from INFORMATION_SCHEMA.TABLES.
 #[cfg(not(coverage))]
 pub async fn query_table_metadata(
     pool: &MySqlPool,

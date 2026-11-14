@@ -1,9 +1,5 @@
 import { invokeArgumentCommand, invokeCommand } from './ipc/dispatch'
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 export interface SchemaIndexStatus {
   status: 'not_configured' | 'building' | 'ready' | 'stale' | 'error'
   tablesDone?: number
@@ -47,10 +43,6 @@ export interface RetrievalHints {
   editorTables: TableRef[]
   acceptedTables: TableHint[]
 }
-
-// ---------------------------------------------------------------------------
-// IPC wrappers
-// ---------------------------------------------------------------------------
 
 export async function buildSchemaIndex(sessionId: string): Promise<void> {
   return invokeArgumentCommand({ command: 'build_schema_index', argument: { sessionId } })

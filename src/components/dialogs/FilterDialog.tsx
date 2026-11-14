@@ -1,14 +1,3 @@
-/**
- * FilterDialog — modal for managing table data filter conditions.
- *
- * Users add/remove filter rows; each row has a column dropdown,
- * operator dropdown, and a value input.  All conditions are AND-joined.
- *
- * The dialog manages local editing state.  Changes are committed
- * to the parent via the `onApply` callback, which wires through
- * the store's `applyFilters` action.
- */
-
 import { useCallback, useMemo } from 'react'
 import { Funnel, Plus, X } from '@phosphor-icons/react'
 import { Button } from '../common/Button'
@@ -20,7 +9,6 @@ import { useFormSubmit } from '../../hooks/useFormSubmit'
 import { FilterConditionRow, type FilterRowContext } from './filter-dialog/FilterConditionRow'
 import { useFilterConditions } from './filter-dialog/use-filter-conditions'
 
-/** Viewport fraction with a hard cap so the modal stays usable on large monitors. */
 const PANEL_WIDTH = 'min(50vw, 720px)'
 const PANEL_HEIGHT = 'min(50vh, 560px)'
 const CLOSE_ICON_SIZE = 18

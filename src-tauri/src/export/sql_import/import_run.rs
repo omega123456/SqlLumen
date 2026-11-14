@@ -283,7 +283,6 @@ pub(super) fn import_status_label(cancelled: bool, error_count: usize) -> &'stat
     "OK"
 }
 
-/// Log a single summary history entry for a SQL import job.
 pub(super) fn log_import_history(
     db: &Arc<Mutex<rusqlite::Connection>>,
     summary: ImportHistorySummary<'_>,

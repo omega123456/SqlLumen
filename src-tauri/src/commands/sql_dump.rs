@@ -1,7 +1,3 @@
-//! Tauri commands for SQL dump export — listing exportable objects,
-//! starting a dump job, and checking progress.
-//! Also includes SQL import commands for executing .sql script files.
-
 use futures::stream::StreamExt;
 use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
@@ -31,7 +27,6 @@ pub use insert_writer::*;
 
 const BITS_PER_BYTE: u32 = 8;
 
-/// A database with its tables available for export.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportableDatabase {
@@ -39,7 +34,6 @@ pub struct ExportableDatabase {
     pub tables: Vec<ExportableTable>,
 }
 
-/// The closed set of supported SQL dump object categories.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DumpObjectType {
@@ -47,7 +41,6 @@ pub enum DumpObjectType {
     View,
 }
 
-/// A table or view available for export.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportableTable {
@@ -56,7 +49,6 @@ pub struct ExportableTable {
     pub estimated_rows: u64,
 }
 
-/// A selected table or view in the dump-start input.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DumpTableEntry {
@@ -64,16 +56,12 @@ pub struct DumpTableEntry {
     pub object_type: DumpObjectType,
 }
 
-/// Input for starting a SQL dump export job.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartDumpInput {
     pub connection_id: String,
     pub file_path: String,
     pub databases: Vec<String>,
-    /// Map of database name → list of selected object entries.
-    /// Each entry carries the object name and its type (table or view).
-    /// Empty maps are accepted but result in no work (no objects exported).
     pub tables: HashMap<String, Vec<DumpTableEntry>>,
     pub options: DumpOptions,
 }
@@ -129,7 +117,6 @@ pub async fn cancel_dump(
     cancel_dump_impl(&state, &payload).await
 }
 
-// Coverage stubs
 #[cfg(coverage)]
 #[tauri::command]
 pub async fn list_exportable_objects(
@@ -204,7 +191,6 @@ pub async fn cancel_import(
     cancel_import_impl(&state, &job_id)
 }
 
-// Coverage stubs — SQL Import
 #[cfg(coverage)]
 #[tauri::command]
 pub async fn start_sql_import(

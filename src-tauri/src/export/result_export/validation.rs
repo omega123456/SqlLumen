@@ -46,8 +46,6 @@ pub fn validate_full_export(
     })
 }
 
-/// Validate the request and register a running job. The caller then runs
-/// [`run_result_export_job`] in the background and returns the job id.
 pub fn start_result_export_impl(
     state: &AppState,
     input: StartResultExportInput,

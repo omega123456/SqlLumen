@@ -29,7 +29,6 @@ interface ModifiedCellCheck {
   isModifiedCell: CanvasBaseGridViewProps['isModifiedCell']
 }
 
-/** Skeleton bar height when the theme has no cell font size. */
 const SKELETON_FALLBACK_LINE_PX = 13
 
 export function isCellModified(check: ModifiedCellCheck): boolean {

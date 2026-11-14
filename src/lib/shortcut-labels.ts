@@ -16,19 +16,16 @@ const KEY_LABELS: Partial<Record<string, string>> = {
   Escape: 'Esc',
 }
 
-/** Map internal modifier names to display labels. */
 function modifierLabel(modifier: string): string {
   return MODIFIER_LABELS[modifier] ?? modifier
 }
 
-/** Map key names to friendlier display labels. */
 function keyLabel(key: string): string {
   const namedKeyLabel = KEY_LABELS[key]
   if (namedKeyLabel) return namedKeyLabel
   return key.length === 1 ? key.toUpperCase() : key
 }
 
-/** Display labels for a shortcut binding, modifiers first (e.g. `['Ctrl', 'K']`). */
 export function shortcutLabelParts(binding: ShortcutBinding): string[] {
   return [...binding.modifiers.map(modifierLabel), keyLabel(binding.key)]
 }

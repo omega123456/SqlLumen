@@ -38,15 +38,6 @@ pub struct NewLogEntry {
     pub message: String,
 }
 
-/// Open the logs database with its standard pragmas, creating the parent
-/// directory if needed.
-///
-/// This is the shared base used by both the one-time initializer and the
-/// log-writer thread. It performs ONLY directory creation, `Connection::open`,
-/// and pragma setup (WAL, synchronous, busy_timeout) — it does NOT run
-/// migrations. Callers that open the database after [`initialize_log_database`]
-/// has run (e.g. the writer thread) get a plain connection on an
-/// already-migrated database.
 pub fn open_log_database(path: &Path) -> Result<Connection> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|error| {
@@ -66,28 +57,11 @@ pub fn open_log_database(path: &Path) -> Result<Connection> {
     Ok(conn)
 }
 
-/// Initialize the logs database, returning a ready reader connection.
-///
-/// Opens the database with its standard pragmas (via [`open_log_database`]),
-/// runs all pending log migrations, and — when the `002_vacuum_state` migration
-/// is newly applied — performs the one-time
-/// `PRAGMA auto_vacuum=INCREMENTAL; VACUUM;` conversion outside any transaction
-/// (SQLite forbids `VACUUM` inside a transaction, and the migration runner wraps
-/// each migration in one).
-///
-/// This must be called once, before any other code opens the logs database
-/// (in particular before the log-writer thread), so migrations and the
-/// conversion happen exactly once on a single connection with no concurrency.
 pub fn initialize_log_database(path: impl AsRef<Path>) -> Result<Connection> {
     let mut conn = open_log_database(path.as_ref())?;
 
     let applied = run_log_migrations(&mut conn).map_err(rusqlite::Error::InvalidParameterName)?;
 
-    // When the vacuum-state migration is first applied, convert the database to
-    // incremental auto-vacuum mode. Enabling incremental auto-vacuum on an
-    // existing database requires a full VACUUM to take effect. VACUUM is illegal
-    // inside a transaction, so this runs here in initialization code rather than
-    // in migration SQL.
     if applied.contains(&MIGRATION_VACUUM_STATE_LOGS) {
         tracing::info!(
             "logs migration 002 newly applied; converting logs database to incremental auto-vacuum"

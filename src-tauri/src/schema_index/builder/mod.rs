@@ -1,9 +1,3 @@
-//! Index build orchestration — generates DDL chunks, computes hashes,
-//! performs incremental embedding, and stores results.
-//!
-//! The public functions take explicit dependencies (SQLite mutex, MySQL pool,
-//! HTTP client) so they are testable without the Tauri runtime.
-
 mod chunk_diff;
 mod chunk_generation;
 mod ddl_parsing;
@@ -37,6 +31,4 @@ pub use ddl_text::{
 #[cfg(not(coverage))]
 pub use build::{build_index, rebuild_tables, IndexBuildResources};
 
-/// Concurrency for parallel `SHOW CREATE TABLE` fetches. Must stay at or below
-/// the MySQL pool's `max_connections` so foreground queries aren't starved.
 pub const SHOW_CREATE_TABLE_CONCURRENCY: usize = 8;

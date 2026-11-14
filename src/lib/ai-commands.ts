@@ -3,9 +3,6 @@ import { listen } from '@tauri-apps/api/event'
 import { logFrontend } from './app-log-commands'
 import { toErrorMessage } from './error-message'
 import { invokeArgumentCommand } from './ipc/dispatch'
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 
 export type AiChunkKind = 'content' | 'thinking'
 
@@ -55,10 +52,6 @@ export interface AiModelInfo {
   category: string
 }
 
-// ---------------------------------------------------------------------------
-// Event payload types (match Rust camelCase serde)
-// ---------------------------------------------------------------------------
-
 interface StreamChunkPayload {
   streamId: string
   content: string
@@ -75,10 +68,6 @@ interface StreamErrorPayload {
   streamId: string
   error: string
 }
-
-// ---------------------------------------------------------------------------
-// IPC wrappers
-// ---------------------------------------------------------------------------
 
 function toAiChatRequest(params: AiChatParams): AiChatRequest {
   return {
@@ -109,13 +98,6 @@ function isPayloadForStream(payload: { streamId: string }, streamId: string): bo
   return payload.streamId === streamId
 }
 
-/**
- * Set up event listeners for a specific AI stream.
- *
- * Listens to `ai-stream-chunk`, `ai-stream-done`, and `ai-stream-error`
- * events and filters by `streamId`. Returns a single unlisten function
- * that tears down all three listeners.
- */
 export async function listenToAiStream(
   streamId: string,
   callbacks: AiStreamCallbacks
@@ -153,11 +135,6 @@ export interface ListAiModelsResult {
   error?: string
 }
 
-/**
- * List available models from an OpenAI-compatible endpoint.
- * Returns a result object with the models array and an optional error string
- * if the request failed. The caller can display the error to the user.
- */
 export async function listAiModels(endpoint: string): Promise<ListAiModelsResult> {
   try {
     const response = await invokeArgumentCommand({
@@ -171,10 +148,6 @@ export async function listAiModels(endpoint: string): Promise<ListAiModelsResult
     return { models: [], error: errorMessage }
   }
 }
-
-// ---------------------------------------------------------------------------
-// Query expansion (non-streaming)
-// ---------------------------------------------------------------------------
 
 export interface AiQueryExpandRequest {
   endpoint: string

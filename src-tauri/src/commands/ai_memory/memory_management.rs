@@ -64,7 +64,6 @@ pub fn delete_memory_impl(state: &AppState, request: &DeleteMemoryRequest) -> Re
         format!("Memory with id {memory_id} not found")
     })?;
 
-    // Determine the owner id for the vec table from the row itself.
     let owner_id = match scope {
         MemoryScope::Connection => memory.connection_id.clone(),
         MemoryScope::Group => memory.group_id.clone(),
@@ -103,7 +102,6 @@ pub fn move_memory_prepare(
     let source = storage::get_memory_by_id_scoped(&conn, from_scope, memory_id)?
         .ok_or_else(|| format!("Memory with id {memory_id} not found at source scope"))?;
 
-    // Resolve + validate the target owner.
     let to_owner_id: Option<String> = match to_scope {
         MemoryScope::Global => None,
         MemoryScope::Group => {
@@ -155,7 +153,7 @@ pub async fn move_memory_full(
     let dim = embeddings::detect_embedding_dimension(&state.http_client, &endpoint, &model)
         .await
         .map_err(|error| error.to_string())?;
-    let _ = dim; // dimension is implied by the embedding length; kept for parity/logging.
+    let _ = dim;
 
     let embedding_model = embeddings::EmbeddingModel {
         base_url: &endpoint,

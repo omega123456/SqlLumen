@@ -1,7 +1,5 @@
 use super::*;
 
-/// Replace all segment document frequency entries for a connection.
-/// `entries` is a list of `(segment, doc_count)`.
 pub fn replace_segment_df_for_connection(
     conn: &Connection,
     connection_id: &str,
@@ -18,7 +16,6 @@ pub fn replace_segment_df_for_connection(
     Ok(())
 }
 
-/// Get segment → doc_count map for a connection.
 pub fn get_segment_df_for_connection(
     conn: &Connection,
     connection_id: &str,
@@ -37,7 +34,6 @@ pub fn get_segment_df_for_connection(
     Ok(map)
 }
 
-/// Delete all segment DF entries for a connection.
 pub fn delete_segment_df_for_connection(conn: &Connection, connection_id: &str) -> Result<()> {
     conn.execute(
         "DELETE FROM schema_index_segment_df WHERE connection_id = ?1",

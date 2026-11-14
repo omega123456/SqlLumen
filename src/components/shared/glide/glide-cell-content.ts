@@ -34,7 +34,6 @@ export interface ClassifyCellValueOptions {
 
 export type ClassifiedCellValue = CellStateFlags & { displayValue: string; copyValue: string }
 
-/** Canvas cells cannot read CSS variables, so resolve the NULL tokens once per theme. */
 let nullTokenCache: { theme: string | null; color: string; mono: string } | null = null
 
 function nullTokens(): { color: string; mono: string } {
@@ -53,24 +52,11 @@ function nullTextColor(): string {
   return nullTokens().color
 }
 
-/**
- * Theme override for NULL placeholders: italic mono in the tertiary text colour.
- * The mono stack carries a trailing comma because Glide appends the grid font family.
- */
 export function nullCellThemeOverride(): { baseFontStyle: string; textDark: string } {
   const { color, mono } = nullTokens()
   return { baseFontStyle: mono ? `italic 13px ${mono},` : 'italic 13px', textDark: color }
 }
 
-/**
- * Render the placeholder shown for a binary cell.
- *
- * `isBlobColumn` is set when the cell belongs to a binary column whose value
- * arrives as inlined base64 (query results) — those have no pre-baked
- * `[BLOB - …]` placeholder, so the byte size is derived here. This keeps query
- * results identical to the table grid, which receives the placeholder ready-made
- * from the backend.
- */
 export function formatBlobDisplayValue(rawValue: unknown, isBlobColumn = false): string {
   if (typeof rawValue === 'string') {
     if (isBlobPlaceholderText(rawValue)) return rawValue
@@ -82,10 +68,6 @@ export function formatBlobDisplayValue(rawValue: unknown, isBlobColumn = false):
   return '[BLOB]'
 }
 
-/**
- * Decode the byte length of a `bytes`/`empty` blob envelope without keeping the
- * decoded bytes around. Malformed base64 falls back to 0.
- */
 function envelopeByteLength(envelope: BlobEnvelope): number {
   if (envelope.kind === 'empty') return 0
   const base64 = envelope.kind === 'bytes' ? envelope.base64 : undefined
@@ -114,9 +96,6 @@ function rowStateFlags(options: ClassifyCellValueOptions, columnKey: string): Ro
   }
 }
 
-// A staged blob edit arrives as a self-describing envelope. Render it as a
-// modified blob placeholder (`[BLOB - N bytes*]`) or, for a staged NULL, fall
-// through to the standard NULL rendering with the pending highlight.
 function classifyBlobEnvelope(envelope: BlobEnvelope, flags: RowStateFlags): ClassifiedCellValue {
   if (envelope.kind === 'null') {
     return { displayValue: 'NULL', copyValue: 'NULL', isNull: true, isBlob: false, ...flags }

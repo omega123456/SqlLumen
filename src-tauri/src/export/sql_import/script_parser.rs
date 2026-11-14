@@ -126,7 +126,6 @@ impl SqlScriptParser {
 
     pub(super) fn try_line_comment(&mut self) -> bool {
         let character = self.current_char();
-        // MySQL requires a space after `--`, but the parser is lenient.
         let starts_dash_comment =
             character == '-' && has_char_at(&self.chars, self.position + 1, '-');
         let starts_line_comment = starts_dash_comment || character == '#';
@@ -136,7 +135,6 @@ impl SqlScriptParser {
         while is_before_newline(&self.chars, self.position) {
             self.position += 1;
         }
-        // Keep the newline in the statement to preserve formatting.
         if self.has_more() {
             self.push_current_char();
         }
@@ -150,7 +148,6 @@ impl SqlScriptParser {
             return false;
         }
         let char_count = self.chars.len();
-        // MySQL conditional comments /*!...*/ are preserved as executable SQL.
         let is_conditional_comment = has_char_at(&self.chars, self.position + 2, '!');
         if is_conditional_comment {
             let body_start = self.position + CONDITIONAL_COMMENT_OPEN.len();
@@ -161,7 +158,6 @@ impl SqlScriptParser {
         }
         let close = find_block_comment_close(&self.chars, self.position + BLOCK_COMMENT_OPEN.len());
         self.position = (close + BLOCK_COMMENT_CLOSE.len()).min(char_count);
-        // Add a space to prevent token concatenation
         self.current.push(' ');
         true
     }
@@ -214,14 +210,6 @@ impl SqlScriptParser {
     }
 }
 
-/// Parse a SQL script into individual statements, respecting:
-/// - DELIMITER directives (e.g. `DELIMITER //`)
-/// - Single-line comments (`--` and `#`)
-/// - Multi-line comments (`/* ... */`)
-/// - String literals (`'...'` and `"..."`) with escape handling
-/// - Backtick-quoted identifiers
-///
-/// Returns a `Vec<String>` of non-empty, trimmed statements (without trailing delimiter).
 pub fn parse_sql_statements(input: &str) -> Vec<String> {
     let mut parser = SqlScriptParser::new(input);
     while parser.has_more() {
@@ -230,7 +218,6 @@ pub fn parse_sql_statements(input: &str) -> Vec<String> {
     parser.finish()
 }
 
-/// Check if position `i` is at the start of a line (or start of input).
 pub(super) fn is_within_line(chars: &[char], position: usize) -> bool {
     chars
         .get(position)
@@ -251,7 +238,6 @@ pub(super) fn is_at_line_start(chars: &[char], position: usize) -> bool {
     if position == 0 {
         return true;
     }
-    // Check if the previous non-whitespace-on-same-line is a newline
     let mut scan_position = position;
     while scan_position > 0 {
         scan_position -= 1;
@@ -262,7 +248,6 @@ pub(super) fn is_at_line_start(chars: &[char], position: usize) -> bool {
             return false;
         }
     }
-    // Reached start of input with only whitespace before
     true
 }
 

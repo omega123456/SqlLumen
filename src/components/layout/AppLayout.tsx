@@ -173,7 +173,6 @@ function formatStatementAtCursor(content: string, cursorPosition: CursorPosition
   const statement = findStatementAtCursor(splitStatements(content), offset)
   if (!statement) return formatSQL(content, SQL_FORMAT_OPTIONS)
 
-  // The statement range includes its delimiter; sql-formatter may or may not emit one.
   const rangeText = content.substring(statement.start, statement.end)
   const hadTrailingDelimiter = rangeText.trimEnd().endsWith(STATEMENT_DELIMITER)
   const formatted = withoutTrailingDelimiter(formatSQL(statement.sql, SQL_FORMAT_OPTIONS))
@@ -327,12 +326,7 @@ function MainPanels() {
           <Sidebar />
         </Panel>
         <Separator className={styles.resizeHandle} onDoubleClick={handleSeparatorDoubleClick} />
-        <Panel
-          id="workspace"
-          className={styles.workspacePanel}
-          /* Let workspace tab rail extend over the resize gutter (default Panel inner overflow:auto clips it) */
-          style={{ overflow: 'visible' }}
-        >
+        <Panel id="workspace" className={styles.workspacePanel} style={{ overflow: 'visible' }}>
           <WorkspaceArea />
         </Panel>
       </Group>

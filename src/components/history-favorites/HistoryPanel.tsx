@@ -7,7 +7,6 @@ import { HistoryRow } from './HistoryRow'
 import styles from './HistoryPanel.module.css'
 import type { HistoryEntry } from '../../types/schema'
 
-/** Stable default references to avoid infinite re-render from useSyncExternalStore. */
 const EMPTY_ENTRIES: HistoryEntry[] = []
 
 export interface HistoryPanelProps {

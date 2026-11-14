@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react'
 import styles from '../CopyToHostDialog.module.css'
 
-/** Static elevated-surface section card — a titled panel (no collapse behavior). */
 export function Section({
   title,
   testId,

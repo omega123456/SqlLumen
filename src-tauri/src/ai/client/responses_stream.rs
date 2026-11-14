@@ -55,16 +55,12 @@ pub fn responses_input_items(request: &AiChatRequest) -> Vec<ResponsesInputItem>
     all_items()
 }
 
-/// Outcome of processing a single Responses SSE `data:` payload.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ResponsesPayloadOutcome {
-    /// Continue reading the stream.
     Continue,
-    /// `response.completed` seen — stream is done.
     Done,
 }
 
-/// Shared state mutated by [`process_responses_payload`].
 struct ResponsesStreamState {
     response_id: Option<String>,
     saw_valid_responses_payload: bool,
@@ -189,7 +185,6 @@ impl<R: Runtime> ResponsesStream<'_, R> {
         self.state.last_flush = Instant::now();
     }
 
-    /// Process a single Responses `data:` JSON payload, updating shared buffers/flags.
     fn process_payload(
         &mut self,
         sse_event_type: Option<&str>,

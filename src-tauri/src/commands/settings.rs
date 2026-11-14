@@ -7,26 +7,18 @@ use std::collections::HashMap;
 #[cfg(not(coverage))]
 use tauri::State;
 
-/// Setting key for the hard ceiling on rows kept per query-editor result.
 pub const RESULTS_MAX_ROWS_KEY: &str = "results.maxRows";
 const CACHE_TTL_KEY: &str = "results.cacheTTL";
-/// Default `results.maxRows`.
 pub const RESULTS_MAX_ROWS_DEFAULT: usize = crate::mysql::result_cache::DEFAULT_ROW_CEILING;
-/// Smallest accepted `results.maxRows`.
 pub const RESULTS_MAX_ROWS_MIN: usize = 1_000;
-/// Largest accepted `results.maxRows`.
 pub const RESULTS_MAX_ROWS_MAX: usize = 1_000_000;
 
-/// Parse a `results.maxRows` value and clamp it to the accepted range.
-/// Returns `None` for values that aren't whole numbers.
 pub fn parse_results_max_rows(value: &str) -> Option<usize> {
     let parsed = value.trim().parse::<u64>().ok()?;
     let clamped = parsed.clamp(RESULTS_MAX_ROWS_MIN as u64, RESULTS_MAX_ROWS_MAX as u64);
     Some(clamped as usize)
 }
 
-/// Startup helper: read `results.maxRows` from SQLite, clamped, falling back to
-/// the default when it is unset, unreadable or not a whole number.
 pub fn load_results_max_rows(conn: &Connection) -> usize {
     match settings::get_setting(conn, RESULTS_MAX_ROWS_KEY) {
         Ok(Some(value)) => parse_results_max_rows(&value).unwrap_or_else(|| {
@@ -48,8 +40,6 @@ pub fn load_results_max_rows(conn: &Connection) -> usize {
         }
     }
 }
-
-// --- Testable implementations (take &AppState instead of State<AppState>) ---
 
 pub fn get_setting_impl(state: &AppState, key: &str) -> Result<Option<String>, String> {
     let conn = lock_db(state)?;
@@ -127,8 +117,6 @@ pub fn get_all_settings_impl(state: &AppState) -> Result<HashMap<String, String>
         Err(error) => Err(error.to_string()),
     }
 }
-
-// --- Thin Tauri command wrappers ---
 
 #[cfg(not(coverage))]
 #[tauri::command]

@@ -1,12 +1,3 @@
-/**
- * EditModeDropdown — dropdown for selecting the edit target table
- * in query result inline editing.
- *
- * Shows "Read only" as default, plus one option per detected table.
- * Hidden when: no result columns, query status is not success, connection is read-only,
- * or result is not re-executable (stored procedure results).
- */
-
 import { useCallback, useMemo } from 'react'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { useQueryStore, getActiveResult, isEditableSelectSql } from '../../stores/query-store'
@@ -21,8 +12,6 @@ interface EditModeDropdownProps {
 
 type ActiveResult = ReturnType<typeof getActiveResult>
 
-// Hidden when there are no columns, the query failed, the connection is read-only,
-// it is not a SELECT/WITH query, or the result is not re-executable.
 function isEditModeAvailable(result: ActiveResult, isConnectionReadOnly: boolean): boolean {
   if (result.resultStatus !== 'success') return false
   if (!hasResultColumns(result)) return false
@@ -51,7 +40,6 @@ export function EditModeDropdown({ tabId, connectionId }: EditModeDropdownProps)
 
   const isVisible = isEditModeAvailable(activeResult, isConnectionReadOnly)
 
-  // Determine if table names need database prefix (when tables from multiple databases)
   const tableOptions = useMemo(() => {
     if (detectedTables.length === 0) return []
 

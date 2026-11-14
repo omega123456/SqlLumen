@@ -1,13 +1,3 @@
-/**
- * FkLookupTriggerButton — shared trigger button for opening the FK lookup dialog.
- *
- * Used by cell editors (NullableCellEditor / EnumCellEditor) in edit-mode.
- * Visual placement is handled by the caller via the `className` prop.
- *
- * The button carries `data-fk-trigger=""` for CSS attribute selectors and
- * `data-testid="fk-lookup-trigger"` for tests.
- */
-
 import { DotsThree } from '@phosphor-icons/react'
 import { useFkLookup } from './fk-lookup-context'
 import type { ForeignKeyColumnInfo } from '../../types/schema'
@@ -18,13 +8,7 @@ interface FkLookupTriggerButtonProps {
   columnKey: string
   currentValue: unknown
   rowData: Record<string, unknown>
-  /** CSS class for the button */
   className: string
-  /**
-   * Invoked just before the lookup dialog is requested. Cell editors pass this to
-   * close their floating overlay so it does not render above the modal (the glide
-   * overlay portal has a higher z-index than the dialog backdrop).
-   */
   onBeforeLookup?: () => void
 }
 

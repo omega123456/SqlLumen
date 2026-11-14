@@ -56,8 +56,6 @@ fn apply_feedback_boost(
     });
 }
 
-/// Run base search + hint boosts, but WITHOUT graph expansion.
-/// Used when re-ranking needs to happen between base search and graph walk.
 pub fn multi_query_search_with_hints(
     conn: &Connection,
     queries: &SearchQueries<'_>,

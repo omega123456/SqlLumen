@@ -1,20 +1,13 @@
 use super::*;
 
-/// How strictly a view spec is validated against the result's columns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpecMode {
-    /// `set_result_view`: an unknown sort column or operator is an error;
-    /// conditions on unknown columns are dropped (as the JS engine did).
     Strict,
-    /// Execute / re-execute: anything referring to a missing column (or an
-    /// unknown operator) is dropped, so a re-run whose columns changed never fails.
     Lenient,
 }
 
-/// A view spec resolved against a result's columns.
 #[derive(Debug)]
 pub struct ResolvedSpec {
-    /// The spec with dropped parts removed (stored on the result).
     pub effective: ResultViewSpec,
     pub(super) sort: Option<(usize, SortDirection)>,
     pub(super) filters: Vec<CompiledFilter>,
@@ -26,7 +19,6 @@ impl ResolvedSpec {
     }
 }
 
-/// Validate and compile `spec` against `columns`.
 pub fn resolve_spec(
     spec: &ResultViewSpec,
     columns: &[ColumnMeta],
@@ -76,9 +68,6 @@ pub fn resolve_spec(
     })
 }
 
-/// Build the view permutation for `rows` under `resolved`, excluding
-/// `tombstones`. Returns `None` (identity) when nothing sorts, filters or is
-/// tombstoned. Filtering keeps base order; sorting is stable over it.
 pub fn build_view(
     rows: &[SharedRow],
     tombstones: &BTreeSet<u32>,
@@ -109,9 +98,6 @@ pub fn build_view(
     Some(Arc::new(indices))
 }
 
-/// Apply an execute / re-execute view spec to a freshly decoded result on the
-/// blocking pool. Unknown columns are dropped; an empty or absent spec keeps
-/// the identity view.
 pub async fn apply_initial_view(
     mut stored: StoredResult,
     spec: Option<ResultViewSpec>,
@@ -132,7 +118,6 @@ pub async fn apply_initial_view(
     })?
 }
 
-/// Number of rows in the result's current view.
 pub fn view_len(stored: &StoredResult) -> usize {
     match &stored.view {
         Some(view) => view.len(),
@@ -140,8 +125,6 @@ pub fn view_len(stored: &StoredResult) -> usize {
     }
 }
 
-/// Slice the view: `limit` is clamped to [`MAX_WINDOW_ROWS`] and `offset` to
-/// the view length (an out-of-range offset yields an empty window, not an error).
 pub fn slice_window(stored: &StoredResult, offset: usize, limit: usize) -> ResultWindow {
     let len = view_len(stored);
     let offset = offset.min(len);
@@ -161,13 +144,10 @@ pub fn slice_window(stored: &StoredResult, offset: usize, limit: usize) -> Resul
     }
 }
 
-/// The first window of the result's current view.
 pub fn first_window(stored: &StoredResult) -> ResultWindow {
     slice_window(stored, 0, FIRST_WINDOW_ROWS)
 }
 
-/// All rows of the current view, in view order (for export). Copies row
-/// pointers only.
 pub fn view_rows(stored: &StoredResult) -> Vec<SharedRow> {
     match &stored.view {
         Some(view) => view

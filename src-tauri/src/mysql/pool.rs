@@ -24,7 +24,6 @@ pub struct SslSettings {
     pub key_path: Option<String>,
 }
 
-/// Parameters for creating a MySQL connection pool.
 pub struct ConnectionParams {
     pub host: String,
     pub port: u16,
@@ -88,18 +87,6 @@ fn create_test_pool(params: &ConnectionParams) -> Option<Result<MySqlPool, sqlx:
     factory.map(|create| create(params))
 }
 
-/// Create a MySQL connection pool from the given parameters.
-///
-/// SSL/TLS is configured via rustls when `ssl_enabled` is true.
-/// If a CA cert is provided, `VerifyCa` mode is used; otherwise `Required` mode
-/// (encrypted but no cert verification).
-///
-/// Pool config: min_connections=1, max_connections=10.
-///
-/// The cap was bumped from 5 to 10 to let the schema-index builder run
-/// `SHOW CREATE TABLE` concurrently (see `schema_index::builder`) without
-/// starving foreground queries. Idle connections aren't held open by sqlx —
-/// max_connections is an upper bound, not a reservation.
 #[cfg(not(coverage))]
 pub async fn create_pool(params: &ConnectionParams) -> Result<MySqlPool, sqlx::Error> {
     #[cfg(any(test, feature = "test-utils"))]

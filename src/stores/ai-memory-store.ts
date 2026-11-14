@@ -7,9 +7,6 @@ import { useSettingsStore } from './settings-store'
 
 import { logFrontend } from '../lib/app-log-commands'
 import { putReembedStatus } from './ai-memory-store/ai-memory-reducers'
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 
 export interface ReembedStatus {
   status: 'idle' | 'running'
@@ -18,17 +15,9 @@ export interface ReembedStatus {
 }
 
 export interface AiMemoryState {
-  /**
-   * Re-embed status keyed by a generic owner key emitted in progress events
-   * (`global`, `group_{id}`, or a connection id).
-   */
   reembedStatus: Record<string, ReembedStatus>
   setReembedStatus: (ownerKey: string, status: ReembedStatus) => void
 }
-
-// ---------------------------------------------------------------------------
-// Store
-// ---------------------------------------------------------------------------
 
 export const useAiMemoryStore = create<AiMemoryState>()((set) => ({
   reembedStatus: {},
@@ -38,14 +27,9 @@ export const useAiMemoryStore = create<AiMemoryState>()((set) => ({
   },
 }))
 
-// ---------------------------------------------------------------------------
-// Event listeners & settings subscription
-// ---------------------------------------------------------------------------
-
 let initialized = false
 let unsubscribeModelChange: (() => void) | null = null
 
-/** Reset module state — test-only. */
 export function _resetAiMemoryStoreForTest(): void {
   initialized = false
   if (unsubscribeModelChange) {
@@ -58,8 +42,6 @@ export function _resetAiMemoryStoreForTest(): void {
   }
 }
 
-/** Bootstrap event listeners and the embedding-model-change subscription.
- *  Call once at app startup (from `main.tsx`). */
 export function initAiMemoryStore(): void {
   if (initialized) return
   initialized = true
@@ -67,10 +49,6 @@ export function initAiMemoryStore(): void {
   initEventListeners()
   initModelChangeSubscription()
 }
-
-// ---------------------------------------------------------------------------
-// Internals
-// ---------------------------------------------------------------------------
 
 const resetTimers: Record<string, ReturnType<typeof setTimeout>> = {}
 const REEMBED_STATUS_RESET_DELAY_MS = 2000
@@ -129,8 +107,6 @@ function initEventListeners(): void {
 }
 
 function initModelChangeSubscription(): void {
-  // Seed prevModel from current state so the first subscription fire (hydration)
-  // is correctly detected as "no change" rather than hitting a null guard.
   let previousModel: string | null =
     useSettingsStore.getState().settings?.['ai.embeddingModel'] ?? null
 
@@ -145,9 +121,6 @@ function initModelChangeSubscription(): void {
     if (!currentModel) return
     if (oldModel === null) return
 
-    // Fire-and-forget re-embedding across all levels (global, every group, every
-    // connection). The backend orchestrates the fan-out and emits per-owner
-    // progress events; the empty-memories case resolves immediately.
     void (async () => {
       try {
         await reembedAllMemories()

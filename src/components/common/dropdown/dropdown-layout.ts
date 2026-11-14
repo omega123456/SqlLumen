@@ -3,7 +3,6 @@ import type { DropdownFixedLayout, DropdownPlacement } from './dropdown-types'
 
 export const MAX_DROPDOWN_HEIGHT = 320
 const VIEWPORT_MARGIN = 8
-/** Fluent flyout: detached 4px from the trigger, at least 140px wide. */
 const FLYOUT_GAP = 4
 export const FLYOUT_MIN_WIDTH = 140
 
@@ -105,7 +104,6 @@ export interface PanelLayoutRequest {
 }
 
 export function measurePanelLayout(request: PanelLayoutRequest): DropdownPanelLayout {
-  // Inside a native <dialog> the panel must render into that dialog's top-layer subtree.
   const dialog = closestDialogElement(request.trigger)
   const triggerRect = request.trigger.getBoundingClientRect()
   const horizontal = horizontalPanelBounds(triggerRect, request.minPanelWidth)

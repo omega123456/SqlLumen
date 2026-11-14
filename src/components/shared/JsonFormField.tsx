@@ -181,7 +181,6 @@ function JsonFormFieldEditor({
             monacoRef.current = monaco
             registerMonacoThemes(monaco)
             monaco.editor.setTheme(monacoTheme)
-            // Disable command palette (F1) — not useful in a cell editor
             editor.addCommand(monaco.KeyCode.F1, () => null)
           }}
           onChange={(nextValue) => {

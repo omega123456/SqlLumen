@@ -32,7 +32,6 @@ export function AiMessageBubble({
     )
   }
 
-  // assistant
   return (
     <div className={styles.assistantBubble} data-testid="ai-message-assistant">
       {message.thinkingContent && (

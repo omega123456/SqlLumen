@@ -1,5 +1,3 @@
-//! Tauri commands for schema index operations — build, search, status, invalidation, listing.
-
 use crate::db::settings;
 use crate::schema_index::search::RetrievalHints;
 use crate::schema_index::storage;
@@ -23,8 +21,6 @@ use tokio_util::sync::CancellationToken;
 #[cfg(not(coverage))]
 use tauri::{Emitter, State};
 
-/// Re-export `SearchResult` from the search module so existing consumers
-/// (Tauri commands, tests) can keep using `commands::schema_index::SearchResult`.
 pub use crate::schema_index::search::SearchResult;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -42,7 +38,6 @@ pub struct InvalidateSchemaIndexRequest {
     pub tables: Vec<String>,
 }
 
-/// Status response for a schema index.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexStatusResponse {
@@ -52,7 +47,6 @@ pub struct IndexStatusResponse {
     pub error: Option<String>,
 }
 
-/// Info about an indexed table.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexedTableInfo {
@@ -63,7 +57,6 @@ pub struct IndexedTableInfo {
     pub model_id: String,
 }
 
-/// Error event payload for schema index builds.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexErrorPayload {
@@ -91,13 +84,10 @@ fn read_setting(
         .map_err(|error| format!("DB lock error: {error}"))?;
     settings::get_setting(&conn, key)
         .map_err(|error| format!("Failed to read setting '{key}': {error}"))?
-        .ok_or_else(String::new) // return empty string error for "not set"
+        .ok_or_else(String::new)
         .or(Ok(String::new()))
 }
 
-/// Resolve the *effective* embedding endpoint (the dedicated `ai.embeddingEndpoint`
-/// when set, otherwise the chat URL `ai.endpoint`). Locks the shared settings DB
-/// mutex and delegates to the single source of truth in `ai_memory`.
 fn read_embedding_endpoint(
     db: &std::sync::Arc<Mutex<rusqlite::Connection>>,
 ) -> Result<String, String> {

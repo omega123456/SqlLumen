@@ -4,9 +4,6 @@ pub(super) fn superseded(current: u64) -> String {
     format!("{VIEW_SUPERSEDED_PREFIX} current={current}")
 }
 
-/// A validated result slot, borrowed from the cached entry without copying
-/// the slot (its source SQL, columns and view metadata are not cloned per
-/// window fetch).
 pub(crate) struct SlotRef {
     pub(super) entry: Arc<CachedResultEntry>,
     pub(super) index: usize,
@@ -96,8 +93,6 @@ pub struct PreparedView {
     pub(super) effective_spec: ResultViewSpec,
 }
 
-/// First half of `set_result_view`: validate the request and build the new
-/// view from the slot as it is now, without holding any cache lock.
 pub fn prepare_result_view(
     state: &AppState,
     request: &SetResultViewRequest,
@@ -129,8 +124,6 @@ pub(super) fn map_slot_write<T>(outcome: SlotWrite<T>) -> Result<T, String> {
     }
 }
 
-/// Second half of `set_result_view`: write the prepared view back with
-/// compare-and-swap on the base view version, bumping the version.
 pub fn commit_result_view(
     state: &AppState,
     prepared: PreparedView,
@@ -201,9 +194,6 @@ pub fn fetch_result_window_impl(
     })
 }
 
-/// Tombstone deleted rows: they leave the view, counts, windows and export,
-/// while base indices never shift. Compare-and-swap on the base view version
-/// (tombstoning is idempotent, so the frontend may retry against `<n>`).
 pub fn remove_result_rows_impl(
     state: &AppState,
     request: &RemoveResultRowsRequest,

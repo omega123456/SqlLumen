@@ -1,11 +1,9 @@
 import { forwardRef, type ButtonHTMLAttributes } from 'react'
 
-/** Fluent button variants: default (control fill), accent, subtle (transparent) and danger (fill). */
 type StyledButtonVariant = 'default' | 'accent' | 'subtle' | 'danger'
 
 export type ButtonVariant = StyledButtonVariant | 'bare'
 
-/** md is 32px (dialogs, command bars); sm is 28px (result and grid toolbars). */
 export type ButtonSize = 'md' | 'sm'
 
 const VARIANT_CLASS: Record<StyledButtonVariant, string | undefined> = {
@@ -22,9 +20,7 @@ function mergeClassNames(...parts: (string | false | undefined)[]): string {
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant
   size?: ButtonSize
-  /** Danger-coloured label on a non-danger fill (e.g. subtle "Delete" toolbar actions). */
   dangerText?: boolean
-  /** Square icon-only button (32px, or 28px with size="sm"). */
   iconOnly?: boolean
 }
 

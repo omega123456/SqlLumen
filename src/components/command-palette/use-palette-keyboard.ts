@@ -31,7 +31,6 @@ function usePaletteNavigationKeys(options: PaletteKeyboardOptions) {
   const closeFromKeyboard = useCallback<PaletteKeyHandler>(
     (event) => {
       event.preventDefault()
-      // DialogShell closes on Escape from a document listener, so stop the event before it.
       event.stopPropagation()
       if (isSlashDropdownOpen) {
         setIsSlashDropdownOpen(false)

@@ -2,7 +2,6 @@ use rusqlite::{params, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// Data required to create a new connection profile.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewConnectionData {
@@ -23,7 +22,6 @@ pub struct NewConnectionData {
     pub keepalive_interval_secs: Option<i64>,
 }
 
-/// Data for updating an existing connection profile (full replacement).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateConnectionData {
@@ -44,9 +42,6 @@ pub struct UpdateConnectionData {
     pub keepalive_interval_secs: Option<i64>,
 }
 
-/// A connection record as returned to callers. Exposes `has_password`, which is
-/// computed from `keychain_ref` presence. The stored `keychain_ref` acts only as
-/// a password-presence marker keyed by profile id, not a physical keychain item name.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionRecord {
@@ -73,7 +68,6 @@ pub struct ConnectionRecord {
     pub(crate) keychain_ref: Option<String>,
 }
 
-/// The SELECT columns used by both get and list queries.
 const CONNECTION_SELECT_COLUMNS: &str = "
     c.id, c.name, c.host, c.port, c.username,
     (c.keychain_ref IS NOT NULL AND c.keychain_ref != '') as has_password,
@@ -83,7 +77,6 @@ const CONNECTION_SELECT_COLUMNS: &str = "
     c.created_at, c.updated_at,
     c.keychain_ref";
 
-/// Map a rusqlite Row to a ConnectionRecord.
 fn row_to_connection_record(row: &rusqlite::Row) -> rusqlite::Result<ConnectionRecord> {
     Ok(ConnectionRecord {
         id: row.get(0)?,
@@ -109,9 +102,6 @@ fn row_to_connection_record(row: &rusqlite::Row) -> rusqlite::Result<ConnectionR
     })
 }
 
-/// Insert a new connection profile. Sets `keychain_ref` to the generated profile id
-/// as the saved-password presence marker.
-/// Returns the new connection's UUID.
 pub fn insert_connection(conn: &Connection, data: &NewConnectionData) -> Result<String> {
     let id = Uuid::new_v4().to_string();
 
@@ -136,7 +126,7 @@ pub fn insert_connection(conn: &Connection, data: &NewConnectionData) -> Result<
             data.host,
             data.port,
             data.username,
-            id, // keychain_ref stores the profile-id password marker
+            id,
             data.default_database,
             data.ssl_enabled,
             data.ssl_ca_path,
@@ -154,9 +144,6 @@ pub fn insert_connection(conn: &Connection, data: &NewConnectionData) -> Result<
     Ok(id)
 }
 
-/// Get a connection by ID. Returns None if not found.
-/// Returns all fields except `keychain_ref`; includes `has_password` derived from
-/// whether the saved-password marker is present.
 pub fn get_connection(conn: &Connection, id: &str) -> Result<Option<ConnectionRecord>> {
     let sql = format!(
         "SELECT {} FROM connections c WHERE c.id = ?1",
@@ -190,8 +177,6 @@ pub fn set_keychain_ref(conn: &Connection, id: &str, keychain_ref: Option<&str>)
     Ok(())
 }
 
-/// List all connections, sorted by group sort_order then connection name.
-/// Ungrouped connections (group_id IS NULL) appear last.
 pub fn list_connections(conn: &Connection) -> Result<Vec<ConnectionRecord>> {
     let sql = format!(
         "SELECT {}
@@ -214,8 +199,6 @@ pub fn list_connections(conn: &Connection) -> Result<Vec<ConnectionRecord>> {
     Ok(records)
 }
 
-/// Update an existing connection's fields. Does not modify the password marker.
-/// Returns an error if the connection does not exist.
 pub fn update_connection(conn: &Connection, id: &str, data: &UpdateConnectionData) -> Result<()> {
     let rows_affected = conn.execute(
         "UPDATE connections SET
@@ -253,8 +236,6 @@ pub fn update_connection(conn: &Connection, id: &str, data: &UpdateConnectionDat
     Ok(())
 }
 
-/// Delete a connection by ID.
-/// Returns an error if the connection does not exist.
 pub fn delete_connection(conn: &Connection, id: &str) -> Result<()> {
     let rows_affected = conn.execute("DELETE FROM connections WHERE id = ?1", [id])?;
 

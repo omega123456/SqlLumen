@@ -72,16 +72,12 @@ struct PendingInsert<'a> {
     rows_done: u64,
 }
 
-/// A resolved target pool, either reused from a live writable profile session
-/// or opened internally for this copy job.
 pub struct ResolvedTargetPool {
     pub pool: MySqlPool,
-    /// `true` when this engine opened the pool and owns its lifecycle.
     pub owned: bool,
 }
 
 impl ResolvedTargetPool {
-    /// Dispose the pool if (and only if) it was opened internally.
     pub async fn dispose(self) {
         if self.owned {
             self.pool.close().await;

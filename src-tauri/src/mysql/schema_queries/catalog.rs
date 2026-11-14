@@ -177,7 +177,6 @@ pub async fn query_list_collations(pool: &MySqlPool) -> Result<Vec<CollationInfo
     Ok(out)
 }
 
-/// Validate that a charset exists on the server.
 #[cfg(not(coverage))]
 pub async fn validate_charset(pool: &MySqlPool, charset: &str) -> Result<(), String> {
     let charsets = query_list_charsets(pool).await?;
@@ -200,8 +199,6 @@ fn is_collation_in_charset(
         && known_collation.charset.eq_ignore_ascii_case(charset)
 }
 
-/// Validate that a collation exists for a given charset on the server.
-/// If charset is None, validates collation against all collations.
 #[cfg(not(coverage))]
 pub async fn validate_collation(
     pool: &MySqlPool,
@@ -275,7 +272,6 @@ pub async fn check_rename_safe(pool: &MySqlPool, database: &str) -> Result<(), S
     Ok(())
 }
 
-/// Get list of base table names in a database.
 #[cfg(not(coverage))]
 pub async fn query_table_names(pool: &MySqlPool, database: &str) -> Result<Vec<String>, String> {
     query_list_schema_objects(pool, database, "table").await

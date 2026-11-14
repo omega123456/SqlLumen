@@ -24,20 +24,11 @@ export interface TreeNodeProps {
   onSelect?: (nodeId: string) => void
   onContextMenu?: (e: React.MouseEvent, nodeId: string) => void
   onActivate?: (nodeId: string) => void
-  /** Set of node IDs that match the current filter (undefined = no filter active) */
   filterMatchIds?: Set<string>
-  /**
-   * When set with a non-empty filter, only nodes under this subtree use `filterMatchIds`;
-   * `null` means the filter applies to the whole tree.
-   */
   filterScopeRootId?: string | null
-  /** Called when the user collapses a node that the filter is holding open */
   onClearFilter?: () => void
-  /** True if this is the first visible node in the tree (for roving tabindex) */
   isFirstVisible?: boolean
-  /** Top-level database rows only: true while the row is stuck to the top of the tree */
   isPinned?: boolean
-  /** Top-level database rows only: called when a pinned row is clicked */
   onRevealPinned?: (nodeId: string) => void
 }
 

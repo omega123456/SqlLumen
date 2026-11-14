@@ -1,14 +1,3 @@
-//! Multi-query vector search pipeline with deduplication, re-ranking,
-//! and graph-based FK expansion.
-//!
-//! The base search entry point is [`multi_query_search_configured`], which:
-//! 1. Runs sqlite-vec KNN for each pre-embedded query vector
-//! 2. Deduplicates by chunk ID via RRF fusion
-//! 3. Applies blended lexical boosts: `final = rrf_score + λ · lexical_boost`
-//! 4. Selects the top-N results (direct semantic + lexical hits only)
-//!
-//! FK expansion happens separately via [`apply_graph_expansion`] (BFS walk).
-
 use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
 
@@ -23,7 +12,6 @@ pub use graph_expansion::{apply_graph_expansion, multi_query_search_extended};
 pub use hints::multi_query_search_with_hints;
 pub use pipeline::multi_query_search_configured;
 
-/// A single search result from the semantic search pipeline.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchResult {
@@ -38,7 +26,6 @@ pub struct SearchResult {
     pub score: f64,
 }
 
-/// Search configuration parameters (read from settings).
 #[derive(Debug, Clone)]
 pub struct SearchConfig {
     pub top_k_per_query: usize,
@@ -58,7 +45,6 @@ impl Default for SearchConfig {
     }
 }
 
-/// A table hint with a weight (boost signal from usage feedback).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TableHint {
@@ -67,7 +53,6 @@ pub struct TableHint {
     pub weight: f64,
 }
 
-/// A table reference without a weight (e.g. editor context).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TableRef {
@@ -75,7 +60,6 @@ pub struct TableRef {
     pub table_name: String,
 }
 
-/// Usage-signal hints passed alongside semantic search to boost relevant tables.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RetrievalHints {
@@ -87,7 +71,6 @@ pub struct RetrievalHints {
     pub accepted_tables: Vec<TableHint>,
 }
 
-/// Extended search configuration including graph walk and hint boost parameters.
 #[derive(Debug, Clone)]
 pub struct SearchConfigExt {
     pub base: SearchConfig,
@@ -147,9 +130,6 @@ fn normalize_result_ddl(chunk: &ChunkIdentity<'_>, ddl_text: String) -> String {
     normalize_table_ddl(chunk.db_name, chunk.table_name, &ddl_text)
 }
 
-/// Map a row from `schema_index_chunks` (columns: id, chunk_key, db_name,
-/// table_name, chunk_type, ddl_text, ref_db_name, ref_table_name) to a
-/// `SearchResult`, applying DDL normalization and the given score.
 pub(super) fn row_to_search_result(row: &rusqlite::Row<'_>, score: f64) -> Result<SearchResult> {
     let db_name: String = row.get(2)?;
     let table_name: String = row.get(3)?;
@@ -175,7 +155,6 @@ pub(super) fn row_to_search_result(row: &rusqlite::Row<'_>, score: f64) -> Resul
     })
 }
 
-/// Load a single table's chunk from `schema_index_chunks`.
 pub(super) fn load_table_chunk(
     conn: &Connection,
     connection_id: &str,
@@ -195,15 +174,6 @@ pub(super) fn load_table_chunk(
     rows.collect()
 }
 
-/// Run the full multi-query vector search pipeline.
-///
-/// # Arguments
-/// * `conn` — SQLite connection (with sqlite-vec loaded and tables created)
-/// * `connection_id` — the profile ID to scope results to
-/// * `query_vectors` — pre-embedded query vectors
-/// * `top_k_per_query` — number of KNN results per query vector
-/// * `top_n_results` — number of final results after dedup
-/// * `max_fk_chunks` — cap on additional FK chunks from fan-out (typically 20)
 pub fn multi_query_search(
     conn: &Connection,
     queries: &SearchQueries<'_>,

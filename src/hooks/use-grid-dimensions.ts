@@ -1,8 +1,3 @@
-/**
- * Reads --grid-row-height / --grid-header-height from :root so grid components
- * stay aligned with tokens.css (theme switches update documentElement).
- */
-
 import { useThemeStore } from '../stores/theme-store'
 
 const FALLBACK_ROW = 28

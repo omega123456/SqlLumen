@@ -20,13 +20,6 @@ mod memory_save;
 pub use memory_management::*;
 pub use memory_save::*;
 
-/// Resolve the owner id required for a save/list at the given scope, starting
-/// from the runtime session.
-///
-/// - Connection scope → the session's connection profile id.
-/// - Group scope → the connection's `group_id` (descriptive error if the
-///   connection has no group).
-/// - Global scope → `None` (no owner).
 pub fn resolve_save_owner(
     state: &AppState,
     session_id: &str,

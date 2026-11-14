@@ -1,13 +1,7 @@
 import type { TableInfo, ColumnMeta, ForeignKeyInfo, IndexInfo } from '../types/schema'
 
-// ---------------------------------------------------------------------------
-// Schema DDL Compaction
-// ---------------------------------------------------------------------------
-
-/** Token threshold above which a warning is emitted. */
 const TOKEN_WARNING_THRESHOLD = 8000
 
-/** Approximate characters per token for estimation. */
 const CHARS_PER_TOKEN = 4
 
 export function estimateTokenCount(text: string): number {
@@ -20,11 +14,6 @@ export interface SchemaCompactionResult {
   warning: boolean
 }
 
-/**
- * Quote a MySQL identifier with backticks, escaping any embedded backticks.
- *
- * e.g. `my`db` → `` `my``db` ``
- */
 export function quoteIdentifier(name: string): string {
   const escaped = name.replace(/`/g, '``')
   return `\`${escaped}\``
@@ -76,20 +65,6 @@ export interface SchemaDdlInputs {
   indexes?: Record<string, IndexInfo[]>
 }
 
-/**
- * Compact schema metadata into minimal single-line CREATE TABLE statements
- * suitable for inclusion in an AI system prompt.
- *
- * Each table is database-qualified: `` CREATE TABLE `db`.`table` (...); ``
- *
- * Does NOT import from schema-metadata-cache — accepts data as parameters.
- *
- * @param tables      - Tables grouped by database name (key = database name)
- * @param columns     - Columns keyed by `"database.tableName"` (same format as {@link SchemaCache.columns})
- * @param foreignKeys - Foreign keys keyed by `"database.tableName"`
- * @param indexes     - Indexes keyed by `"database.tableName"`
- * @returns Compact DDL string, estimated token count, and warning flag
- */
 export function compactSchemaDdl({
   tables,
   columns,

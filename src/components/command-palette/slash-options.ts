@@ -4,9 +4,7 @@ import type { CommandPaletteFilterPillValue } from './palette-types'
 interface SlashKeywordOption {
   value: PaletteTypeFilter
   label: string
-  /** Primary alias shown as the trailing meta hint, e.g. `/sproc`. */
   alias: string
-  /** All inline tokens that activate this filter (without the leading slash). */
   aliases: string[]
 }
 
@@ -23,12 +21,10 @@ const KEYWORD_OPTIONS: SlashKeywordOption[] = [
   { value: 'trigger', label: 'Triggers', alias: '/trigger', aliases: ['trigger'] },
 ]
 
-/** Canonical type-filter pills derived from the keyword table (single source of truth). */
 export const TYPE_FILTER_OPTIONS: CommandPaletteFilterPillValue[] = KEYWORD_OPTIONS.map(
   (option) => ({ kind: 'object-type', value: option.value, label: option.label })
 )
 
-/** Maps every recognized inline alias token to its canonical type-filter pill. */
 export const TYPE_ALIASES: ReadonlyMap<string, CommandPaletteFilterPillValue> = new Map(
   KEYWORD_OPTIONS.flatMap((option, index) =>
     option.aliases.map((alias) => [alias, TYPE_FILTER_OPTIONS[index]] as const)

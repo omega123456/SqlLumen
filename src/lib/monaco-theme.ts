@@ -1,30 +1,7 @@
-/**
- * Monaco Editor theme definitions.
- *
- * Monaco's theme API can't read CSS custom properties, so the values are hex copies of the
- * Fluent proposal (`.agent/plans/2026-10-19_fluent-redesign_proposal/index.html`):
- *
- * - Syntax: the prototype's `--sx-*` values, which are the VS Code Dark+ / Light+ palettes.
- *   Keywords, keyword operators (AND, OR, IN…), data types and `*` (its own `operator.star`
- *   token, see mysql-language-setup.ts) use `--sx-kw`; back-quoted identifiers `--sx-id`;
- *   plain identifiers, punctuation and other operator symbols `--sx-op`, as in the rendered
- *   prototype. Comments and
- *   built-in functions, which the prototype doesn't show, use the Dark+ / Light+ values.
- * - Surfaces: editor and gutter on the well (`--surface-container-lowest`), current line
- *   `--sx-cur`, line numbers `--sx-ln`, caret the accent (`--primary`), selection the accent
- *   tint (`--fill-accent-tint`).
- * - Widgets (suggest, hover): the card surface (`--surface-container-high`) with the flyout
- *   stroke, the neutral selected fill and accent highlights.
- *
- * Keep these in step with the `--token-*` values in `src/styles/tokens.css`.
- */
-
 import type * as Monaco from 'monaco-editor'
 
 export type MonacoThemeName = 'precision-studio-dark' | 'precision-studio-light'
 
-// Re-defining the active theme makes Monaco rewrite its global stylesheet and
-// repaint every editor, so each Monaco instance only gets its themes once.
 const registeredInstances = new WeakSet<typeof Monaco>()
 
 const BRACKET_HIGHLIGHT_LEVEL_COUNT = 6
@@ -58,12 +35,6 @@ interface MonacoPalette {
   scrollbarHover: string
 }
 
-// Dark: --surface-container-lowest #1c1c1c, --sx-op #d4d4d4, --sx-kw #569cd6, --sx-str #ce9178,
-// --sx-num #b5cea8, --sx-id #9cdcfe, --sx-ln #6e7681, --sx-cur rgba(255,255,255,.04),
-// --primary #4cc2ff, --fill-accent-tint rgba(76,194,255,.15), --surface-container-high #2c2c2c,
-// --stroke-flyout rgba(0,0,0,.35), --fill-neutral-selected rgba(255,255,255,.07),
-// --fill-subtle-hover rgba(255,255,255,.06), --fill-control rgba(255,255,255,.06),
-// --stroke-control rgba(255,255,255,.07), --scrollbar-thumb #717171 / hover #9d9d9d.
 const DARK: MonacoPalette = {
   base: 'vs-dark',
   well: '#1c1c1c',
@@ -89,12 +60,6 @@ const DARK: MonacoPalette = {
   scrollbarHover: '#9d9d9d',
 }
 
-// Light: --surface-container-lowest #ffffff, --sx-op #1b1b1b, --sx-kw #0000ff, --sx-str #a31515,
-// --sx-num #098658, --sx-id #001080, --sx-ln #8c8c8c, --sx-cur rgba(0,0,0,.035),
-// --primary #0067c0, --fill-accent-tint rgba(0,103,192,.11), --surface-container-high #ffffff,
-// --stroke-flyout rgba(0,0,0,.1), --fill-neutral-selected rgba(0,0,0,.06),
-// --fill-subtle-hover rgba(0,0,0,.04), --fill-control rgba(255,255,255,.7),
-// --stroke-control rgba(0,0,0,.08), --scrollbar-thumb #a3a3a3 / hover #6e6e6e.
 const LIGHT: MonacoPalette = {
   base: 'vs',
   well: '#ffffff',

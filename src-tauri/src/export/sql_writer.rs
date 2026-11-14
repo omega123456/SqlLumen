@@ -1,14 +1,10 @@
 use crate::export::ExportRows;
 use std::io::{self, Write};
 
-/// Escape a SQL identifier by doubling any embedded backtick characters.
-///
-/// For example, `foo`bar` becomes `foo``bar`, which is safe inside `` `…` `` delimiters.
 fn escape_identifier(name: &str) -> String {
     name.replace('`', "``")
 }
 
-/// Escape a SQL string value: double single-quotes and escape backslashes.
 fn escape_string_value(text: &str) -> String {
     text.replace('\\', "\\\\").replace('\'', "''")
 }
@@ -33,7 +29,6 @@ pub fn write_sql<W: Write, R: AsRef<[serde_json::Value]>>(
     Ok(())
 }
 
-/// The shared `INSERT INTO … VALUES (` prefix of every row, with escaped identifiers.
 pub fn sql_insert_prefix(table_name: &str, columns: &[String]) -> String {
     let escaped_table = escape_identifier(table_name);
     let col_list: String = columns
@@ -44,8 +39,6 @@ pub fn sql_insert_prefix(table_name: &str, columns: &[String]) -> String {
     format!("INSERT INTO `{escaped_table}` ({col_list}) VALUES (")
 }
 
-/// Write one `INSERT` statement (see [`write_sql`] for the value escaping).
-/// Shared by the slice writer and the streaming writer.
 pub fn write_sql_row<W: Write>(
     writer: &mut W,
     prefix: &str,

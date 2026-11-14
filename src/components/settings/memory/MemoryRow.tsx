@@ -4,7 +4,6 @@ import { formatFromEpochSeconds } from '../../../lib/format-utils'
 import type { AiMemory, MemoryScope } from '../../../lib/ai-memory-commands'
 import styles from './MemoryRow.module.css'
 
-/** A drag payload identifying a memory and the scope/owner it currently lives at. */
 export interface MemoryDragPayload {
   memoryId: number
   fromScope: MemoryScope
@@ -16,12 +15,10 @@ export const MEMORY_DRAG_MIME_TYPE = 'application/x-sqllumen-ai-memory'
 
 export interface MemoryRowProps {
   memory: AiMemory
-  /** Owner identity of the section this row lives in (for the drag payload). */
   source: MemoryDragPayload
   onRequestDelete: (memory: AiMemory) => void
   onDragStart: (payload: MemoryDragPayload) => void
   onDragEnd: () => void
-  /** True while this row is the active drag source. */
   isDragging: boolean
 }
 
