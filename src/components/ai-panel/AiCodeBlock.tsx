@@ -57,6 +57,33 @@ export interface AiCodeBlockProps {
   onSqlAccepted?: (sql: string) => void
 }
 
+function extractText(node: ReactNode): string {
+  if (typeof node === 'string') return node
+  if (typeof node === 'number') return String(node)
+  if (!node) return ''
+  if (Array.isArray(node)) return node.map(extractText).join('')
+  if (isElementWithChildren(node)) {
+    return extractText(node.props.children)
+  }
+  return ''
+}
+
+function DiffButton({ onDiff }: { onDiff: () => void }) {
+  return (
+    <Button
+      variant="subtle"
+      size="sm"
+      onClick={onDiff}
+      title="View diff"
+      aria-label="View diff"
+      data-testid="ai-code-diff-button"
+    >
+      <GitDiff size={16} />
+      Diff
+    </Button>
+  )
+}
+
 export function AiCodeBlock({
   language,
   children,
@@ -66,21 +93,7 @@ export function AiCodeBlock({
 }: AiCodeBlockProps) {
   const [copied, setCopied] = useState(false)
 
-  const getTextContent = useCallback((): string => {
-    if (typeof children === 'string') return children
-    // Extract text from React elements recursively
-    const extractText = (node: ReactNode): string => {
-      if (typeof node === 'string') return node
-      if (typeof node === 'number') return String(node)
-      if (!node) return ''
-      if (Array.isArray(node)) return node.map(extractText).join('')
-      if (isElementWithChildren(node)) {
-        return extractText(node.props.children)
-      }
-      return ''
-    }
-    return extractText(children)
-  }, [children])
+  const getTextContent = useCallback((): string => extractText(children), [children])
 
   const isSql = language === 'sql' || language === 'mysql'
 
@@ -117,24 +130,14 @@ export function AiCodeBlock({
     notifyAccepted(text)
   }, [onTriggerDiff, getTextContent, notifyAccepted])
 
+  const canShowDiff = Boolean(showDiffButton && isSql && isSingleStatement && onTriggerDiff)
+
   return (
     <div className={styles.codeBlock} data-testid="ai-code-block">
       <div className={styles.header}>
         <span className={styles.language}>{codeLanguageLabel(language, isSql)}</span>
         <div className={styles.actions}>
-          {showDiffButton && isSql && isSingleStatement && onTriggerDiff && (
-            <Button
-              variant="subtle"
-              size="sm"
-              onClick={handleDiff}
-              title="View diff"
-              aria-label="View diff"
-              data-testid="ai-code-diff-button"
-            >
-              <GitDiff size={16} />
-              Diff
-            </Button>
-          )}
+          {canShowDiff && <DiffButton onDiff={handleDiff} />}
           <CopyCodeButton copied={copied} onCopy={handleCopy} />
         </div>
       </div>

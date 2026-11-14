@@ -17,48 +17,31 @@ export interface RenameDialogProps {
   onCancel: () => void
 }
 
-export function RenameDialog({
-  isOpen,
-  title,
-  currentName,
+const RENAME_DIALOG_MAX_WIDTH = 440
+
+function isValidRename(trimmedName: string, currentName: string): boolean {
+  if (trimmedName.length === 0) return false
+  if (trimmedName.length > MYSQL_IDENTIFIER_MAX_LENGTH) return false
+  return trimmedName !== currentName
+}
+
+interface RenameFieldsProps {
+  warning: string | undefined
+  currentName: string
+  newName: string
+  onNewNameChange: (value: string) => void
+  error: string | null | undefined
+}
+
+function RenameFields({
   warning,
-  isLoading = false,
+  currentName,
+  newName,
+  onNewNameChange,
   error,
-  onConfirm,
-  onCancel,
-}: RenameDialogProps) {
-  const [newName, setNewName] = useState(currentName)
-
-  // Reset input when dialog opens with a new target
-  useEffect(() => {
-    setNewName(currentName)
-  }, [currentName])
-
-  const trimmedNew = newName.trim()
-  const isValid =
-    trimmedNew.length > 0 &&
-    trimmedNew.length <= MYSQL_IDENTIFIER_MAX_LENGTH &&
-    trimmedNew !== currentName
-
-  const handleSubmit = useCallback(() => {
-    if (!isValid) return
-    if (isLoading) return
-    onConfirm(trimmedNew)
-  }, [isLoading, isValid, onConfirm, trimmedNew])
-
-  const handleFormSubmit = useFormSubmit(handleSubmit)
-
+}: RenameFieldsProps) {
   return (
-    <DialogShell
-      isOpen={isOpen}
-      onClose={onCancel}
-      maxWidth={440}
-      testId="rename-dialog"
-      ariaLabel={title}
-      formProps={{ onSubmit: handleFormSubmit }}
-    >
-      <h2 className={styles.title}>{title}</h2>
-
+    <>
       {warning && (
         <div className={styles.warningBox} data-testid="rename-dialog-warning">
           {warning}
@@ -77,7 +60,7 @@ export function RenameDialog({
           id="rename-new-name"
           type="text"
           value={newName}
-          onChange={(event) => setNewName(event.target.value)}
+          onChange={(event) => onNewNameChange(event.target.value)}
           maxLength={MYSQL_IDENTIFIER_MAX_LENGTH}
           autoFocus
           data-testid="rename-name-input"
@@ -89,7 +72,54 @@ export function RenameDialog({
           {error}
         </div>
       )}
+    </>
+  )
+}
 
+export function RenameDialog({
+  isOpen,
+  title,
+  currentName,
+  warning,
+  isLoading = false,
+  error,
+  onConfirm,
+  onCancel,
+}: RenameDialogProps) {
+  const [newName, setNewName] = useState(currentName)
+
+  useEffect(() => {
+    setNewName(currentName)
+  }, [currentName])
+
+  const trimmedNew = newName.trim()
+  const isValid = isValidRename(trimmedNew, currentName)
+
+  const handleSubmit = useCallback(() => {
+    if (!isValid) return
+    if (isLoading) return
+    onConfirm(trimmedNew)
+  }, [isLoading, isValid, onConfirm, trimmedNew])
+
+  const handleFormSubmit = useFormSubmit(handleSubmit)
+
+  return (
+    <DialogShell
+      isOpen={isOpen}
+      onClose={onCancel}
+      maxWidth={RENAME_DIALOG_MAX_WIDTH}
+      testId="rename-dialog"
+      ariaLabel={title}
+      formProps={{ onSubmit: handleFormSubmit }}
+    >
+      <h2 className={styles.title}>{title}</h2>
+      <RenameFields
+        warning={warning}
+        currentName={currentName}
+        newName={newName}
+        onNewNameChange={setNewName}
+        error={error}
+      />
       <div className={styles.actions}>
         <Button
           variant="accent"

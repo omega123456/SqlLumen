@@ -54,33 +54,12 @@ function HistoryListBody({ connectionId, entries, listState, onRetry }: HistoryL
   )
 }
 
-export function HistoryPanel({ connectionId }: HistoryPanelProps) {
-  const entries = useHistoryStore(
-    (state) => state.entriesByConnection[connectionId] ?? EMPTY_ENTRIES
-  )
+function HistoryPagination({ connectionId }: HistoryPanelProps) {
   const total = useHistoryStore((state) => state.totalByConnection[connectionId] ?? 0)
   const page = useHistoryStore((state) => state.pageByConnection[connectionId] ?? 1)
   const pageSize = useHistoryStore((state) => state.pageSize)
-  const search = useHistoryStore((state) => state.searchByConnection[connectionId] ?? '')
-  const isLoading = useHistoryStore((state) => state.isLoadingByConnection[connectionId] ?? false)
-  const error = useHistoryStore((state) => state.errorByConnection[connectionId] ?? null)
-  const setSearch = useHistoryStore((state) => state.setSearch)
   const setPage = useHistoryStore((state) => state.setPage)
-  const clearAll = useHistoryStore((state) => state.clearAll)
-  const loadHistory = useHistoryStore((state) => state.loadHistory)
-
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
-
-  const handleSearchChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      setSearch(connectionId, event.target.value)
-    },
-    [setSearch, connectionId]
-  )
-
-  const handleClear = useCallback(() => {
-    clearAll(connectionId)
-  }, [clearAll, connectionId])
 
   const handlePreviousPage = useCallback(() => {
     if (page > 1) {
@@ -93,6 +72,54 @@ export function HistoryPanel({ connectionId }: HistoryPanelProps) {
       setPage(connectionId, page + 1)
     }
   }, [page, totalPages, setPage, connectionId])
+
+  if (total <= pageSize) return null
+  return (
+    <div className={styles.pagination} data-testid="history-pagination">
+      <Button
+        variant="subtle"
+        size="sm"
+        onClick={handlePreviousPage}
+        disabled={page <= 1}
+        data-testid="history-prev-page"
+      >
+        Prev
+      </Button>
+      <span>
+        Page {page} of {totalPages}
+      </span>
+      <Button
+        variant="subtle"
+        size="sm"
+        onClick={handleNextPage}
+        disabled={page >= totalPages}
+        data-testid="history-next-page"
+      >
+        Next
+      </Button>
+    </div>
+  )
+}
+
+export function HistoryPanel({ connectionId }: HistoryPanelProps) {
+  const entries = useHistoryStore(
+    (state) => state.entriesByConnection[connectionId] ?? EMPTY_ENTRIES
+  )
+  const total = useHistoryStore((state) => state.totalByConnection[connectionId] ?? 0)
+  const page = useHistoryStore((state) => state.pageByConnection[connectionId] ?? 1)
+  const search = useHistoryStore((state) => state.searchByConnection[connectionId] ?? '')
+  const isLoading = useHistoryStore((state) => state.isLoadingByConnection[connectionId] ?? false)
+  const error = useHistoryStore((state) => state.errorByConnection[connectionId] ?? null)
+  const setSearch = useHistoryStore((state) => state.setSearch)
+  const clearAll = useHistoryStore((state) => state.clearAll)
+  const loadHistory = useHistoryStore((state) => state.loadHistory)
+
+  const handleSearchChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      setSearch(connectionId, event.target.value)
+    },
+    [setSearch, connectionId]
+  )
 
   const handleRetry = useCallback(() => {
     loadHistory(connectionId, { page, search })
@@ -114,7 +141,7 @@ export function HistoryPanel({ connectionId }: HistoryPanelProps) {
           variant="subtle"
           size="sm"
           dangerText
-          onClick={handleClear}
+          onClick={() => clearAll(connectionId)}
           disabled={total === 0}
           title="Clear all history"
           data-testid="history-clear"
@@ -133,31 +160,7 @@ export function HistoryPanel({ connectionId }: HistoryPanelProps) {
         />
       </div>
 
-      {total > pageSize && (
-        <div className={styles.pagination} data-testid="history-pagination">
-          <Button
-            variant="subtle"
-            size="sm"
-            onClick={handlePreviousPage}
-            disabled={page <= 1}
-            data-testid="history-prev-page"
-          >
-            Prev
-          </Button>
-          <span>
-            Page {page} of {totalPages}
-          </span>
-          <Button
-            variant="subtle"
-            size="sm"
-            onClick={handleNextPage}
-            disabled={page >= totalPages}
-            data-testid="history-next-page"
-          >
-            Next
-          </Button>
-        </div>
-      )}
+      <HistoryPagination connectionId={connectionId} />
     </div>
   )
 }

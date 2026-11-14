@@ -8,9 +8,17 @@ import { useHistoryStore } from './history-store'
 
 import { logFrontend } from '../lib/app-log-commands'
 import { toErrorMessage } from '../lib/error-message'
-import { resetProcessListConnection } from './processlist-store/processlist-reducers'
+import {
+  applyFetchedProcessList,
+  applyProcessListFetchFailure,
+  resetProcessListConnection,
+  startProcessListFetch,
+} from './processlist-store/processlist-reducers'
+
 const DEFAULT_REFRESH_INTERVAL_MS = 2000
+
 const DEFAULT_EXCLUDE_IDLE_CONNECTIONS = true
+
 const ERROR_TOAST_COOLDOWN_MS = 30_000
 
 function reconcileExistingSelectedIds(rows: ProcessRow[], selectedIds: Set<number>): Set<number> {
@@ -33,7 +41,6 @@ export interface ProcessListState {
   fetchGenerationByConnection: Record<string, number>
   hasFetchedByConnection: Record<string, boolean>
 
-  // Actions
   fetchProcessList: (connectionId: string, sessionId: string, isManual: boolean) => Promise<void>
   killSelectedProcesses: (connectionId: string, sessionId: string) => Promise<KillResult[]>
   setSelectedIds: (connectionId: string, ids: Set<number>) => void
@@ -79,7 +86,149 @@ function isCurrentFetchGeneration(connectionId: string, generation: number): boo
   return useProcessListStore.getState().fetchGenerationByConnection[connectionId] === generation
 }
 
-export const useProcessListStore = create<ProcessListState>()((set, get) => ({
+function reconciledSelectionFor(connectionId: string, rows: ProcessRow[]): Set<number> {
+  const state = useProcessListStore.getState()
+  const currentSelected = state.selectedIdsByConnection[connectionId] ?? new Set<number>()
+  const excludeIdle =
+    state.excludeIdleConnectionsByConnection[connectionId] ?? DEFAULT_EXCLUDE_IDLE_CONNECTIONS
+  const visibleRows = filterProcessListRows(rows, excludeIdle)
+  return reconcileExistingSelectedIds(visibleRows, currentSelected)
+}
+
+async function fetchProcessList(
+  connectionId: string,
+  sessionId: string,
+  isManual: boolean
+): Promise<void> {
+  const state = useProcessListStore.getState()
+  if (state.isFetchingByConnection[connectionId]) return
+
+  const generation = (state.fetchGenerationByConnection[connectionId] ?? 0) + 1
+  useProcessListStore.setState((current) =>
+    startProcessListFetch(current, { connectionId: connectionId, generation: generation })
+  )
+
+  try {
+    const rows = await getProcesslist(sessionId)
+    if (!isCurrentFetchGeneration(connectionId, generation)) return
+    const fetched = {
+      connectionId: connectionId,
+      rows: rows,
+      selectedIds: reconciledSelectionFor(connectionId, rows),
+      refreshedAt: getProcessListRefreshTimestamp(),
+    }
+    useProcessListStore.setState((current) => applyFetchedProcessList(current, fetched))
+  } catch (error) {
+    if (!isCurrentFetchGeneration(connectionId, generation)) return
+    const message = toErrorMessage(error)
+    useProcessListStore.setState((current) =>
+      applyProcessListFetchFailure(current, { connectionId: connectionId, message: message })
+    )
+    if (isManual) {
+      showErrorToast('Failed to fetch process list', message)
+      return
+    }
+    reportAutoRefreshFailure(connectionId, message)
+  }
+}
+
+async function killSelectedProcesses(
+  connectionId: string,
+  sessionId: string
+): Promise<KillResult[]> {
+  const selected =
+    useProcessListStore.getState().selectedIdsByConnection[connectionId] ?? new Set<number>()
+  if (selected.size === 0) return []
+  const ids = [...selected]
+  const results = await killQueries(sessionId, ids)
+  useHistoryStore.getState().notifyNewQuery(connectionId)
+  return results
+}
+
+function setSelectedIds(connectionId: string, ids: Set<number>): void {
+  useProcessListStore.setState({
+    selectedIdsByConnection: {
+      ...useProcessListStore.getState().selectedIdsByConnection,
+      [connectionId]: ids,
+    },
+  })
+}
+
+function toggleSelectedId(connectionId: string, id: number): void {
+  const current =
+    useProcessListStore.getState().selectedIdsByConnection[connectionId] ?? new Set<number>()
+  const next = withMembershipToggled(current, id)
+  useProcessListStore.setState({
+    selectedIdsByConnection: {
+      ...useProcessListStore.getState().selectedIdsByConnection,
+      [connectionId]: next,
+    },
+  })
+}
+
+function setRefreshInterval(connectionId: string, ms: number): void {
+  useProcessListStore.setState({
+    refreshIntervalMsByConnection: {
+      ...useProcessListStore.getState().refreshIntervalMsByConnection,
+      [connectionId]: ms,
+    },
+  })
+}
+
+function setExcludeIdleConnections(connectionId: string, excludeIdleConnections: boolean): void {
+  const rows = useProcessListStore.getState().rowsByConnection[connectionId] ?? []
+  const visibleRows = filterProcessListRows(rows, excludeIdleConnections)
+  const currentSelected =
+    useProcessListStore.getState().selectedIdsByConnection[connectionId] ?? new Set<number>()
+  const reconciledSelected = reconcileExistingSelectedIds(visibleRows, currentSelected)
+
+  useProcessListStore.setState({
+    excludeIdleConnectionsByConnection: {
+      ...useProcessListStore.getState().excludeIdleConnectionsByConnection,
+      [connectionId]: excludeIdleConnections,
+    },
+    selectedIdsByConnection: {
+      ...useProcessListStore.getState().selectedIdsByConnection,
+      [connectionId]: reconciledSelected,
+    },
+  })
+}
+
+function setConfirmDialogOpen(connectionId: string, open: boolean): void {
+  useProcessListStore.setState({
+    isConfirmDialogOpenByConnection: {
+      ...useProcessListStore.getState().isConfirmDialogOpenByConnection,
+      [connectionId]: open,
+    },
+  })
+}
+
+function setSummaryDialogOpen(connectionId: string, open: boolean): void {
+  useProcessListStore.setState({
+    isSummaryDialogOpenByConnection: {
+      ...useProcessListStore.getState().isSummaryDialogOpenByConnection,
+      [connectionId]: open,
+    },
+  })
+}
+
+function setSortColumn(
+  connectionId: string,
+  sort: { columnKey: string; direction: 'ASC' | 'DESC' } | null
+): void {
+  useProcessListStore.setState({
+    sortColumnByConnection: {
+      ...useProcessListStore.getState().sortColumnByConnection,
+      [connectionId]: sort,
+    },
+  })
+}
+
+function resetConnection(connectionId: string): void {
+  useProcessListStore.setState((state) => resetProcessListConnection(state, connectionId))
+}
+
+export const useProcessListStore = create<ProcessListState>()(() => ({
   rowsByConnection: {},
   lastRefreshedAtByConnection: {},
   selectedIdsByConnection: {},
@@ -93,162 +242,16 @@ export const useProcessListStore = create<ProcessListState>()((set, get) => ({
   isFetchingByConnection: {},
   fetchGenerationByConnection: {},
   hasFetchedByConnection: {},
-
-  fetchProcessList: async (connectionId: string, sessionId: string, isManual: boolean) => {
-    const state = get()
-    if (state.isFetchingByConnection[connectionId]) return
-
-    const generation = (state.fetchGenerationByConnection[connectionId] ?? 0) + 1
-    set({
-      isFetchingByConnection: {
-        ...get().isFetchingByConnection,
-        [connectionId]: true,
-      },
-      fetchGenerationByConnection: {
-        ...get().fetchGenerationByConnection,
-        [connectionId]: generation,
-      },
-    })
-
-    try {
-      const rows = await getProcesslist(sessionId)
-
-      if (!isCurrentFetchGeneration(connectionId, generation)) return
-
-      const currentSelected = get().selectedIdsByConnection[connectionId] ?? new Set<number>()
-      const excludeIdle =
-        get().excludeIdleConnectionsByConnection[connectionId] ?? DEFAULT_EXCLUDE_IDLE_CONNECTIONS
-      const visibleRows = filterProcessListRows(rows, excludeIdle)
-      const reconciledSelected = reconcileExistingSelectedIds(visibleRows, currentSelected)
-
-      set({
-        rowsByConnection: { ...get().rowsByConnection, [connectionId]: rows },
-        selectedIdsByConnection: {
-          ...get().selectedIdsByConnection,
-          [connectionId]: reconciledSelected,
-        },
-        lastRefreshedAtByConnection: {
-          ...get().lastRefreshedAtByConnection,
-          [connectionId]: getProcessListRefreshTimestamp(),
-        },
-        isFetchingByConnection: {
-          ...get().isFetchingByConnection,
-          [connectionId]: false,
-        },
-        fetchErrorByConnection: { ...get().fetchErrorByConnection, [connectionId]: null },
-        hasFetchedByConnection: { ...get().hasFetchedByConnection, [connectionId]: true },
-      })
-    } catch (error) {
-      if (!isCurrentFetchGeneration(connectionId, generation)) return
-
-      const message = toErrorMessage(error)
-
-      set({
-        isFetchingByConnection: {
-          ...get().isFetchingByConnection,
-          [connectionId]: false,
-        },
-        fetchErrorByConnection: { ...get().fetchErrorByConnection, [connectionId]: message },
-        hasFetchedByConnection: { ...get().hasFetchedByConnection, [connectionId]: true },
-      })
-
-      if (isManual) {
-        showErrorToast('Failed to fetch process list', message)
-        return
-      }
-      reportAutoRefreshFailure(connectionId, message)
-    }
-  },
-
-  killSelectedProcesses: async (connectionId: string, sessionId: string): Promise<KillResult[]> => {
-    const selected = get().selectedIdsByConnection[connectionId] ?? new Set<number>()
-    if (selected.size === 0) return []
-    const ids = [...selected]
-    const results = await killQueries(sessionId, ids)
-    useHistoryStore.getState().notifyNewQuery(connectionId)
-    return results
-  },
-
-  setSelectedIds: (connectionId: string, ids: Set<number>) => {
-    set({
-      selectedIdsByConnection: {
-        ...get().selectedIdsByConnection,
-        [connectionId]: ids,
-      },
-    })
-  },
-
-  toggleSelectedId: (connectionId: string, id: number) => {
-    const current = get().selectedIdsByConnection[connectionId] ?? new Set<number>()
-    const next = withMembershipToggled(current, id)
-    set({
-      selectedIdsByConnection: {
-        ...get().selectedIdsByConnection,
-        [connectionId]: next,
-      },
-    })
-  },
-
-  setRefreshInterval: (connectionId: string, ms: number) => {
-    set({
-      refreshIntervalMsByConnection: {
-        ...get().refreshIntervalMsByConnection,
-        [connectionId]: ms,
-      },
-    })
-  },
-
-  setExcludeIdleConnections: (connectionId: string, excludeIdleConnections: boolean) => {
-    const rows = get().rowsByConnection[connectionId] ?? []
-    const visibleRows = filterProcessListRows(rows, excludeIdleConnections)
-    const currentSelected = get().selectedIdsByConnection[connectionId] ?? new Set<number>()
-    const reconciledSelected = reconcileExistingSelectedIds(visibleRows, currentSelected)
-
-    set({
-      excludeIdleConnectionsByConnection: {
-        ...get().excludeIdleConnectionsByConnection,
-        [connectionId]: excludeIdleConnections,
-      },
-      selectedIdsByConnection: {
-        ...get().selectedIdsByConnection,
-        [connectionId]: reconciledSelected,
-      },
-    })
-  },
-
-  setConfirmDialogOpen: (connectionId: string, open: boolean) => {
-    set({
-      isConfirmDialogOpenByConnection: {
-        ...get().isConfirmDialogOpenByConnection,
-        [connectionId]: open,
-      },
-    })
-  },
-
-  setSummaryDialogOpen: (connectionId: string, open: boolean) => {
-    set({
-      isSummaryDialogOpenByConnection: {
-        ...get().isSummaryDialogOpenByConnection,
-        [connectionId]: open,
-      },
-    })
-  },
-
-  setSortColumn: (
-    connectionId: string,
-    sort: { columnKey: string; direction: 'ASC' | 'DESC' } | null
-  ) => {
-    set({
-      sortColumnByConnection: {
-        ...get().sortColumnByConnection,
-        [connectionId]: sort,
-      },
-    })
-  },
-
-  resetConnection: (connectionId: string) => {
-    set((state) => resetProcessListConnection(state, connectionId))
-  },
+  fetchProcessList: fetchProcessList,
+  killSelectedProcesses: killSelectedProcesses,
+  setSelectedIds: setSelectedIds,
+  toggleSelectedId: toggleSelectedId,
+  setRefreshInterval: setRefreshInterval,
+  setExcludeIdleConnections: setExcludeIdleConnections,
+  setConfirmDialogOpen: setConfirmDialogOpen,
+  setSummaryDialogOpen: setSummaryDialogOpen,
+  setSortColumn: setSortColumn,
+  resetConnection: resetConnection,
 }))
 
 /** Default refresh interval in milliseconds. */

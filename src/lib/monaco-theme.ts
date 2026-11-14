@@ -124,81 +124,93 @@ function hex(color: string): string {
   return color.slice(1)
 }
 
+function tokenRules(palette: MonacoPalette): Monaco.editor.ITokenThemeRule[] {
+  return [
+    { token: '', foreground: hex(palette.text), background: hex(palette.well) },
+    { token: 'keyword', foreground: hex(palette.keyword) },
+    { token: 'keyword.sql', foreground: hex(palette.keyword) },
+    { token: 'operator', foreground: hex(palette.text) },
+    { token: 'operator.keyword', foreground: hex(palette.keyword) },
+    { token: 'operator.star', foreground: hex(palette.keyword) },
+    { token: 'keyword.scope', foreground: hex(palette.keyword) },
+    { token: 'type', foreground: hex(palette.keyword) },
+    { token: 'string', foreground: hex(palette.string) },
+    { token: 'string.sql', foreground: hex(palette.string) },
+    { token: 'number', foreground: hex(palette.number) },
+    { token: 'number.sql', foreground: hex(palette.number) },
+    { token: 'comment', foreground: hex(palette.comment) },
+    { token: 'comment.sql', foreground: hex(palette.comment) },
+    { token: 'comment.block', foreground: hex(palette.comment) },
+    { token: 'predefined', foreground: hex(palette.builtin) },
+    { token: 'predefined.sql', foreground: hex(palette.builtin) },
+    { token: 'identifier', foreground: hex(palette.text) },
+    { token: 'identifier.quote', foreground: hex(palette.quotedIdentifier) },
+    { token: 'identifier.quote.sql', foreground: hex(palette.quotedIdentifier) },
+    { token: 'delimiter', foreground: hex(palette.text) },
+  ]
+}
+
+function editorColors(palette: MonacoPalette): Monaco.editor.IColors {
+  return {
+    'editor.background': palette.well,
+    'editor.foreground': palette.text,
+    'editor.lineHighlightBackground': palette.currentLine,
+    'editor.lineHighlightBorder': '#00000000',
+    'editor.selectionBackground': palette.selection,
+    'editor.inactiveSelectionBackground': palette.selection,
+    'editor.selectionHighlightBackground': palette.neutralSelected,
+    'editor.wordHighlightBackground': palette.neutralSelected,
+    'editor.wordHighlightStrongBackground': palette.neutralSelected,
+    'editorCursor.foreground': palette.accent,
+    ...Object.fromEntries(
+      BRACKET_HIGHLIGHT_LEVELS.map((level) => [
+        `editorBracketHighlight.foreground${level}`,
+        palette.text,
+      ])
+    ),
+  }
+}
+
+function widgetColors(palette: MonacoPalette): Monaco.editor.IColors {
+  return {
+    'editorLineNumber.foreground': palette.lineNumber,
+    'editorLineNumber.activeForeground': palette.lineNumber,
+    'editorIndentGuide.background1': palette.controlStroke,
+    'editorIndentGuide.activeBackground1': palette.lineNumber,
+    'editorGutter.background': palette.well,
+    'editorWidget.background': palette.card,
+    'editorWidget.foreground': palette.cardText,
+    'editorWidget.border': palette.flyoutStroke,
+    'editorSuggestWidget.background': palette.card,
+    'editorSuggestWidget.border': palette.flyoutStroke,
+    'editorSuggestWidget.foreground': palette.cardText,
+    'editorSuggestWidget.selectedForeground': palette.cardText,
+    'editorSuggestWidget.selectedIconForeground': palette.accent,
+    'editorSuggestWidget.selectedBackground': palette.neutralSelected,
+    'editorSuggestWidget.highlightForeground': palette.accent,
+    'editorSuggestWidget.focusHighlightForeground': palette.accent,
+    'editorHoverWidget.background': palette.card,
+    'editorHoverWidget.foreground': palette.cardText,
+    'editorHoverWidget.border': palette.flyoutStroke,
+    'editorHoverWidget.highlightForeground': palette.accent,
+    'editorHoverWidget.statusBarBackground': palette.card,
+    'list.hoverBackground': palette.subtleHover,
+    'input.background': palette.controlFill,
+    'input.foreground': palette.cardText,
+    'input.border': palette.controlStroke,
+    focusBorder: palette.accent,
+    'scrollbarSlider.background': palette.scrollbar,
+    'scrollbarSlider.hoverBackground': palette.scrollbarHover,
+    'scrollbarSlider.activeBackground': palette.scrollbarHover,
+  }
+}
+
 function buildMonacoTheme(palette: MonacoPalette): Monaco.editor.IStandaloneThemeData {
   return {
     base: palette.base,
     inherit: true,
-    rules: [
-      { token: '', foreground: hex(palette.text), background: hex(palette.well) },
-      { token: 'keyword', foreground: hex(palette.keyword) },
-      { token: 'keyword.sql', foreground: hex(palette.keyword) },
-      { token: 'operator', foreground: hex(palette.text) },
-      { token: 'operator.keyword', foreground: hex(palette.keyword) },
-      { token: 'operator.star', foreground: hex(palette.keyword) },
-      { token: 'keyword.scope', foreground: hex(palette.keyword) },
-      { token: 'type', foreground: hex(palette.keyword) },
-      { token: 'string', foreground: hex(palette.string) },
-      { token: 'string.sql', foreground: hex(palette.string) },
-      { token: 'number', foreground: hex(palette.number) },
-      { token: 'number.sql', foreground: hex(palette.number) },
-      { token: 'comment', foreground: hex(palette.comment) },
-      { token: 'comment.sql', foreground: hex(palette.comment) },
-      { token: 'comment.block', foreground: hex(palette.comment) },
-      { token: 'predefined', foreground: hex(palette.builtin) },
-      { token: 'predefined.sql', foreground: hex(palette.builtin) },
-      { token: 'identifier', foreground: hex(palette.text) },
-      { token: 'identifier.quote', foreground: hex(palette.quotedIdentifier) },
-      { token: 'identifier.quote.sql', foreground: hex(palette.quotedIdentifier) },
-      { token: 'delimiter', foreground: hex(palette.text) },
-    ],
-    colors: {
-      'editor.background': palette.well,
-      'editor.foreground': palette.text,
-      'editor.lineHighlightBackground': palette.currentLine,
-      'editor.lineHighlightBorder': '#00000000',
-      'editor.selectionBackground': palette.selection,
-      'editor.inactiveSelectionBackground': palette.selection,
-      'editor.selectionHighlightBackground': palette.neutralSelected,
-      'editor.wordHighlightBackground': palette.neutralSelected,
-      'editor.wordHighlightStrongBackground': palette.neutralSelected,
-      'editorCursor.foreground': palette.accent,
-      // Brackets stay plain code text (prototype `--sx-op`); matching still highlights the pair.
-      ...Object.fromEntries(
-        BRACKET_HIGHLIGHT_LEVELS.map((level) => [
-          `editorBracketHighlight.foreground${level}`,
-          palette.text,
-        ])
-      ),
-      'editorLineNumber.foreground': palette.lineNumber,
-      'editorLineNumber.activeForeground': palette.lineNumber,
-      'editorIndentGuide.background1': palette.controlStroke,
-      'editorIndentGuide.activeBackground1': palette.lineNumber,
-      'editorGutter.background': palette.well,
-      'editorWidget.background': palette.card,
-      'editorWidget.foreground': palette.cardText,
-      'editorWidget.border': palette.flyoutStroke,
-      'editorSuggestWidget.background': palette.card,
-      'editorSuggestWidget.border': palette.flyoutStroke,
-      'editorSuggestWidget.foreground': palette.cardText,
-      'editorSuggestWidget.selectedForeground': palette.cardText,
-      'editorSuggestWidget.selectedIconForeground': palette.accent,
-      'editorSuggestWidget.selectedBackground': palette.neutralSelected,
-      'editorSuggestWidget.highlightForeground': palette.accent,
-      'editorSuggestWidget.focusHighlightForeground': palette.accent,
-      'editorHoverWidget.background': palette.card,
-      'editorHoverWidget.foreground': palette.cardText,
-      'editorHoverWidget.border': palette.flyoutStroke,
-      'editorHoverWidget.highlightForeground': palette.accent,
-      'editorHoverWidget.statusBarBackground': palette.card,
-      'list.hoverBackground': palette.subtleHover,
-      'input.background': palette.controlFill,
-      'input.foreground': palette.cardText,
-      'input.border': palette.controlStroke,
-      focusBorder: palette.accent,
-      'scrollbarSlider.background': palette.scrollbar,
-      'scrollbarSlider.hoverBackground': palette.scrollbarHover,
-      'scrollbarSlider.activeBackground': palette.scrollbarHover,
-    },
+    rules: tokenRules(palette),
+    colors: { ...editorColors(palette), ...widgetColors(palette) },
   }
 }
 

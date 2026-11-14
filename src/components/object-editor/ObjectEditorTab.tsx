@@ -65,24 +65,11 @@ function ObjectEditorStatusView({ stateClassName, testId, children }: ObjectEdit
   )
 }
 
-export function ObjectEditorTab({ tab, isActive = true }: ObjectEditorTabProps) {
+function useObjectEditorInitialLoad(tab: ObjectEditorTabType): void {
   const { id: tabId, connectionId, databaseName, objectName, objectType, mode } = tab
-
-  // Object editor store selectors
-  const tabState = useObjectEditorStore((state) => state.tabs[tabId])
   const initTab = useObjectEditorStore((state) => state.initTab)
   const loadBody = useObjectEditorStore((state) => state.loadBody)
-  const saveBody = useObjectEditorStore((state) => state.saveBody)
-  const setContent = useObjectEditorStore((state) => state.setContent)
 
-  // Workspace store
-  const updateObjectEditorTab = useWorkspaceStore((state) => state.updateObjectEditorTab)
-  const setBlockingNavigation = useWorkspaceStore((state) => state.setBlockingNavigation)
-
-  const { content, isLoading, isSaving, error, isDirty, pendingNavigationAction, ...view } =
-    deriveObjectEditorView(tabState, mode)
-
-  // Initialize tab and load body on mount
   useEffect(() => {
     const existing = useObjectEditorStore.getState().tabs[tabId]
     if (!existing) {
@@ -96,39 +83,33 @@ export function ObjectEditorTab({ tab, isActive = true }: ObjectEditorTabProps) 
       void loadBody(tabId)
     }
   }, [tabId, connectionId, databaseName, objectName, objectType, mode, initTab, loadBody])
+}
 
-  // Save handler with create→alter transition
-  const performSave = useCallback(async () => {
+function useObjectEditorSave(tabId: string, objectType: ObjectEditorTabType['objectType']) {
+  const saveBody = useObjectEditorStore((state) => state.saveBody)
+  const updateObjectEditorTab = useWorkspaceStore((state) => state.updateObjectEditorTab)
+
+  return useCallback(async () => {
     const storeTab = useObjectEditorStore.getState().tabs[tabId]
     const wasCreateMode = storeTab?.mode === 'create'
 
     await saveBody(tabId)
 
-    if (wasCreateMode) {
-      const savedName = useObjectEditorStore.getState().consumeSavedObjectName(tabId)
-      if (savedName) {
-        const typeLabel = OBJECT_TYPE_LABELS[objectType]
-        updateObjectEditorTab(tabId, {
-          objectName: savedName,
-          mode: 'alter',
-          label: `${typeLabel}: ${savedName}`,
-        })
-      }
-    }
+    if (!wasCreateMode) return
+    const savedName = useObjectEditorStore.getState().consumeSavedObjectName(tabId)
+    if (!savedName) return
+    const typeLabel = OBJECT_TYPE_LABELS[objectType]
+    updateObjectEditorTab(tabId, {
+      objectName: savedName,
+      mode: 'alter',
+      label: `${typeLabel}: ${savedName}`,
+    })
   }, [tabId, objectType, saveBody, updateObjectEditorTab])
+}
 
-  // Content change handler for Monaco
-  const handleContentChange = useCallback(
-    (value: string) => {
-      setContent(tabId, value)
-    },
-    [tabId, setContent]
-  )
-
-  // Unsaved changes dialog handlers
+function usePendingNavigationHandlers(tabId: string, performSave: () => Promise<void>) {
   const handleSaveNavigation = useCallback(async () => {
     await performSave()
-    // Only proceed with navigation if save succeeded (no longer dirty)
     if (!useObjectEditorStore.getState().isDirty(tabId)) {
       useObjectEditorStore.getState().clearPendingAction(tabId)
     }
@@ -146,6 +127,24 @@ export function ObjectEditorTab({ tab, isActive = true }: ObjectEditorTabProps) 
     useObjectEditorStore.getState().cancelPendingAction(tabId)
   }, [tabId])
 
+  return { handleSaveNavigation, handleDiscardNavigation, handleCancelNavigation }
+}
+
+type PendingNavigationAction = ReturnType<typeof deriveObjectEditorView>['pendingNavigationAction']
+
+interface PendingNavigationGuardInput {
+  tabId: string
+  isActive: boolean
+  pendingNavigationAction: PendingNavigationAction
+}
+
+function usePendingNavigationGuard({
+  tabId,
+  isActive,
+  pendingNavigationAction,
+}: PendingNavigationGuardInput): void {
+  const setBlockingNavigation = useWorkspaceStore((state) => state.setBlockingNavigation)
+
   useEffect(() => {
     setBlockingNavigation(tabId, pendingNavigationAction !== null)
     return () => setBlockingNavigation(tabId, false)
@@ -157,6 +156,42 @@ export function ObjectEditorTab({ tab, isActive = true }: ObjectEditorTabProps) 
       useObjectEditorStore.getState().cancelPendingAction(tabId)
     }
   }, [isActive, pendingNavigationAction, tabId])
+}
+
+interface PendingNavigationDialogProps {
+  tabId: string
+  performSave: () => Promise<void>
+}
+
+function PendingNavigationDialog({ tabId, performSave }: PendingNavigationDialogProps) {
+  const navigation = usePendingNavigationHandlers(tabId, performSave)
+  return (
+    <UnsavedChangesDialog
+      tabId={tabId}
+      onSave={navigation.handleSaveNavigation}
+      onDiscard={navigation.handleDiscardNavigation}
+      onCancel={navigation.handleCancelNavigation}
+      title="Unsaved changes"
+      message="You have unsaved DDL changes. What would you like to do?"
+      saveLabel="Save"
+    />
+  )
+}
+
+export function ObjectEditorTab({ tab, isActive = true }: ObjectEditorTabProps) {
+  const { id: tabId, connectionId, databaseName, objectName, objectType, mode } = tab
+  const tabState = useObjectEditorStore((state) => state.tabs[tabId])
+  const setContent = useObjectEditorStore((state) => state.setContent)
+  const { content, isLoading, isSaving, error, isDirty, pendingNavigationAction, ...view } =
+    deriveObjectEditorView(tabState, mode)
+
+  useObjectEditorInitialLoad(tab)
+  const performSave = useObjectEditorSave(tabId, objectType)
+  usePendingNavigationGuard({
+    tabId: tabId,
+    isActive: isActive,
+    pendingNavigationAction: pendingNavigationAction,
+  })
 
   const isInitialLoad = isLoading && !error
   if (isInitialLoad) {
@@ -168,9 +203,6 @@ export function ObjectEditorTab({ tab, isActive = true }: ObjectEditorTabProps) 
     )
   }
 
-  // Fatal error state — only when there is NO content (i.e. load failure).
-  // Save failures set `error` too but the editor must remain visible so the
-  // user can correct the DDL and retry.  Save errors are surfaced via toast.
   const isLoadFailure = Boolean(error) && !content
   if (isLoadFailure) {
     return (
@@ -197,21 +229,13 @@ export function ObjectEditorTab({ tab, isActive = true }: ObjectEditorTabProps) 
           connectionId={connectionId}
           tabType="object-editor"
           value={content}
-          onChange={handleContentChange}
+          onChange={(value) => setContent(tabId, value)}
           readOnly={isSaving}
         />
       </div>
 
       {pendingNavigationAction !== null && (
-        <UnsavedChangesDialog
-          tabId={tabId}
-          onSave={handleSaveNavigation}
-          onDiscard={handleDiscardNavigation}
-          onCancel={handleCancelNavigation}
-          title="Unsaved changes"
-          message="You have unsaved DDL changes. What would you like to do?"
-          saveLabel="Save"
-        />
+        <PendingNavigationDialog tabId={tabId} performSave={performSave} />
       )}
     </div>
   )

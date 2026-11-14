@@ -1,184 +1,85 @@
-/**
- * Non-reactive per-result page cache for windowed query results.
- *
- * The Rust result cache owns every row, the row order (sort), row membership
- * (filter, deletes) and row identity (base indices). The webview only holds a
- * bounded set of 500-row **pages** of the current view per result surface
- * (tab + result index), keyed by query id and view version:
- *
- * - seeded from the first window of every execute / view response;
- * - filled on demand from the grid's visible range, with half a page of
- *   prefetch on each side, de-duplicated in-flight requests and a cap on
- *   concurrent fetches;
- * - at most 10 pages per surface, evicted least-recently-used;
- * - responses whose query id or view version is stale are dropped, never painted.
- *
- * It never writes to zustand: subscribers (the grid) are told which ranges
- * loaded (and when a surface was re-seeded, so a mounted grid re-requests its
- * visible range), and window-level status (the pending range for the 1 s
- * "Loading rows" status, the failed range for the Retry band, expiry) goes to
- * handlers the query store registers. A saved row edit is broadcast by base
- * index to row-patch subscribers (the form view), whether or not its page is
- * loaded.
- *
- * Off-window actions (copy, the text view, the form view, deletes) use
- * `readViewRange`, which fetches in 2,000-row chunks and does not populate the
- * LRU.
- */
-
-import { fetchResultWindow, type ResultSlotRef } from './query-commands'
-import { normalizeTinyIntRows } from './table-data-commands'
-import { logFrontend } from './app-log-commands'
+import { type ResultSlotRef } from './query-commands'
 import { HALF_DIVISOR } from './units'
-import type { ColumnMeta, FetchResultWindowResult, ResultWindow } from '../types/schema'
+import type { ResultWindow } from '../types/schema'
 import { toErrorMessage } from './error-message'
 import { isIndexInBounds } from './value-checks'
+import { isSurfaceForQuery, requestVisibleRange } from './result-window-cache/window-page-fetch'
+import {
+  clearPendingTimer,
+  freshSurface,
+  hasWindowStatus,
+  nextPageUseStamp,
+  normalizeRows,
+  notify,
+  reportStatus,
+  reseededSurface,
+  resultSurfaceKey,
+  storeWindow,
+  surfaces,
+} from './result-window-cache/window-registry'
+import type {
+  CachedRow,
+  RowPatchApply,
+  RowPatchListener,
+  SeedResultWindowParams,
+  Surface,
+  WindowRangeListener,
+} from './result-window-cache/window-registry'
+export {
+  resultSurfaceKey,
+  setWindowStatusHandler,
+  setWindowExpiredHandler,
+} from './result-window-cache/window-registry'
 
-/** Extra information passed to range listeners. */
-export interface WindowNotifyInfo {
-  /**
-   * True when the surface was (re-)seeded from an execute or view response:
-   * every page was dropped, and a mounted grid should re-request its visible
-   * range (it may not report a visible-region change on its own).
-   */
-  reseeded: boolean
-}
+export type {
+  WindowNotifyInfo,
+  WindowRangeListener,
+  RowPatchApply,
+  RowPatchListener,
+  ViewRange,
+  CachedRow,
+  ReadProgress,
+  ReadOptions,
+  WindowStatusPatch,
+  WindowStatusUpdate,
+  WindowStatusHandler,
+  WindowExpiredHandler,
+  SeedResultWindowParams,
+} from './result-window-cache/window-registry'
+export { requestVisibleRange, retryFailedWindow } from './result-window-cache/window-page-fetch'
+export { readViewRange } from './result-window-cache/view-range-reads'
+export type { ViewRangeRead } from './result-window-cache/view-range-reads'
 
-export type WindowRangeListener = (range: ViewRange, info?: WindowNotifyInfo) => void
-
-/** Applies a saved row edit to a row of the surface (normalized like loaded rows). */
-export type RowPatchApply = (row: unknown[]) => unknown[]
-
-export type RowPatchListener = (baseIndex: number, apply: RowPatchApply) => void
-
-/** Rows per page. */
 export const RESULT_PAGE_SIZE = 500
-/** Maximum pages kept per result surface (about 5,000 rows). */
-export const RESULT_MAX_PAGES = 10
-/** Maximum rows per window or by-index request (enforced in Rust too). */
-export const RESULT_MAX_CHUNK_ROWS = 2000
-/** Rows prefetched on each side of the visible region. */
-export const RESULT_PREFETCH_ROWS = RESULT_PAGE_SIZE / HALF_DIVISOR
-/** Delay before a still-pending window is reported as "Loading rows …". */
-export const RESULT_LOADING_STATUS_DELAY_MS = 1000
-/** Maximum page fetches in flight per surface. */
-const MAX_CONCURRENT_PAGE_FETCHES = 4
 
-/** Error prefix Rust uses for a window request against an old view version. */
+export const RESULT_MAX_PAGES = 10
+
+export const RESULT_MAX_CHUNK_ROWS = 2000
+
+export const RESULT_PREFETCH_ROWS = RESULT_PAGE_SIZE / HALF_DIVISOR
+
+export const RESULT_LOADING_STATUS_DELAY_MS = 1000
+
+export const MAX_CONCURRENT_PAGE_FETCHES = 4
+
 export const VIEW_STALE_PREFIX = 'view_stale:'
-/** Error prefix Rust uses for a refused compare-and-swap view write. */
+
 export const VIEW_SUPERSEDED_PREFIX = 'view_superseded:'
-/** Error prefix Rust uses when a tab's cached results expired. */
+
 export const RESULTS_EXPIRED_TOKEN = 'results_expired'
 
-/** A half-open view-position range `[start, end)`. */
-export type ViewRange = readonly [start: number, end: number]
-
-/** A loaded row plus its stable base index. */
-export interface CachedRow {
-  row: unknown[]
-  baseIndex: number
-}
-
-/** Progress of a chunked off-window read. */
-export interface ReadProgress {
-  done: number
-  total: number
-}
-
-export interface ReadOptions {
-  signal?: AbortSignal
-  onProgress?: (progress: ReadProgress) => void
-}
-
-/** Window-level status the store mirrors into result metadata. */
-export interface WindowStatusPatch {
-  pendingWindowRange?: ViewRange | null
-  failedWindowRange?: ViewRange | null
-}
-
-export interface WindowStatusUpdate {
-  tabId: string
-  resultIndex: number
-  patch: WindowStatusPatch
-  failure?: { message: string }
-}
-
-export type WindowStatusHandler = (update: WindowStatusUpdate) => void
-
-export type WindowExpiredHandler = (tabId: string) => void
-
-/** Parameters for seeding (or re-seeding) a result surface. */
-export interface SeedResultWindowParams {
-  connectionId: string
-  tabId: string
-  resultIndex: number
-  queryId: string
-  viewVersion: number
-  viewRowCount: number
-  columns: ColumnMeta[]
-  window: ResultWindow
-}
-
-interface Page {
-  rows: unknown[][]
-  baseIndices: number[]
-  lastUsed: number
-}
-
-interface Surface {
-  slot: ResultSlotRef
-  columns: ColumnMeta[]
-  viewVersion: number
-  viewRowCount: number
-  pages: Map<number, Page>
-  inflight: Set<number>
-  /** Bumped whenever the surface is re-seeded; in-flight responses compare it. */
-  generation: number
-  lastRequested: ViewRange | null
-  failedRange: ViewRange | null
-  pendingRange: ViewRange | null
-  pendingTimer: ReturnType<typeof setTimeout> | null
-  listeners: Set<WindowRangeListener>
-  rowPatchListeners: Set<RowPatchListener>
-}
-
-const surfaces = new Map<string, Surface>()
-let useCounter = 0
-let statusHandler: WindowStatusHandler | null = null
-let expiredHandler: WindowExpiredHandler | null = null
-
-/** Stable key for a result surface. */
-export function resultSurfaceKey(tabId: string, resultIndex: number): string {
-  return `${tabId}:${resultIndex}`
-}
-
-/** Register the handler that mirrors window status into the query store. */
-export function setWindowStatusHandler(handler: WindowStatusHandler | null): void {
-  statusHandler = handler
-}
-
-/** Register the handler that routes `results_expired` to the "Results expired" block. */
-export function setWindowExpiredHandler(handler: WindowExpiredHandler | null): void {
-  expiredHandler = handler
-}
-
-/** True for a `view_stale:` window refusal (discarded silently). */
 export function isViewStaleError(error: unknown): boolean {
   return toErrorMessage(error).startsWith(VIEW_STALE_PREFIX)
 }
 
-/** True for an expired-results error (routed to the "Results expired" block). */
 export function isResultsExpiredError(error: unknown): boolean {
   return toErrorMessage(error).includes(RESULTS_EXPIRED_TOKEN)
 }
 
-/** True for an `AbortError` raised by a cancelled read. */
 export function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
 }
 
-/** Parse the `current=<n>` version from a `view_superseded:` refusal, or null. */
 export function parseSupersededVersion(error: unknown): number | null {
   const message = toErrorMessage(error)
   if (!message.startsWith(VIEW_SUPERSEDED_PREFIX)) return null
@@ -186,156 +87,6 @@ export function parseSupersededVersion(error: unknown): number | null {
   return match ? Number(match[1]) : null
 }
 
-function normalizeRows(columns: ColumnMeta[], rows: unknown[][]): unknown[][] {
-  return normalizeTinyIntRows(columns, rows)
-}
-
-function notify(surface: Surface, range: ViewRange, info?: WindowNotifyInfo): void {
-  for (const listener of surface.listeners) {
-    notifyListener(listener, range, info)
-  }
-}
-
-function notifyListener(
-  listener: WindowRangeListener,
-  range: ViewRange,
-  info: WindowNotifyInfo | undefined
-): void {
-  if (info) {
-    listener(range, info)
-    return
-  }
-  listener(range)
-}
-
-function reportStatus(
-  surface: Surface,
-  patch: WindowStatusPatch,
-  failure?: { message: string }
-): void {
-  statusHandler?.({
-    tabId: surface.slot.tabId,
-    resultIndex: surface.slot.resultIndex,
-    patch: patch,
-    failure: failure,
-  })
-}
-
-function pageRange(surface: Surface, pageIndex: number): ViewRange {
-  const start = pageIndex * RESULT_PAGE_SIZE
-  return [start, Math.min(surface.viewRowCount, start + RESULT_PAGE_SIZE)]
-}
-
-/** Split a window (which may span several pages) into whole or partial pages. */
-function storeWindow(surface: Surface, window: ResultWindow): void {
-  const rows = normalizeRows(surface.columns, window.rows)
-  for (let rowIndex = 0; rowIndex < rows.length;) {
-    const position = window.offset + rowIndex
-    const pageIndex = Math.floor(position / RESULT_PAGE_SIZE)
-    const pageStart = pageIndex * RESULT_PAGE_SIZE
-    const take = Math.min(rows.length - rowIndex, pageStart + RESULT_PAGE_SIZE - position)
-    if (position === pageStart) {
-      surface.pages.set(pageIndex, {
-        rows: rows.slice(rowIndex, rowIndex + take),
-        baseIndices: window.baseIndices.slice(rowIndex, rowIndex + take),
-        lastUsed: ++useCounter,
-      })
-    }
-    rowIndex += take
-  }
-}
-
-function isWithinPageBudget(surface: Surface): boolean {
-  return surface.pages.size <= RESULT_MAX_PAGES
-}
-
-function hasInflightPages(surface: Surface): boolean {
-  return surface.inflight.size > 0
-}
-
-function isAtPageFetchLimit(surface: Surface): boolean {
-  return surface.inflight.size >= MAX_CONCURRENT_PAGE_FETCHES
-}
-
-function evictPages(surface: Surface): void {
-  if (isWithinPageBudget(surface)) return
-  const protectedPages = new Set<number>()
-  if (surface.lastRequested) {
-    const [start, end] = surface.lastRequested
-    const firstPage = Math.floor(start / RESULT_PAGE_SIZE)
-    const lastPage = Math.floor(Math.max(start, end - 1) / RESULT_PAGE_SIZE)
-    for (let page = firstPage; page <= lastPage; page++) {
-      protectedPages.add(page)
-    }
-  }
-  const candidates = [...surface.pages.entries()]
-    .filter(([index]) => !protectedPages.has(index))
-    .sort((left, right) => left[1].lastUsed - right[1].lastUsed)
-  for (const [index] of candidates) {
-    if (isWithinPageBudget(surface)) break
-    surface.pages.delete(index)
-  }
-}
-
-function clearPendingTimer(surface: Surface): void {
-  if (surface.pendingTimer) {
-    clearTimeout(surface.pendingTimer)
-    surface.pendingTimer = null
-  }
-}
-
-function settlePending(surface: Surface): void {
-  if (hasInflightPages(surface)) return
-  clearPendingTimer(surface)
-  if (surface.pendingRange) {
-    surface.pendingRange = null
-    reportStatus(surface, { pendingWindowRange: null })
-  }
-}
-
-function freshSurface(params: SeedResultWindowParams): Surface {
-  return {
-    slot: {
-      connectionId: params.connectionId,
-      tabId: params.tabId,
-      resultIndex: params.resultIndex,
-      queryId: params.queryId,
-    },
-    columns: params.columns,
-    viewVersion: params.viewVersion,
-    viewRowCount: params.viewRowCount,
-    pages: new Map(),
-    inflight: new Set(),
-    generation: 1,
-    lastRequested: null,
-    failedRange: null,
-    pendingRange: null,
-    pendingTimer: null,
-    listeners: new Set(),
-    rowPatchListeners: new Set(),
-  }
-}
-
-function reseededSurface(params: SeedResultWindowParams, previous: Surface): Surface {
-  const isSameQuery = previous.slot.queryId === params.queryId
-  return {
-    ...freshSurface(params),
-    generation: previous.generation + 1,
-    lastRequested: isSameQuery ? previous.lastRequested : null,
-    listeners: previous.listeners,
-    rowPatchListeners: previous.rowPatchListeners,
-  }
-}
-
-function hasWindowStatus(surface: Surface | undefined): boolean {
-  if (!surface) return false
-  return Boolean(surface.pendingRange || surface.failedRange)
-}
-
-/**
- * Seed (or re-seed) a surface from an execute or view response. Clears every
- * page and in-flight request of the previous query / view.
- */
 export function seedResultWindow(params: SeedResultWindowParams): void {
   const key = resultSurfaceKey(params.tabId, params.resultIndex)
   const previous = surfaces.get(key)
@@ -346,18 +97,11 @@ export function seedResultWindow(params: SeedResultWindowParams): void {
   if (hasWindowStatus(previous)) {
     reportStatus(surface, { pendingWindowRange: null, failedWindowRange: null })
   }
-  // A mounted grid re-requests its visible range on `reseeded`: after a re-run
-  // that doesn't remount it, the query id changed (so `lastRequested` is gone)
-  // but its visible region didn't, and it reports no region change.
   notify(surface, [0, surface.viewRowCount], { reseeded: true })
   if (surface.lastRequested)
     requestVisibleRange(params.tabId, params.resultIndex, surface.lastRequested)
 }
 
-/**
- * Paint a new view of the same query (after `set_result_view` or
- * `remove_result_rows`): drop every page and seed the new first window.
- */
 export function applyResultView(
   tabId: string,
   resultIndex: number,
@@ -374,7 +118,6 @@ export function applyResultView(
   })
 }
 
-/** Metadata of a seeded surface, or undefined. */
 export function getResultSurface(
   tabId: string,
   resultIndex: number
@@ -388,7 +131,6 @@ export function getResultSurface(
   }
 }
 
-/** A loaded row at a view position (touches its page for LRU), or undefined. */
 export function getLoadedRow(
   tabId: string,
   resultIndex: number,
@@ -402,15 +144,13 @@ export function getLoadedRow(
   const offset = position % RESULT_PAGE_SIZE
   const row = page.rows[offset]
   if (row === undefined) return undefined
-  page.lastUsed = ++useCounter
+  page.lastUsed = nextPageUseStamp()
   return { row: row, baseIndex: page.baseIndices[offset] }
 }
 
-/** The surface for `key`, or a stub that keeps listeners until the first seed. */
 function surfaceForSubscription(key: string, tabId: string, resultIndex: number): Surface {
   let surface = surfaces.get(key)
   if (!surface) {
-    // Allow subscribing before the first seed: keep the listener on a stub.
     surface = {
       slot: { connectionId: '', tabId: tabId, resultIndex: resultIndex, queryId: '' },
       columns: [],
@@ -431,7 +171,6 @@ function surfaceForSubscription(key: string, tabId: string, resultIndex: number)
   return surface
 }
 
-/** Subscribe to newly loaded ranges of a surface. Returns an unsubscribe function. */
 export function subscribeToResultWindow(
   tabId: string,
   resultIndex: number,
@@ -444,11 +183,6 @@ export function subscribeToResultWindow(
   }
 }
 
-/**
- * Subscribe to saved row edits of a surface, by base index. Unlike range
- * listeners, these hear about rows outside the loaded pages too (the form view
- * holds such a row itself). Returns an unsubscribe function.
- */
 export function subscribeToRowPatches(
   tabId: string,
   resultIndex: number,
@@ -461,167 +195,6 @@ export function subscribeToRowPatches(
   }
 }
 
-function isRegisteredSurface(surface: Surface): boolean {
-  return surfaces.get(keyOf(surface)) === surface
-}
-
-function isSurfaceCurrent(surface: Surface, generation: number): boolean {
-  return surface.generation === generation && isRegisteredSurface(surface)
-}
-
-function schedulePendingStatus(surface: Surface, fetchedRange: ViewRange): void {
-  if (surface.pendingTimer || surface.pendingRange) return
-  surface.pendingTimer = setTimeout(() => {
-    surface.pendingTimer = null
-    const isStillLoading = hasInflightPages(surface) && isRegisteredSurface(surface)
-    if (!isStillLoading) return
-    surface.pendingRange = surface.lastRequested ?? fetchedRange
-    reportStatus(surface, { pendingWindowRange: surface.pendingRange })
-  }, RESULT_LOADING_STATUS_DELAY_MS)
-}
-
-function paintFetchedWindow(surface: Surface, response: FetchResultWindowResult): boolean {
-  // A response for an old view is never painted.
-  if (response.viewVersion !== surface.viewVersion) return false
-  storeWindow(surface, response)
-  evictPages(surface)
-  notify(surface, [response.offset, response.offset + response.rows.length])
-  return true
-}
-
-interface WindowFetchFailure {
-  error: unknown
-  range: ViewRange
-}
-
-function handleWindowFetchFailure(surface: Surface, failure: WindowFetchFailure): void {
-  const [start, end] = failure.range
-  if (isViewStaleError(failure.error)) {
-    // A newer view is being painted; its own response re-seeds the surface.
-    logFrontend(
-      'debug',
-      `[result-window-cache] discarding a stale window for ${keyOf(surface)} rows ${start}-${end}: ${toErrorMessage(failure.error)}`
-    )
-    return
-  }
-  if (isResultsExpiredError(failure.error)) {
-    expiredHandler?.(surface.slot.tabId)
-    return
-  }
-  const message = toErrorMessage(failure.error)
-  if (message.startsWith('Results were refreshed')) {
-    logFrontend('info', `[result-window-cache] discarding window for a replaced query: ${message}`)
-    return
-  }
-  logFrontend(
-    'warn',
-    `[result-window-cache] window fetch failed for ${keyOf(surface)} rows ${start}-${end}: ${message}`
-  )
-  const failed: ViewRange = surface.lastRequested ?? failure.range
-  surface.failedRange = failed
-  reportStatus(surface, { failedWindowRange: failed }, { message })
-}
-
-interface PageFetchOutcome {
-  generation: number
-  pageIndex: number
-  continueFilling: boolean
-}
-
-function finishPageFetch(surface: Surface, outcome: PageFetchOutcome): void {
-  // After a generation bump the in-flight set was cleared, and a newer fetch
-  // of the same page may have re-added it: only the current fetch removes it.
-  if (surface.generation === outcome.generation) surface.inflight.delete(outcome.pageIndex)
-  if (!isSurfaceCurrent(surface, outcome.generation)) return
-  settlePending(surface)
-  if (outcome.continueFilling && surface.lastRequested) {
-    requestPages(surface, surface.lastRequested)
-  }
-}
-
-async function fetchPage(surface: Surface, pageIndex: number): Promise<void> {
-  const generation = surface.generation
-  const viewVersion = surface.viewVersion
-  const range = pageRange(surface, pageIndex)
-  const [start, end] = range
-  surface.inflight.add(pageIndex)
-  schedulePendingStatus(surface, range)
-  // Only a successful, current response continues filling the visible range;
-  // stale or failed responses must not re-issue the same request.
-  let continueFilling = false
-  try {
-    const response = await fetchResultWindow({
-      ...surface.slot,
-      viewVersion: viewVersion,
-      offset: start,
-      limit: end - start,
-    })
-    if (!isSurfaceCurrent(surface, generation)) return
-    continueFilling = paintFetchedWindow(surface, response)
-  } catch (error) {
-    if (!isSurfaceCurrent(surface, generation)) return
-    handleWindowFetchFailure(surface, { error: error, range: range })
-  } finally {
-    finishPageFetch(surface, {
-      generation: generation,
-      pageIndex: pageIndex,
-      continueFilling: continueFilling,
-    })
-  }
-}
-
-function isSurfaceForQuery(surface: Surface | undefined, queryId: string): surface is Surface {
-  if (!surface) return false
-  return surface.slot.queryId === queryId
-}
-
-function keyOf(surface: Surface): string {
-  return resultSurfaceKey(surface.slot.tabId, surface.slot.resultIndex)
-}
-
-function requestPages(surface: Surface, range: ViewRange): void {
-  if (surface.viewRowCount === 0) return
-  if (!surface.slot.queryId) return
-  const lastPage = Math.ceil(surface.viewRowCount / RESULT_PAGE_SIZE) - 1
-  const firstWanted = Math.max(0, Math.floor((range[0] - RESULT_PREFETCH_ROWS) / RESULT_PAGE_SIZE))
-  const lastWanted = Math.min(
-    lastPage,
-    Math.floor((Math.max(range[0], range[1] - 1) + RESULT_PREFETCH_ROWS) / RESULT_PAGE_SIZE)
-  )
-  for (let pageIndex = firstWanted; pageIndex <= lastWanted; pageIndex++) {
-    const page = surface.pages.get(pageIndex)
-    if (page) {
-      page.lastUsed = ++useCounter
-      continue
-    }
-    if (surface.inflight.has(pageIndex)) continue
-    if (isAtPageFetchLimit(surface)) break
-    void fetchPage(surface, pageIndex)
-  }
-}
-
-/**
- * The grid's visible view-position range changed: load the pages it needs
- * (plus prefetch). Responses for an older view are dropped.
- */
-export function requestVisibleRange(tabId: string, resultIndex: number, range: ViewRange): void {
-  const surface = surfaces.get(resultSurfaceKey(tabId, resultIndex))
-  if (!surface) return
-  surface.lastRequested = [Math.max(0, range[0]), Math.max(range[0], range[1])]
-  requestPages(surface, surface.lastRequested)
-}
-
-/** Retry the failed range (the Retry band). */
-export function retryFailedWindow(tabId: string, resultIndex: number): void {
-  const surface = surfaces.get(resultSurfaceKey(tabId, resultIndex))
-  if (!surface) return
-  const failed = surface.failedRange
-  surface.failedRange = null
-  reportStatus(surface, { failedWindowRange: null })
-  const range = failed ?? surface.lastRequested
-  if (range) requestVisibleRange(tabId, resultIndex, range)
-}
-
 export interface SavedRowValues {
   tabId: string
   resultIndex: number
@@ -630,12 +203,6 @@ export interface SavedRowValues {
   updates: Readonly<Record<number, unknown>>
 }
 
-/**
- * Show a saved row edit (same view version): `updates` maps column index to
- * the displayed value. Patches the loaded page holding `baseIndex`, if any, and
- * tells row-patch subscribers either way. Ignored when the surface no longer
- * shows `queryId` (a re-run replaced the result while the save was running).
- */
 export function applySavedRowValues({
   tabId,
   resultIndex,
@@ -662,7 +229,6 @@ export function applySavedRowValues({
   for (const listener of surface.rowPatchListeners) listener(baseIndex, apply)
 }
 
-/** Drop the loaded pages of a surface (inactive-tab eviction); metadata is kept. */
 export function clearResultWindowPages(tabId: string, resultIndex: number): void {
   const surface = surfaces.get(resultSurfaceKey(tabId, resultIndex))
   if (!surface) return
@@ -673,7 +239,6 @@ export function clearResultWindowPages(tabId: string, resultIndex: number): void
   surface.pendingRange = null
 }
 
-/** Forget every surface of a tab (tab closed or results replaced). */
 export function dropTabResultWindows(tabId: string): void {
   for (const [key, surface] of surfaces) {
     const isOtherTabSurface = surface.slot.tabId !== tabId
@@ -684,90 +249,7 @@ export function dropTabResultWindows(tabId: string): void {
   }
 }
 
-/** Forget every surface (all tabs). */
 export function clearAllResultWindows(): void {
   for (const surface of surfaces.values()) clearPendingTimer(surface)
   surfaces.clear()
-}
-
-function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted) throw new DOMException('Row fetch cancelled', 'AbortError')
-}
-
-function loadedRun(surface: Surface, start: number, end: number): CachedRow[] | null {
-  const out: CachedRow[] = []
-  for (let position = start; position < end; position++) {
-    const page = surface.pages.get(Math.floor(position / RESULT_PAGE_SIZE))
-    const offset = position % RESULT_PAGE_SIZE
-    const row = page?.rows[offset]
-    if (!page) return null
-    if (row === undefined) return null
-    out.push({ row: row, baseIndex: page.baseIndices[offset] })
-  }
-  return out
-}
-
-interface ViewChunkRequest {
-  viewVersion: number
-  range: ViewRange
-  signal: AbortSignal | undefined
-}
-
-async function fetchViewChunk(surface: Surface, request: ViewChunkRequest): Promise<CachedRow[]> {
-  const [chunkStart, chunkEnd] = request.range
-  const response = await fetchResultWindow({
-    ...surface.slot,
-    viewVersion: request.viewVersion,
-    offset: chunkStart,
-    limit: chunkEnd - chunkStart,
-  })
-  throwIfAborted(request.signal)
-  if (response.viewVersion !== request.viewVersion) {
-    throw new Error(`${VIEW_STALE_PREFIX} the result view changed while rows were loading`)
-  }
-  const rows = normalizeRows(surface.columns, response.rows)
-  return rows.map((row, index) => ({ row: row, baseIndex: response.baseIndices[index] }))
-}
-
-export interface ViewRangeRead {
-  tabId: string
-  resultIndex: number
-  range: ViewRange
-  options?: ReadOptions
-}
-
-/**
- * Resolve every row of `range` in the current view, in view order. Loaded rows
- * are reused; missing rows are fetched in 2,000-row chunks. Does not populate
- * the LRU. Rejects with `view_stale:` when the view changes mid-read, and with
- * an `AbortError` when `signal` aborts.
- */
-export async function readViewRange({
-  tabId,
-  resultIndex,
-  range,
-  options = {},
-}: ViewRangeRead): Promise<CachedRow[]> {
-  const surface = surfaces.get(resultSurfaceKey(tabId, resultIndex))
-  if (!surface) throw new Error('Result rows are not available')
-  const start = Math.max(0, range[0])
-  const end = Math.min(surface.viewRowCount, range[1])
-  const total = Math.max(0, end - start)
-  const viewVersion = surface.viewVersion
-  const out: CachedRow[] = []
-  for (let chunkStart = start; chunkStart < end; chunkStart += RESULT_MAX_CHUNK_ROWS) {
-    throwIfAborted(options.signal)
-    const chunkEnd = Math.min(end, chunkStart + RESULT_MAX_CHUNK_ROWS)
-    const chunkRange: ViewRange = [chunkStart, chunkEnd]
-    const chunkRows =
-      loadedRun(surface, chunkStart, chunkEnd) ??
-      (await fetchViewChunk(surface, {
-        viewVersion: viewVersion,
-        range: chunkRange,
-        signal: options.signal,
-      }))
-    out.push(...chunkRows)
-    options.onProgress?.({ done: out.length, total: total })
-  }
-  return out
 }

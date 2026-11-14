@@ -9,65 +9,23 @@
  * the store's `applyFilters` action.
  */
 
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useMemo } from 'react'
 import { Funnel, Plus, X } from '@phosphor-icons/react'
 import { Button } from '../common/Button'
-import { Dropdown, type DropdownOption } from '../common/Dropdown'
-import { TextInput } from '../common/TextInput'
+import type { DropdownOption } from '../common/Dropdown'
 import { DialogShell } from './DialogShell'
-import type { FilterCondition, FilterOperator } from '../../types/schema'
+import type { FilterCondition } from '../../types/schema'
 import styles from './FilterDialog.module.css'
 import { useFormSubmit } from '../../hooks/useFormSubmit'
-import { isNullaryOperator, withConditionChanged, withoutConditionAt } from './filter-conditions'
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const OPERATORS: readonly FilterOperator[] = [
-  '>',
-  '>=',
-  '<',
-  '<=',
-  '==',
-  '!=',
-  'LIKE',
-  'NOT LIKE',
-  'IS NULL',
-  'IS NOT NULL',
-]
-
-const DEFAULT_OPERATOR: FilterOperator = '=='
-
-const OPERATOR_DROPDOWN_OPTIONS: DropdownOption[] = OPERATORS.map((op) => ({
-  value: op,
-  label: op,
-}))
+import { FilterConditionRow, type FilterRowContext } from './filter-dialog/FilterConditionRow'
+import { useFilterConditions } from './filter-dialog/use-filter-conditions'
 
 /** Viewport fraction with a hard cap so the modal stays usable on large monitors. */
 const PANEL_WIDTH = 'min(50vw, 720px)'
 const PANEL_HEIGHT = 'min(50vh, 560px)'
-
-function isFocusableInput(input: HTMLInputElement | null): input is HTMLInputElement {
-  if (!input) return false
-  return !input.disabled
-}
-
-function copyConditions(conditions: FilterCondition[]): FilterCondition[] {
-  return conditions.map((condition) => ({ ...condition }))
-}
-
-function copyConditionsWhenOpen(
-  isOpen: boolean,
-  initialConditions: FilterCondition[]
-): FilterCondition[] {
-  if (!isOpen) return []
-  return copyConditions(initialConditions)
-}
-
-// ---------------------------------------------------------------------------
-// Props
-// ---------------------------------------------------------------------------
+const CLOSE_ICON_SIZE = 18
+const ADD_ICON_SIZE = 14
+const EMPTY_ICON_SIZE = 32
 
 interface FilterDialogProps {
   isOpen: boolean
@@ -77,9 +35,102 @@ interface FilterDialogProps {
   columns: string[]
 }
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
+function FilterDialogHeader({ onCancel }: { onCancel: () => void }) {
+  return (
+    <div className={styles.header}>
+      <h2 className={styles.title}>Filter conditions</h2>
+      <Button
+        variant="bare"
+        className={styles.closeButton}
+        onClick={onCancel}
+        aria-label="Close"
+        data-testid="filter-dialog-close"
+      >
+        <X size={CLOSE_ICON_SIZE} weight="bold" />
+      </Button>
+    </div>
+  )
+}
+
+function AddConditionButton({ onAdd }: { onAdd: () => void }) {
+  return (
+    <Button
+      variant="bare"
+      className={styles.addButton}
+      onClick={onAdd}
+      data-testid="filter-add-button"
+    >
+      <Plus size={ADD_ICON_SIZE} weight="bold" />
+      <span>Add condition</span>
+    </Button>
+  )
+}
+
+function EmptyFilterState({ onAdd }: { onAdd: () => void }) {
+  return (
+    <div className={styles.emptyState} data-testid="filter-empty-state">
+      <Funnel size={EMPTY_ICON_SIZE} weight="thin" className={styles.emptyIcon} />
+      <span className={styles.emptyTitle}>No filter conditions</span>
+      <span className={styles.emptyHelp}>
+        Add conditions to narrow table rows. All conditions are combined with AND.
+      </span>
+      <AddConditionButton onAdd={onAdd} />
+    </div>
+  )
+}
+
+interface FilterDialogFooterProps {
+  hasConditions: boolean
+  onClearAll: () => void
+  onCancel: () => void
+}
+
+function FilterDialogFooter({ hasConditions, onClearAll, onCancel }: FilterDialogFooterProps) {
+  return (
+    <div className={styles.footer}>
+      <div className={styles.footerLeft}>
+        {hasConditions && (
+          <Button onClick={onClearAll} data-testid="filter-clear-all-button">
+            Clear all
+          </Button>
+        )}
+      </div>
+      <div className={styles.footerRight}>
+        <Button variant="accent" type="submit" data-testid="filter-apply-button">
+          Apply
+        </Button>
+        <Button onClick={onCancel} data-testid="filter-cancel-button">
+          Cancel
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+interface FilterConditionListProps {
+  conditions: FilterCondition[]
+  rowContext: FilterRowContext
+  onAdd: () => void
+}
+
+function FilterConditionList({ conditions, rowContext, onAdd }: FilterConditionListProps) {
+  if (conditions.length === 0) return <EmptyFilterState onAdd={onAdd} />
+  return (
+    <>
+      <div className={styles.rows} data-testid="filter-rows">
+        {conditions.map((condition, index) => (
+          <FilterConditionRow
+            key={index}
+            condition={condition}
+            index={index}
+            context={rowContext}
+          />
+        ))}
+      </div>
+      <AddConditionButton onAdd={onAdd} />
+    </>
+  )
+}
 
 export function FilterDialog({
   isOpen,
@@ -88,89 +139,17 @@ export function FilterDialog({
   initialConditions,
   columns,
 }: FilterDialogProps) {
-  // Local editing copy — reset from props every time dialog opens.
-  const [conditions, setConditions] = useState<FilterCondition[]>(() =>
-    copyConditionsWhenOpen(isOpen, initialConditions)
-  )
-  const [syncedOpenState, setSyncedOpenState] = useState({ isOpen, initialConditions })
-  const valueInputRefs = useRef<(HTMLInputElement | null)[]>([])
-  const hasAutoFocusedForOpenRef = useRef(false)
-
-  const hasOpenStateChanged =
-    syncedOpenState.isOpen !== isOpen || syncedOpenState.initialConditions !== initialConditions
-  if (hasOpenStateChanged) {
-    setSyncedOpenState({ isOpen, initialConditions })
-  }
-  const shouldResetConditions = hasOpenStateChanged && isOpen
-  if (shouldResetConditions) {
-    setConditions(copyConditions(initialConditions))
-  }
-
-  useEffect(() => {
-    hasAutoFocusedForOpenRef.current = false
-  }, [isOpen, initialConditions])
-
-  // --- Handlers ---
-
-  const defaultColumn = columns.length > 0 ? columns[0] : ''
-
-  const handleAdd = useCallback(() => {
-    setConditions((previous) => [
-      ...previous,
-      { column: defaultColumn, operator: DEFAULT_OPERATOR, value: '' },
-    ])
-  }, [defaultColumn])
-
-  const handleRemove = useCallback((index: number) => {
-    setConditions((previous) => withoutConditionAt(previous, index))
-  }, [])
-
-  const handleChange = useCallback((index: number, field: keyof FilterCondition, value: string) => {
-    const change = { index: index, field: field, value: value }
-    setConditions((previous) => withConditionChanged(previous, change))
-  }, [])
-
-  const handleClearAll = useCallback(() => {
-    setConditions([])
-  }, [])
-
-  const handleApply = useCallback(() => {
-    onApply(conditions)
-  }, [onApply, conditions])
-
-  const handleSubmit = useFormSubmit(handleApply)
-
+  const filter = useFilterConditions({
+    isOpen: isOpen,
+    initialConditions: initialConditions,
+    columns: columns,
+  })
+  const { conditions } = filter
+  const handleSubmit = useFormSubmit(useCallback(() => onApply(conditions), [onApply, conditions]))
   const columnDropdownOptions: DropdownOption[] = useMemo(
     () => columns.map((column) => ({ value: column, label: column })),
     [columns]
   )
-
-  useEffect(() => {
-    if (!isOpen) return
-    if (conditions.length === 0) return
-    if (hasAutoFocusedForOpenRef.current) return
-
-    const firstFocusableInput = valueInputRefs.current.find(isFocusableInput)
-    if (!firstFocusableInput) return
-
-    let innerFrameId = 0
-    const frameId = requestAnimationFrame(() => {
-      innerFrameId = requestAnimationFrame(() => {
-        firstFocusableInput.focus()
-        firstFocusableInput.select()
-        hasAutoFocusedForOpenRef.current = true
-      })
-    })
-
-    return () => {
-      cancelAnimationFrame(frameId)
-      cancelAnimationFrame(innerFrameId)
-    }
-  }, [conditions, isOpen])
-
-  // --- Render ---
-
-  const hasConditions = conditions.length > 0
 
   return (
     <DialogShell
@@ -183,135 +162,24 @@ export function FilterDialog({
       formProps={{ onSubmit: handleSubmit }}
     >
       <div className={styles.root}>
-        {/* Header */}
-        <div className={styles.header}>
-          <h2 className={styles.title}>Filter conditions</h2>
-          <Button
-            variant="bare"
-            className={styles.closeButton}
-            onClick={onCancel}
-            aria-label="Close"
-            data-testid="filter-dialog-close"
-          >
-            <X size={18} weight="bold" />
-          </Button>
-        </div>
-
-        {/* Body */}
+        <FilterDialogHeader onCancel={onCancel} />
         <div className={styles.body}>
-          {hasConditions ? (
-            <>
-              {/* Condition rows */}
-              <div className={styles.rows} data-testid="filter-rows">
-                {conditions.map((cond, index) => {
-                  const isNullary = isNullaryOperator(cond.operator)
-                  return (
-                    <div className={styles.row} key={index} data-testid="filter-row">
-                      {/* Column */}
-                      <Dropdown
-                        id={`filter-column-${index}`}
-                        ariaLabel={`Column for condition ${index + 1}`}
-                        options={columnDropdownOptions}
-                        value={cond.column}
-                        onChange={(value) => handleChange(index, 'column', value)}
-                        data-testid={`filter-column-select-${index}`}
-                        className={styles.dropdownWrapper}
-                        triggerClassName={styles.columnSelect}
-                      />
-
-                      {/* Operator */}
-                      <Dropdown
-                        id={`filter-operator-${index}`}
-                        ariaLabel={`Operator for condition ${index + 1}`}
-                        options={OPERATOR_DROPDOWN_OPTIONS}
-                        value={cond.operator}
-                        onChange={(value) => handleChange(index, 'operator', value)}
-                        data-testid={`filter-operator-select-${index}`}
-                        className={styles.dropdownWrapper}
-                        triggerClassName={styles.operatorSelect}
-                      />
-
-                      {/* Value */}
-                      <TextInput
-                        ref={(element) => {
-                          valueInputRefs.current[index] = element
-                        }}
-                        variant="bare"
-                        type="text"
-                        className={`ui-field-chrome ${styles.valueInput} ${isNullary ? styles.valueInputDisabled : ''}`}
-                        value={cond.value}
-                        onChange={(event) => handleChange(index, 'value', event.target.value)}
-                        disabled={isNullary}
-                        placeholder={isNullary ? 'n/a' : ''}
-                        aria-label={`Value for condition ${index + 1}`}
-                        data-testid="filter-value-input"
-                      />
-
-                      {/* Remove */}
-                      <Button
-                        variant="bare"
-                        className={styles.removeButton}
-                        onClick={() => handleRemove(index)}
-                        aria-label={`Remove condition ${index + 1}`}
-                        data-testid="filter-remove-button"
-                      >
-                        <X size={14} weight="bold" />
-                      </Button>
-                    </div>
-                  )
-                })}
-              </div>
-
-              {/* Add button */}
-              <Button
-                variant="bare"
-                className={styles.addButton}
-                onClick={handleAdd}
-                data-testid="filter-add-button"
-              >
-                <Plus size={14} weight="bold" />
-                <span>Add condition</span>
-              </Button>
-            </>
-          ) : (
-            /* Empty state */
-            <div className={styles.emptyState} data-testid="filter-empty-state">
-              <Funnel size={32} weight="thin" className={styles.emptyIcon} />
-              <span className={styles.emptyTitle}>No filter conditions</span>
-              <span className={styles.emptyHelp}>
-                Add conditions to narrow table rows. All conditions are combined with AND.
-              </span>
-              <Button
-                variant="bare"
-                className={styles.addButton}
-                onClick={handleAdd}
-                data-testid="filter-add-button"
-              >
-                <Plus size={14} weight="bold" />
-                <span>Add condition</span>
-              </Button>
-            </div>
-          )}
+          <FilterConditionList
+            conditions={conditions}
+            onAdd={filter.add}
+            rowContext={{
+              columnDropdownOptions: columnDropdownOptions,
+              onChange: filter.change,
+              onRemove: filter.remove,
+              registerValueInput: filter.registerValueInput,
+            }}
+          />
         </div>
-
-        {/* Footer */}
-        <div className={styles.footer}>
-          <div className={styles.footerLeft}>
-            {hasConditions && (
-              <Button onClick={handleClearAll} data-testid="filter-clear-all-button">
-                Clear all
-              </Button>
-            )}
-          </div>
-          <div className={styles.footerRight}>
-            <Button variant="accent" type="submit" data-testid="filter-apply-button">
-              Apply
-            </Button>
-            <Button onClick={onCancel} data-testid="filter-cancel-button">
-              Cancel
-            </Button>
-          </div>
-        </div>
+        <FilterDialogFooter
+          hasConditions={conditions.length > 0}
+          onClearAll={filter.clearAll}
+          onCancel={onCancel}
+        />
       </div>
     </DialogShell>
   )

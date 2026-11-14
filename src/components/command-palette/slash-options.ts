@@ -1,5 +1,5 @@
 import type { PaletteTypeFilter } from '../../types/schema'
-import type { CommandPaletteFilterPillValue } from './CommandPalette'
+import type { CommandPaletteFilterPillValue } from './palette-types'
 
 interface SlashKeywordOption {
   value: PaletteTypeFilter

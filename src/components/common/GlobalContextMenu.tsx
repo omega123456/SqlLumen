@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ClipboardText, CopySimple, Scissors } from '@phosphor-icons/react'
 import { logFrontend } from '../../lib/app-log-commands'
+import { useContextMenuPlacement } from '../../hooks/use-context-menu-placement'
 import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
 import {
   getContextMenuPositionMode,
   getContextMenuPortalRoot,
-  positionContextMenuInPortal,
   readClipboardText,
   resolveEditableFieldFromTarget,
   isInsideDisabledTextControl,
@@ -168,10 +168,13 @@ async function runPaste(field: HTMLElement, textSelection?: TextSelectionRange):
   }
 }
 
-function menuFlags(
-  field: HTMLElement,
-  textSelection?: TextSelectionRange
-): { canCopy: boolean; canCut: boolean; canPaste: boolean } {
+interface MenuFlags {
+  canCopy: boolean
+  canCut: boolean
+  canPaste: boolean
+}
+
+function menuFlags(field: HTMLElement, textSelection?: TextSelectionRange): MenuFlags {
   if (isTextControl(field)) {
     const readOnly = field.readOnly
     const { start, end } = resolveSelectionRange(field, textSelection)
@@ -189,6 +192,105 @@ function menuFlags(
     canCut: hasSelection,
     canPaste: true,
   }
+}
+
+const MENU_ICON_SIZE = 18
+
+type ClipboardAction = (field: HTMLElement, textSelection?: TextSelectionRange) => Promise<void>
+
+interface MenuItemSpec {
+  key: string
+  label: string
+  testId: string
+  Icon: typeof Scissors
+  action: ClipboardAction
+  isEnabled: (flags: MenuFlags) => boolean
+}
+
+const MENU_ITEMS: MenuItemSpec[] = [
+  {
+    key: 'cut',
+    label: 'Cut',
+    testId: 'global-context-cut',
+    Icon: Scissors,
+    action: runCut,
+    isEnabled: (flags) => flags.canCut,
+  },
+  {
+    key: 'copy',
+    label: 'Copy',
+    testId: 'global-context-copy',
+    Icon: CopySimple,
+    action: runCopy,
+    isEnabled: (flags) => flags.canCopy,
+  },
+  {
+    key: 'paste',
+    label: 'Paste',
+    testId: 'global-context-paste',
+    Icon: ClipboardText,
+    action: runPaste,
+    isEnabled: (flags) => flags.canPaste,
+  },
+]
+
+function useDismissAllListener(closeMenu: () => void) {
+  useEffect(() => {
+    document.addEventListener(DISMISS_ALL_CONTEXT_MENUS, closeMenu)
+    return () => {
+      document.removeEventListener(DISMISS_ALL_CONTEXT_MENUS, closeMenu)
+    }
+  }, [closeMenu])
+}
+
+function openStateForContextMenu(event: MouseEvent): OpenState | null {
+  if (isInsideDisabledTextControl(event.target)) {
+    event.stopPropagation()
+    return null
+  }
+
+  const field = resolveEditableFieldFromTarget(event.target)
+  if (!field) {
+    return null
+  }
+
+  event.stopPropagation()
+  dispatchDismissAll()
+
+  return {
+    x: event.clientX,
+    y: event.clientY,
+    field: field,
+    portalRoot: getContextMenuPortalRoot(field),
+    textSelection: currentTextSelection(field),
+  }
+}
+
+function useEditableFieldContextMenu(setOpen: (open: OpenState) => void) {
+  useEffect(() => {
+    const onContextMenu = (event: MouseEvent) => {
+      event.preventDefault()
+      const nextOpen = openStateForContextMenu(event)
+      if (nextOpen) setOpen(nextOpen)
+    }
+
+    document.addEventListener('contextmenu', onContextMenu, true)
+    return () => {
+      document.removeEventListener('contextmenu', onContextMenu, true)
+    }
+  }, [setOpen])
+}
+
+function runMenuAction(action: () => Promise<void>, closeMenu: () => void) {
+  void (async () => {
+    try {
+      await action()
+    } catch (error) {
+      logFrontend('warn', `[global-context-menu] Clipboard action failed: ${String(error)}`)
+    } finally {
+      closeMenu()
+    }
+  })()
 }
 
 /**
@@ -209,86 +311,15 @@ export function GlobalContextMenu() {
     onDismiss: closeMenu,
     options: { closeOnEscape: true },
   })
-
-  useLayoutEffect(() => {
-    const element = menuRef.current
-    if (!open) return
-    if (!element) return
-    const rect = element.getBoundingClientRect()
-    const position = positionContextMenuInPortal({
-      portalRoot: open.portalRoot,
-      clientX: open.x,
-      clientY: open.y,
-      menuWidth: rect.width,
-      menuHeight: rect.height,
-    })
-    element.style.left = `${position.x}px`
-    element.style.top = `${position.y}px`
-  }, [open])
-
-  // Listen for dismiss-all events dispatched by other context menus
-  useEffect(() => {
-    const onDismissAll = () => {
-      setOpen(null)
-    }
-    document.addEventListener(DISMISS_ALL_CONTEXT_MENUS, onDismissAll)
-    return () => {
-      document.removeEventListener(DISMISS_ALL_CONTEXT_MENUS, onDismissAll)
-    }
-  }, [])
-
-  useEffect(() => {
-    const onContextMenu = (event: MouseEvent) => {
-      event.preventDefault()
-
-      if (isInsideDisabledTextControl(event.target)) {
-        event.stopPropagation()
-        return
-      }
-
-      const field = resolveEditableFieldFromTarget(event.target)
-      if (!field) {
-        return
-      }
-
-      event.stopPropagation()
-
-      // Dismiss any other open context menus before opening this one
-      dispatchDismissAll()
-
-      const textSelection = currentTextSelection(field)
-      setOpen({
-        x: event.clientX,
-        y: event.clientY,
-        field: field,
-        portalRoot: getContextMenuPortalRoot(field),
-        textSelection: textSelection,
-      })
-    }
-
-    document.addEventListener('contextmenu', onContextMenu, true)
-    return () => {
-      document.removeEventListener('contextmenu', onContextMenu, true)
-    }
-  }, [])
+  useContextMenuPlacement(menuRef, open)
+  useDismissAllListener(closeMenu)
+  useEditableFieldContextMenu(setOpen)
 
   if (!open) {
     return null
   }
 
-  const { canCopy, canCut, canPaste } = menuFlags(open.field, open.textSelection)
-
-  const handleAction = (action: () => Promise<void>) => {
-    void (async () => {
-      try {
-        await action()
-      } catch (error) {
-        logFrontend('warn', `[global-context-menu] Clipboard action failed: ${String(error)}`)
-      } finally {
-        closeMenu()
-      }
-    })()
-  }
+  const flags = menuFlags(open.field, open.textSelection)
 
   return createPortal(
     <div
@@ -305,45 +336,27 @@ export function GlobalContextMenu() {
         event.preventDefault()
       }}
     >
-      <button
-        type="button"
-        className="ui-context-menu__item"
-        role="menuitem"
-        disabled={!canCut}
-        data-testid="global-context-cut"
-        onClick={() => {
-          handleAction(() => runCut(open.field, open.textSelection))
-        }}
-      >
-        <Scissors className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
-        <span>Cut</span>
-      </button>
-      <button
-        type="button"
-        className="ui-context-menu__item"
-        role="menuitem"
-        disabled={!canCopy}
-        data-testid="global-context-copy"
-        onClick={() => {
-          handleAction(() => runCopy(open.field, open.textSelection))
-        }}
-      >
-        <CopySimple className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
-        <span>Copy</span>
-      </button>
-      <button
-        type="button"
-        className="ui-context-menu__item"
-        role="menuitem"
-        disabled={!canPaste}
-        data-testid="global-context-paste"
-        onClick={() => {
-          handleAction(() => runPaste(open.field, open.textSelection))
-        }}
-      >
-        <ClipboardText className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
-        <span>Paste</span>
-      </button>
+      {MENU_ITEMS.map(({ key, label, testId, Icon, action, isEnabled }) => (
+        <button
+          key={key}
+          type="button"
+          className="ui-context-menu__item"
+          role="menuitem"
+          disabled={!isEnabled(flags)}
+          data-testid={testId}
+          onClick={() => {
+            runMenuAction(() => action(open.field, open.textSelection), closeMenu)
+          }}
+        >
+          <Icon
+            className="ui-context-menu__icon"
+            size={MENU_ICON_SIZE}
+            weight="regular"
+            aria-hidden
+          />
+          <span>{label}</span>
+        </button>
+      ))}
     </div>,
     open.portalRoot
   )

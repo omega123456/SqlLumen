@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react'
-import { useQueryStore } from '../../stores/query-store'
+import { useQueryStore, type ActiveBottomPanelItem } from '../../stores/query-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { ResultPanel } from './ResultPanel'
 import { TableDataTab } from '../table-data/TableDataTab'
@@ -15,6 +15,96 @@ interface QueryBottomPanelProps {
 
 const DEFAULT_ACTIVE_BOTTOM_PANEL_ITEM = { type: 'result' } as const
 
+interface ResultTabPanelProps {
+  queryTabId: string
+  connectionId: string
+  resultIndex: number
+  activeResultIndex: number
+  isResultActive: boolean
+}
+
+function ResultTabPanel(props: ResultTabPanelProps) {
+  const { queryTabId, resultIndex, isResultActive } = props
+  const isActiveResultPanel = resultIndex === props.activeResultIndex
+  return (
+    <div
+      role="tabpanel"
+      id={`result-tabpanel-${queryTabId}-${resultIndex}`}
+      aria-labelledby={`result-${queryTabId}-${resultIndex}`}
+      hidden={!isResultActive}
+      className={styles.panel}
+      data-testid={
+        isActiveResultPanel
+          ? 'query-bottom-panel-results'
+          : `query-bottom-panel-result-${resultIndex}`
+      }
+    >
+      {isResultActive && (
+        <ResultPanel
+          tabId={queryTabId}
+          connectionId={props.connectionId}
+          isActive={true}
+          hideSubTabs
+        />
+      )}
+    </div>
+  )
+}
+
+interface TableTabPanelProps {
+  tab: TableDataTabType
+  isPanelActive: boolean
+  isTableActive: boolean
+}
+
+function TableTabPanel({ tab, isPanelActive, isTableActive }: TableTabPanelProps) {
+  return (
+    <div
+      role="tabpanel"
+      id={`table-data-tabpanel-${tab.id}`}
+      aria-labelledby={`table-${tab.id}`}
+      hidden={!isTableActive}
+      className={styles.panel}
+      data-testid={`query-bottom-panel-table-${tab.id}`}
+    >
+      {isPanelActive && (
+        <TableDataTab tab={tab} isActive={isTableActive} renderMode="bottom-panel" />
+      )}
+    </div>
+  )
+}
+
+function isActiveTableItem(item: ActiveBottomPanelItem, tabId: string): boolean {
+  return item.type === 'table-data' && item.tabId === tabId
+}
+
+function useScopedTableTabs(connectionId: string, queryTabId: string) {
+  const connectionTabs = useWorkspaceStore((state) => state.tabsByConnection[connectionId] ?? [])
+  return useMemo(
+    () =>
+      connectionTabs.filter((tab): tab is TableDataTabType =>
+        isScopedTableDataTabOf(tab, queryTabId)
+      ),
+    [connectionTabs, queryTabId]
+  )
+}
+
+function useFallBackToResultWhenTableTabCloses(
+  queryTabId: string,
+  activeBottomPanelItem: ActiveBottomPanelItem,
+  scopedTableTabs: TableDataTabType[]
+) {
+  const setActiveBottomPanelItem = useQueryStore((state) => state.setActiveBottomPanelItem)
+  const hasActiveTableTab = scopedTableTabs.some((tab) =>
+    isActiveTableItem(activeBottomPanelItem, tab.id)
+  )
+  useEffect(() => {
+    if (activeBottomPanelItem.type !== 'table-data') return
+    if (hasActiveTableTab) return
+    setActiveBottomPanelItem(queryTabId, { type: 'result' })
+  }, [activeBottomPanelItem, hasActiveTableTab, queryTabId, setActiveBottomPanelItem])
+}
+
 export function QueryBottomPanel({
   queryTabId,
   connectionId,
@@ -26,82 +116,30 @@ export function QueryBottomPanel({
     (state) => state.tabs[queryTabId]?.activeBottomPanelItem ?? DEFAULT_ACTIVE_BOTTOM_PANEL_ITEM
   )
   const activeResultIndex = queryTabState?.activeResultIndex ?? 0
-  const setActiveBottomPanelItem = useQueryStore((state) => state.setActiveBottomPanelItem)
-  const connectionTabs = useWorkspaceStore((state) => state.tabsByConnection[connectionId] ?? [])
-  const scopedTableTabs = useMemo(
-    () =>
-      connectionTabs.filter((tab): tab is TableDataTabType =>
-        isScopedTableDataTabOf(tab, queryTabId)
-      ),
-    [connectionTabs, queryTabId]
-  )
-
-  const activeTableTab = useMemo(
-    () =>
-      activeBottomPanelItem.type === 'table-data'
-        ? (scopedTableTabs.find((tab) => tab.id === activeBottomPanelItem.tabId) ?? null)
-        : null,
-    [activeBottomPanelItem, scopedTableTabs]
-  )
-
-  useEffect(() => {
-    if (activeBottomPanelItem.type !== 'table-data') return
-    if (activeTableTab) return
-    setActiveBottomPanelItem(queryTabId, { type: 'result' })
-  }, [activeBottomPanelItem, activeTableTab, queryTabId, setActiveBottomPanelItem])
+  const scopedTableTabs = useScopedTableTabs(connectionId, queryTabId)
+  useFallBackToResultWhenTableTabCloses(queryTabId, activeBottomPanelItem, scopedTableTabs)
+  const isResultItemShown = isActive && activeBottomPanelItem.type === 'result'
 
   return (
     <div className={styles.container} data-testid="query-bottom-panel">
-      {results.map((_, resultIndex) => {
-        const isResultActive =
-          isActive && activeBottomPanelItem.type === 'result' && activeResultIndex === resultIndex
-
-        return (
-          <div
-            key={`result-panel-${resultIndex}`}
-            role="tabpanel"
-            id={`result-tabpanel-${queryTabId}-${resultIndex}`}
-            aria-labelledby={`result-${queryTabId}-${resultIndex}`}
-            hidden={!isResultActive}
-            className={styles.panel}
-            data-testid={
-              resultIndex === activeResultIndex
-                ? 'query-bottom-panel-results'
-                : `query-bottom-panel-result-${resultIndex}`
-            }
-          >
-            {isResultActive && (
-              <ResultPanel
-                tabId={queryTabId}
-                connectionId={connectionId}
-                isActive={true}
-                hideSubTabs
-              />
-            )}
-          </div>
-        )
-      })}
-      {scopedTableTabs.map((tab) => {
-        const isTableActive =
-          isActive &&
-          activeBottomPanelItem.type === 'table-data' &&
-          activeBottomPanelItem.tabId === tab.id
-        return (
-          <div
-            key={tab.id}
-            role="tabpanel"
-            id={`table-data-tabpanel-${tab.id}`}
-            aria-labelledby={`table-${tab.id}`}
-            hidden={!isTableActive}
-            className={styles.panel}
-            data-testid={`query-bottom-panel-table-${tab.id}`}
-          >
-            {isActive && (
-              <TableDataTab tab={tab} isActive={isTableActive} renderMode="bottom-panel" />
-            )}
-          </div>
-        )
-      })}
+      {results.map((_, resultIndex) => (
+        <ResultTabPanel
+          key={`result-panel-${resultIndex}`}
+          queryTabId={queryTabId}
+          connectionId={connectionId}
+          resultIndex={resultIndex}
+          activeResultIndex={activeResultIndex}
+          isResultActive={isResultItemShown && activeResultIndex === resultIndex}
+        />
+      ))}
+      {scopedTableTabs.map((tab) => (
+        <TableTabPanel
+          key={tab.id}
+          tab={tab}
+          isPanelActive={isActive}
+          isTableActive={isActive && isActiveTableItem(activeBottomPanelItem, tab.id)}
+        />
+      ))}
     </div>
   )
 }

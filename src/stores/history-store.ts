@@ -9,13 +9,13 @@ import { showErrorToast, showSuccessToast } from './toast-store'
 
 import { logFrontendError } from '../lib/app-log-commands'
 import { toErrorMessage } from '../lib/error-message'
+
 const DEFAULT_PAGE_SIZE = 50
-/** Delay between the last search keystroke and the `list_history` request. */
+
 export const HISTORY_SEARCH_DEBOUNCE_MS = 250
 
-/** Pending debounced search loads, keyed by connection ID. */
 const searchDebounceTimers: Record<string, ReturnType<typeof setTimeout>> = {}
-/** Latest `loadHistory` request number per connection; older responses are dropped. */
+
 const latestRequestSeq: Record<string, number> = {}
 
 function nextRequestSeq(connectionId: string): number {
@@ -24,47 +24,24 @@ function nextRequestSeq(connectionId: string): number {
   return seq
 }
 
-/** Options for {@link HistoryState.loadHistory}. */
 interface LoadHistoryOptions {
-  /** 1-indexed page to fetch. Defaults to the connection's current page (or 1). */
   page?: number
-  /** Search term. Defaults to the connection's stored search. */
   search?: string
-  /**
-   * RFC-3339 lower bound on `timestamp`; only entries at/after this instant are
-   * returned and counted. `null` means "no time filter". Defaults to the
-   * connection's stored `since`.
-   */
   since?: string | null
-  /**
-   * When `true`, append the fetched rows to the existing list ("load more")
-   * instead of replacing it. Uses `isLoadingMoreByConnection` for the spinner
-   * and never raises the full-panel error state.
-   */
   append?: boolean
 }
 
 interface HistoryState {
-  /** Entries keyed by connection ID (accumulated when loading more). */
   entriesByConnection: Record<string, HistoryEntry[]>
-  /** Total count per connection within the current search/time-range filter. */
   totalByConnection: Record<string, number>
-  /** Highest page loaded per connection (1-indexed). */
   pageByConnection: Record<string, number>
-  /** Search filter per connection. */
   searchByConnection: Record<string, string>
-  /** RFC-3339 time-range lower bound per connection (`null` = no filter). */
   sinceByConnection: Record<string, string | null>
-  /** Loading state per connection (initial / replace load). */
   isLoadingByConnection: Record<string, boolean>
-  /** Loading state per connection for "load more" (append) requests. */
   isLoadingMoreByConnection: Record<string, boolean>
-  /** Error message per connection. */
   errorByConnection: Record<string, string | null>
-  /** Page size (global constant). */
   pageSize: number
 
-  // Actions
   loadHistory: (connectionId: string, options?: LoadHistoryOptions) => Promise<void>
   loadMore: (connectionId: string) => Promise<void>
   deleteEntry: (connectionId: string, id: number) => Promise<void>
@@ -72,7 +49,6 @@ interface HistoryState {
   setSearch: (connectionId: string, search: string) => void
   setPage: (connectionId: string, page: number) => void
   reset: () => void
-  /** Re-fetch the first page if history is loaded for this connection. */
   notifyNewQuery: (connectionId: string) => void
 }
 
@@ -129,7 +105,6 @@ function markHistoryLoading(connectionId: string, append: boolean): void {
 function markHistoryLoadFailed(connectionId: string, append: boolean, message: string): void {
   const state = useHistoryStore.getState()
   if (append) {
-    // The already-loaded rows stay visible, so the failure surfaces as a toast.
     useHistoryStore.setState({
       isLoadingMoreByConnection: { ...state.isLoadingMoreByConnection, [connectionId]: false },
     })
@@ -142,121 +117,143 @@ function markHistoryLoadFailed(connectionId: string, append: boolean, message: s
   })
 }
 
-export const useHistoryStore = create<HistoryState>()((set, get) => ({
-  ...INITIAL_STATE,
+async function loadHistory(connectionId: string, options: LoadHistoryOptions = {}): Promise<void> {
+  const { append, page, search, since } = resolveHistoryQuery(
+    useHistoryStore.getState(),
+    connectionId,
+    options
+  )
+  const requestSeq = nextRequestSeq(connectionId)
+  const isStale = () => latestRequestSeq[connectionId] !== requestSeq
+  markHistoryLoading(connectionId, append)
 
-  loadHistory: async (connectionId: string, options: LoadHistoryOptions = {}) => {
-    const { append, page, search, since } = resolveHistoryQuery(get(), connectionId, options)
-    const requestSeq = nextRequestSeq(connectionId)
-    const isStale = () => latestRequestSeq[connectionId] !== requestSeq
-    markHistoryLoading(connectionId, append)
+  try {
+    const result: HistoryPage = await listHistoryCmd({
+      connectionId: connectionId,
+      page: page,
+      pageSize: useHistoryStore.getState().pageSize,
+      search: search,
+      since: since,
+    })
+    if (isStale()) return
 
-    try {
-      const result: HistoryPage = await listHistoryCmd({
-        connectionId: connectionId,
-        page: page,
-        pageSize: get().pageSize,
-        search: search,
-        since: since,
-      })
-      // A newer load (or search) for this connection superseded this one.
-      if (isStale()) return
+    const previous = useHistoryStore.getState().entriesByConnection[connectionId] ?? []
+    const entries = append ? [...previous, ...result.entries] : result.entries
 
-      const previous = get().entriesByConnection[connectionId] ?? []
-      const entries = append ? [...previous, ...result.entries] : result.entries
+    useHistoryStore.setState({
+      entriesByConnection: {
+        ...useHistoryStore.getState().entriesByConnection,
+        [connectionId]: entries,
+      },
+      totalByConnection: {
+        ...useHistoryStore.getState().totalByConnection,
+        [connectionId]: result.total,
+      },
+      pageByConnection: { ...useHistoryStore.getState().pageByConnection, [connectionId]: page },
+      searchByConnection: {
+        ...useHistoryStore.getState().searchByConnection,
+        [connectionId]: search,
+      },
+      sinceByConnection: { ...useHistoryStore.getState().sinceByConnection, [connectionId]: since },
+      isLoadingByConnection: {
+        ...useHistoryStore.getState().isLoadingByConnection,
+        [connectionId]: false,
+      },
+      isLoadingMoreByConnection: {
+        ...useHistoryStore.getState().isLoadingMoreByConnection,
+        [connectionId]: false,
+      },
+    })
+  } catch (error) {
+    const message = toErrorMessage(error)
+    logFrontendError('[history-store] loadHistory failed:', error)
+    if (isStale()) return
+    markHistoryLoadFailed(connectionId, append, message)
+  }
+}
 
-      set({
-        entriesByConnection: { ...get().entriesByConnection, [connectionId]: entries },
-        totalByConnection: { ...get().totalByConnection, [connectionId]: result.total },
-        pageByConnection: { ...get().pageByConnection, [connectionId]: page },
-        searchByConnection: { ...get().searchByConnection, [connectionId]: search },
-        sinceByConnection: { ...get().sinceByConnection, [connectionId]: since },
-        isLoadingByConnection: { ...get().isLoadingByConnection, [connectionId]: false },
-        isLoadingMoreByConnection: {
-          ...get().isLoadingMoreByConnection,
-          [connectionId]: false,
-        },
-      })
-    } catch (error) {
-      const message = toErrorMessage(error)
-      logFrontendError('[history-store] loadHistory failed:', error)
-      if (isStale()) return
-      markHistoryLoadFailed(connectionId, append, message)
-    }
-  },
+async function loadMore(connectionId: string): Promise<void> {
+  const nextPage = (useHistoryStore.getState().pageByConnection[connectionId] ?? 1) + 1
+  await useHistoryStore.getState().loadHistory(connectionId, { page: nextPage, append: true })
+}
 
-  loadMore: async (connectionId: string) => {
-    const nextPage = (get().pageByConnection[connectionId] ?? 1) + 1
-    await get().loadHistory(connectionId, { page: nextPage, append: true })
-  },
+async function deleteEntry(connectionId: string, id: number): Promise<void> {
+  try {
+    await deleteHistoryEntryCmd(id)
+    const state = useHistoryStore.getState()
+    const page = state.pageByConnection[connectionId] ?? 1
+    await useHistoryStore.getState().loadHistory(connectionId, { page })
+  } catch (error) {
+    const message = toErrorMessage(error)
+    logFrontendError('[history-store] deleteEntry failed:', error)
+    showErrorToast('Failed to delete history entry', message)
+  }
+}
 
-  deleteEntry: async (connectionId: string, id: number) => {
-    try {
-      await deleteHistoryEntryCmd(id)
-      // Refresh current page for the connection
-      const state = get()
-      const page = state.pageByConnection[connectionId] ?? 1
-      await get().loadHistory(connectionId, { page })
-    } catch (error) {
-      const message = toErrorMessage(error)
-      logFrontendError('[history-store] deleteEntry failed:', error)
-      showErrorToast('Failed to delete history entry', message)
-    }
-  },
+async function clearAll(connectionId: string): Promise<void> {
+  try {
+    const count = await clearHistoryCmd(connectionId)
+    useHistoryStore.setState({
+      entriesByConnection: {
+        ...useHistoryStore.getState().entriesByConnection,
+        [connectionId]: [],
+      },
+      totalByConnection: { ...useHistoryStore.getState().totalByConnection, [connectionId]: 0 },
+      pageByConnection: { ...useHistoryStore.getState().pageByConnection, [connectionId]: 1 },
+    })
+    showSuccessToast('History cleared', `Removed ${count} entries`)
+  } catch (error) {
+    const message = toErrorMessage(error)
+    logFrontendError('[history-store] clearAll failed:', error)
+    showErrorToast('Failed to clear history', message)
+  }
+}
 
-  clearAll: async (connectionId: string) => {
-    try {
-      const count = await clearHistoryCmd(connectionId)
-      set({
-        entriesByConnection: { ...get().entriesByConnection, [connectionId]: [] },
-        totalByConnection: { ...get().totalByConnection, [connectionId]: 0 },
-        pageByConnection: { ...get().pageByConnection, [connectionId]: 1 },
-      })
-      showSuccessToast('History cleared', `Removed ${count} entries`)
-    } catch (error) {
-      const message = toErrorMessage(error)
-      logFrontendError('[history-store] clearAll failed:', error)
-      showErrorToast('Failed to clear history', message)
-    }
-  },
+function setSearch(connectionId: string, search: string): void {
+  useHistoryStore.setState({
+    searchByConnection: {
+      ...useHistoryStore.getState().searchByConnection,
+      [connectionId]: search,
+    },
+  })
+  nextRequestSeq(connectionId)
+  clearTimeout(searchDebounceTimers[connectionId])
+  searchDebounceTimers[connectionId] = setTimeout(() => {
+    delete searchDebounceTimers[connectionId]
+    void useHistoryStore.getState().loadHistory(connectionId, { page: 1, search: search })
+  }, HISTORY_SEARCH_DEBOUNCE_MS)
+}
 
-  setSearch: (connectionId: string, search: string) => {
-    // Show the new term right away; the request waits for a typing pause.
-    set({ searchByConnection: { ...get().searchByConnection, [connectionId]: search } })
-    // Drop any in-flight load so it cannot restore the previous term.
-    nextRequestSeq(connectionId)
+function setPage(connectionId: string, page: number): void {
+  void useHistoryStore.getState().loadHistory(connectionId, { page })
+}
+
+function reset(): void {
+  for (const connectionId of Object.keys(searchDebounceTimers)) {
     clearTimeout(searchDebounceTimers[connectionId])
-    searchDebounceTimers[connectionId] = setTimeout(() => {
-      delete searchDebounceTimers[connectionId]
-      // A new search resets the load-more window back to the first page.
-      void get().loadHistory(connectionId, { page: 1, search: search })
-    }, HISTORY_SEARCH_DEBOUNCE_MS)
-  },
+    delete searchDebounceTimers[connectionId]
+  }
+  for (const connectionId of Object.keys(latestRequestSeq)) {
+    nextRequestSeq(connectionId)
+  }
+  useHistoryStore.setState(INITIAL_STATE)
+}
 
-  setPage: (connectionId: string, page: number) => {
-    void get().loadHistory(connectionId, { page })
-  },
+function notifyNewQuery(connectionId: string): void {
+  const state = useHistoryStore.getState()
+  if (connectionId in state.entriesByConnection) {
+    void useHistoryStore.getState().loadHistory(connectionId, { page: 1 })
+  }
+}
 
-  reset: () => {
-    for (const connectionId of Object.keys(searchDebounceTimers)) {
-      clearTimeout(searchDebounceTimers[connectionId])
-      delete searchDebounceTimers[connectionId]
-    }
-    // Responses still in flight belong to the state being discarded.
-    for (const connectionId of Object.keys(latestRequestSeq)) {
-      nextRequestSeq(connectionId)
-    }
-    set(INITIAL_STATE)
-  },
-
-  notifyNewQuery: (connectionId: string) => {
-    const state = get()
-    // Only refresh if history has been loaded (panel is open) for this connection.
-    // Use `in` to distinguish "never loaded" (key absent) from "loaded but empty" ([]).
-    if (connectionId in state.entriesByConnection) {
-      // Re-fetch the first page so the new query shows at the top; this also
-      // resets any "load more" window, preserving the active search/time range.
-      void get().loadHistory(connectionId, { page: 1 })
-    }
-  },
+export const useHistoryStore = create<HistoryState>()(() => ({
+  ...INITIAL_STATE,
+  loadHistory: loadHistory,
+  loadMore: loadMore,
+  deleteEntry: deleteEntry,
+  clearAll: clearAll,
+  setSearch: setSearch,
+  setPage: setPage,
+  reset: reset,
+  notifyNewQuery: notifyNewQuery,
 }))

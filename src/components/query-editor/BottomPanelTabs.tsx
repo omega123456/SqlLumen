@@ -1,16 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { CheckCircle, Table, Warning, X } from '@phosphor-icons/react'
-import { useQueryStore, type SingleResultState } from '../../stores/query-store'
+import { useCallback, useMemo, type KeyboardEvent } from 'react'
+import { useQueryStore } from '../../stores/query-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import type { TableDataTab } from '../../types/schema'
 import { UnderlineTabBar } from '../common/UnderlineTabs'
-import { Button } from '../common/Button'
 import { TAB_STRIP_NAVIGATION } from '../../lib/tab-strip-navigation'
-import { isActivationKey, isMiddleMouseButton } from '../../lib/input-events'
-import { hasResultColumns } from '../../lib/query-result-column-utils'
-import styles from './BottomPanelTabs.module.css'
-import workspaceTabStyles from '../workspace/WorkspaceTabs.module.css'
+import { isActivationKey } from '../../lib/input-events'
 import { isScopedTableDataTabOf } from '../../lib/workspace-tab-stacks'
+import { useRevealActiveTab } from '../../hooks/use-reveal-active-tab'
+import { BottomPanelTab } from './bottom-panel-tabs/BottomPanelTab'
+import {
+  activeBottomPanelItemId,
+  buildBottomPanelTabItems,
+  showsResultSeparator,
+  type BottomPanelTabItem,
+} from './bottom-panel-tabs/bottom-panel-tab-items'
+import styles from './BottomPanelTabs.module.css'
 
 interface BottomPanelTabsProps {
   queryTabId: string
@@ -19,107 +23,40 @@ interface BottomPanelTabsProps {
 
 const DEFAULT_ACTIVE_BOTTOM_PANEL_ITEM = { type: 'result' } as const
 
-type BottomPanelTabItem =
-  | { id: string; kind: 'result'; index: number; label: string; result: SingleResultState }
-  | { id: string; kind: 'table-data'; tab: TableDataTab; label: string }
-
-function getResultTabIcon(result: SingleResultState) {
-  if (result.resultStatus === 'error') {
-    return (
-      <Warning
-        size={12}
-        weight="fill"
-        className={`${workspaceTabStyles.tabTypeIcon} ${styles.errorIcon}`}
-      />
-    )
-  }
-  if (!hasResultColumns(result)) {
-    return <CheckCircle size={12} weight="fill" className={workspaceTabStyles.tabTypeIcon} />
-  }
-  return <Table size={16} weight="regular" className={workspaceTabStyles.tabTypeIcon} />
-}
-
-function bottomTabPanelId(item: BottomPanelTabItem, queryTabId: string): string {
-  if (item.kind === 'result') return `result-tabpanel-${queryTabId}-${item.index}`
-  return `table-data-tabpanel-${item.tab.id}`
-}
-
-function bottomTabTestId(item: BottomPanelTabItem): string {
-  if (item.kind === 'result') return `bottom-panel-result-tab-${item.index}`
-  return `bottom-panel-table-tab-${item.tab.id}`
-}
-
-function showsResultSeparator(
-  items: BottomPanelTabItem[],
-  index: number,
-  resultCount: number
-): boolean {
-  if (index === 0) return false
-  const item = items[index]
-  if (item.kind !== 'table-data') return false
-  return items[index - 1]?.kind === 'result' && resultCount > 0
-}
-
-function bottomTabStateProps(isActive: boolean) {
-  return {
-    className: `${styles.tab} ${isActive ? styles.tabActive : ''}`,
-    'data-active': isActive ? true : undefined,
-  }
-}
-
-export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsProps) {
+function useBottomPanelTabItems(queryTabId: string, connectionId: string) {
   const queryTabState = useQueryStore((state) => state.tabs[queryTabId])
   const results = useMemo(() => queryTabState?.results ?? [], [queryTabState?.results])
-  const activeResultIndex = queryTabState?.activeResultIndex ?? 0
   const activeBottomPanelItem =
     queryTabState?.activeBottomPanelItem ?? DEFAULT_ACTIVE_BOTTOM_PANEL_ITEM
-  const setActiveResultIndex = useQueryStore((state) => state.setActiveResultIndex)
-  const setActiveBottomPanelItem = useQueryStore((state) => state.setActiveBottomPanelItem)
-  const closeTab = useWorkspaceStore((state) => state.closeTab)
+  const activeResultIndex = queryTabState?.activeResultIndex ?? 0
   const connectionTabs = useWorkspaceStore((state) => state.tabsByConnection[connectionId] ?? [])
   const tableDataTabs = useMemo(
     () =>
       connectionTabs.filter((tab): tab is TableDataTab => isScopedTableDataTabOf(tab, queryTabId)),
     [connectionTabs, queryTabId]
   )
+  const items = useMemo(
+    () => buildBottomPanelTabItems(queryTabId, results, tableDataTabs),
+    [queryTabId, results, tableDataTabs]
+  )
+  const activeItemId = activeBottomPanelItemId({
+    queryTabId: queryTabId,
+    activeBottomPanelItem: activeBottomPanelItem,
+    activeResultIndex: activeResultIndex,
+  })
+  const hasSingleSurface = results.length <= 1 && tableDataTabs.length === 0
+  return {
+    items: items,
+    activeItemId: activeItemId,
+    resultCount: results.length,
+    hasSingleSurface: hasSingleSurface,
+  }
+}
 
-  const items = useMemo<BottomPanelTabItem[]>(() => {
-    const resultItems = results.map((result, index) => ({
-      id: `result-${queryTabId}-${index}`,
-      kind: 'result' as const,
-      index: index,
-      label: `Result ${index + 1}`,
-      result: result,
-    }))
-    const tableItems = tableDataTabs.map((tab) => ({
-      id: `table-${tab.id}`,
-      kind: 'table-data' as const,
-      tab: tab,
-      label: tab.label,
-    }))
-    return [...resultItems, ...tableItems]
-  }, [queryTabId, results, tableDataTabs])
-
-  const activeItemId = useMemo(() => {
-    if (activeBottomPanelItem.type === 'table-data') {
-      return `table-${activeBottomPanelItem.tabId}`
-    }
-    return `result-${queryTabId}-${activeResultIndex}`
-  }, [activeBottomPanelItem, activeResultIndex, queryTabId])
-
-  const activeItemIndex = items.findIndex((item) => item.id === activeItemId)
-  const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
-
-  useEffect(() => {
-    const activeTab = activeItemIndex >= 0 ? tabRefs.current[activeItemIndex] : null
-    if (!activeTab) return
-    activeTab.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-    if (activeTab.closest('[role="tablist"]')?.contains(document.activeElement)) {
-      activeTab.focus()
-    }
-  }, [activeItemIndex])
-
-  const activateItem = useCallback(
+function useActivateBottomPanelItem(queryTabId: string) {
+  const setActiveResultIndex = useQueryStore((state) => state.setActiveResultIndex)
+  const setActiveBottomPanelItem = useQueryStore((state) => state.setActiveBottomPanelItem)
+  return useCallback(
     (item: BottomPanelTabItem) => {
       if (item.kind === 'result') {
         setActiveBottomPanelItem(queryTabId, { type: 'result' })
@@ -130,20 +67,24 @@ export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsPro
     },
     [queryTabId, setActiveBottomPanelItem, setActiveResultIndex]
   )
+}
 
-  const activateFocusedItem = useCallback(() => {
-    const focusedIndex = tabRefs.current.findIndex((tab) => tab === document.activeElement)
-    if (focusedIndex >= 0) {
-      activateItem(items[focusedIndex])
-    }
-  }, [activateItem, items])
+interface TabStripKeyboardInputs {
+  items: BottomPanelTabItem[]
+  activeItemIndex: number
+  focusedTabIndex: () => number
+  activateItem: (item: BottomPanelTabItem) => void
+}
 
-  const handleKeyDown = useCallback(
-    (event: React.KeyboardEvent) => {
+function useTabStripKeyDown(inputs: TabStripKeyboardInputs) {
+  const { items, activeItemIndex, focusedTabIndex, activateItem } = inputs
+  return useCallback(
+    (event: KeyboardEvent) => {
       if (items.length === 0) return
       if (isActivationKey(event.key)) {
         event.preventDefault()
-        activateFocusedItem()
+        const focusedIndex = focusedTabIndex()
+        if (focusedIndex >= 0) activateItem(items[focusedIndex])
         return
       }
       const resolveTargetIndex = TAB_STRIP_NAVIGATION[event.key]
@@ -151,20 +92,31 @@ export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsPro
       event.preventDefault()
       activateItem(items[resolveTargetIndex(Math.max(activeItemIndex, 0), items.length)])
     },
-    [activateFocusedItem, activateItem, activeItemIndex, items]
+    [activateItem, activeItemIndex, focusedTabIndex, items]
   )
+}
 
+export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsProps) {
+  const { items, activeItemId, resultCount, hasSingleSurface } = useBottomPanelTabItems(
+    queryTabId,
+    connectionId
+  )
+  const closeTab = useWorkspaceStore((state) => state.closeTab)
+  const activeItemIndex = items.findIndex((item) => item.id === activeItemId)
+  const { registerTab, focusedTabIndex } = useRevealActiveTab(activeItemIndex)
+  const activateItem = useActivateBottomPanelItem(queryTabId)
+  const handleKeyDown = useTabStripKeyDown({
+    items: items,
+    activeItemIndex: activeItemIndex,
+    focusedTabIndex: focusedTabIndex,
+    activateItem: activateItem,
+  })
   const handleCloseTableTab = useCallback(
-    (tabId: string) => {
-      closeTab(connectionId, tabId)
-    },
+    (tabId: string) => closeTab(connectionId, tabId),
     [closeTab, connectionId]
   )
 
-  const hasSingleSurface = results.length <= 1 && tableDataTabs.length === 0
-  if (hasSingleSurface) {
-    return null
-  }
+  if (hasSingleSurface) return null
 
   return (
     <div
@@ -174,76 +126,19 @@ export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsPro
       data-testid="bottom-panel-tabs"
     >
       <UnderlineTabBar variant="selector" className={styles.strip} scrollable>
-        {items.map((item, index) => {
-          const isActive = item.id === activeItemId
-          const panelId = bottomTabPanelId(item, queryTabId)
-          const showSeparator = showsResultSeparator(items, index, results.length)
-
-          return (
-            <div key={item.id} className={styles.item}>
-              {showSeparator && (
-                <div
-                  className={styles.separator}
-                  aria-hidden="true"
-                  data-testid="bottom-panel-tabs-separator"
-                />
-              )}
-              <div
-                {...bottomTabStateProps(isActive)}
-                onMouseDown={(event) => {
-                  const isMiddleClickOnTable =
-                    isMiddleMouseButton(event) && item.kind === 'table-data'
-                  if (isMiddleClickOnTable) {
-                    event.preventDefault()
-                    handleCloseTableTab(item.tab.id)
-                  }
-                }}
-                data-testid={bottomTabTestId(item)}
-              >
-                <Button
-                  variant="bare"
-                  ref={(element) => {
-                    tabRefs.current[index] = element
-                  }}
-                  role="tab"
-                  id={item.id}
-                  aria-selected={isActive}
-                  aria-controls={panelId}
-                  tabIndex={isActive ? 0 : -1}
-                  className={styles.tabButton}
-                  onClick={() => activateItem(item)}
-                >
-                  <span className={workspaceTabStyles.tabLabel}>
-                    {item.kind === 'result' ? (
-                      getResultTabIcon(item.result)
-                    ) : (
-                      <Table
-                        size={16}
-                        weight="regular"
-                        className={workspaceTabStyles.tabTypeIcon}
-                      />
-                    )}
-                    <span className={workspaceTabStyles.tabLabelText}>{item.label}</span>
-                  </span>
-                </Button>
-                {item.kind === 'table-data' && (
-                  <Button
-                    variant="bare"
-                    className={`${workspaceTabStyles.tabClose} ${styles.closeButton}`}
-                    aria-label={`Close ${item.tab.label} table`}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      handleCloseTableTab(item.tab.id)
-                    }}
-                    data-testid={`bottom-panel-close-${item.tab.id}`}
-                  >
-                    <X size={12} weight="regular" />
-                  </Button>
-                )}
-              </div>
-            </div>
-          )
-        })}
+        {items.map((item, index) => (
+          <BottomPanelTab
+            key={item.id}
+            item={item}
+            index={index}
+            queryTabId={queryTabId}
+            isActive={item.id === activeItemId}
+            showSeparator={showsResultSeparator(items, index, resultCount)}
+            registerTab={registerTab}
+            onActivate={activateItem}
+            onCloseTableTab={handleCloseTableTab}
+          />
+        ))}
       </UnderlineTabBar>
     </div>
   )

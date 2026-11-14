@@ -24,6 +24,7 @@ import {
 export type { ReadyToFinishAction }
 
 const UP_TO_DATE_STATUS_RESET_DELAY_MS = 5_000
+
 export type UpdateStatus =
   'idle' | 'checking' | 'up-to-date' | 'available' | 'installing' | 'ready-to-finish' | 'error'
 
@@ -45,7 +46,9 @@ function isKnownUpdatePlatform(
 }
 
 let periodicTimer: ReturnType<typeof setInterval> | null = null
+
 let resetStatusTimer: ReturnType<typeof setTimeout> | null = null
+
 let periodicCheckGeneration = 0
 
 function clearResetStatusTimer(): void {
@@ -206,193 +209,218 @@ export interface UpdateState {
   restartPeriodicCheck: () => Promise<void>
 }
 
-export const useUpdateStore = create<UpdateState>()((set, get) => ({
+function setCurrentPlatform(platformValue: UpdatePlatform): void {
+  useUpdateStore.setState((state) => withDetectedPlatform(state, platformValue))
+}
+
+async function checkForUpdate(manual: boolean): Promise<void> {
+  const state = useUpdateStore.getState()
+  if (BUSY_UPDATE_STATUSES.has(state.status)) {
+    return
+  }
+
+  const checkContext: UpdateCheckContext = {
+    manual: manual,
+    wasAvailable: state.status === 'available',
+  }
+
+  clearResetStatusTimer()
+
+  if (!hasTauriApis()) {
+    if (!checkContext.wasAvailable) resetUpdateState(useUpdateStore.setState)
+    return
+  }
+
+  if (!checkContext.wasAvailable) {
+    markUpdateChecking(useUpdateStore.setState)
+  }
+
+  try {
+    const update = await checkForAvailableUpdate()
+    if (update) {
+      markUpdateAvailable(useUpdateStore.setState, update)
+      return
+    }
+    settleNoUpdateFound(useUpdateStore.setState, checkContext)
+  } catch (error) {
+    settleUpdateCheckFailure(useUpdateStore.setState, { context: checkContext, error: error })
+  }
+}
+
+function platformStateForAvailableVersion() {
+  const { currentPlatform, availableVersion } = useUpdateStore.getState()
+  return getPlatformState(currentPlatform, availableVersion)
+}
+
+function resetInstallWithoutTauri(): void {
+  useUpdateStore.setState({
+    status: 'idle',
+    errorMessage: null,
+    updateObject: null,
+    ...platformStateForAvailableVersion(),
+  })
+}
+
+function failInstallWithoutUpdate(): void {
+  const message = 'No update is available to install.'
+  logFrontend('error', `[update-store] Install failed: ${message}`)
+  useUpdateStore.setState({
+    status: 'error',
+    errorMessage: message,
+    updateObject: null,
+    ...platformStateForAvailableVersion(),
+  })
+}
+
+function downloadProgressPercent(downloaded: number, contentLength: number): number {
+  return Math.min(PERCENT_SCALE, Math.round((downloaded / contentLength) * PERCENT_SCALE))
+}
+
+function createDownloadProgressHandler(): (event: UpdateProgressEvent) => void {
+  let contentLength: number | null = null
+  let downloaded = 0
+  return (event) => {
+    if (event.event === 'Started') {
+      const total = event.data?.contentLength
+      const isKnownLength = typeof total === 'number' && total > 0
+      contentLength = isKnownLength ? total : null
+      downloaded = 0
+      useUpdateStore.setState({ downloadProgress: 0 })
+      return
+    }
+    if (event.event === 'Progress') {
+      downloaded += event.data.chunkLength
+      if (contentLength) {
+        useUpdateStore.setState({
+          downloadProgress: downloadProgressPercent(downloaded, contentLength),
+        })
+      }
+      return
+    }
+    if (event.event === 'Finished') {
+      useUpdateStore.setState({ downloadProgress: 100 })
+    }
+  }
+}
+
+async function finishInstalledUpdate(updateObject: Update): Promise<void> {
+  useUpdateStore.setState({ updateObject: null })
+
+  const currentPlatform = await detectPlatform()
+  useUpdateStore.setState((state) => withDetectedPlatform(state, currentPlatform))
+
+  if (currentPlatform === 'macos') {
+    await relaunch()
+    return
+  }
+
+  useUpdateStore.setState({
+    status: 'ready-to-finish',
+    availableVersion: updateObject.version ?? null,
+    downloadProgress: 100,
+    errorMessage: null,
+    updateObject: null,
+    ...getPlatformState(currentPlatform, updateObject.version ?? null),
+  })
+}
+
+async function downloadAndInstall(): Promise<void> {
+  clearResetStatusTimer()
+  const updateObject = useUpdateStore.getState().updateObject
+
+  if (!hasTauriApis()) {
+    resetInstallWithoutTauri()
+    return
+  }
+  if (!updateObject) {
+    failInstallWithoutUpdate()
+    return
+  }
+
+  useUpdateStore.setState({ status: 'installing', downloadProgress: 0, errorMessage: null })
+
+  try {
+    await updateObject.downloadAndInstall(createDownloadProgressHandler())
+    await finishInstalledUpdate(updateObject)
+  } catch (error) {
+    const message = toErrorMessage(error)
+    logFrontend('error', `[update-store] Install failed: ${message}`)
+    useUpdateStore.setState((state) => failInstall(state, message))
+  }
+}
+
+async function restartApp(): Promise<void> {
+  if (!hasTauriApis()) {
+    return
+  }
+
+  try {
+    const currentPlatform = await detectPlatform()
+    useUpdateStore.setState((state) => withDetectedPlatform(state, currentPlatform))
+
+    if (currentPlatform === 'linux') {
+      return
+    }
+
+    await relaunch()
+  } catch (error) {
+    const message = toErrorMessage(error)
+    logFrontend('error', `[update-store] Restart failed: ${message}`)
+    useUpdateStore.setState((state) => failRestart(state, message))
+  }
+}
+
+async function startPeriodicCheck(): Promise<void> {
+  clearPeriodicTimer()
+  const generation = ++periodicCheckGeneration
+
+  if (!hasTauriApis()) {
+    return
+  }
+
+  const intervalKey = useSettingsStore.getState().getSetting('updates.checkInterval')
+  const intervalMs = UPDATE_INTERVAL_MS[intervalKey as keyof typeof UPDATE_INTERVAL_MS]
+
+  if (!intervalMs) {
+    return
+  }
+
+  await useUpdateStore.getState().checkForUpdate(false)
+
+  if (generation !== periodicCheckGeneration) {
+    return
+  }
+
+  periodicTimer = setInterval(() => {
+    void useUpdateStore.getState().checkForUpdate(false)
+  }, intervalMs)
+}
+
+function stopPeriodicCheck(): void {
+  periodicCheckGeneration += 1
+  clearPeriodicTimer()
+  clearResetStatusTimer()
+}
+
+async function restartPeriodicCheck(): Promise<void> {
+  useUpdateStore.getState().stopPeriodicCheck()
+  await useUpdateStore.getState().startPeriodicCheck()
+}
+
+export const useUpdateStore = create<UpdateState>()(() => ({
   status: 'idle',
   ...getPlatformState('unknown', null),
   availableVersion: null,
   downloadProgress: 0,
   errorMessage: null,
   updateObject: null,
-
-  setCurrentPlatform: (platformValue: UpdatePlatform) => {
-    set((state) => withDetectedPlatform(state, platformValue))
-  },
-
-  checkForUpdate: async (manual: boolean) => {
-    const state = get()
-    if (BUSY_UPDATE_STATUSES.has(state.status)) {
-      return
-    }
-
-    const checkContext: UpdateCheckContext = {
-      manual: manual,
-      wasAvailable: state.status === 'available',
-    }
-
-    clearResetStatusTimer()
-
-    if (!hasTauriApis()) {
-      if (!checkContext.wasAvailable) resetUpdateState(set)
-      return
-    }
-
-    if (!checkContext.wasAvailable) {
-      markUpdateChecking(set)
-    }
-
-    try {
-      const update = await checkForAvailableUpdate()
-      if (update) {
-        markUpdateAvailable(set, update)
-        return
-      }
-      settleNoUpdateFound(set, checkContext)
-    } catch (error) {
-      settleUpdateCheckFailure(set, { context: checkContext, error: error })
-    }
-  },
-
-  downloadAndInstall: async () => {
-    clearResetStatusTimer()
-    const updateObject = get().updateObject
-
-    if (!hasTauriApis()) {
-      set({
-        status: 'idle',
-        errorMessage: null,
-        updateObject: null,
-        ...getPlatformState(get().currentPlatform, get().availableVersion),
-      })
-      return
-    }
-
-    if (!updateObject) {
-      const message = 'No update is available to install.'
-      logFrontend('error', `[update-store] Install failed: ${message}`)
-      set({
-        status: 'error',
-        errorMessage: message,
-        updateObject: null,
-        ...getPlatformState(get().currentPlatform, get().availableVersion),
-      })
-      return
-    }
-
-    let contentLength: number | null = null
-    let downloaded = 0
-
-    set({ status: 'installing', downloadProgress: 0, errorMessage: null })
-
-    try {
-      await updateObject.downloadAndInstall((event: UpdateProgressEvent) => {
-        if (event.event === 'Started') {
-          const total = event.data?.contentLength
-          const isKnownLength = typeof total === 'number' && total > 0
-          contentLength = isKnownLength ? total : null
-          downloaded = 0
-          set({ downloadProgress: 0 })
-          return
-        }
-
-        if (event.event === 'Progress') {
-          downloaded += event.data.chunkLength
-          if (contentLength) {
-            const percent = Math.min(
-              PERCENT_SCALE,
-              Math.round((downloaded / contentLength) * PERCENT_SCALE)
-            )
-            set({ downloadProgress: percent })
-          }
-          return
-        }
-
-        if (event.event === 'Finished') {
-          set({ downloadProgress: 100 })
-        }
-      })
-
-      set({ updateObject: null })
-
-      const currentPlatform = await detectPlatform()
-      set((state) => withDetectedPlatform(state, currentPlatform))
-
-      if (currentPlatform === 'macos') {
-        await relaunch()
-        return
-      }
-
-      set({
-        status: 'ready-to-finish',
-        availableVersion: updateObject.version ?? null,
-        downloadProgress: 100,
-        errorMessage: null,
-        updateObject: null,
-        ...getPlatformState(currentPlatform, updateObject.version ?? null),
-      })
-    } catch (error) {
-      const message = toErrorMessage(error)
-      logFrontend('error', `[update-store] Install failed: ${message}`)
-      set((state) => failInstall(state, message))
-    }
-  },
-
-  restartApp: async () => {
-    if (!hasTauriApis()) {
-      return
-    }
-
-    try {
-      const currentPlatform = await detectPlatform()
-      set((state) => withDetectedPlatform(state, currentPlatform))
-
-      if (currentPlatform === 'linux') {
-        return
-      }
-
-      await relaunch()
-    } catch (error) {
-      const message = toErrorMessage(error)
-      logFrontend('error', `[update-store] Restart failed: ${message}`)
-      set((state) => failRestart(state, message))
-    }
-  },
-
-  startPeriodicCheck: async () => {
-    clearPeriodicTimer()
-    const generation = ++periodicCheckGeneration
-
-    if (!hasTauriApis()) {
-      return
-    }
-
-    const intervalKey = useSettingsStore.getState().getSetting('updates.checkInterval')
-    const intervalMs = UPDATE_INTERVAL_MS[intervalKey as keyof typeof UPDATE_INTERVAL_MS]
-
-    if (!intervalMs) {
-      return
-    }
-
-    await get().checkForUpdate(false)
-
-    if (generation !== periodicCheckGeneration) {
-      return
-    }
-
-    periodicTimer = setInterval(() => {
-      void useUpdateStore.getState().checkForUpdate(false)
-    }, intervalMs)
-  },
-
-  stopPeriodicCheck: () => {
-    periodicCheckGeneration += 1
-    clearPeriodicTimer()
-    clearResetStatusTimer()
-  },
-
-  restartPeriodicCheck: async () => {
-    get().stopPeriodicCheck()
-    await get().startPeriodicCheck()
-  },
+  setCurrentPlatform: setCurrentPlatform,
+  checkForUpdate: checkForUpdate,
+  downloadAndInstall: downloadAndInstall,
+  restartApp: restartApp,
+  startPeriodicCheck: startPeriodicCheck,
+  stopPeriodicCheck: stopPeriodicCheck,
+  restartPeriodicCheck: restartPeriodicCheck,
 }))
 
 void detectPlatform().then((currentPlatform) => {

@@ -1,8 +1,6 @@
 import {
   useEffect,
-  useLayoutEffect,
   useRef,
-  useState,
   type DragEvent,
   type KeyboardEvent,
   type MouseEvent,
@@ -11,60 +9,21 @@ import {
   type RefObject,
   type SyntheticEvent,
 } from 'react'
-import { CaretLeftIcon, CaretRightIcon } from '@phosphor-icons/react'
-import { useElementSize } from '../../hooks/use-element-size'
-import { Button } from './Button'
 import { isActivationKey, isMiddleMouseButton } from '../../lib/input-events'
 import styles from './UnderlineTabs.module.css'
+import {
+  BAR_VARIANT_CLASS,
+  type UnderlineTabBarProps,
+  type UnderlineTabVariant,
+} from './underline-tabs/tab-bar-variants'
+import { ScrollableTabBar } from './underline-tabs/ScrollableTabBar'
 
-/**
- * - default: WinUI SelectorBar — centred 16×3 accent pill (dialog and view tabs)
- * - selector: tab-group row — semibold text, accent icon and a 2px accent underline
- * - document: rounded 32px document tabs in a 38px strip; the selected tab joins the content below
- */
-export type UnderlineTabVariant = 'default' | 'selector' | 'document'
-
-const BAR_VARIANT_CLASS: Record<UnderlineTabVariant, string> = {
-  default: '',
-  selector: styles.barSelector,
-  document: styles.barDocument,
-}
+export type { UnderlineTabBarProps, UnderlineTabVariant } from './underline-tabs/tab-bar-variants'
 
 const TAB_VARIANT_CLASS: Record<UnderlineTabVariant, string> = {
   default: '',
   selector: styles.tabSelector,
   document: styles.tabDocument,
-}
-
-export interface UnderlineTabBarProps {
-  children: ReactNode
-  className?: string
-  'data-testid'?: string
-  /** Content rendered before the tab area, outside its scroll box (e.g. a group picker). */
-  prefix?: ReactNode
-  /** Content rendered outside the scrollable tab area (e.g. pinned tabs, action buttons). */
-  suffix?: ReactNode
-  /** When true, tabs scroll horizontally with a hidden scrollbar. While they overflow
-   * (`data-overflowing`), count chips at each end show and scroll to the hidden tabs. */
-  scrollable?: boolean
-  variant?: UnderlineTabVariant
-}
-
-interface ViewportBounds {
-  left: number
-  right: number
-  atStart: boolean
-  atEnd: boolean
-}
-
-const HIDDEN_EDGE_TOLERANCE_PX = 1
-
-function hiddenTabSide(tabRect: DOMRect, bounds: ViewportBounds): 'start' | 'end' | null {
-  const isHiddenAtStart = !bounds.atStart && tabRect.left < bounds.left - HIDDEN_EDGE_TOLERANCE_PX
-  if (isHiddenAtStart) return 'start'
-  const isHiddenAtEnd = !bounds.atEnd && tabRect.right > bounds.right + HIDDEN_EDGE_TOLERANCE_PX
-  if (isHiddenAtEnd) return 'end'
-  return null
 }
 
 export function UnderlineTabBar(props: UnderlineTabBarProps) {
@@ -89,189 +48,6 @@ export function UnderlineTabBar(props: UnderlineTabBarProps) {
   return (
     <div className={finalBarClass} data-testid={testId}>
       {children}
-    </div>
-  )
-}
-
-/** Width the start chip covers; matches `scroll-padding-inline-start` in the CSS. */
-const START_CHIP_CLEARANCE = 52
-
-/** Laid-out tabs of the row, looking through `display: contents` wrappers. */
-function tabItems(element: Element): Element[] {
-  return Array.from(element.children).flatMap((child) =>
-    getComputedStyle(child).display === 'contents' ? tabItems(child) : [child]
-  )
-}
-
-function scrollBehavior(): ScrollBehavior {
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
-}
-
-function revealTab(tab: Element | undefined) {
-  tab?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: scrollBehavior() })
-}
-
-function scrollViewportBy(viewport: HTMLElement, delta: number) {
-  viewport.scrollBy({ left: delta, behavior: scrollBehavior() })
-}
-
-function ScrollableTabBar({
-  children,
-  className,
-  'data-testid': testId,
-  prefix,
-  suffix,
-  variant = 'default',
-}: UnderlineTabBarProps) {
-  const areaRef = useRef<HTMLDivElement | null>(null)
-  const viewportRef = useRef<HTMLDivElement | null>(null)
-  const contentRef = useRef<HTMLDivElement | null>(null)
-  // Compare against the whole area, not the viewport the end chip narrows, so the chips
-  // go away as soon as every tab fits again.
-  const overflowing = useElementSize(contentRef).width > useElementSize(areaRef).width
-  const [[hiddenStart, hiddenEnd], setHidden] = useState<[number, number]>([0, 0])
-
-  const sync = () => {
-    const viewport = viewportRef.current
-    const content = contentRef.current
-    if (!viewport) return
-    if (!content) return
-    // At either scroll extreme nothing more is hidden on that side, even when a fractional
-    // viewport width leaves the last tab a sub-pixel short.
-    const { scrollLeft, scrollWidth, clientWidth } = viewport
-    const atStart = scrollLeft <= 1
-    const atEnd = scrollLeft + clientWidth >= scrollWidth - 1
-    const { left, right } = viewport.getBoundingClientRect()
-    const bounds: ViewportBounds = { left: left, right: right, atStart: atStart, atEnd: atEnd }
-    let start = 0
-    let end = 0
-    for (const tab of tabItems(content)) {
-      const hiddenSide = hiddenTabSide(tab.getBoundingClientRect(), bounds)
-      if (hiddenSide === 'start') start++
-      if (hiddenSide === 'end') end++
-    }
-    setHidden((previous) => {
-      const isUnchanged = previous[0] === start && previous[1] === end
-      return isUnchanged ? previous : [start, end]
-    })
-  }
-
-  useLayoutEffect(sync)
-
-  // The end chip's slot narrows the viewport as overflow starts; keep the selected tab in view.
-  useLayoutEffect(() => {
-    if (!overflowing) return
-    contentRef.current
-      ?.querySelector('[data-active], [aria-selected="true"]')
-      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-  }, [overflowing])
-
-  useEffect(() => {
-    const viewport = viewportRef.current
-    if (!viewport) return undefined
-    const onWheel = (event: WheelEvent) => {
-      const isMostlyHorizontal = Math.abs(event.deltaY) <= Math.abs(event.deltaX)
-      if (isMostlyHorizontal) return
-      if (viewport.scrollWidth <= viewport.clientWidth) return
-      event.preventDefault()
-      viewport.scrollLeft += event.deltaY
-    }
-    viewport.addEventListener('wheel', onWheel, { passive: false })
-    return () => viewport.removeEventListener('wheel', onWheel)
-  }, [])
-
-  // scrollIntoView('nearest') leaves a tab where it is when it is wider than the visible strip and
-  // already lines up with, or overhangs, the edge it would align to. The chips skip such a tab to
-  // the next one, or scroll by its hidden part when it is the last one on that side.
-  const scrollToStart = () => {
-    const viewport = viewportRef.current
-    const content = contentRef.current
-    if (!viewport) return
-    if (!content) return
-    const { left, right } = viewport.getBoundingClientRect()
-    const edge = left + START_CHIP_CLEARANCE
-    const hidden = tabItems(content).filter((tab) => tab.getBoundingClientRect().left < edge - 1)
-    const target = hidden.filter((tab) => tab.getBoundingClientRect().right < right - 1).pop()
-    if (target) {
-      revealTab(target)
-      return
-    }
-    const overhanging = hidden.pop()
-    if (overhanging) scrollViewportBy(viewport, overhanging.getBoundingClientRect().left - edge)
-  }
-
-  const scrollToEnd = () => {
-    const viewport = viewportRef.current
-    const content = contentRef.current
-    if (!viewport) return
-    if (!content) return
-    const { left, right } = viewport.getBoundingClientRect()
-    const hidden = tabItems(content).filter((tab) => tab.getBoundingClientRect().right > right + 1)
-    const target = hidden.find(
-      (tab) => tab.getBoundingClientRect().left > left + START_CHIP_CLEARANCE + 1
-    )
-    if (target) {
-      revealTab(target)
-      return
-    }
-    const overhanging = hidden[0]
-    if (overhanging) scrollViewportBy(viewport, overhanging.getBoundingClientRect().right - right)
-  }
-
-  const wrapperClass = [styles.barWrapper, BAR_VARIANT_CLASS[variant], className]
-    .filter(Boolean)
-    .join(' ')
-  const barClass = [styles.bar, styles.barScrollable, BAR_VARIANT_CLASS[variant]]
-    .filter(Boolean)
-    .join(' ')
-  const hasHiddenStartTabs = overflowing && hiddenStart > 0
-
-  return (
-    <div className={wrapperClass} data-testid={testId} data-overflowing={overflowing || undefined}>
-      {prefix}
-      <div ref={areaRef} className={styles.scrollArea}>
-        {hasHiddenStartTabs ? (
-          <div className={styles.edgeZoneStart}>
-            <Button
-              variant="subtle"
-              size="sm"
-              className={styles.edgeChip}
-              aria-label={`Scroll tabs left, ${hiddenStart} hidden`}
-              data-testid="tab-strip-scroll-start"
-              onClick={scrollToStart}
-            >
-              <CaretLeftIcon size={14} aria-hidden="true" />
-              {hiddenStart}
-            </Button>
-          </div>
-        ) : null}
-        <div ref={viewportRef} className={barClass} onScroll={sync}>
-          <div ref={contentRef} className={styles.barContent}>
-            {children}
-          </div>
-        </div>
-        {overflowing ? (
-          <div className={styles.edgeZoneEnd}>
-            <Button
-              variant="subtle"
-              size="sm"
-              className={styles.edgeChip}
-              aria-label={
-                hiddenEnd > 0
-                  ? `Scroll tabs right, ${hiddenEnd} hidden`
-                  : 'Scroll tabs right, no more tabs'
-              }
-              data-testid="tab-strip-scroll-end"
-              disabled={hiddenEnd === 0}
-              onClick={scrollToEnd}
-            >
-              {hiddenEnd > 0 ? hiddenEnd : null}
-              <CaretRightIcon size={14} aria-hidden="true" />
-            </Button>
-          </div>
-        ) : null}
-      </div>
-      {suffix ? <div className={styles.barSuffix}>{suffix}</div> : null}
     </div>
   )
 }

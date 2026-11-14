@@ -178,29 +178,40 @@ interface CandidateMatch {
   matchIndices: ReadonlyArray<readonly [number, number]>
 }
 
+function wildcardCandidate(item: SearchableObject, segments: string[]): CandidateMatch | null {
+  const matchIndices = matchWildcardSegments(item.name, segments)
+  if (!matchIndices) {
+    return null
+  }
+  const matchedChars = matchIndices.reduce((sum, [start, end]) => sum + (end - start + 1), 0)
+  const firstMatchStart = matchIndices[0][0]
+  const unmatchedChars = item.name.length - matchedChars
+  const baseScore = (firstMatchStart + unmatchedChars) / WILDCARD_SCORE_SCALE
+  return { item, baseScore, matchIndices }
+}
+
+function findWildcardMatches(
+  index: CommandPaletteSearchIndex,
+  query: string
+): CandidateMatch[] | null {
+  const segments = parseWildcardSegments(query)
+  if (segments.length === 0) {
+    return null
+  }
+  const candidates: CandidateMatch[] = []
+  for (const item of index.objects) {
+    const candidate = wildcardCandidate(item, segments)
+    if (candidate) candidates.push(candidate)
+  }
+  return candidates
+}
+
 function findCandidateMatches(
   index: CommandPaletteSearchIndex,
   query: string
 ): CandidateMatch[] | null {
   if (query.includes('*')) {
-    const segments = parseWildcardSegments(query)
-    if (segments.length === 0) {
-      return null
-    }
-
-    const candidates: CandidateMatch[] = []
-    for (const item of index.objects) {
-      const matchIndices = matchWildcardSegments(item.name, segments)
-      if (!matchIndices) {
-        continue
-      }
-      const matchedChars = matchIndices.reduce((sum, [start, end]) => sum + (end - start + 1), 0)
-      const firstMatchStart = matchIndices[0][0]
-      const unmatchedChars = item.name.length - matchedChars
-      const baseScore = (firstMatchStart + unmatchedChars) / WILDCARD_SCORE_SCALE
-      candidates.push({ item, baseScore, matchIndices })
-    }
-    return candidates
+    return findWildcardMatches(index, query)
   }
 
   const normalizedQuery = normalizeQuery(query)

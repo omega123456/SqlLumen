@@ -90,11 +90,11 @@ const CONFORMANCE_RULE_SCOPES = [
     rules: { '@typescript-eslint/no-non-null-assertion': 'error' },
   },
   {
-    files: [],
+    files: PRODUCTION_SOURCE_FILES,
     rules: { 'max-depth': ['error', MAXIMUM_BLOCK_DEPTH] },
   },
   {
-    files: [],
+    files: PRODUCTION_SOURCE_FILES,
     rules: {
       'max-lines-per-function': [
         'error',
@@ -103,7 +103,7 @@ const CONFORMANCE_RULE_SCOPES = [
     },
   },
   {
-    files: [],
+    files: PRODUCTION_SOURCE_FILES,
     rules: {
       'max-lines': ['error', { max: MAXIMUM_FILE_LINES, skipBlankLines: true, skipComments: true }],
     },

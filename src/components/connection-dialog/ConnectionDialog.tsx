@@ -1,20 +1,17 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useCallback, useEffect, useRef, type RefObject } from 'react'
 import { Plug, X } from '@phosphor-icons/react'
 import { IconButton } from '../common/IconButton'
 import { useConnectionStore } from '../../stores/connection-store'
-import { ConnectionForm, type ConnectionFormSeed } from './ConnectionForm'
+import { ConnectionForm } from './ConnectionForm'
 import { SavedConnectionsList } from './SavedConnectionsList'
-import type { SavedConnection } from '../../types/connection'
+import { useEditorTarget } from './connection-dialog/use-editor-target'
 import styles from './ConnectionDialog.module.css'
 
-export function ConnectionDialog() {
-  const dialogRef = useRef<HTMLDialogElement>(null)
-  const dialogOpen = useConnectionStore((state) => state.dialogOpen)
-  const closeDialog = useConnectionStore((state) => state.closeDialog)
-  const fetchSavedConnections = useConnectionStore((state) => state.fetchSavedConnections)
+const HEADER_ICON_SIZE = 16
 
-  const [editingConnection, setEditingConnection] = useState<SavedConnection | null>(null)
-  const [duplicateSeed, setDuplicateSeed] = useState<ConnectionFormSeed | null>(null)
+function useModalVisibility(dialogRef: RefObject<HTMLDialogElement | null>) {
+  const dialogOpen = useConnectionStore((state) => state.dialogOpen)
+  const fetchSavedConnections = useConnectionStore((state) => state.fetchSavedConnections)
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -26,72 +23,41 @@ export function ConnectionDialog() {
     }
     dialog.showModal()
     void fetchSavedConnections()
-  }, [dialogOpen, fetchSavedConnections])
+  }, [dialogOpen, dialogRef, fetchSavedConnections])
+}
+
+function ConnectionDialogHeader({ onClose }: { onClose: () => void }) {
+  return (
+    <div className={styles.dialogHeader}>
+      <Plug size={HEADER_ICON_SIZE} weight="regular" aria-hidden />
+      <h2 id="connection-dialog-title" className={styles.dialogTitle}>
+        Connection manager
+      </h2>
+      <IconButton aria-label="Close dialog" title="Close" onClick={onClose}>
+        <X size={HEADER_ICON_SIZE} weight="regular" />
+      </IconButton>
+    </div>
+  )
+}
+
+export function ConnectionDialog() {
+  const dialogRef = useRef<HTMLDialogElement>(null)
+  const closeDialog = useConnectionStore((state) => state.closeDialog)
+  const editor = useEditorTarget()
+  const { editingConnection, duplicateSeed } = editor.target
+  const resetEditor = editor.reset
+  useModalVisibility(dialogRef)
+
+  const handleClose = useCallback(() => {
+    resetEditor()
+    closeDialog()
+  }, [closeDialog, resetEditor])
 
   const handleBackdropClick = (event: React.MouseEvent<HTMLDialogElement>) => {
     if (event.target === dialogRef.current) {
-      setEditingConnection(null)
-      setDuplicateSeed(null)
-      closeDialog()
+      handleClose()
     }
   }
-
-  // Sync store when native dialog closes (e.g., Escape key)
-  const handleClose = () => {
-    setEditingConnection(null)
-    setDuplicateSeed(null)
-    closeDialog()
-  }
-
-  const handleCloseButton = useCallback(() => {
-    setEditingConnection(null)
-    setDuplicateSeed(null)
-    closeDialog()
-  }, [closeDialog])
-
-  const handleSelectConnection = useCallback((connection: SavedConnection) => {
-    setEditingConnection(connection)
-    setDuplicateSeed(null)
-  }, [])
-
-  const handleNewConnection = useCallback(() => {
-    setEditingConnection(null)
-    setDuplicateSeed(null)
-  }, [])
-
-  const handleDuplicateConnection = useCallback((source: SavedConnection) => {
-    setEditingConnection(null)
-    setDuplicateSeed((previous) => ({
-      data: {
-        name: `Copy of ${source.name.trim() || source.host}`,
-        host: source.host,
-        port: source.port,
-        username: source.username,
-        password: '',
-        defaultDatabase: source.defaultDatabase,
-        sslEnabled: source.sslEnabled,
-        sslCaPath: source.sslCaPath,
-        sslCertPath: source.sslCertPath,
-        sslKeyPath: source.sslKeyPath,
-        color: source.color,
-        groupId: source.groupId,
-        readOnly: source.readOnly,
-        connectTimeoutSecs: source.connectTimeoutSecs,
-        keepaliveIntervalSecs: source.keepaliveIntervalSecs,
-      },
-      sourceHadPassword: source.hasPassword,
-      key: (previous?.key ?? 0) + 1,
-    }))
-  }, [])
-
-  const handleDeleteConnection = useCallback(
-    (id: string) => {
-      if (editingConnection?.id === id) {
-        setEditingConnection(null)
-      }
-    },
-    [editingConnection]
-  )
 
   return (
     <dialog
@@ -103,27 +69,19 @@ export function ConnectionDialog() {
       onClose={handleClose}
     >
       <div className={styles.dialogContent}>
-        <div className={styles.dialogHeader}>
-          <Plug size={16} weight="regular" aria-hidden />
-          <h2 id="connection-dialog-title" className={styles.dialogTitle}>
-            Connection manager
-          </h2>
-          <IconButton aria-label="Close dialog" title="Close" onClick={handleCloseButton}>
-            <X size={16} weight="regular" />
-          </IconButton>
-        </div>
+        <ConnectionDialogHeader onClose={handleClose} />
         <div className={styles.dialogBody}>
           <aside className={styles.leftPane} data-testid="saved-connections-pane">
             <SavedConnectionsList
-              onSelectConnection={handleSelectConnection}
-              onNewConnection={handleNewConnection}
-              onDuplicateConnection={handleDuplicateConnection}
+              onSelectConnection={editor.select}
+              onNewConnection={resetEditor}
+              onDuplicateConnection={editor.duplicate}
               selectedConnectionId={editingConnection?.id ?? null}
             />
           </aside>
           <ConnectionForm
             editingConnection={editingConnection ?? undefined}
-            onDeleteConnection={handleDeleteConnection}
+            onDeleteConnection={editor.forgetDeleted}
             initialData={duplicateSeed ?? undefined}
           />
         </div>

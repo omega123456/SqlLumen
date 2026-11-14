@@ -21,20 +21,15 @@ function formatDuration(ms: number | null): string {
   return `${(ms / MILLISECONDS_PER_SECOND).toFixed(1)}s`
 }
 
-export function HistoryRow({ entry, connectionId }: HistoryRowProps) {
+interface HistoryRowActionsProps extends HistoryRowProps {
+  onCopyToEditor: () => void
+}
+
+function HistoryRowActions({ entry, connectionId, onCopyToEditor }: HistoryRowActionsProps) {
   const deleteEntry = useHistoryStore((state) => state.deleteEntry)
   const openDialog = useFavoritesStore((state) => state.openDialog)
-  const openQueryTab = useWorkspaceStore((state) => state.openQueryTab)
-
-  const handleCopyToEditor = useCallback(() => {
-    const tabId = openQueryTab(connectionId, 'History query')
-    if (tabId) {
-      useQueryStore.getState().setContent(tabId, entry.sqlText)
-    }
-  }, [connectionId, entry.sqlText, openQueryTab])
 
   const handleSaveAsFavorite = useCallback(() => {
-    // Pre-populate dialog by opening with a fake favorite structure
     openDialog({
       id: 0,
       name: '',
@@ -54,6 +49,55 @@ export function HistoryRow({ entry, connectionId }: HistoryRowProps) {
     },
     [deleteEntry, connectionId, entry.id]
   )
+
+  return (
+    <div className={styles.actions}>
+      <Button
+        variant="bare"
+        className={styles.actionButton}
+        title="Copy to editor"
+        onClick={(event) => {
+          event.stopPropagation()
+          onCopyToEditor()
+        }}
+        data-testid="history-row-copy"
+      >
+        <Copy size={14} weight="regular" />
+      </Button>
+      <Button
+        variant="bare"
+        className={styles.actionButton}
+        title="Save as favorite"
+        onClick={(event) => {
+          event.stopPropagation()
+          handleSaveAsFavorite()
+        }}
+        data-testid="history-row-favorite"
+      >
+        <Star size={14} weight="regular" />
+      </Button>
+      <Button
+        variant="bare"
+        className={`${styles.actionButton} ${styles.actionButtonDanger}`}
+        title="Delete"
+        onClick={handleDelete}
+        data-testid="history-row-delete"
+      >
+        <Trash size={14} weight="regular" />
+      </Button>
+    </div>
+  )
+}
+
+export function HistoryRow({ entry, connectionId }: HistoryRowProps) {
+  const openQueryTab = useWorkspaceStore((state) => state.openQueryTab)
+
+  const handleCopyToEditor = useCallback(() => {
+    const tabId = openQueryTab(connectionId, 'History query')
+    if (tabId) {
+      useQueryStore.getState().setContent(tabId, entry.sqlText)
+    }
+  }, [connectionId, entry.sqlText, openQueryTab])
 
   const isError = !entry.success
 
@@ -76,41 +120,11 @@ export function HistoryRow({ entry, connectionId }: HistoryRowProps) {
         <span>{formatDuration(entry.durationMs)}</span>
         <span>{formatTableTimestamp(entry.timestamp)}</span>
       </div>
-      <div className={styles.actions}>
-        <Button
-          variant="bare"
-          className={styles.actionButton}
-          title="Copy to editor"
-          onClick={(event) => {
-            event.stopPropagation()
-            handleCopyToEditor()
-          }}
-          data-testid="history-row-copy"
-        >
-          <Copy size={14} weight="regular" />
-        </Button>
-        <Button
-          variant="bare"
-          className={styles.actionButton}
-          title="Save as favorite"
-          onClick={(event) => {
-            event.stopPropagation()
-            handleSaveAsFavorite()
-          }}
-          data-testid="history-row-favorite"
-        >
-          <Star size={14} weight="regular" />
-        </Button>
-        <Button
-          variant="bare"
-          className={`${styles.actionButton} ${styles.actionButtonDanger}`}
-          title="Delete"
-          onClick={handleDelete}
-          data-testid="history-row-delete"
-        >
-          <Trash size={14} weight="regular" />
-        </Button>
-      </div>
+      <HistoryRowActions
+        entry={entry}
+        connectionId={connectionId}
+        onCopyToEditor={handleCopyToEditor}
+      />
     </div>
   )
 }

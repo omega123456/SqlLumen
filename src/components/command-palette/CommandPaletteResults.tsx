@@ -1,6 +1,6 @@
 import { MagnifyingGlass, Plug, SmileySad } from '@phosphor-icons/react'
 import { useEffect, useRef, type ReactNode } from 'react'
-import type { CommandPaletteResultsProps } from './CommandPalette'
+import type { CommandPaletteResultsProps } from './palette-types'
 import { CommandPaletteResultRow } from './CommandPaletteResultRow'
 import styles from './CommandPaletteResults.module.css'
 
@@ -52,6 +52,21 @@ function resultsListLabels(isColumnScope: boolean, state: ResultsState) {
   return { header: 'Objects', list: 'Schema objects' }
 }
 
+const LOADING_PLACEHOLDER_ROW_COUNT = 5
+
+function LoadingResults() {
+  return (
+    <div className={styles.resultsSurface} data-testid="command-palette-loading-state">
+      <div className={styles.resultsHeader}>Loading schema objects</div>
+      <ul className={styles.loadingList} aria-hidden="true">
+        {Array.from({ length: LOADING_PLACEHOLDER_ROW_COUNT }, (_, index) => (
+          <li key={index} className={styles.loadingRow} />
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 export function CommandPaletteResults({
   results,
   activeIndex,
@@ -76,18 +91,7 @@ export function CommandPaletteResults({
     return <StateMessage {...stateMessage} />
   }
 
-  if (state === 'loading') {
-    return (
-      <div className={styles.resultsSurface} data-testid="command-palette-loading-state">
-        <div className={styles.resultsHeader}>Loading schema objects</div>
-        <ul className={styles.loadingList} aria-hidden="true">
-          {Array.from({ length: 5 }, (_, index) => (
-            <li key={index} className={styles.loadingRow} />
-          ))}
-        </ul>
-      </div>
-    )
-  }
+  if (state === 'loading') return <LoadingResults />
 
   const labels = resultsListLabels(isColumnScope, state)
   const showsRecentMarker = state === 'recents' && !isColumnScope

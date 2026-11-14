@@ -27,23 +27,9 @@ interface UnsavedChangesDialogProps {
   cancelLabel?: string
 }
 
-export function UnsavedChangesDialog({
-  onSave,
-  onDiscard,
-  onCancel,
-  isSaving: externalIsSaving,
-  error: externalError,
-  title = 'Unsaved changes',
-  message = 'You have unsaved changes on the current row. What would you like to do?',
-  saveLabel = 'Save changes',
-  discardLabel = 'Discard changes',
-  cancelLabel = 'Cancel',
-}: UnsavedChangesDialogProps) {
+function useUnsavedChangesSave(onSave: () => Promise<void>) {
   const [internalSaving, setInternalSaving] = useState(false)
   const [internalError, setInternalError] = useState<string | null>(null)
-
-  const isSaving = externalIsSaving ?? internalSaving
-  const error = externalError ?? internalError
 
   const handleSave = useCallback(async () => {
     setInternalSaving(true)
@@ -56,6 +42,61 @@ export function UnsavedChangesDialog({
       setInternalSaving(false)
     }
   }, [onSave])
+
+  return { internalSaving, internalError, handleSave }
+}
+
+interface UnsavedChangesActionsProps {
+  labels: { save: string; discard: string; cancel: string }
+  isSaving: boolean
+  onSave: () => void
+  onDiscard: () => void
+  onCancel: () => void
+}
+
+function UnsavedChangesActions({
+  labels,
+  isSaving,
+  onSave,
+  onDiscard,
+  onCancel,
+}: UnsavedChangesActionsProps) {
+  return (
+    <div className={styles.actions}>
+      <Button type="button" onClick={onCancel} data-testid="btn-cancel-changes">
+        {labels.cancel}
+      </Button>
+      <Button type="button" dangerText onClick={onDiscard} data-testid="btn-discard-changes">
+        {labels.discard}
+      </Button>
+      <Button
+        type="button"
+        variant="accent"
+        onClick={onSave}
+        disabled={isSaving}
+        data-testid="btn-save-changes"
+      >
+        {isSaving ? 'Saving...' : labels.save}
+      </Button>
+    </div>
+  )
+}
+
+export function UnsavedChangesDialog({
+  onSave,
+  onDiscard,
+  onCancel,
+  isSaving: externalIsSaving,
+  error: externalError,
+  title = 'Unsaved changes',
+  message = 'You have unsaved changes on the current row. What would you like to do?',
+  saveLabel = 'Save changes',
+  discardLabel = 'Discard changes',
+  cancelLabel = 'Cancel',
+}: UnsavedChangesDialogProps) {
+  const { internalSaving, internalError, handleSave } = useUnsavedChangesSave(onSave)
+  const isSaving = externalIsSaving ?? internalSaving
+  const error = externalError ?? internalError
 
   return (
     <DialogShell
@@ -81,23 +122,13 @@ export function UnsavedChangesDialog({
           )}
         </div>
 
-        <div className={styles.actions}>
-          <Button type="button" onClick={onCancel} data-testid="btn-cancel-changes">
-            {cancelLabel}
-          </Button>
-          <Button type="button" dangerText onClick={onDiscard} data-testid="btn-discard-changes">
-            {discardLabel}
-          </Button>
-          <Button
-            type="button"
-            variant="accent"
-            onClick={() => void handleSave()}
-            disabled={isSaving}
-            data-testid="btn-save-changes"
-          >
-            {isSaving ? 'Saving...' : saveLabel}
-          </Button>
-        </div>
+        <UnsavedChangesActions
+          labels={{ save: saveLabel, discard: discardLabel, cancel: cancelLabel }}
+          isSaving={isSaving}
+          onSave={() => void handleSave()}
+          onDiscard={onDiscard}
+          onCancel={onCancel}
+        />
       </div>
     </DialogShell>
   )

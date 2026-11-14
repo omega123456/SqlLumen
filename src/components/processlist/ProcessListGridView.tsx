@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { RefObject } from 'react'
 import { useProcessListStore } from '../../stores/processlist-store'
 import { filterProcessListRows } from '../../lib/processlist-filter'
 import { CanvasBaseGridView } from '../shared/glide/CanvasBaseGridView'
@@ -104,6 +105,11 @@ const PROCESSLIST_COLUMNS: GridColumnDescriptor[] = [
 
 type SortDirection = 'ASC' | 'DESC'
 
+interface ProcessSortColumn {
+  columnKey: string
+  direction: SortDirection
+}
+
 const SORT_DIRECTION_SIGN: Record<SortDirection, number> = { ASC: 1, DESC: -1 }
 
 function compareProcessValues(leftValue: unknown, rightValue: unknown): number {
@@ -161,8 +167,17 @@ export interface ProcessListGridViewProps {
   isActive?: boolean
 }
 
-export function ProcessListGridView({ connectionId, isActive = true }: ProcessListGridViewProps) {
-  const gridRef = useRef<GridHandle | null>(null)
+function sortedProcessRows(visibleRows: ProcessRow[], sortColumn: ProcessSortColumn | null) {
+  const sortedRows = [...visibleRows] as GridRow[]
+  if (!sortColumn) return sortedRows
+  const columnKey = sortColumn.columnKey as keyof ProcessRow
+  const directionSign = SORT_DIRECTION_SIGN[sortColumn.direction]
+  return sortedRows.sort(
+    (left, right) => directionSign * compareProcessValues(left[columnKey], right[columnKey])
+  )
+}
+
+function useProcessGridRows(connectionId: string) {
   const rows = useProcessListStore(
     (state) => state.rowsByConnection[connectionId] ?? EMPTY_PROCESS_ROWS
   )
@@ -178,29 +193,19 @@ export function ProcessListGridView({ connectionId, isActive = true }: ProcessLi
   const setSortColumn = useProcessListStore((state) => state.setSortColumn)
   const setSelectedIds = useProcessListStore((state) => state.setSelectedIds)
 
-  const [popoverSql, setPopoverSql] = useState<string | null>(null)
-  const [popoverAnchorRect, setPopoverAnchorRect] = useState<DOMRect | null>(null)
-
   const visibleRows = useMemo(
     () => filterProcessListRows(rows, excludeIdleConnections),
     [rows, excludeIdleConnections]
   )
 
-  // Sort rows directly without intermediate mapping — ProcessRow already matches grid shape
-  const gridRows: GridRow[] = useMemo(() => {
-    const sortedRows = [...visibleRows] as GridRow[]
-    if (sortColumn) {
-      const columnKey = sortColumn.columnKey as keyof ProcessRow
-      const directionSign = SORT_DIRECTION_SIGN[sortColumn.direction]
-      sortedRows.sort(
-        (left, right) => directionSign * compareProcessValues(left[columnKey], right[columnKey])
-      )
-    }
-    return sortedRows.map((row) => ({
-      ...row,
-      [PROCESSLIST_SELECTED_COLUMN_KEY]: selectedIds.has(row.id),
-    }))
-  }, [visibleRows, sortColumn, selectedIds])
+  const gridRows: GridRow[] = useMemo(
+    () =>
+      sortedProcessRows(visibleRows, sortColumn).map((row) => ({
+        ...row,
+        [PROCESSLIST_SELECTED_COLUMN_KEY]: selectedIds.has(row.id),
+      })),
+    [visibleRows, sortColumn, selectedIds]
+  )
 
   const handleSortChange = useCallback(
     (column: string | null, direction: SortDirection | null) => {
@@ -210,60 +215,60 @@ export function ProcessListGridView({ connectionId, isActive = true }: ProcessLi
     [connectionId, setSortColumn]
   )
 
-  const handleClosePopover = useCallback(() => {
-    setPopoverSql(null)
-    setPopoverAnchorRect(null)
-  }, [])
-
-  useEffect(() => {
-    if (isActive) return
-    queueMicrotask(handleClosePopover)
-  }, [handleClosePopover, isActive])
-
-  const computeInfoAnchorRect = useCallback((rowIndex: number): DOMRect | null => {
-    const host = gridRef.current?.element
-    if (!host) return null
-
-    const columnWidths = parseColumnWidths(host)
-    const infoColumnIndex = columnWidths.length - 1
-    if (infoColumnIndex < 0) return null
-
-    const scroller = host.querySelector<HTMLElement>('.dvn-scroller') ?? host
-    const rowMarkerWidth = parseFloat(host.dataset.rowMarkerWidth ?? '0') || 0
-    const hostRect = host.getBoundingClientRect()
-    const { headerHeight, rowHeight } = gridRowMetrics()
-    const columnStart =
-      rowMarkerWidth +
-      columnWidths.slice(0, infoColumnIndex).reduce((sum, next) => sum + next, 0) -
-      scroller.scrollLeft
-
-    return new DOMRect(
-      hostRect.x + columnStart,
-      hostRect.y + headerHeight + rowIndex * rowHeight - scroller.scrollTop,
-      columnWidths[infoColumnIndex] ?? FALLBACK_INFO_COLUMN_WIDTH_PX,
-      rowHeight
-    )
-  }, [])
-
-  const openInfoPopoverForRow = useCallback(
-    (rowIndex: number): boolean => {
+  const handleCellValueChange = useCallback(
+    (rowIndex: number, columnKey: string, value: unknown) => {
+      if (columnKey !== PROCESSLIST_SELECTED_COLUMN_KEY) return
       const row = gridRows[rowIndex]
-      const info = row?.info
-      if (!isNonEmptyString(info)) return false
-      setPopoverSql(info)
-      setPopoverAnchorRect(computeInfoAnchorRect(rowIndex) ?? fallbackInfoAnchorRect())
-      return true
+      if (!row) return
+      setSelectedIds(connectionId, withSelection(selectedIds, row.id, value === true))
     },
-    [computeInfoAnchorRect, gridRows]
+    [connectionId, gridRows, selectedIds, setSelectedIds]
   )
 
-  const handleInfoCellClick = useCallback((row: Record<string, unknown>, anchorRect: DOMRect) => {
-    const info = row.info
-    if (!isNonEmptyString(info)) return
-    setPopoverSql(info)
-    setPopoverAnchorRect(anchorRect)
-  }, [])
+  return { gridRows, sortColumn, handleSortChange, handleCellValueChange }
+}
 
+function computeInfoAnchorRect(
+  host: HTMLElement | null | undefined,
+  rowIndex: number
+): DOMRect | null {
+  if (!host) return null
+
+  const columnWidths = parseColumnWidths(host)
+  const infoColumnIndex = columnWidths.length - 1
+  if (infoColumnIndex < 0) return null
+
+  const scroller = host.querySelector<HTMLElement>('.dvn-scroller') ?? host
+  const rowMarkerWidth = parseFloat(host.dataset.rowMarkerWidth ?? '0') || 0
+  const hostRect = host.getBoundingClientRect()
+  const { headerHeight, rowHeight } = gridRowMetrics()
+  const columnStart =
+    rowMarkerWidth +
+    columnWidths.slice(0, infoColumnIndex).reduce((sum, next) => sum + next, 0) -
+    scroller.scrollLeft
+
+  return new DOMRect(
+    hostRect.x + columnStart,
+    hostRect.y + headerHeight + rowIndex * rowHeight - scroller.scrollTop,
+    columnWidths[infoColumnIndex] ?? FALLBACK_INFO_COLUMN_WIDTH_PX,
+    rowHeight
+  )
+}
+
+function removeInfoPopoverTestApi(): void {
+  if (window.__processListTestApi__?.openInfoPopover) {
+    delete window.__processListTestApi__.openInfoPopover
+  }
+  const remainingTestApi = window.__processListTestApi__
+  if (!remainingTestApi) return
+  if (Object.keys(remainingTestApi).length > 0) return
+  delete window.__processListTestApi__
+}
+
+function useInfoPopoverTestApi(
+  connectionId: string,
+  openInfoPopoverForRow: (rowIndex: number) => boolean
+): void {
   useEffect(() => {
     if (!isPlaywrightBuild()) return
 
@@ -277,26 +282,61 @@ export function ProcessListGridView({ connectionId, isActive = true }: ProcessLi
       },
     }
 
-    return () => {
-      if (window.__processListTestApi__?.openInfoPopover) {
-        delete window.__processListTestApi__.openInfoPopover
-      }
-      const remainingTestApi = window.__processListTestApi__
-      if (!remainingTestApi) return
-      if (Object.keys(remainingTestApi).length > 0) return
-      delete window.__processListTestApi__
-    }
+    return removeInfoPopoverTestApi
   }, [connectionId, openInfoPopoverForRow])
+}
 
-  const handleCellValueChange = useCallback(
-    (rowIndex: number, columnKey: string, value: unknown) => {
-      if (columnKey !== PROCESSLIST_SELECTED_COLUMN_KEY) return
+interface InfoPopoverInput {
+  gridRef: RefObject<GridHandle | null>
+  gridRows: GridRow[]
+  isActive: boolean
+}
+
+interface InfoPopoverTarget {
+  sql: string
+  anchorRect: DOMRect
+}
+
+function useInfoPopover({ gridRef, gridRows, isActive }: InfoPopoverInput) {
+  const [popoverTarget, setPopoverTarget] = useState<InfoPopoverTarget | null>(null)
+
+  const handleClosePopover = useCallback(() => {
+    setPopoverTarget(null)
+  }, [])
+
+  useEffect(() => {
+    if (isActive) return
+    queueMicrotask(handleClosePopover)
+  }, [handleClosePopover, isActive])
+
+  const openInfoPopoverForRow = useCallback(
+    (rowIndex: number): boolean => {
       const row = gridRows[rowIndex]
-      if (!row) return
-      setSelectedIds(connectionId, withSelection(selectedIds, row.id, value === true))
+      const info = row?.info
+      if (!isNonEmptyString(info)) return false
+      const anchorRect =
+        computeInfoAnchorRect(gridRef.current?.element, rowIndex) ?? fallbackInfoAnchorRect()
+      setPopoverTarget({ sql: info, anchorRect: anchorRect })
+      return true
     },
-    [connectionId, gridRows, selectedIds, setSelectedIds]
+    [gridRef, gridRows]
   )
+
+  const handleInfoCellClick = useCallback((row: Record<string, unknown>, anchorRect: DOMRect) => {
+    const info = row.info
+    if (!isNonEmptyString(info)) return
+    setPopoverTarget({ sql: info, anchorRect: anchorRect })
+  }, [])
+
+  return { popoverTarget, handleClosePopover, openInfoPopoverForRow, handleInfoCellClick }
+}
+
+export function ProcessListGridView({ connectionId, isActive = true }: ProcessListGridViewProps) {
+  const gridRef = useRef<GridHandle | null>(null)
+  const { gridRows, sortColumn, handleSortChange, handleCellValueChange } =
+    useProcessGridRows(connectionId)
+  const infoPopover = useInfoPopover({ gridRef: gridRef, gridRows: gridRows, isActive: isActive })
+  useInfoPopoverTestApi(connectionId, infoPopover.openInfoPopoverForRow)
 
   return (
     <div className={styles.container}>
@@ -311,16 +351,16 @@ export function ProcessListGridView({ connectionId, isActive = true }: ProcessLi
         rowMarkers="none"
         prefixColumns={[PROCESSLIST_SELECTION_COLUMN]}
         onCellValueChange={handleCellValueChange}
-        onInfoCellClick={handleInfoCellClick}
+        onInfoCellClick={infoPopover.handleInfoCellClick}
         showInfoColumn={true}
         applyReadOnlyCellStyles={false}
         testId="processlist-grid-view"
         isActive={isActive}
       />
       <InfoCellPopover
-        sql={popoverSql}
-        anchorRect={popoverAnchorRect}
-        onClose={handleClosePopover}
+        sql={infoPopover.popoverTarget?.sql ?? null}
+        anchorRect={infoPopover.popoverTarget?.anchorRect ?? null}
+        onClose={infoPopover.handleClosePopover}
       />
     </div>
   )

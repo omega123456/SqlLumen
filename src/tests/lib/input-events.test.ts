@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   isActivationKey,
+  isContextMenuKey,
+  isInteractiveElement,
   isMiddleMouseButton,
   isTargetOutside,
   isPlainEnterKey,
@@ -70,5 +72,34 @@ describe('isActivationKey', () => {
   it('rejects other keys', () => {
     expect(isActivationKey('Escape')).toBe(false)
     expect(isActivationKey('a')).toBe(false)
+  })
+})
+
+describe('isContextMenuKey', () => {
+  it('accepts the ContextMenu key and Shift+F10', () => {
+    expect(isContextMenuKey({ key: 'ContextMenu', shiftKey: false })).toBe(true)
+    expect(isContextMenuKey({ key: 'F10', shiftKey: true })).toBe(true)
+  })
+
+  it('rejects F10 without Shift and other keys', () => {
+    expect(isContextMenuKey({ key: 'F10', shiftKey: false })).toBe(false)
+    expect(isContextMenuKey({ key: 'Enter', shiftKey: true })).toBe(false)
+  })
+})
+
+describe('isInteractiveElement', () => {
+  it('accepts form controls, links and contenteditable elements', () => {
+    expect(isInteractiveElement(document.createElement('button'))).toBe(true)
+    expect(isInteractiveElement(document.createElement('input'))).toBe(true)
+    expect(isInteractiveElement(document.createElement('a'))).toBe(true)
+    const editable = document.createElement('div')
+    Object.defineProperty(editable, 'isContentEditable', { value: true })
+    expect(isInteractiveElement(editable)).toBe(true)
+  })
+
+  it('rejects plain elements and non-elements', () => {
+    expect(isInteractiveElement(document.createElement('div'))).toBeFalsy()
+    expect(isInteractiveElement(null)).toBe(false)
+    expect(isInteractiveElement(window)).toBe(false)
   })
 })

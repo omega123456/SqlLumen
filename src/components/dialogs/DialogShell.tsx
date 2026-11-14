@@ -133,6 +133,39 @@ function DialogPanel({
   )
 }
 
+interface DismissInputs {
+  isOpen: boolean
+  nonDismissible: boolean
+  onClose: () => void
+}
+
+function useEscapeToClose({ isOpen, nonDismissible, onClose }: DismissInputs) {
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (nonDismissible) return
+      if (event.key === 'Escape') {
+        onClose()
+      }
+    },
+    [nonDismissible, onClose]
+  )
+
+  useEffect(() => {
+    if (!isOpen) return
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isOpen, handleKeyDown])
+}
+
+function closeOnBackdropClick(event: React.MouseEvent, dismiss: Omit<DismissInputs, 'isOpen'>) {
+  if (dismiss.nonDismissible) return
+  if (event.target === event.currentTarget) {
+    dismiss.onClose()
+  }
+}
+
 /**
  * Shared modal shell for all dialog components.
  * Handles portal rendering, backdrop click-to-dismiss, Escape key, and focus trapping.
@@ -162,23 +195,7 @@ export function DialogShell({
     dialogRef.current = node as HTMLDivElement | null
   }, [])
 
-  const handleKeyDown = useCallback(
-    (event: KeyboardEvent) => {
-      if (nonDismissible) return
-      if (event.key === 'Escape') {
-        onClose()
-      }
-    },
-    [nonDismissible, onClose]
-  )
-
-  useEffect(() => {
-    if (!isOpen) return
-    document.addEventListener('keydown', handleKeyDown)
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [isOpen, handleKeyDown])
+  useEscapeToClose({ isOpen: isOpen, nonDismissible: nonDismissible, onClose: onClose })
 
   if (!isOpen) return null
 
@@ -190,30 +207,20 @@ export function DialogShell({
     panelPadding: panelPadding,
   })
 
-  const handleBackdropClick = (event: React.MouseEvent) => {
-    if (nonDismissible) return
-    if (event.target === event.currentTarget) {
-      onClose()
-    }
-  }
-
-  const panelClassNameValue = withOptionalClassName(
-    `ui-elevated-surface ${styles.dialog}`,
-    panelClassName
-  )
-
   return createPortal(
     <div
       className={withOptionalClassName(styles.backdrop, backdropClassName)}
       data-testid={testId}
-      onClick={handleBackdropClick}
+      onClick={(event) =>
+        closeOnBackdropClick(event, { nonDismissible: nonDismissible, onClose: onClose })
+      }
       role="dialog"
       aria-modal="true"
       aria-label={ariaLabel}
     >
       <DialogPanel
         formProps={formProps}
-        className={panelClassNameValue}
+        className={withOptionalClassName(`ui-elevated-surface ${styles.dialog}`, panelClassName)}
         style={dialogStyle}
         testId={panelTestIdFor(testId)}
         panelRef={dialogRef}

@@ -23,10 +23,13 @@ function blockCommentEndIndex(text: string): number {
       scanIndex += BLOCK_COMMENT_DELIMITER_LENGTH
       continue
     }
+    const isOutermostClose = pair === BLOCK_COMMENT_CLOSE && depth === 1
+    if (isOutermostClose) {
+      return scanIndex + BLOCK_COMMENT_DELIMITER_LENGTH
+    }
     if (pair === BLOCK_COMMENT_CLOSE) {
       depth--
       scanIndex += BLOCK_COMMENT_DELIMITER_LENGTH
-      if (depth === 0) return scanIndex
       continue
     }
     scanIndex++

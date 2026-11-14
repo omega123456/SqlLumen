@@ -87,12 +87,43 @@ function CopySqlButtonContent({ copied }: { copied: boolean }) {
   )
 }
 
+interface HistoryEntryActionsProps {
+  entry: HistoryEntry
+  onOpenInEditor: (entry: HistoryEntry) => void
+}
+
+function HistoryEntryActions({ entry, onOpenInEditor }: HistoryEntryActionsProps) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = useCallback(() => {
+    void navigator.clipboard.writeText(entry.sqlText).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), COPIED_FEEDBACK_DURATION_MS)
+    })
+  }, [entry])
+
+  return (
+    <div className={styles.actions}>
+      <Button
+        variant="accent"
+        onClick={() => onOpenInEditor(entry)}
+        data-testid="history-open-in-editor"
+      >
+        <CodeIcon size={16} weight="regular" />
+        Open in editor
+      </Button>
+      <Button onClick={handleCopy} data-testid="history-copy-sql">
+        <CopySqlButtonContent copied={copied} />
+      </Button>
+    </div>
+  )
+}
+
 export function HistoryDetailPanel({
   entry,
   onOpenInEditor,
   connectionName,
 }: HistoryDetailPanelProps) {
-  const [copied, setCopied] = useState(false)
   const highlighted = useMemo(
     () =>
       entry
@@ -105,14 +136,6 @@ export function HistoryDetailPanel({
         : null,
     [entry]
   )
-
-  const handleCopy = useCallback(() => {
-    if (!entry) return
-    void navigator.clipboard.writeText(entry.sqlText).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), COPIED_FEEDBACK_DURATION_MS)
-    })
-  }, [entry])
 
   if (!entry) {
     return (
@@ -145,19 +168,7 @@ export function HistoryDetailPanel({
 
       <HistoryEntryFacts entry={entry} connectionName={connectionName} />
 
-      <div className={styles.actions}>
-        <Button
-          variant="accent"
-          onClick={() => onOpenInEditor(entry)}
-          data-testid="history-open-in-editor"
-        >
-          <CodeIcon size={16} weight="regular" />
-          Open in editor
-        </Button>
-        <Button onClick={handleCopy} data-testid="history-copy-sql">
-          <CopySqlButtonContent copied={copied} />
-        </Button>
-      </div>
+      <HistoryEntryActions entry={entry} onOpenInEditor={onOpenInEditor} />
     </div>
   )
 }

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildDumpTables,
   buildInitialTableSelection,
+  selectedObjectCount,
   toggleDatabaseSelection,
   toggleTableSelection,
 } from '../../../components/dialogs/sql-dump-selection'
@@ -68,5 +70,39 @@ describe('toggleDatabaseSelection', () => {
   it('clears a fully selected database', () => {
     const selection = { shop: new Set(['orders', 'customers']) }
     expect(toggleDatabaseSelection(selection, shopDatabase)).toEqual({})
+  })
+})
+
+describe('buildDumpTables', () => {
+  it('collects selected objects with their types and skips empty selections', () => {
+    const result = buildDumpTables({ shop: new Set(['orders']), empty: new Set<string>() }, [
+      shopDatabase,
+    ])
+    expect(result).toEqual({
+      ok: true,
+      databases: ['shop'],
+      tables: { shop: [{ name: 'orders', objectType: 'table' }] },
+    })
+  })
+
+  it('reports an object whose metadata is missing', () => {
+    const result = buildDumpTables({ shop: new Set(['ghost']) }, [shopDatabase])
+    expect(result).toEqual({
+      ok: false,
+      message: 'Cannot export: metadata not found for "ghost" in database "shop"',
+    })
+  })
+
+  it('reports a database that is not in the listing', () => {
+    const result = buildDumpTables({ missing: new Set(['orders']) }, [shopDatabase])
+    expect(result.ok).toBe(false)
+  })
+})
+
+describe('selectedObjectCount', () => {
+  it('sums the selected objects across databases', () => {
+    expect(
+      selectedObjectCount({ shop: new Set(['orders', 'customers']), other: new Set(['x']) })
+    ).toBe(3)
   })
 })

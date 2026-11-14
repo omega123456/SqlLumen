@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState, type PointerEvent } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type PointerEvent,
+  type RefObject,
+  type SetStateAction,
+} from 'react'
 import { computeHorizontalTabReorderTarget, type TabDropIndicator } from './use-tab-reorder'
 
 const POINTER_DRAG_THRESHOLD_PX = 4
@@ -66,11 +74,158 @@ function shouldIgnorePointerDown(event: PointerEvent<HTMLElement>): boolean {
   return isSecondaryButton || isDragHandleBlocked(event.target)
 }
 
-export function usePointerTabDrag({
-  tabIds,
-  tabTestIdPrefix,
-  onReorder,
-}: PointerTabDragOptions): PointerTabDrag {
+interface PointerDragContext {
+  options: PointerTabDragOptions
+  sessionRef: RefObject<PointerDragSession | null>
+  removePointerListenersRef: RefObject<(() => void) | null>
+  suppressNextSelectRef: RefObject<boolean>
+  setDraggingTabId: Dispatch<SetStateAction<string | null>>
+  setDropTarget: Dispatch<SetStateAction<TabDropTarget | null>>
+}
+
+function clearPointerDrag(context: PointerDragContext): void {
+  context.removePointerListenersRef.current?.()
+  context.removePointerListenersRef.current = null
+  context.sessionRef.current = null
+  context.setDraggingTabId(null)
+  context.setDropTarget(null)
+}
+
+function suppressNextSelect(context: PointerDragContext): void {
+  context.suppressNextSelectRef.current = true
+  window.setTimeout(() => {
+    context.suppressNextSelectRef.current = false
+  }, 0)
+}
+
+function finishPointerDrag(context: PointerDragContext, shouldCommit: boolean): void {
+  const session = context.sessionRef.current
+  const wasDragging = Boolean(session?.dragging)
+  const insertIndex = session?.insertIndex ?? null
+  const shouldReorder = shouldCommit && wasDragging && insertIndex !== null
+  if (shouldReorder && session) {
+    context.options.onReorder(session.tabId, insertIndex)
+  }
+  clearPointerDrag(context)
+  if (wasDragging) {
+    suppressNextSelect(context)
+  }
+}
+
+function findHoveredTab(
+  options: PointerTabDragOptions,
+  pointer: PointerPosition
+): HoveredTab | null {
+  for (const tabId of options.tabIds) {
+    const element = document.querySelector<HTMLElement>(
+      `[data-testid="${options.tabTestIdPrefix}${tabId}"]`
+    )
+    const rect = element?.getBoundingClientRect()
+    const isPointerOverTab = rect !== undefined && isPointerInsideRect(pointer, rect)
+    if (isPointerOverTab) {
+      return { tabId: tabId, rect: rect }
+    }
+  }
+  return null
+}
+
+function clearDropTarget(context: PointerDragContext, session: PointerDragSession): void {
+  session.insertIndex = null
+  context.setDropTarget(null)
+}
+
+function updateDropTarget(
+  context: PointerDragContext,
+  session: PointerDragSession,
+  pointer: PointerPosition
+): void {
+  const { tabIds } = context.options
+  const hoveredTab = findHoveredTab(context.options, pointer)
+  if (!hoveredTab) {
+    clearDropTarget(context, session)
+    return
+  }
+  const target = computeHorizontalTabReorderTarget({
+    draggingIndex: tabIds.indexOf(session.tabId),
+    targetIndex: tabIds.indexOf(hoveredTab.tabId),
+    pointerClientX: pointer.clientX,
+    targetRect: hoveredTab.rect,
+  })
+  if (!target) {
+    clearDropTarget(context, session)
+    return
+  }
+  session.insertIndex = target.insertIndex
+  context.setDropTarget({ tabId: hoveredTab.tabId, indicator: target.indicator })
+}
+
+function activateDragPastThreshold(
+  context: PointerDragContext,
+  session: PointerDragSession,
+  pointer: PointerPosition
+): boolean {
+  if (session.dragging) {
+    return true
+  }
+  if (!hasPassedDragThreshold(session, pointer)) {
+    return false
+  }
+  session.dragging = true
+  context.setDraggingTabId(session.tabId)
+  return true
+}
+
+function handlePointerMove(context: PointerDragContext, moveEvent: globalThis.PointerEvent): void {
+  const session = context.sessionRef.current
+  if (!session) {
+    return
+  }
+  if (!activateDragPastThreshold(context, session, moveEvent)) {
+    return
+  }
+  updateDropTarget(context, session, moveEvent)
+}
+
+function listenForPointerDrag(context: PointerDragContext): void {
+  const handleMove = (moveEvent: globalThis.PointerEvent) => handlePointerMove(context, moveEvent)
+  const handlePointerUp = () => finishPointerDrag(context, true)
+  const handlePointerCancel = () => finishPointerDrag(context, false)
+
+  window.addEventListener('pointermove', handleMove)
+  window.addEventListener('pointerup', handlePointerUp)
+  window.addEventListener('pointercancel', handlePointerCancel)
+  context.removePointerListenersRef.current = () => {
+    window.removeEventListener('pointermove', handleMove)
+    window.removeEventListener('pointerup', handlePointerUp)
+    window.removeEventListener('pointercancel', handlePointerCancel)
+  }
+}
+
+function startPointerDrag(
+  context: PointerDragContext,
+  tabId: string,
+  event: PointerEvent<HTMLElement>
+): void {
+  if (shouldIgnorePointerDown(event)) {
+    return
+  }
+  event.preventDefault()
+  clearPointerDrag(context)
+  context.sessionRef.current = {
+    tabId: tabId,
+    dragging: false,
+    startX: event.clientX,
+    startY: event.clientY,
+    insertIndex: null,
+  }
+  listenForPointerDrag(context)
+}
+
+function removePointerListeners(removePointerListenersRef: RefObject<(() => void) | null>): void {
+  removePointerListenersRef.current?.()
+}
+
+export function usePointerTabDrag(options: PointerTabDragOptions): PointerTabDrag {
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<TabDropTarget | null>(null)
   const sessionRef = useRef<PointerDragSession | null>(null)
@@ -78,130 +233,16 @@ export function usePointerTabDrag({
   const suppressNextSelectRef = useRef(false)
 
   useEffect(() => {
-    return () => {
-      removePointerListenersRef.current?.()
-    }
+    return () => removePointerListeners(removePointerListenersRef)
   }, [])
 
-  const clearPointerDrag = () => {
-    removePointerListenersRef.current?.()
-    removePointerListenersRef.current = null
-    sessionRef.current = null
-    setDraggingTabId(null)
-    setDropTarget(null)
-  }
-
-  const suppressNextSelect = () => {
-    suppressNextSelectRef.current = true
-    window.setTimeout(() => {
-      suppressNextSelectRef.current = false
-    }, 0)
-  }
-
-  const finishPointerDrag = (shouldCommit: boolean) => {
-    const session = sessionRef.current
-    const wasDragging = Boolean(session?.dragging)
-    const insertIndex = session?.insertIndex ?? null
-    const shouldReorder = shouldCommit && wasDragging && insertIndex !== null
-    if (shouldReorder && session) {
-      onReorder(session.tabId, insertIndex)
-    }
-    clearPointerDrag()
-    if (wasDragging) {
-      suppressNextSelect()
-    }
-  }
-
-  const findHoveredTab = (pointer: PointerPosition): HoveredTab | null => {
-    for (const tabId of tabIds) {
-      const element = document.querySelector<HTMLElement>(
-        `[data-testid="${tabTestIdPrefix}${tabId}"]`
-      )
-      const rect = element?.getBoundingClientRect()
-      const isPointerOverTab = rect !== undefined && isPointerInsideRect(pointer, rect)
-      if (isPointerOverTab) {
-        return { tabId: tabId, rect: rect }
-      }
-    }
-    return null
-  }
-
-  const clearDropTarget = (session: PointerDragSession) => {
-    session.insertIndex = null
-    setDropTarget(null)
-  }
-
-  const updateDropTarget = (session: PointerDragSession, pointer: PointerPosition) => {
-    const hoveredTab = findHoveredTab(pointer)
-    if (!hoveredTab) {
-      clearDropTarget(session)
-      return
-    }
-    const target = computeHorizontalTabReorderTarget({
-      draggingIndex: tabIds.indexOf(session.tabId),
-      targetIndex: tabIds.indexOf(hoveredTab.tabId),
-      pointerClientX: pointer.clientX,
-      targetRect: hoveredTab.rect,
-    })
-    if (!target) {
-      clearDropTarget(session)
-      return
-    }
-    session.insertIndex = target.insertIndex
-    setDropTarget({ tabId: hoveredTab.tabId, indicator: target.indicator })
-  }
-
-  const activateDragPastThreshold = (
-    session: PointerDragSession,
-    pointer: PointerPosition
-  ): boolean => {
-    if (session.dragging) {
-      return true
-    }
-    if (!hasPassedDragThreshold(session, pointer)) {
-      return false
-    }
-    session.dragging = true
-    setDraggingTabId(session.tabId)
-    return true
-  }
-
-  const handlePointerMove = (moveEvent: globalThis.PointerEvent) => {
-    const session = sessionRef.current
-    if (!session) {
-      return
-    }
-    if (!activateDragPastThreshold(session, moveEvent)) {
-      return
-    }
-    updateDropTarget(session, moveEvent)
-  }
-
-  const startPointerDrag = (tabId: string, event: PointerEvent<HTMLElement>) => {
-    if (shouldIgnorePointerDown(event)) {
-      return
-    }
-    event.preventDefault()
-    clearPointerDrag()
-    sessionRef.current = {
-      tabId: tabId,
-      dragging: false,
-      startX: event.clientX,
-      startY: event.clientY,
-      insertIndex: null,
-    }
-
-    const handlePointerUp = () => finishPointerDrag(true)
-    const handlePointerCancel = () => finishPointerDrag(false)
-
-    window.addEventListener('pointermove', handlePointerMove)
-    window.addEventListener('pointerup', handlePointerUp)
-    window.addEventListener('pointercancel', handlePointerCancel)
-    removePointerListenersRef.current = () => {
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', handlePointerUp)
-      window.removeEventListener('pointercancel', handlePointerCancel)
-    }
+  const context: PointerDragContext = {
+    options: options,
+    sessionRef: sessionRef,
+    removePointerListenersRef: removePointerListenersRef,
+    suppressNextSelectRef: suppressNextSelectRef,
+    setDraggingTabId: setDraggingTabId,
+    setDropTarget: setDropTarget,
   }
 
   const dropIndicatorFor = (tabId: string): TabDropIndicator | undefined => {
@@ -211,12 +252,10 @@ export function usePointerTabDrag({
     return dropTarget.indicator
   }
 
-  const isSelectSuppressed = () => suppressNextSelectRef.current
-
   return {
     draggingTabId: draggingTabId,
     dropIndicatorFor: dropIndicatorFor,
-    startPointerDrag: startPointerDrag,
-    isSelectSuppressed: isSelectSuppressed,
+    startPointerDrag: (tabId, event) => startPointerDrag(context, tabId, event),
+    isSelectSuppressed: () => suppressNextSelectRef.current,
   }
 }

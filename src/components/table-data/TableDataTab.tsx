@@ -5,19 +5,12 @@
  * export dialog, and unsaved-changes dialog for a single table-data tab.
  */
 
-import { useEffect, useCallback } from 'react'
 import { useTableDataStore } from '../../stores/table-data-store'
 import { useIsConnectionReadOnly } from '../../stores/connection-store'
-import { useWorkspaceStore } from '../../stores/workspace-store'
-import { exportTableData } from '../../lib/table-data-commands'
 import { TableDataToolbar } from './TableDataToolbar'
 import { TableDataGrid } from './TableDataGrid'
 import { TableDataFormView } from './TableDataFormView'
-import { UnsavedChangesDialog } from '../shared/UnsavedChangesDialog'
-import ExportDialog from '../dialogs/ExportDialog'
 import type {
-  ExportOptions,
-  FilterCondition,
   PrimaryKeyInfo,
   TableDataColumnMeta,
   TableDataTabState,
@@ -27,6 +20,8 @@ import type {
 import { InfoBar } from '../common/InfoBar'
 import { Button } from '../common/Button'
 import styles from './TableDataTab.module.css'
+import { useTableDataTabLifecycle } from './table-data-tab/use-table-data-tab-lifecycle'
+import { TableDataTabDialogs } from './table-data-tab/TableDataTabDialogs'
 
 interface TableDataTabProps {
   tab: WorkspaceTab
@@ -73,26 +68,6 @@ function tableDataTabView(tabState: TableDataTabState | undefined): TableDataTab
   }
 }
 
-interface TableDataExportScope {
-  filterModel?: FilterCondition[]
-  sortColumn?: string
-  sortDirection?: string
-  page?: number
-  pageSize?: number
-}
-
-function tableDataExportScope(tabState: TableDataTabState | undefined): TableDataExportScope {
-  if (!tabState) return {}
-  const hasActiveFilters = tabState.filterModel.length > 0
-  return {
-    filterModel: hasActiveFilters ? tabState.filterModel : undefined,
-    sortColumn: tabState.sort?.column,
-    sortDirection: tabState.sort?.direction,
-    page: tabState.currentPage,
-    pageSize: tabState.pageSize,
-  }
-}
-
 function hasLoadedColumns(view: TableDataTabView): boolean {
   return !view.error && view.columns.length > 0
 }
@@ -101,7 +76,6 @@ function isInitialLoad(view: TableDataTabView): boolean {
   return view.isLoading && !view.error && view.columns.length === 0
 }
 
-// Show no-PK warning only for actual tables, not views (views never have PKs)
 function shouldShowNoPrimaryKeyWarning(view: TableDataTabView, isViewObject: boolean): boolean {
   if (isViewObject) return false
   if (view.primaryKey !== null) return false
@@ -218,81 +192,17 @@ export function TableDataTab({
 }: TableDataTabProps) {
   const tableDataTab = tab as TableDataTabType
   const tabId = tableDataTab.id
-  const connectionId = tableDataTab.connectionId
-  const database = tableDataTab.databaseName
-  const table = tableDataTab.objectName
-
   const tabState = useTableDataStore((state) => state.tabs[tabId])
-  const initTab = useTableDataStore((state) => state.initTab)
   const loadTableData = useTableDataStore((state) => state.loadTableData)
-  const confirmNavigationSave = useTableDataStore((state) => state.confirmNavigationSave)
-  const confirmNavigationDiscard = useTableDataStore((state) => state.confirmNavigationDiscard)
-  const cancelNavigation = useTableDataStore((state) => state.cancelNavigation)
-  const closeExportDialog = useTableDataStore((state) => state.closeExportDialog)
-  const setBlockingNavigation = useWorkspaceStore((state) => state.setBlockingNavigation)
-
-  const isConnectionReadOnly = useIsConnectionReadOnly(connectionId)
+  const isConnectionReadOnly = useIsConnectionReadOnly(tableDataTab.connectionId)
   const isViewObject = tableDataTab.objectType === 'view'
-  const effectiveReadOnly = isConnectionReadOnly || isViewObject
-
-  useEffect(() => {
-    // Only init + load if we don't already have state for this tab
-    // (prevents re-loading when switching back to the tab after it was unmounted)
-    const existing = useTableDataStore.getState().tabs[tabId]
-    const needsInitialLoad = isActive && !existing
-    if (needsInitialLoad) {
-      initTab(tabId, { connectionId: connectionId, database: database, table: table })
-      loadTableData(tabId)
-    }
-    // DO NOT call cleanupTab on unmount — workspace-store handles that
-    // when the tab is actually closed (via closeTab / closeTabsByDatabase etc.)
-  }, [tabId, connectionId, database, table, isActive, initTab, loadTableData])
-
-  const handleRetry = useCallback(() => {
-    loadTableData(tabId)
-  }, [loadTableData, tabId])
-
-  const handleSaveNavigation = useCallback(async () => {
-    await confirmNavigationSave(tabId)
-  }, [confirmNavigationSave, tabId])
-
-  const handleDiscardNavigation = useCallback(() => {
-    confirmNavigationDiscard(tabId)
-  }, [confirmNavigationDiscard, tabId])
-
-  const handleCancelNavigation = useCallback(() => {
-    cancelNavigation(tabId)
-  }, [cancelNavigation, tabId])
-
-  const handleExport = useCallback(
-    async (options: Required<ExportOptions>) => {
-      await exportTableData({
-        connectionId: connectionId,
-        database: database,
-        table: table,
-        format: options.format,
-        filePath: options.filePath,
-        includeHeaders: options.includeHeaders,
-        tableNameForSql: options.tableName,
-        ...tableDataExportScope(tabState),
-      })
-      closeExportDialog(tabId)
-    },
-    [connectionId, database, table, tabState, closeExportDialog, tabId]
-  )
-
   const view = tableDataTabView(tabState)
-  const hasPendingNavigation = view.pendingNavigationAction !== null
-
-  useEffect(() => {
-    setBlockingNavigation(tabId, hasPendingNavigation)
-    return () => setBlockingNavigation(tabId, false)
-  }, [hasPendingNavigation, setBlockingNavigation, tabId])
-
-  useEffect(() => {
-    if (isActive) return
-    if (view.isExportDialogOpen) closeExportDialog(tabId)
-  }, [closeExportDialog, isActive, view.isExportDialogOpen, tabId])
+  useTableDataTabLifecycle({
+    tab: tableDataTab,
+    isActive: isActive,
+    hasPendingNavigation: view.pendingNavigationAction !== null,
+    isExportDialogOpen: view.isExportDialogOpen,
+  })
 
   return (
     <div
@@ -301,43 +211,28 @@ export function TableDataTab({
       data-render-mode={renderMode}
     >
       <TableDataToolbar tabId={tabId} isView={isViewObject} />
-
       {shouldShowNoPrimaryKeyWarning(view, isViewObject) && <NoPrimaryKeyWarning />}
-
       {isInitialLoad(view) && <TableDataLoadingState />}
-
-      {view.error && <TableDataErrorState error={view.error} onRetry={handleRetry} />}
-
+      {view.error && (
+        <TableDataErrorState error={view.error} onRetry={() => loadTableData(tabId)} />
+      )}
       {hasLoadedColumns(view) && (
         <TableDataContent
           tabId={tabId}
           view={view}
-          isReadOnly={effectiveReadOnly}
+          isReadOnly={isConnectionReadOnly || isViewObject}
           isViewObject={isViewObject}
           isActive={isActive}
         />
       )}
-
-      {view.isExportDialogOpen && (
-        <ExportDialog
-          connectionId={connectionId}
-          tabId={tabId}
-          onClose={() => closeExportDialog(tabId)}
-          onExport={handleExport}
-          defaultTableName={table}
-          isView={isViewObject}
-        />
-      )}
-
-      {hasPendingNavigation && (
-        <UnsavedChangesDialog
-          tabId={tabId}
-          onSave={handleSaveNavigation}
-          onDiscard={handleDiscardNavigation}
-          onCancel={handleCancelNavigation}
-          error={view.saveError}
-        />
-      )}
+      <TableDataTabDialogs
+        tab={tableDataTab}
+        tabState={tabState}
+        isViewObject={isViewObject}
+        saveError={view.saveError}
+        isExportDialogOpen={view.isExportDialogOpen}
+        hasPendingNavigation={view.pendingNavigationAction !== null}
+      />
     </div>
   )
 }

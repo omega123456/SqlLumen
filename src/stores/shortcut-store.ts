@@ -4,9 +4,6 @@ import { getSetting } from '../lib/tauri-commands'
 import type { ShortcutBinding } from '../types/schema'
 
 import { logFrontendError } from '../lib/app-log-commands'
-// ---------------------------------------------------------------------------
-// Default shortcut bindings
-// ---------------------------------------------------------------------------
 
 export const DEFAULT_SHORTCUTS: Record<string, ShortcutBinding> = {
   'execute-query': { key: 'F9', modifiers: [] },
@@ -25,7 +22,6 @@ export const DEFAULT_SHORTCUTS: Record<string, ShortcutBinding> = {
   'reveal-in-object-browser': { key: 'F1', modifiers: ['shift'] },
 }
 
-/** Action IDs that should fire even when the Monaco editor is focused. */
 export const EDITOR_CONTEXT_ACTIONS = new Set([
   'execute-query',
   'execute-all',
@@ -39,7 +35,6 @@ export const EDITOR_CONTEXT_ACTIONS = new Set([
   'reveal-in-object-browser',
 ])
 
-/** Action IDs that should fire even when focus is on INPUT/TEXTAREA/SELECT elements. */
 export const GLOBAL_ACTIONS = new Set([
   'command-palette',
   'command-palette-table',
@@ -49,29 +44,17 @@ export const GLOBAL_ACTIONS = new Set([
   'reveal-in-object-browser',
 ])
 
-// ---------------------------------------------------------------------------
-// Store
-// ---------------------------------------------------------------------------
-
 type ActionCallback = () => void
 
 interface ShortcutState {
-  /** Current shortcut bindings keyed by action ID. */
   shortcuts: Record<string, ShortcutBinding>
-  /** Default shortcut bindings (immutable reference). */
   defaults: Record<string, ShortcutBinding>
-  /** Action ID currently being re-recorded (null when not recording). */
   recordingActionId: string | null
-  /** Action ID that conflicts with a pending recording (null when no conflict). */
   conflictActionId: string | null
-  /** Pending binding stashed during conflict resolution. */
   _pendingBinding: ShortcutBinding | null
-  /** Pending action ID stashed during conflict resolution. */
   _pendingActionId: string | null
-  /** Mutable registry of action callbacks (not part of reactive state). */
   _actions: Record<string, ActionCallback>
 
-  // Actions
   initializeFromBackend: () => Promise<void>
   loadShortcuts: (serialized?: string) => void
   saveShortcuts: () => string
@@ -98,7 +81,6 @@ function isKnownShortcutBinding(
   return typeof binding.key === 'string'
 }
 
-/** Find an action ID that already uses a given binding (excluding `excludeActionId`). */
 function findConflict(
   shortcuts: Record<string, ShortcutBinding>,
   binding: ShortcutBinding,
@@ -111,7 +93,134 @@ function findConflict(
   return null
 }
 
-export const useShortcutStore = create<ShortcutState>()((set, get) => ({
+async function initializeFromBackend(): Promise<void> {
+  try {
+    const serialized = await getSetting('shortcuts')
+    useShortcutStore.getState().loadShortcuts(serialized ?? undefined)
+  } catch (error) {
+    logFrontendError('[shortcut-store] Failed to load shortcuts from backend:', error)
+  }
+}
+
+function mergeWithDefaultShortcuts(
+  parsed: Record<string, ShortcutBinding>
+): typeof DEFAULT_SHORTCUTS {
+  const merged = { ...DEFAULT_SHORTCUTS }
+  for (const [actionId, binding] of Object.entries(parsed)) {
+    if (isKnownShortcutBinding(merged, actionId, binding)) {
+      merged[actionId] = binding
+    }
+  }
+  return merged
+}
+
+function loadShortcuts(serialized?: string): void {
+  const hasNoSavedShortcuts = !serialized || serialized === EMPTY_SERIALIZED_SHORTCUTS
+  if (hasNoSavedShortcuts) {
+    useShortcutStore.setState({ shortcuts: { ...DEFAULT_SHORTCUTS } })
+    return
+  }
+  try {
+    const parsed = JSON.parse(serialized) as Record<string, ShortcutBinding>
+    useShortcutStore.setState({ shortcuts: mergeWithDefaultShortcuts(parsed) })
+  } catch (error) {
+    logFrontendError('[shortcut-store] Failed to parse shortcuts:', error)
+    useShortcutStore.setState({ shortcuts: { ...DEFAULT_SHORTCUTS } })
+  }
+}
+
+function saveShortcuts(): string {
+  const state = useShortcutStore.getState()
+  return JSON.stringify(state.shortcuts)
+}
+
+function startRecording(actionId: string): void {
+  useShortcutStore.setState({ recordingActionId: actionId, conflictActionId: null })
+}
+
+function finishRecording(actionId: string, binding: ShortcutBinding): void {
+  const state = useShortcutStore.getState()
+  const conflict = findConflict(state.shortcuts, binding, actionId)
+  if (conflict) {
+    useShortcutStore.setState({
+      conflictActionId: conflict,
+      _pendingBinding: binding,
+      _pendingActionId: actionId,
+      recordingActionId: null,
+    })
+    return
+  }
+  const updated = { ...state.shortcuts, [actionId]: binding }
+  useShortcutStore.setState({
+    shortcuts: updated,
+    recordingActionId: null,
+    conflictActionId: null,
+    _pendingBinding: null,
+    _pendingActionId: null,
+  })
+}
+
+function cancelRecording(): void {
+  useShortcutStore.setState({
+    recordingActionId: null,
+    conflictActionId: null,
+    _pendingBinding: null,
+    _pendingActionId: null,
+  })
+}
+
+function resolveConflict(): void {
+  const state = useShortcutStore.getState()
+  if (!state._pendingBinding) return
+  if (!state._pendingActionId) return
+  if (!state.conflictActionId) return
+
+  const updated = { ...state.shortcuts }
+  updated[state._pendingActionId] = state._pendingBinding
+  updated[state.conflictActionId] = DEFAULT_SHORTCUTS[state.conflictActionId] ?? {
+    key: '',
+    modifiers: [],
+  }
+
+  useShortcutStore.setState({
+    shortcuts: updated,
+    conflictActionId: null,
+    _pendingBinding: null,
+    _pendingActionId: null,
+    recordingActionId: null,
+  })
+}
+
+function resetShortcut(actionId: string): void {
+  const state = useShortcutStore.getState()
+  if (actionId in DEFAULT_SHORTCUTS) {
+    useShortcutStore.setState({
+      shortcuts: { ...state.shortcuts, [actionId]: DEFAULT_SHORTCUTS[actionId] },
+    })
+  }
+}
+
+function resetAllShortcuts(): void {
+  useShortcutStore.setState({ shortcuts: { ...DEFAULT_SHORTCUTS } })
+}
+
+function registerAction(actionId: string, callback: ActionCallback): void {
+  const state = useShortcutStore.getState()
+  state._actions[actionId] = callback
+}
+
+function unregisterAction(actionId: string): void {
+  const state = useShortcutStore.getState()
+  delete state._actions[actionId]
+}
+
+function dispatchAction(actionId: string): void {
+  const state = useShortcutStore.getState()
+  const callback = state._actions[actionId]
+  if (callback) callback()
+}
+
+export const useShortcutStore = create<ShortcutState>()(() => ({
   shortcuts: { ...DEFAULT_SHORTCUTS },
   defaults: DEFAULT_SHORTCUTS,
   recordingActionId: null,
@@ -119,128 +228,16 @@ export const useShortcutStore = create<ShortcutState>()((set, get) => ({
   _pendingBinding: null,
   _pendingActionId: null,
   _actions: {},
-
-  initializeFromBackend: async () => {
-    try {
-      const serialized = await getSetting('shortcuts')
-      get().loadShortcuts(serialized ?? undefined)
-    } catch (error) {
-      logFrontendError('[shortcut-store] Failed to load shortcuts from backend:', error)
-    }
-  },
-
-  loadShortcuts: (serialized?: string) => {
-    const hasNoSavedShortcuts = !serialized || serialized === EMPTY_SERIALIZED_SHORTCUTS
-    if (hasNoSavedShortcuts) {
-      set({ shortcuts: { ...DEFAULT_SHORTCUTS } })
-      return
-    }
-    try {
-      const parsed = JSON.parse(serialized) as Record<string, ShortcutBinding>
-      // Merge: use parsed values where available, defaults otherwise
-      const merged = { ...DEFAULT_SHORTCUTS }
-      for (const [actionId, binding] of Object.entries(parsed)) {
-        if (isKnownShortcutBinding(merged, actionId, binding)) {
-          merged[actionId] = binding
-        }
-      }
-      set({ shortcuts: merged })
-    } catch (error) {
-      logFrontendError('[shortcut-store] Failed to parse shortcuts:', error)
-      set({ shortcuts: { ...DEFAULT_SHORTCUTS } })
-    }
-  },
-
-  saveShortcuts: (): string => {
-    const state = get()
-    return JSON.stringify(state.shortcuts)
-  },
-
-  startRecording: (actionId: string) => {
-    set({ recordingActionId: actionId, conflictActionId: null })
-  },
-
-  finishRecording: (actionId: string, binding: ShortcutBinding) => {
-    const state = get()
-    const conflict = findConflict(state.shortcuts, binding, actionId)
-    if (conflict) {
-      set({
-        conflictActionId: conflict,
-        _pendingBinding: binding,
-        _pendingActionId: actionId,
-        recordingActionId: null,
-      })
-      return
-    }
-    const updated = { ...state.shortcuts, [actionId]: binding }
-    set({
-      shortcuts: updated,
-      recordingActionId: null,
-      conflictActionId: null,
-      _pendingBinding: null,
-      _pendingActionId: null,
-    })
-  },
-
-  cancelRecording: () => {
-    set({
-      recordingActionId: null,
-      conflictActionId: null,
-      _pendingBinding: null,
-      _pendingActionId: null,
-    })
-  },
-
-  resolveConflict: () => {
-    const state = get()
-    if (!state._pendingBinding) return
-    if (!state._pendingActionId) return
-    if (!state.conflictActionId) return
-
-    const updated = { ...state.shortcuts }
-    // Assign the pending binding to the intended action
-    updated[state._pendingActionId] = state._pendingBinding
-    // Reset the conflicting action to its default
-    updated[state.conflictActionId] = DEFAULT_SHORTCUTS[state.conflictActionId] ?? {
-      key: '',
-      modifiers: [],
-    }
-
-    set({
-      shortcuts: updated,
-      conflictActionId: null,
-      _pendingBinding: null,
-      _pendingActionId: null,
-      recordingActionId: null,
-    })
-  },
-
-  resetShortcut: (actionId: string) => {
-    const state = get()
-    if (actionId in DEFAULT_SHORTCUTS) {
-      set({
-        shortcuts: { ...state.shortcuts, [actionId]: DEFAULT_SHORTCUTS[actionId] },
-      })
-    }
-  },
-
-  resetAllShortcuts: () => {
-    set({ shortcuts: { ...DEFAULT_SHORTCUTS } })
-  },
-
-  registerAction: (actionId: string, callback: ActionCallback) => {
-    const state = get()
-    state._actions[actionId] = callback
-  },
-
-  unregisterAction: (actionId: string) => {
-    const state = get()
-    delete state._actions[actionId]
-  },
-
-  dispatchAction: (actionId: string) => {
-    const state = get()
-    const callback = state._actions[actionId]
-    if (callback) callback()
-  },
+  initializeFromBackend: initializeFromBackend,
+  loadShortcuts: loadShortcuts,
+  saveShortcuts: saveShortcuts,
+  startRecording: startRecording,
+  finishRecording: finishRecording,
+  cancelRecording: cancelRecording,
+  resolveConflict: resolveConflict,
+  resetShortcut: resetShortcut,
+  resetAllShortcuts: resetAllShortcuts,
+  registerAction: registerAction,
+  unregisterAction: unregisterAction,
+  dispatchAction: dispatchAction,
 }))

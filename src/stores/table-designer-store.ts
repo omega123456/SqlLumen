@@ -40,7 +40,9 @@ import {
 } from './table-designer-store/designer-tab-reducers'
 
 const DDL_REGENERATE_DEBOUNCE_MS = 300
+
 const debounceTimers: Record<string, ReturnType<typeof setTimeout>> = {}
+
 const ddlRequestVersions: Record<string, number> = {}
 
 export interface TableDesignerTabState {
@@ -125,237 +127,271 @@ function invalidateDdlRequests(tabId: string): void {
   nextDdlRequestVersion(tabId)
 }
 
-export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => {
-  const patchTab = (tabId: string, partial: Partial<TableDesignerTabState>) => {
-    set((state) => patchDesignerTab(state, { tabId: tabId, partial: partial }))
+function patchTab(tabId: string, partial: Partial<TableDesignerTabState>) {
+  useTableDesignerStore.setState((state) =>
+    patchDesignerTab(state, { tabId: tabId, partial: partial })
+  )
+}
+
+function scheduleRegenerate(tabId: string) {
+  clearDebounceTimer(tabId)
+  invalidateDdlRequests(tabId)
+  debounceTimers[tabId] = setTimeout(() => {
+    delete debounceTimers[tabId]
+    void useTableDesignerStore.getState().regenerateDdl(tabId)
+  }, DDL_REGENERATE_DEBOUNCE_MS)
+}
+
+function mutateSchema(tabId: string, buildEdit: (tab: TableDesignerTabState) => SchemaEdit | null) {
+  const tab = useTableDesignerStore.getState().tabs[tabId]
+  if (!tab) return
+  const edit = buildEdit(tab)
+  if (!edit) return
+  useTableDesignerStore.setState((state) =>
+    applyDesignerSchemaEdit(state, { tabId: tabId, edit: edit })
+  )
+  scheduleRegenerate(tabId)
+}
+
+function initTab(tabId: string, target: TableDesignerTarget): void {
+  useTableDesignerStore.setState((state) =>
+    initDesignerTab(state, { tabId: tabId, target: target })
+  )
+}
+
+function updateTabContext(
+  tabId: string,
+  update: { mode: 'create' | 'alter'; objectName: string }
+): void {
+  patchTab(tabId, {
+    mode: update.mode,
+    objectName: update.objectName,
+  })
+}
+
+async function loadSchema(tabId: string): Promise<void> {
+  const tab = useTableDesignerStore.getState().tabs[tabId]
+  if (!tab) {
+    return
   }
 
-  const scheduleRegenerate = (tabId: string) => {
-    clearDebounceTimer(tabId)
-    invalidateDdlRequests(tabId)
-    debounceTimers[tabId] = setTimeout(() => {
-      delete debounceTimers[tabId]
-      void get().regenerateDdl(tabId)
-    }, DDL_REGENERATE_DEBOUNCE_MS)
+  if (tab.mode === 'create') {
+    patchTab(tabId, { isLoading: false, loadError: null })
+    return
   }
 
-  const mutateSchema = (
-    tabId: string,
-    buildEdit: (tab: TableDesignerTabState) => SchemaEdit | null
-  ) => {
-    const tab = get().tabs[tabId]
-    if (!tab) return
-    const edit = buildEdit(tab)
-    if (!edit) return
-    set((state) => applyDesignerSchemaEdit(state, { tabId: tabId, edit: edit }))
-    scheduleRegenerate(tabId)
+  patchTab(tabId, { isLoading: true, loadError: null })
+
+  try {
+    const loadedSchema = normalizeLoadedSchema(
+      await loadTableForDesigner(tab.connectionId, tab.databaseName, tab.objectName)
+    )
+
+    if (!useTableDesignerStore.getState().tabs[tabId]) {
+      return
+    }
+
+    patchTab(tabId, {
+      originalSchema: cloneValue(loadedSchema),
+      currentSchema: cloneValue(loadedSchema),
+      isDirty: false,
+      isLoading: false,
+      loadError: null,
+      validationErrors: {},
+    })
+
+    await useTableDesignerStore.getState().regenerateDdl(tabId)
+  } catch (error) {
+    logFrontendError('[table-designer-store] Failed to load table schema', error)
+
+    if (!useTableDesignerStore.getState().tabs[tabId]) {
+      return
+    }
+
+    patchTab(tabId, {
+      loadError: toErrorMessage(error),
+      isLoading: false,
+    })
+  }
+}
+
+function updateColumn(tabId: string, edit: DesignerFieldEdit<TableDesignerColumnDef>): void {
+  mutateSchema(tabId, (tab) => editColumnField(tab, edit))
+}
+
+function addColumn(tabId: string): void {
+  mutateSchema(tabId, addBlankColumn)
+}
+
+function deleteColumn(tabId: string, columnIndex: number): void {
+  mutateSchema(tabId, (tab) => removeColumn(tab, columnIndex))
+}
+
+function reorderColumn(tabId: string, fromIndex: number, toIndex: number): void {
+  mutateSchema(tabId, (tab) => moveColumn(tab, { fromIndex: fromIndex, toIndex: toIndex }))
+}
+
+function updateIndex(tabId: string, edit: DesignerFieldEdit<TableDesignerIndexDef>): void {
+  mutateSchema(tabId, (tab) => editIndexField(tab, edit))
+}
+
+function addIndex(tabId: string): void {
+  mutateSchema(tabId, addBlankIndex)
+}
+
+function deleteIndex(tabId: string, indexPosition: number): void {
+  mutateSchema(tabId, (tab) => removeIndex(tab, indexPosition))
+}
+
+function updateForeignKey(
+  tabId: string,
+  edit: DesignerFieldEdit<TableDesignerForeignKeyDef>
+): void {
+  mutateSchema(tabId, (tab) => editForeignKeyField(tab, edit))
+}
+
+function addForeignKey(tabId: string): void {
+  mutateSchema(tabId, addBlankForeignKey)
+}
+
+function deleteForeignKey(tabId: string, foreignKeyIndex: number): void {
+  mutateSchema(tabId, (tab) => removeForeignKey(tab, foreignKeyIndex))
+}
+
+function updateProperties(
+  tabId: string,
+  field: keyof TableDesignerProperties,
+  value: unknown
+): void {
+  mutateSchema(tabId, (tab) => editProperty(tab, { field: field, value: value }))
+}
+
+function updateTableName(tabId: string, name: string): void {
+  mutateSchema(tabId, (tab) => renameTable(tab, name))
+}
+
+async function regenerateDdl(tabId: string): Promise<void> {
+  clearDebounceTimer(tabId)
+
+  const tab = useTableDesignerStore.getState().tabs[tabId]
+  if (!tab) {
+    return
   }
 
-  return {
-    tabs: {},
+  const requestVersion = nextDdlRequestVersion(tabId)
 
-    initTab: (tabId, target) => {
-      set((state) => initDesignerTab(state, { tabId: tabId, target: target }))
-    },
-    updateTabContext: (tabId, update) => {
-      patchTab(tabId, {
-        mode: update.mode,
-        objectName: update.objectName,
-      })
-    },
-
-    loadSchema: async (tabId) => {
-      const tab = get().tabs[tabId]
-      if (!tab) {
-        return
-      }
-
-      if (tab.mode === 'create') {
-        patchTab(tabId, { isLoading: false, loadError: null })
-        return
-      }
-
-      patchTab(tabId, { isLoading: true, loadError: null })
-
-      try {
-        const loadedSchema = normalizeLoadedSchema(
-          await loadTableForDesigner(tab.connectionId, tab.databaseName, tab.objectName)
-        )
-
-        if (!get().tabs[tabId]) {
-          return
-        }
-
-        patchTab(tabId, {
-          originalSchema: cloneValue(loadedSchema),
-          currentSchema: cloneValue(loadedSchema),
-          isDirty: false,
-          isLoading: false,
-          loadError: null,
-          validationErrors: {},
-        })
-
-        await get().regenerateDdl(tabId)
-      } catch (error) {
-        logFrontendError('[table-designer-store] Failed to load table schema', error)
-
-        if (!get().tabs[tabId]) {
-          return
-        }
-
-        patchTab(tabId, {
-          loadError: toErrorMessage(error),
-          isLoading: false,
-        })
-      }
-    },
-
-    updateColumn: (tabId, edit) => {
-      mutateSchema(tabId, (tab) => editColumnField(tab, edit))
-    },
-
-    addColumn: (tabId) => {
-      mutateSchema(tabId, addBlankColumn)
-    },
-
-    deleteColumn: (tabId, columnIndex) => {
-      mutateSchema(tabId, (tab) => removeColumn(tab, columnIndex))
-    },
-
-    reorderColumn: (tabId, fromIndex, toIndex) => {
-      mutateSchema(tabId, (tab) => moveColumn(tab, { fromIndex: fromIndex, toIndex: toIndex }))
-    },
-
-    updateIndex: (tabId, edit) => {
-      mutateSchema(tabId, (tab) => editIndexField(tab, edit))
-    },
-
-    addIndex: (tabId) => {
-      mutateSchema(tabId, addBlankIndex)
-    },
-
-    deleteIndex: (tabId, indexPosition) => {
-      mutateSchema(tabId, (tab) => removeIndex(tab, indexPosition))
-    },
-
-    updateForeignKey: (tabId, edit) => {
-      mutateSchema(tabId, (tab) => editForeignKeyField(tab, edit))
-    },
-
-    addForeignKey: (tabId) => {
-      mutateSchema(tabId, addBlankForeignKey)
-    },
-
-    deleteForeignKey: (tabId, foreignKeyIndex) => {
-      mutateSchema(tabId, (tab) => removeForeignKey(tab, foreignKeyIndex))
-    },
-
-    updateProperties: (tabId, field, value) => {
-      mutateSchema(tabId, (tab) => editProperty(tab, { field: field, value: value }))
-    },
-
-    updateTableName: (tabId, name) => {
-      mutateSchema(tabId, (tab) => renameTable(tab, name))
-    },
-
-    regenerateDdl: async (tabId) => {
-      clearDebounceTimer(tabId)
-
-      const tab = get().tabs[tabId]
-      if (!tab) {
-        return
-      }
-
-      const requestVersion = nextDdlRequestVersion(tabId)
-
-      if (!isCreateDraftReadyForDdl(tab)) {
-        patchTab(tabId, {
-          ddl: '',
-          ddlWarnings: [],
-          ddlError: null,
-          isDdlLoading: false,
-        })
-        return
-      }
-
-      patchTab(tabId, {
-        isDdlLoading: true,
-      })
-
-      try {
-        const response = await generateTableDdl({
-          originalSchema: tab.originalSchema ? cloneValue(tab.originalSchema) : null,
-          currentSchema: cloneValue(tab.currentSchema),
-          database: tab.databaseName,
-          mode: tab.mode,
-        })
-
-        if (!get().tabs[tabId]) {
-          return
-        }
-
-        if (ddlRequestVersions[tabId] !== requestVersion) {
-          return
-        }
-
-        patchTab(tabId, {
-          ddl: response.ddl,
-          ddlWarnings: response.warnings,
-          ddlError: null,
-          isDdlLoading: false,
-        })
-      } catch (error) {
-        logFrontendError('[table-designer-store] Failed to regenerate DDL', error)
-
-        if (!get().tabs[tabId]) {
-          return
-        }
-
-        if (ddlRequestVersions[tabId] !== requestVersion) {
-          return
-        }
-
-        patchTab(tabId, {
-          ddl: '',
-          ddlWarnings: [],
-          ddlError: toErrorMessage(error),
-          isDdlLoading: false,
-        })
-      }
-    },
-
-    discardChanges: (tabId) => {
-      set((state) => discardDesignerChanges(state, tabId))
-      void get().regenerateDdl(tabId)
-    },
-
-    markClean: (tabId) => {
-      patchTab(tabId, {
-        isDirty: false,
-        validationErrors: {},
-      })
-    },
-
-    requestNavigationAction: (tabId, callback) => {
-      patchTab(tabId, {
-        pendingNavigationAction: callback,
-      })
-    },
-
-    clearNavigationAction: (tabId) => {
-      patchTab(tabId, { pendingNavigationAction: null })
-    },
-
-    cleanupTab: (tabId) => {
-      clearDebounceTimer(tabId)
-      clearDdlRequestVersion(tabId)
-      set((state) => removeDesignerTab(state, tabId))
-    },
-
-    setSelectedSubTab: (tabId, subTab) => {
-      patchTab(tabId, {
-        selectedSubTab: subTab,
-      })
-    },
+  if (!isCreateDraftReadyForDdl(tab)) {
+    patchTab(tabId, {
+      ddl: '',
+      ddlWarnings: [],
+      ddlError: null,
+      isDdlLoading: false,
+    })
+    return
   }
-})
+
+  patchTab(tabId, {
+    isDdlLoading: true,
+  })
+
+  try {
+    const response = await generateTableDdl({
+      originalSchema: tab.originalSchema ? cloneValue(tab.originalSchema) : null,
+      currentSchema: cloneValue(tab.currentSchema),
+      database: tab.databaseName,
+      mode: tab.mode,
+    })
+
+    if (!useTableDesignerStore.getState().tabs[tabId]) {
+      return
+    }
+
+    if (ddlRequestVersions[tabId] !== requestVersion) {
+      return
+    }
+
+    patchTab(tabId, {
+      ddl: response.ddl,
+      ddlWarnings: response.warnings,
+      ddlError: null,
+      isDdlLoading: false,
+    })
+  } catch (error) {
+    logFrontendError('[table-designer-store] Failed to regenerate DDL', error)
+
+    if (!useTableDesignerStore.getState().tabs[tabId]) {
+      return
+    }
+
+    if (ddlRequestVersions[tabId] !== requestVersion) {
+      return
+    }
+
+    patchTab(tabId, {
+      ddl: '',
+      ddlWarnings: [],
+      ddlError: toErrorMessage(error),
+      isDdlLoading: false,
+    })
+  }
+}
+
+function discardChanges(tabId: string): void {
+  useTableDesignerStore.setState((state) => discardDesignerChanges(state, tabId))
+  void useTableDesignerStore.getState().regenerateDdl(tabId)
+}
+
+function markClean(tabId: string): void {
+  patchTab(tabId, {
+    isDirty: false,
+    validationErrors: {},
+  })
+}
+
+function requestNavigationAction(tabId: string, callback: () => void): void {
+  patchTab(tabId, {
+    pendingNavigationAction: callback,
+  })
+}
+
+function clearNavigationAction(tabId: string): void {
+  patchTab(tabId, { pendingNavigationAction: null })
+}
+
+function cleanupTab(tabId: string): void {
+  clearDebounceTimer(tabId)
+  clearDdlRequestVersion(tabId)
+  useTableDesignerStore.setState((state) => removeDesignerTab(state, tabId))
+}
+
+function setSelectedSubTab(tabId: string, subTab: DesignerSubTab): void {
+  patchTab(tabId, {
+    selectedSubTab: subTab,
+  })
+}
+
+export const useTableDesignerStore = create<TableDesignerStore>()(() => ({
+  tabs: {},
+  initTab: initTab,
+  updateTabContext: updateTabContext,
+  loadSchema: loadSchema,
+  updateColumn: updateColumn,
+  addColumn: addColumn,
+  deleteColumn: deleteColumn,
+  reorderColumn: reorderColumn,
+  updateIndex: updateIndex,
+  addIndex: addIndex,
+  deleteIndex: deleteIndex,
+  updateForeignKey: updateForeignKey,
+  addForeignKey: addForeignKey,
+  deleteForeignKey: deleteForeignKey,
+  updateProperties: updateProperties,
+  updateTableName: updateTableName,
+  regenerateDdl: regenerateDdl,
+  discardChanges: discardChanges,
+  markClean: markClean,
+  requestNavigationAction: requestNavigationAction,
+  clearNavigationAction: clearNavigationAction,
+  cleanupTab: cleanupTab,
+  setSelectedSubTab: setSelectedSubTab,
+}))

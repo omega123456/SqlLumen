@@ -63,12 +63,9 @@ const PICKER_KEY_ACTIONS: Record<string, (handlers: PickerKeyHandlers) => void> 
   Escape: (handlers) => handlers.onCancel(),
 }
 
-export function MemoryScopePicker({
-  hasGroup,
-  defaultScope,
-  onSelect,
-  onCancel,
-}: MemoryScopePickerProps) {
+type PickerOption = (typeof BASE_OPTIONS)[number] & { disabled: boolean }
+
+function usePickerOptions(hasGroup: boolean, defaultScope: MemoryScopePickerProps['defaultScope']) {
   const options = useMemo(
     () =>
       BASE_OPTIONS.map((option) => ({
@@ -96,6 +93,85 @@ export function MemoryScopePicker({
     return enabledIndices[0] ?? 0
   }, [options, defaultScope, enabledIndices])
 
+  return { options, enabledIndices, initialIndex }
+}
+
+function usePickerKeyboard(handlers: PickerKeyHandlers): void {
+  const { moveHighlight, selectIndex, highlightedIndex, onCancel } = handlers
+  const handlersRef = useRef({ moveHighlight, selectIndex, highlightedIndex, onCancel })
+
+  useEffect(() => {
+    handlersRef.current = { moveHighlight, selectIndex, highlightedIndex, onCancel }
+  }, [moveHighlight, selectIndex, highlightedIndex, onCancel])
+
+  useEffect(() => {
+    // The keydown that opened the picker is dispatched before this listener attaches; ignore it.
+    const attachedAt = performance.now()
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.timeStamp <= attachedAt) {
+        return
+      }
+      const keyAction = PICKER_KEY_ACTIONS[event.key]
+      if (!keyAction) return
+      event.preventDefault()
+      keyAction(handlersRef.current)
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [])
+}
+
+interface MemoryScopeOptionProps {
+  option: PickerOption
+  isHighlighted: boolean
+  onSelect: () => void
+  onHighlight: () => void
+}
+
+function MemoryScopeOption({
+  option,
+  isHighlighted,
+  onSelect,
+  onHighlight,
+}: MemoryScopeOptionProps) {
+  const IconComponent = option.icon
+  const isSelectableHighlight = isHighlighted && !option.disabled
+  return (
+    <div
+      role="option"
+      id={`memory-scope-${option.scope}`}
+      aria-selected={isSelectableHighlight}
+      aria-disabled={option.disabled || undefined}
+      className={[
+        styles.option,
+        isSelectableHighlight ? styles.optionHighlighted : '',
+        option.disabled ? styles.optionDisabled : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      data-testid={`memory-scope-option-${option.scope}`}
+      onClick={onSelect}
+      onMouseEnter={() => {
+        if (!option.disabled) {
+          onHighlight()
+        }
+      }}
+    >
+      <IconComponent size={16} className={styles.optionIcon} aria-hidden />
+      <span className={styles.optionLabel}>{option.label}</span>
+      {option.disabled && (
+        <span className={styles.optionCaption} data-testid="memory-scope-no-group-caption">
+          no group
+        </span>
+      )}
+    </div>
+  )
+}
+
+function useHighlightedIndex(enabledIndices: number[], initialIndex: number) {
   const [highlightedIndex, setHighlightedIndex] = useState(initialIndex)
 
   useEffect(() => {
@@ -115,6 +191,21 @@ export function MemoryScopePicker({
     [enabledIndices, highlightedIndex]
   )
 
+  return { highlightedIndex, setHighlightedIndex, moveHighlight }
+}
+
+export function MemoryScopePicker({
+  hasGroup,
+  defaultScope,
+  onSelect,
+  onCancel,
+}: MemoryScopePickerProps) {
+  const { options, enabledIndices, initialIndex } = usePickerOptions(hasGroup, defaultScope)
+  const { highlightedIndex, setHighlightedIndex, moveHighlight } = useHighlightedIndex(
+    enabledIndices,
+    initialIndex
+  )
+
   const selectIndex = useCallback(
     (index: number) => {
       const option = options[index]
@@ -125,37 +216,12 @@ export function MemoryScopePicker({
     [options, onSelect]
   )
 
-  // Keep the latest key handlers in a ref so the document listener can be
-  // attached exactly once (stable across highlight changes) yet always call
-  // the current closures.
-  const handlersRef = useRef({ moveHighlight, selectIndex, highlightedIndex, onCancel })
-
-  useEffect(() => {
-    handlersRef.current = { moveHighlight, selectIndex, highlightedIndex, onCancel }
-  }, [moveHighlight, selectIndex, highlightedIndex, onCancel])
-
-  useEffect(() => {
-    // Timestamp at which this listener becomes active. The keydown that opened
-    // the picker (e.g. the Enter that sent `/remember`) is dispatched *before*
-    // this effect runs, so it carries an earlier `timeStamp` and is ignored —
-    // preventing it from immediately bubbling to `document` and auto-selecting
-    // the highlighted option.
-    const attachedAt = performance.now()
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.timeStamp <= attachedAt) {
-        return
-      }
-      const keyAction = PICKER_KEY_ACTIONS[event.key]
-      if (!keyAction) return
-      event.preventDefault()
-      keyAction(handlersRef.current)
-    }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [])
+  usePickerKeyboard({
+    moveHighlight: moveHighlight,
+    selectIndex: selectIndex,
+    highlightedIndex: highlightedIndex,
+    onCancel: onCancel,
+  })
 
   return (
     <div
@@ -168,42 +234,15 @@ export function MemoryScopePicker({
       <div className={styles.header} aria-hidden>
         Save memory to:
       </div>
-      {options.map((option, index) => {
-        const IconComponent = option.icon
-        const isHighlighted = index === highlightedIndex
-        const isSelectableHighlight = isHighlighted && !option.disabled
-        return (
-          <div
-            key={option.scope}
-            role="option"
-            id={`memory-scope-${option.scope}`}
-            aria-selected={isSelectableHighlight}
-            aria-disabled={option.disabled || undefined}
-            className={[
-              styles.option,
-              isSelectableHighlight ? styles.optionHighlighted : '',
-              option.disabled ? styles.optionDisabled : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-            data-testid={`memory-scope-option-${option.scope}`}
-            onClick={() => selectIndex(index)}
-            onMouseEnter={() => {
-              if (!option.disabled) {
-                setHighlightedIndex(index)
-              }
-            }}
-          >
-            <IconComponent size={16} className={styles.optionIcon} aria-hidden />
-            <span className={styles.optionLabel}>{option.label}</span>
-            {option.disabled && (
-              <span className={styles.optionCaption} data-testid="memory-scope-no-group-caption">
-                no group
-              </span>
-            )}
-          </div>
-        )
-      })}
+      {options.map((option, index) => (
+        <MemoryScopeOption
+          key={option.scope}
+          option={option}
+          isHighlighted={index === highlightedIndex}
+          onSelect={() => selectIndex(index)}
+          onHighlight={() => setHighlightedIndex(index)}
+        />
+      ))}
     </div>
   )
 }

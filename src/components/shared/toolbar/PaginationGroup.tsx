@@ -5,7 +5,7 @@
  * Purely presentational — no store imports.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { CaretLeftIcon, CaretRightIcon, SkipBackIcon, SkipForwardIcon } from '@phosphor-icons/react'
 import { IconButton } from '../../common/IconButton'
 import { Dropdown, type DropdownOption } from '../../common/Dropdown'
@@ -13,7 +13,6 @@ import { TextInput } from '../../common/TextInput'
 import type {
   KnownTotalPaginationGroupProps,
   PaginationGroupProps,
-  UnknownTotalPaginationGroupProps,
 } from '../../../types/shared-data-view'
 import styles from './toolbar-items.module.css'
 
@@ -93,69 +92,117 @@ function EdgePageButton({ visible, disabled, onClick, edge }: EdgePageButtonProp
   )
 }
 
-export function PaginationGroup({
-  currentPage,
-  pageSize,
-  disabled,
-  showPageSize = true,
-  showFirstLastButtons = false,
-  pageSizeDisabled,
-  onPageSizeChange,
-  onPrevPage,
-  onNextPage,
-  ...rest
-}: PaginationGroupProps) {
-  const paginationMode = rest.paginationMode ?? 'known'
-  const knownTotalProps = rest as KnownTotalPaginationGroupProps
-  const unknownTotalProps = rest as UnknownTotalPaginationGroupProps
-  const pageSizeOptions: DropdownOption[] = useMemo(
-    () => PAGE_SIZE_OPTIONS.map((size) => ({ value: String(size), label: String(size) })),
-    []
+const STEP_PAGE_BUTTONS = {
+  previous: { label: 'Previous page', testId: 'pagination-prev', icon: CaretLeftIcon },
+  next: { label: 'Next page', testId: 'pagination-next', icon: CaretRightIcon },
+}
+
+interface StepPageButtonProps {
+  direction: 'previous' | 'next'
+  disabled: boolean | undefined
+  onClick: () => void
+}
+
+function StepPageButton({ direction, disabled, onClick }: StepPageButtonProps) {
+  const { label, testId, icon: StepIcon } = STEP_PAGE_BUTTONS[direction]
+  return (
+    <IconButton disabled={disabled} onClick={onClick} aria-label={label} data-testid={testId}>
+      <StepIcon size={16} weight="bold" />
+    </IconButton>
   )
+}
+
+const PAGE_SIZE_DROPDOWN_OPTIONS: DropdownOption[] = PAGE_SIZE_OPTIONS.map((size) => ({
+  value: String(size),
+  label: String(size),
+}))
+
+interface PageInputFieldProps {
+  currentPage: number
+  disabled: boolean | undefined
+  onSubmit: (page: number) => void
+}
+
+function PageInputField({ currentPage, disabled, onSubmit }: PageInputFieldProps) {
   const [pageInputValue, setPageInputValue] = useState(String(currentPage))
 
   useEffect(() => {
     setPageInputValue(String(currentPage))
   }, [currentPage])
 
+  return (
+    <TextInput
+      type="text"
+      inputMode="numeric"
+      aria-label="Current page"
+      variant="bare"
+      value={pageInputValue}
+      onChange={(event) => setPageInputValue(event.target.value)}
+      onBlur={() => setPageInputValue(String(currentPage))}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter') return
+        event.preventDefault()
+        onSubmit(parsePageInput(pageInputValue))
+      }}
+      disabled={disabled}
+      className={styles.pageInput}
+      data-testid="pagination-page-input"
+    />
+  )
+}
+
+interface PageSizeSelectProps {
+  pageSize: number
+  disabled: boolean
+  onPageSizeChange: (pageSize: number) => void
+}
+
+function PageSizeSelect({ pageSize, disabled, onPageSizeChange }: PageSizeSelectProps) {
   const handlePageSizeChange = useCallback(
     (value: string) => {
       onPageSizeChange(parseInt(value, 10))
     },
     [onPageSizeChange]
   )
+  return (
+    <Dropdown
+      id="page-size-dropdown"
+      ariaLabel="Page size"
+      options={PAGE_SIZE_DROPDOWN_OPTIONS}
+      value={String(pageSize)}
+      onChange={handlePageSizeChange}
+      disabled={disabled}
+      data-testid="page-size-select"
+      triggerClassName={styles.pageSizeSelect}
+    />
+  )
+}
 
-  const isKnownTotal = paginationMode === 'known'
+function submitPage(props: PaginationGroupProps, rawPage: number): void {
+  if (props.paginationMode === 'unknown') {
+    props.onPageSubmit(rawPage)
+    return
+  }
+  props.onPageSubmit?.(Math.min(rawPage, props.totalPages))
+}
+
+export function PaginationGroup(props: PaginationGroupProps) {
+  const { currentPage, disabled, showFirstLastButtons = false, onPrevPage, onNextPage } = props
+  const knownTotalProps = props as KnownTotalPaginationGroupProps
+  const isKnownTotal = (props.paginationMode ?? 'known') === 'known'
   const isOnLastKnownPage = isKnownTotal && currentPage >= knownTotalProps.totalPages
   const isPreviousDisabled = disabled || currentPage <= 1
   const isNextDisabled = disabled || isOnLastKnownPage
   const showEdgeButtons = isKnownTotal && showFirstLastButtons
-
-  const handlePageSubmit = useCallback(() => {
-    const rawPage = parsePageInput(pageInputValue)
-    if (paginationMode === 'unknown') {
-      unknownTotalProps.onPageSubmit(rawPage)
-      return
-    }
-    knownTotalProps.onPageSubmit?.(Math.min(rawPage, knownTotalProps.totalPages))
-  }, [paginationMode, pageInputValue, unknownTotalProps, knownTotalProps])
-
-  const handlePageInputBlur = useCallback(() => {
-    setPageInputValue(String(currentPage))
-  }, [currentPage])
+  const pageSizeDisabled = disabled || props.pageSizeDisabled
 
   return (
     <div className={styles.paginationGroup} data-testid="pagination-group">
-      {showPageSize ? (
-        <Dropdown
-          id="page-size-dropdown"
-          ariaLabel="Page size"
-          options={pageSizeOptions}
-          value={String(pageSize)}
-          onChange={handlePageSizeChange}
-          disabled={disabled || pageSizeDisabled}
-          data-testid="page-size-select"
-          triggerClassName={styles.pageSizeSelect}
+      {(props.showPageSize ?? true) ? (
+        <PageSizeSelect
+          pageSize={props.pageSize}
+          disabled={pageSizeDisabled === true}
+          onPageSizeChange={props.onPageSizeChange}
         />
       ) : null}
 
@@ -166,48 +213,21 @@ export function PaginationGroup({
           disabled={isPreviousDisabled}
           onClick={() => knownTotalProps.onPageSubmit?.(FIRST_PAGE)}
         />
-        <IconButton
-          disabled={isPreviousDisabled}
-          onClick={onPrevPage}
-          aria-label="Previous page"
-          data-testid="pagination-prev"
-        >
-          <CaretLeftIcon size={16} weight="bold" />
-        </IconButton>
+        <StepPageButton direction="previous" disabled={isPreviousDisabled} onClick={onPrevPage} />
         <PageIndicator
           isKnownTotal={isKnownTotal}
           canSubmitPage={knownTotalProps.onPageSubmit != null}
           currentPage={currentPage}
           totalPages={knownTotalProps.totalPages}
           pageInput={
-            <TextInput
-              type="text"
-              inputMode="numeric"
-              aria-label="Current page"
-              variant="bare"
-              value={pageInputValue}
-              onChange={(event) => setPageInputValue(event.target.value)}
-              onBlur={handlePageInputBlur}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  handlePageSubmit()
-                }
-              }}
+            <PageInputField
+              currentPage={currentPage}
               disabled={disabled}
-              className={styles.pageInput}
-              data-testid="pagination-page-input"
+              onSubmit={(rawPage) => submitPage(props, rawPage)}
             />
           }
         />
-        <IconButton
-          disabled={isNextDisabled}
-          onClick={onNextPage}
-          aria-label="Next page"
-          data-testid="pagination-next"
-        >
-          <CaretRightIcon size={16} weight="bold" />
-        </IconButton>
+        <StepPageButton direction="next" disabled={isNextDisabled} onClick={onNextPage} />
         <EdgePageButton
           edge="last"
           visible={showEdgeButtons}

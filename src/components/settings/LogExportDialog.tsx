@@ -1,146 +1,25 @@
-import { save } from '@tauri-apps/plugin-dialog'
-import { addDays, differenceInCalendarDays, format, isValid, parse } from 'date-fns'
-import {
-  forwardRef,
-  type InputHTMLAttributes,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react'
-import DatePicker from 'react-datepicker'
 import { Button } from '../common/Button'
-import { TextInput } from '../common/TextInput'
 import { DialogShell } from '../dialogs/DialogShell'
-import { exportLogs } from '../../lib/log-commands'
-import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
 import styles from './LogExportDialog.module.css'
-import { toErrorMessage } from '../../lib/error-message'
-
 import 'react-datepicker/dist/react-datepicker.css'
-import { useFormSubmit } from '../../hooks/useFormSubmit'
-import { isObjectRecord } from '../../lib/value-checks'
-
-const DATE_FORMAT = 'yyyy-MM-dd'
-const MAX_RANGE_DAYS = 7
+import { LogDateField } from './log-export-dialog/LogDateField'
+import { useLogExport } from './log-export-dialog/use-log-export'
 
 export interface LogExportDialogProps {
   isOpen: boolean
   onClose: () => void
 }
 
-function formatDate(date: Date): string {
-  return format(date, DATE_FORMAT)
-}
-
-function parseInputDate(value: string): Date | null {
-  const parsed = parse(value, DATE_FORMAT, new Date())
-  if (!isValid(parsed)) {
-    return null
-  }
-
-  const isCanonicalDate = formatDate(parsed) === value
-  return isCanonicalDate ? parsed : null
-}
-
-function getEventInputValue(event: unknown): string | null {
-  if (!isObjectRecord(event)) {
-    return null
-  }
-  const target = event.target
-  if (!isObjectRecord(target)) {
-    return null
-  }
-  const inputValue = target.value
-  return typeof inputValue === 'string' ? inputValue : null
-}
-
-function getValidationMessage(from: Date | null, to: Date | null): string | null {
-  const isRangeIncomplete = !from || !to
-  if (isRangeIncomplete) {
-    return 'Select both a start and end date.'
-  }
-
-  const rangeDays = differenceInCalendarDays(to, from)
-  if (rangeDays >= MAX_RANGE_DAYS) {
-    return 'Select a date range of 7 days or fewer.'
-  }
-
-  return null
-}
-
-type DateInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> & {
-  invalid?: boolean
-}
-
-const DateInput = forwardRef<HTMLInputElement, DateInputProps>(function DateInput(
-  { invalid = false, ...props },
-  ref
-) {
-  return <TextInput ref={ref} variant="formField" invalid={invalid} {...props} />
-})
-
 export function LogExportDialog({ isOpen, onClose }: LogExportDialogProps) {
-  const [from, setFrom] = useState<Date | null>(null)
-  const [to, setTo] = useState<Date | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    if (!isOpen) {
-      setFrom(null)
-      setTo(null)
-      setBusy(false)
-    }
-  }, [isOpen])
-
-  const validationMessage = useMemo(() => getValidationMessage(from, to), [from, to])
-  const canExport = !busy && validationMessage === null
-
-  const handleRawFromChange = useCallback((event: unknown) => {
-    const nextValue = getEventInputValue(event)
-    if (nextValue === null) {
-      return
-    }
-    setFrom(parseInputDate(nextValue))
-  }, [])
-
-  const handleRawToChange = useCallback((event: unknown) => {
-    const nextValue = getEventInputValue(event)
-    if (nextValue === null) {
-      return
-    }
-    setTo(parseInputDate(nextValue))
-  }, [])
-
-  const handleExport = useCallback(async () => {
-    if (!from) return
-    if (!to) return
-    if (validationMessage !== null) return
-    if (busy) return
-
-    const filePath = await save({
-      defaultPath: `sqllumen_logs_${formatDate(from)}_${formatDate(to)}.csv`,
-      filters: [{ name: 'CSV files', extensions: ['csv'] }],
-    })
-
-    if (!filePath) {
-      return
-    }
-
-    setBusy(true)
-    try {
-      await exportLogs(formatDate(from), formatDate(to), filePath)
-      showSuccessToast('Export completed', `Logs saved to ${filePath}`)
-      onClose()
-    } catch (error) {
-      const message = toErrorMessage(error)
-      showErrorToast('Export failed', message)
-    } finally {
-      setBusy(false)
-    }
-  }, [busy, from, onClose, to, validationMessage])
-
-  const handleSubmit = useFormSubmit(handleExport)
+  const logExport = useLogExport(isOpen, onClose)
+  const { range, busy, validationMessage } = logExport
+  const fieldProps = {
+    range: range,
+    isInvalid: validationMessage !== null,
+    disabled: busy,
+    onChange: logExport.setEdge,
+    onChangeRaw: logExport.setEdgeFromRawInput,
+  }
 
   return (
     <DialogShell
@@ -151,7 +30,7 @@ export function LogExportDialog({ isOpen, onClose }: LogExportDialogProps) {
       ariaLabel="Export logs"
       testId="log-export-dialog"
       panelPadding={false}
-      formProps={{ onSubmit: handleSubmit }}
+      formProps={{ onSubmit: logExport.handleSubmit }}
     >
       <div className={styles.root}>
         <div className={styles.header}>
@@ -160,60 +39,8 @@ export function LogExportDialog({ isOpen, onClose }: LogExportDialogProps) {
         </div>
 
         <div className={styles.body}>
-          <div className={styles.fieldGroup}>
-            <label className={styles.label} htmlFor="log-export-from">
-              From
-            </label>
-            <DatePicker
-              id="log-export-from"
-              selected={from}
-              onChange={(date: Date | null) => setFrom(date)}
-              selectsStart
-              startDate={from}
-              endDate={to}
-              minDate={to ? addDays(to, -(MAX_RANGE_DAYS - 1)) : undefined}
-              maxDate={to ?? undefined}
-              onChangeRaw={handleRawFromChange}
-              placeholderText="YYYY-MM-DD"
-              dateFormat={DATE_FORMAT}
-              customInput={
-                <DateInput
-                  invalid={validationMessage !== null}
-                  data-testid="log-export-from-input"
-                />
-              }
-              calendarClassName={styles.calendar}
-              wrapperClassName={styles.pickerWrapper}
-              popperClassName={styles.popper}
-              disabled={busy}
-            />
-          </div>
-
-          <div className={styles.fieldGroup}>
-            <label className={styles.label} htmlFor="log-export-to">
-              To
-            </label>
-            <DatePicker
-              id="log-export-to"
-              selected={to}
-              onChange={(date: Date | null) => setTo(date)}
-              selectsEnd
-              startDate={from}
-              endDate={to}
-              minDate={from ?? undefined}
-              maxDate={from ? addDays(from, MAX_RANGE_DAYS - 1) : undefined}
-              onChangeRaw={handleRawToChange}
-              placeholderText="YYYY-MM-DD"
-              dateFormat={DATE_FORMAT}
-              customInput={
-                <DateInput invalid={validationMessage !== null} data-testid="log-export-to-input" />
-              }
-              calendarClassName={styles.calendar}
-              wrapperClassName={styles.pickerWrapper}
-              popperClassName={styles.popper}
-              disabled={busy}
-            />
-          </div>
+          <LogDateField edge="from" {...fieldProps} />
+          <LogDateField edge="to" {...fieldProps} />
 
           <p
             className={validationMessage === null ? styles.helperText : styles.validationMessage}
@@ -227,7 +54,7 @@ export function LogExportDialog({ isOpen, onClose }: LogExportDialogProps) {
           <Button
             variant="accent"
             type="submit"
-            disabled={!canExport}
+            disabled={!logExport.canExport}
             data-testid="log-export-submit-button"
           >
             <span className={styles.actionContent}>

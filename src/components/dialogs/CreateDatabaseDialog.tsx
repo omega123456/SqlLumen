@@ -33,44 +33,50 @@ const IDLE_FORM_STATE: CreateDatabaseFormState = {
   nameError: null,
 }
 
-export function CreateDatabaseDialog({
-  isOpen,
-  connectionId,
-  onSuccess,
-  onCancel,
-}: CreateDatabaseDialogProps) {
+const CREATE_DIALOG_MAX_WIDTH = 480
+
+function validateDatabaseName(value: string): string | null {
+  if (!value.trim()) return 'Database name is required'
+  if (value.length > MYSQL_IDENTIFIER_MAX_LENGTH)
+    return `Database name cannot exceed ${MYSQL_IDENTIFIER_MAX_LENGTH} characters`
+  return null
+}
+
+function isValidDatabaseName(name: string): boolean {
+  return name.trim().length > 0 && name.length <= MYSQL_IDENTIFIER_MAX_LENGTH
+}
+
+interface CreateDatabaseInputs {
+  isOpen: boolean
+  connectionId: string
+  onSuccess: (databaseName: string) => void
+}
+
+function useCreateDatabaseForm({ isOpen, connectionId, onSuccess }: CreateDatabaseInputs) {
   const [formState, setFormState] = useState<CreateDatabaseFormState>(IDLE_FORM_STATE)
-  const { name, isSubmitting, error, nameError } = formState
+  const { name, nameError } = formState
+  const encoding = useDatabaseEncoding({ connectionId: connectionId, isOpen: isOpen })
+  const { charset, collation } = encoding
 
   const patchFormState = useCallback((patch: Partial<CreateDatabaseFormState>) => {
     setFormState((current) => ({ ...current, ...patch }))
   }, [])
-
-  const encoding = useDatabaseEncoding({ connectionId: connectionId, isOpen: isOpen })
 
   useEffect(() => {
     if (!isOpen) return
     setFormState(IDLE_FORM_STATE)
   }, [isOpen])
 
-  const validateName = useCallback((value: string): string | null => {
-    if (!value.trim()) return 'Database name is required'
-    if (value.length > MYSQL_IDENTIFIER_MAX_LENGTH)
-      return `Database name cannot exceed ${MYSQL_IDENTIFIER_MAX_LENGTH} characters`
-    return null
-  }, [])
-
-  const handleNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.value
+  const changeName = (value: string) => {
     if (nameError) {
-      patchFormState({ name: value, nameError: validateName(value) })
+      patchFormState({ name: value, nameError: validateDatabaseName(value) })
       return
     }
     patchFormState({ name: value })
   }
 
   const handleSubmit = useCallback(async () => {
-    const validation = validateName(name)
+    const validation = validateDatabaseName(name)
     if (validation) {
       patchFormState({ nameError: validation })
       return
@@ -82,8 +88,8 @@ export function CreateDatabaseDialog({
       await createDatabase({
         connectionId: connectionId,
         name: name.trim(),
-        charset: encoding.charset || null,
-        collation: encoding.collation || null,
+        charset: charset || null,
+        collation: collation || null,
       })
       onSuccess(name.trim())
     } catch (error) {
@@ -93,30 +99,72 @@ export function CreateDatabaseDialog({
     } finally {
       patchFormState({ isSubmitting: false })
     }
-  }, [
-    connectionId,
-    encoding.charset,
-    encoding.collation,
-    name,
-    onSuccess,
-    validateName,
-    patchFormState,
-  ])
+  }, [connectionId, charset, collation, name, onSuccess, patchFormState])
 
-  const handleFormSubmit = useFormSubmit(handleSubmit)
+  return {
+    formState: formState,
+    encoding: encoding,
+    changeName: changeName,
+    handleFormSubmit: useFormSubmit(handleSubmit),
+  }
+}
 
-  const isValid = name.trim().length > 0 && name.length <= MYSQL_IDENTIFIER_MAX_LENGTH
+interface DatabaseNameFieldProps {
+  name: string
+  nameError: string | null
+  onChange: (value: string) => void
+}
+
+function DatabaseNameField({ name, nameError, onChange }: DatabaseNameFieldProps) {
+  return (
+    <div className={styles.formGroup}>
+      <label className={styles.label} htmlFor="create-db-name">
+        Database name
+      </label>
+      <TextInput
+        id="create-db-name"
+        type="text"
+        invalid={!!nameError}
+        value={name}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="my_new_database"
+        maxLength={MYSQL_IDENTIFIER_MAX_LENGTH}
+        autoFocus={!isPlaywrightBuild()}
+        data-testid="create-db-name-input"
+      />
+      {nameError && (
+        <div className={styles.validationError} data-testid="create-db-name-error">
+          {nameError}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function CreateDatabaseDialog({
+  isOpen,
+  connectionId,
+  onSuccess,
+  onCancel,
+}: CreateDatabaseDialogProps) {
+  const form = useCreateDatabaseForm({
+    isOpen: isOpen,
+    connectionId: connectionId,
+    onSuccess: onSuccess,
+  })
+  const { name, isSubmitting, error, nameError } = form.formState
+  const { encoding } = form
 
   return (
     <DialogShell
       isOpen={isOpen}
       onClose={onCancel}
-      maxWidth={480}
+      maxWidth={CREATE_DIALOG_MAX_WIDTH}
       testId="create-database-dialog"
       ariaLabel="Create database"
       disableFocusManagement={isPlaywrightBuild()}
       nonDismissible={isSubmitting}
-      formProps={{ onSubmit: handleFormSubmit }}
+      formProps={{ onSubmit: form.handleFormSubmit }}
     >
       <div
         className={styles.encodingRoot}
@@ -124,29 +172,7 @@ export function CreateDatabaseDialog({
         aria-busy={encoding.isLoading ? true : undefined}
       >
         <h2 className={styles.title}>Create database</h2>
-
-        <div className={styles.formGroup}>
-          <label className={styles.label} htmlFor="create-db-name">
-            Database name
-          </label>
-          <TextInput
-            id="create-db-name"
-            type="text"
-            invalid={!!nameError}
-            value={name}
-            onChange={handleNameChange}
-            placeholder="my_new_database"
-            maxLength={MYSQL_IDENTIFIER_MAX_LENGTH}
-            autoFocus={!isPlaywrightBuild()}
-            data-testid="create-db-name-input"
-          />
-          {nameError && (
-            <div className={styles.validationError} data-testid="create-db-name-error">
-              {nameError}
-            </div>
-          )}
-        </div>
-
+        <DatabaseNameField name={name} nameError={nameError} onChange={form.changeName} />
         <EncodingFields idPrefix="create-db" encoding={encoding} />
 
         {error && (
@@ -159,7 +185,7 @@ export function CreateDatabaseDialog({
           <Button
             variant="accent"
             type="submit"
-            disabled={!isValid || isSubmitting}
+            disabled={!isValidDatabaseName(name) || isSubmitting}
             data-testid="create-db-submit-button"
           >
             {isSubmitting ? 'Creating...' : 'Create database'}

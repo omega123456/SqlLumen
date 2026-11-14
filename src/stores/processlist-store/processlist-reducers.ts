@@ -1,4 +1,5 @@
 import type { ProcessListState } from '../processlist-store'
+import type { ProcessRow } from '../../lib/processlist-commands'
 import { withoutKey } from '../../lib/record-utils'
 
 type ProcessListData = Omit<
@@ -46,5 +47,63 @@ export function resetProcessListConnection(
       ...state.fetchGenerationByConnection,
       [connectionId]: nextGeneration,
     },
+  }
+}
+
+export interface ProcessListFetchStart {
+  connectionId: string
+  generation: number
+}
+
+export function startProcessListFetch(
+  state: ProcessListData,
+  { connectionId, generation }: ProcessListFetchStart
+): Partial<ProcessListData> {
+  return {
+    isFetchingByConnection: { ...state.isFetchingByConnection, [connectionId]: true },
+    fetchGenerationByConnection: {
+      ...state.fetchGenerationByConnection,
+      [connectionId]: generation,
+    },
+  }
+}
+
+export interface FetchedProcessList {
+  connectionId: string
+  rows: ProcessRow[]
+  selectedIds: Set<number>
+  refreshedAt: number
+}
+
+export function applyFetchedProcessList(
+  state: ProcessListData,
+  { connectionId, rows, selectedIds, refreshedAt }: FetchedProcessList
+): Partial<ProcessListData> {
+  return {
+    rowsByConnection: { ...state.rowsByConnection, [connectionId]: rows },
+    selectedIdsByConnection: { ...state.selectedIdsByConnection, [connectionId]: selectedIds },
+    lastRefreshedAtByConnection: {
+      ...state.lastRefreshedAtByConnection,
+      [connectionId]: refreshedAt,
+    },
+    isFetchingByConnection: { ...state.isFetchingByConnection, [connectionId]: false },
+    fetchErrorByConnection: { ...state.fetchErrorByConnection, [connectionId]: null },
+    hasFetchedByConnection: { ...state.hasFetchedByConnection, [connectionId]: true },
+  }
+}
+
+export interface ProcessListFetchFailure {
+  connectionId: string
+  message: string
+}
+
+export function applyProcessListFetchFailure(
+  state: ProcessListData,
+  { connectionId, message }: ProcessListFetchFailure
+): Partial<ProcessListData> {
+  return {
+    isFetchingByConnection: { ...state.isFetchingByConnection, [connectionId]: false },
+    fetchErrorByConnection: { ...state.fetchErrorByConnection, [connectionId]: message },
+    hasFetchedByConnection: { ...state.hasFetchedByConnection, [connectionId]: true },
   }
 }

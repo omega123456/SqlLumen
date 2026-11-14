@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import ReactDOM from 'react-dom'
 import { HexColorPicker } from 'react-colorful'
 import { TextInput } from '../common/TextInput'
@@ -26,16 +26,33 @@ function popoverPositionFor(swatchRect: DOMRect): React.CSSProperties {
   return { position: 'fixed', top: swatchRect.bottom + POPOVER_GAP, left: swatchRect.left }
 }
 
-export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps) {
-  const [isOpen, setIsOpen] = useState(false)
-  const [hexInput, setHexInput] = useState(color ?? '')
-  const portalRef = useRef<HTMLDivElement>(null)
-  const swatchRef = useRef<HTMLButtonElement>(null)
-  const wrapperRef = useRef<HTMLDivElement>(null)
-  const [popoverStyle, setPopoverStyle] = useState<React.CSSProperties>({})
-  const [portalContainer, setPortalContainer] = useState<Element>(() => document.body)
+const DEFAULT_PICKER_COLOR = '#3b82f6'
+const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/
 
-  // Close popover on outside click — check both wrapper and portal
+interface OpenPopover {
+  style: React.CSSProperties
+  container: Element
+}
+
+function openPopoverFor(swatch: HTMLButtonElement | null): OpenPopover {
+  if (!swatch) return { style: {}, container: document.body }
+  return {
+    style: popoverPositionFor(swatch.getBoundingClientRect()),
+    container: swatch.closest('dialog') ?? document.body,
+  }
+}
+
+interface OutsideClickTargets {
+  wrapperRef: RefObject<HTMLDivElement | null>
+  portalRef: RefObject<HTMLDivElement | null>
+}
+
+function useCloseOnOutsideMouseDown(
+  isOpen: boolean,
+  targets: OutsideClickTargets,
+  close: () => void
+) {
+  const { wrapperRef, portalRef } = targets
   useEffect(() => {
     if (!isOpen) return
     const handleMouseDown = (event: MouseEvent) => {
@@ -43,25 +60,22 @@ export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps)
         isTargetOutside(wrapperRef.current, event.target) &&
         isTargetOutside(portalRef.current, event.target)
       if (isOutsidePicker) {
-        setIsOpen(false)
+        close()
       }
     }
     document.addEventListener('mousedown', handleMouseDown)
     return () => document.removeEventListener('mousedown', handleMouseDown)
-  }, [isOpen])
+  }, [close, isOpen, portalRef, wrapperRef])
+}
 
-  const handleToggleOpen = () => {
-    if (isOpen) {
-      setIsOpen(false)
-      return
-    }
-    setHexInput(color ?? '')
-    if (swatchRef.current) {
-      setPortalContainer(swatchRef.current.closest('dialog') ?? document.body)
-      setPopoverStyle(popoverPositionFor(swatchRef.current.getBoundingClientRect()))
-    }
-    setIsOpen(true)
-  }
+interface ColorPickerPanelProps extends ColorPickerPopoverProps {
+  panelRef: RefObject<HTMLDivElement | null>
+  style: React.CSSProperties
+  onClose: () => void
+}
+
+function ColorPickerPanel({ color, onChange, panelRef, style, onClose }: ColorPickerPanelProps) {
+  const [hexInput, setHexInput] = useState(color ?? '')
 
   const handlePickerColorChange = (next: string) => {
     onChange(next)
@@ -71,9 +85,55 @@ export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps)
   const handleHexInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value
     setHexInput(value)
-    if (/^#[0-9a-fA-F]{6}$/.test(value)) {
+    if (HEX_COLOR_PATTERN.test(value)) {
       onChange(value)
     }
+  }
+
+  return (
+    <div ref={panelRef} className={styles.popover} style={style} data-testid="color-picker-popover">
+      <HexColorPicker color={color ?? DEFAULT_PICKER_COLOR} onChange={handlePickerColorChange} />
+      <TextInput
+        variant="bare"
+        type="text"
+        className={`ui-field-chrome ${styles.hexInput}`}
+        value={hexInput}
+        onChange={handleHexInputChange}
+        placeholder="#000000"
+        aria-label="Hex color value"
+      />
+      <Button
+        variant="bare"
+        className={styles.clearButton}
+        onClick={() => {
+          onChange(null)
+          onClose()
+        }}
+      >
+        Clear color
+      </Button>
+    </div>
+  )
+}
+
+export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps) {
+  const [openPopover, setOpenPopover] = useState<OpenPopover | null>(null)
+  const portalRef = useRef<HTMLDivElement>(null)
+  const swatchRef = useRef<HTMLButtonElement>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const close = useCallback(() => setOpenPopover(null), [])
+  useCloseOnOutsideMouseDown(
+    openPopover !== null,
+    { wrapperRef: wrapperRef, portalRef: portalRef },
+    close
+  )
+
+  const handleToggleOpen = () => {
+    if (openPopover) {
+      close()
+      return
+    }
+    setOpenPopover(openPopoverFor(swatchRef.current))
   }
 
   return (
@@ -86,36 +146,16 @@ export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps)
         onClick={handleToggleOpen}
         aria-label="Choose color"
       />
-      {isOpen &&
+      {openPopover &&
         ReactDOM.createPortal(
-          <div
-            ref={portalRef}
-            className={styles.popover}
-            style={popoverStyle}
-            data-testid="color-picker-popover"
-          >
-            <HexColorPicker color={color ?? '#3b82f6'} onChange={handlePickerColorChange} />
-            <TextInput
-              variant="bare"
-              type="text"
-              className={`ui-field-chrome ${styles.hexInput}`}
-              value={hexInput}
-              onChange={handleHexInputChange}
-              placeholder="#000000"
-              aria-label="Hex color value"
-            />
-            <Button
-              variant="bare"
-              className={styles.clearButton}
-              onClick={() => {
-                onChange(null)
-                setIsOpen(false)
-              }}
-            >
-              Clear color
-            </Button>
-          </div>,
-          portalContainer
+          <ColorPickerPanel
+            color={color}
+            onChange={onChange}
+            panelRef={portalRef}
+            style={openPopover.style}
+            onClose={close}
+          />,
+          openPopover.container
         )}
     </div>
   )

@@ -15,80 +15,93 @@ const FONT_FAMILY_OPTIONS = [
   { value: 'monospace', label: 'System Mono' },
 ]
 
-export function EditorSettings() {
+function FontSettingsSection() {
   const setPendingChange = useSettingsStore((state) => state.setPendingChange)
-
   const fontFamily = useSettingValue('editor.fontFamily')
   const fontSize = useSettingValue('editor.fontSize')
   const lineHeight = parseFloat(useSettingValue('editor.lineHeight')) || DEFAULT_LINE_HEIGHT
+
+  return (
+    <SettingsSection title="Font" description="Customize the query editor font.">
+      <SettingsDropdownField
+        name="font-family"
+        label="Font family"
+        options={FONT_FAMILY_OPTIONS}
+        value={fontFamily}
+        onChange={(value) => setPendingChange('editor.fontFamily', value)}
+      />
+      <div>
+        <SettingsFieldLabel htmlFor="settings-font-size">Font size (px)</SettingsFieldLabel>
+        <TextInput
+          id="settings-font-size"
+          type="number"
+          min={8}
+          max={32}
+          value={fontSize}
+          onChange={(event) => setPendingChange('editor.fontSize', event.target.value)}
+          data-testid="settings-font-size"
+          style={{ width: 120 }}
+        />
+      </div>
+      <Slider
+        label="Line height"
+        min={1.0}
+        max={2.5}
+        step={0.1}
+        value={lineHeight}
+        onChange={(value) => setPendingChange('editor.lineHeight', String(value))}
+      />
+    </SettingsSection>
+  )
+}
+
+function EditorBehaviorSection() {
+  const setPendingChange = useSettingsStore((state) => state.setPendingChange)
   const wordWrap = useSettingValue('editor.wordWrap') === 'true'
   const minimap = useSettingValue('editor.minimap') === 'true'
   const lineNumbers = useSettingValue('editor.lineNumbers') === 'true'
   const autocompleteBackticks = useSettingValue('editor.autocompleteBackticks') === 'true'
 
   return (
-    <div data-testid="settings-editor">
-      <SettingsSection title="Font" description="Customize the query editor font.">
-        <SettingsDropdownField
-          name="font-family"
-          label="Font family"
-          options={FONT_FAMILY_OPTIONS}
-          value={fontFamily}
-          onChange={(value) => setPendingChange('editor.fontFamily', value)}
-        />
-        <div>
-          <SettingsFieldLabel htmlFor="settings-font-size">Font size (px)</SettingsFieldLabel>
-          <TextInput
-            id="settings-font-size"
-            type="number"
-            min={8}
-            max={32}
-            value={fontSize}
-            onChange={(event) => setPendingChange('editor.fontSize', event.target.value)}
-            data-testid="settings-font-size"
-            style={{ width: 120 }}
-          />
-        </div>
-        <Slider
-          label="Line height"
-          min={1.0}
-          max={2.5}
-          step={0.1}
-          value={lineHeight}
-          onChange={(value) => setPendingChange('editor.lineHeight', String(value))}
-        />
-      </SettingsSection>
+    <SettingsSection title="Editor behavior" description="Toggle editor features.">
+      <SettingsToggle
+        label="Word wrap"
+        description="Wrap long lines at the editor edge."
+        checked={wordWrap}
+        onChange={(checked) => setPendingChange('editor.wordWrap', String(checked))}
+        data-testid="settings-word-wrap"
+      />
+      <SettingsToggle
+        label="Minimap"
+        description="Show a minimap overview on the right edge."
+        checked={minimap}
+        onChange={(checked) => setPendingChange('editor.minimap', String(checked))}
+        data-testid="settings-minimap"
+      />
+      <SettingsToggle
+        label="Line numbers"
+        description="Show line numbers in the gutter."
+        checked={lineNumbers}
+        onChange={(checked) => setPendingChange('editor.lineNumbers', String(checked))}
+        data-testid="settings-line-numbers"
+      />
+      <SettingsToggle
+        label="Quote identifiers from autocomplete"
+        description="Wrap schema suggestions (tables, columns, etc.) in MySQL backticks when inserting."
+        checked={autocompleteBackticks}
+        onChange={(checked) => setPendingChange('editor.autocompleteBackticks', String(checked))}
+        data-testid="settings-autocomplete-backticks"
+      />
+    </SettingsSection>
+  )
+}
 
-      <SettingsSection title="Editor behavior" description="Toggle editor features.">
-        <SettingsToggle
-          label="Word wrap"
-          description="Wrap long lines at the editor edge."
-          checked={wordWrap}
-          onChange={(checked) => setPendingChange('editor.wordWrap', String(checked))}
-          data-testid="settings-word-wrap"
-        />
-        <SettingsToggle
-          label="Minimap"
-          description="Show a minimap overview on the right edge."
-          checked={minimap}
-          onChange={(checked) => setPendingChange('editor.minimap', String(checked))}
-          data-testid="settings-minimap"
-        />
-        <SettingsToggle
-          label="Line numbers"
-          description="Show line numbers in the gutter."
-          checked={lineNumbers}
-          onChange={(checked) => setPendingChange('editor.lineNumbers', String(checked))}
-          data-testid="settings-line-numbers"
-        />
-        <SettingsToggle
-          label="Quote identifiers from autocomplete"
-          description="Wrap schema suggestions (tables, columns, etc.) in MySQL backticks when inserting."
-          checked={autocompleteBackticks}
-          onChange={(checked) => setPendingChange('editor.autocompleteBackticks', String(checked))}
-          data-testid="settings-autocomplete-backticks"
-        />
-      </SettingsSection>
+export function EditorSettings() {
+  return (
+    <div data-testid="settings-editor">
+      <FontSettingsSection />
+
+      <EditorBehaviorSection />
     </div>
   )
 }

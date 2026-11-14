@@ -14,52 +14,24 @@ export interface FavouritesViewProps {
   connectionId: string
 }
 
-export function FavouritesView({ connectionId }: FavouritesViewProps) {
-  const entries = useFavoritesStore((state) => state.entries)
-  const isLoading = useFavoritesStore((state) => state.isLoading)
-  const error = useFavoritesStore((state) => state.error)
-  const openDialog = useFavoritesStore((state) => state.openDialog)
-  const deleteFavorite = useFavoritesStore((state) => state.deleteFavorite)
-  const loadFavorites = useFavoritesStore((state) => state.loadFavorites)
+function matchesSearch(entry: FavoriteEntry, lowerCaseQuery: string): boolean {
+  const isNameMatch = entry.name.toLowerCase().includes(lowerCaseQuery)
+  const isDescriptionMatch = Boolean(entry.description?.toLowerCase().includes(lowerCaseQuery))
+  return isNameMatch || isDescriptionMatch
+}
 
-  const [searchQuery, setSearchQuery] = useState('')
+function filterFavourites(entries: FavoriteEntry[], searchQuery: string): FavoriteEntry[] {
+  if (!searchQuery.trim()) return entries
+  const lowerCaseQuery = searchQuery.toLowerCase()
+  return entries.filter((entry) => matchesSearch(entry, lowerCaseQuery))
+}
+
+function useFavouriteSelection() {
+  const deleteFavorite = useFavoritesStore((state) => state.deleteFavorite)
   const [selectedFavouriteId, setSelectedFavouriteId] = useState<number | null>(null)
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null)
 
-  // Load favourites on mount
-  useEffect(() => {
-    void loadFavorites(connectionId)
-  }, [connectionId, loadFavorites])
-
-  const filteredFavourites = useMemo(() => {
-    if (!searchQuery.trim()) return entries
-    const query = searchQuery.toLowerCase()
-    return entries.filter(
-      (entry) =>
-        entry.name.toLowerCase().includes(query) ||
-        (entry.description && entry.description.toLowerCase().includes(query))
-    )
-  }, [entries, searchQuery])
-
-  const handleInsert = useCallback(
-    (favourite: FavoriteEntry) => {
-      insertSqlIntoEditor(connectionId, favourite.sqlText, favourite.name || 'Favorite query')
-    },
-    [connectionId]
-  )
-
-  const handleEdit = useCallback(
-    (favourite: FavoriteEntry) => {
-      openDialog(favourite)
-    },
-    [openDialog]
-  )
-
-  const handleDelete = useCallback((id: number) => {
-    setPendingDeleteId(id)
-  }, [])
-
-  const handleConfirmDelete = useCallback(() => {
+  const confirmDelete = useCallback(() => {
     if (pendingDeleteId == null) return
     void deleteFavorite(pendingDeleteId)
     if (selectedFavouriteId === pendingDeleteId) {
@@ -68,75 +40,166 @@ export function FavouritesView({ connectionId }: FavouritesViewProps) {
     setPendingDeleteId(null)
   }, [deleteFavorite, selectedFavouriteId, pendingDeleteId])
 
-  const handleCancelDelete = useCallback(() => {
+  const cancelDelete = useCallback(() => {
     setPendingDeleteId(null)
   }, [])
 
-  const handleCreateNew = useCallback(() => {
-    openDialog(null)
-  }, [openDialog])
-
-  const handleSearchChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(event.target.value)
-  }, [])
-
-  const handleSelect = useCallback((id: number) => {
+  const toggleSelected = useCallback((id: number) => {
     setSelectedFavouriteId((previous) => (previous === id ? null : id))
   }, [])
 
-  function renderListContent() {
-    if (error) {
-      return (
-        <div className={styles.errorState} data-testid="favourites-error">
-          <span className={styles.errorMessage}>{error}</span>
-          <Button
-            variant="subtle"
-            size="sm"
-            onClick={() => void loadFavorites(connectionId)}
-            data-testid="favourites-retry"
-          >
-            Retry
-          </Button>
-        </div>
-      )
-    }
-    const isLoadingFirstEntries = isLoading && entries.length === 0
-    if (isLoadingFirstEntries) {
-      return <div className={styles.emptyState}>Loading...</div>
-    }
-    if (entries.length === 0) {
-      return (
-        <div className={styles.emptyState} data-testid="favourites-empty">
-          No favourites yet
-        </div>
-      )
-    }
-    if (filteredFavourites.length === 0) {
-      return (
-        <div className={styles.emptyState} data-testid="favourites-no-results">
-          No matching snippets
-        </div>
-      )
-    }
-    return filteredFavourites.map((favourite) => (
-      <div key={favourite.id}>
-        <FavouritesSnippetCard
-          favourite={favourite}
-          isSelected={selectedFavouriteId === favourite.id}
-          onSelect={() => handleSelect(favourite.id)}
-          onEdit={() => handleEdit(favourite)}
-          onInsert={() => handleInsert(favourite)}
-        />
-        {selectedFavouriteId === favourite.id && (
-          <FavouritesDetailPanel
-            favourite={favourite}
-            onInsert={() => handleInsert(favourite)}
-            onDelete={() => handleDelete(favourite.id)}
-          />
-        )}
-      </div>
-    ))
+  return {
+    selectedFavouriteId: selectedFavouriteId,
+    pendingDeleteId: pendingDeleteId,
+    requestDelete: setPendingDeleteId,
+    confirmDelete: confirmDelete,
+    cancelDelete: cancelDelete,
+    toggleSelected: toggleSelected,
   }
+}
+
+interface FavouriteListItemProps {
+  connectionId: string
+  favourite: FavoriteEntry
+  isSelected: boolean
+  onSelect: (id: number) => void
+  onDelete: (id: number) => void
+}
+
+function FavouriteListItem({
+  connectionId,
+  favourite,
+  isSelected,
+  onSelect,
+  onDelete,
+}: FavouriteListItemProps) {
+  const openDialog = useFavoritesStore((state) => state.openDialog)
+  const insertFavourite = () =>
+    insertSqlIntoEditor(connectionId, favourite.sqlText, favourite.name || 'Favorite query')
+
+  return (
+    <div>
+      <FavouritesSnippetCard
+        favourite={favourite}
+        isSelected={isSelected}
+        onSelect={() => onSelect(favourite.id)}
+        onEdit={() => openDialog(favourite)}
+        onInsert={insertFavourite}
+      />
+      {isSelected && (
+        <FavouritesDetailPanel
+          favourite={favourite}
+          onInsert={insertFavourite}
+          onDelete={() => onDelete(favourite.id)}
+        />
+      )}
+    </div>
+  )
+}
+
+interface FavouritesListContentProps {
+  connectionId: string
+  searchQuery: string
+  selectedFavouriteId: number | null
+  onSelect: (id: number) => void
+  onDelete: (id: number) => void
+}
+
+function FavouritesListContent({
+  connectionId,
+  searchQuery,
+  selectedFavouriteId,
+  onSelect,
+  onDelete,
+}: FavouritesListContentProps) {
+  const entries = useFavoritesStore((state) => state.entries)
+  const isLoading = useFavoritesStore((state) => state.isLoading)
+  const error = useFavoritesStore((state) => state.error)
+  const loadFavorites = useFavoritesStore((state) => state.loadFavorites)
+  const filteredFavourites = useMemo(
+    () => filterFavourites(entries, searchQuery),
+    [entries, searchQuery]
+  )
+
+  if (error) {
+    return (
+      <div className={styles.errorState} data-testid="favourites-error">
+        <span className={styles.errorMessage}>{error}</span>
+        <Button
+          variant="subtle"
+          size="sm"
+          onClick={() => void loadFavorites(connectionId)}
+          data-testid="favourites-retry"
+        >
+          Retry
+        </Button>
+      </div>
+    )
+  }
+  const isLoadingFirstEntries = isLoading && entries.length === 0
+  if (isLoadingFirstEntries) {
+    return <div className={styles.emptyState}>Loading...</div>
+  }
+  if (entries.length === 0) {
+    return (
+      <div className={styles.emptyState} data-testid="favourites-empty">
+        No favourites yet
+      </div>
+    )
+  }
+  if (filteredFavourites.length === 0) {
+    return (
+      <div className={styles.emptyState} data-testid="favourites-no-results">
+        No matching snippets
+      </div>
+    )
+  }
+  return filteredFavourites.map((favourite) => (
+    <FavouriteListItem
+      key={favourite.id}
+      connectionId={connectionId}
+      favourite={favourite}
+      isSelected={selectedFavouriteId === favourite.id}
+      onSelect={onSelect}
+      onDelete={onDelete}
+    />
+  ))
+}
+
+interface FavouritesSearchProps {
+  searchQuery: string
+  onSearchQueryChange: (searchQuery: string) => void
+}
+
+function FavouritesSearch({ searchQuery, onSearchQueryChange }: FavouritesSearchProps) {
+  return (
+    <div className={styles.searchWrapper}>
+      <span className={styles.searchIcon}>
+        <MagnifyingGlass size={14} weight="regular" />
+      </span>
+      <TextInput
+        variant="bare"
+        type="text"
+        className={styles.searchInput}
+        placeholder="Search snippets..."
+        value={searchQuery}
+        onChange={(event) => onSearchQueryChange(event.target.value)}
+        data-testid="favourites-search"
+        aria-label="Search snippets"
+      />
+    </div>
+  )
+}
+
+export function FavouritesView({ connectionId }: FavouritesViewProps) {
+  const openDialog = useFavoritesStore((state) => state.openDialog)
+  const loadFavorites = useFavoritesStore((state) => state.loadFavorites)
+  const [searchQuery, setSearchQuery] = useState('')
+  const selection = useFavouriteSelection()
+
+  useEffect(() => {
+    void loadFavorites(connectionId)
+  }, [connectionId, loadFavorites])
 
   return (
     <div className={styles.container} data-testid="favourites-view">
@@ -145,7 +208,7 @@ export function FavouritesView({ connectionId }: FavouritesViewProps) {
         <Button
           variant="subtle"
           size="sm"
-          onClick={handleCreateNew}
+          onClick={() => openDialog(null)}
           data-testid="favourites-new-snippet"
         >
           <Plus size={14} weight="bold" />
@@ -153,34 +216,26 @@ export function FavouritesView({ connectionId }: FavouritesViewProps) {
         </Button>
       </div>
 
-      <div className={styles.searchWrapper}>
-        <span className={styles.searchIcon}>
-          <MagnifyingGlass size={14} weight="regular" />
-        </span>
-        <TextInput
-          variant="bare"
-          type="text"
-          className={styles.searchInput}
-          placeholder="Search snippets..."
-          value={searchQuery}
-          onChange={handleSearchChange}
-          data-testid="favourites-search"
-          aria-label="Search snippets"
+      <FavouritesSearch searchQuery={searchQuery} onSearchQueryChange={setSearchQuery} />
+
+      <div className={styles.list} data-testid="favourites-list">
+        <FavouritesListContent
+          connectionId={connectionId}
+          searchQuery={searchQuery}
+          selectedFavouriteId={selection.selectedFavouriteId}
+          onSelect={selection.toggleSelected}
+          onDelete={selection.requestDelete}
         />
       </div>
 
-      <div className={styles.list} data-testid="favourites-list">
-        {renderListContent()}
-      </div>
-
       <ConfirmDialog
-        isOpen={pendingDeleteId != null}
+        isOpen={selection.pendingDeleteId != null}
         title="Delete favourite"
         message="Are you sure you want to delete this favourite snippet?"
         confirmLabel="Delete"
         isDestructive
-        onConfirm={handleConfirmDelete}
-        onCancel={handleCancelDelete}
+        onConfirm={selection.confirmDelete}
+        onCancel={selection.cancelDelete}
       />
     </div>
   )

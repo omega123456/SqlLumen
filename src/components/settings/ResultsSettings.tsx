@@ -46,147 +46,184 @@ function parseMaxRows(value: string): number | null {
   return isWithinRowLimits ? parsed : null
 }
 
-export function ResultsSettings() {
+function RowLimitField() {
+  const setPendingChange = useSettingsStore((state) => state.setPendingChange)
+  const rowLimit = useSettingValue('results.pageSize')
+  const ceiling = parseMaxRows(useSettingValue('results.maxRows'))
+  const rowLimitValue = Number(rowLimit)
+  const rowLimitExceedsCeiling =
+    ceiling !== null && Number.isFinite(rowLimitValue) && rowLimitValue > ceiling
+
+  return (
+    <div>
+      <SettingsFieldLabel htmlFor="settings-page-size">Row limit</SettingsFieldLabel>
+      <TextInput
+        id="settings-page-size"
+        type="number"
+        min={10}
+        max={10000}
+        value={rowLimit}
+        onChange={(event) => setPendingChange('results.pageSize', event.target.value)}
+        aria-describedby="settings-page-size-help"
+        data-testid="settings-page-size"
+        style={{ width: 120 }}
+      />
+      <p id="settings-page-size-help" style={CAPTION_STYLE}>
+        Adds a LIMIT to SELECT queries that don't have one. Capped by the maximum below.
+      </p>
+      {rowLimitExceedsCeiling && (
+        <p style={CAPTION_STYLE} data-testid="settings-page-size-capped">
+          Limited to the maximum rows kept per result ({formatCount(ceiling)}).
+        </p>
+      )}
+    </div>
+  )
+}
+
+function MaxRowsField() {
   const setPendingChange = useSettingsStore((state) => state.setPendingChange)
   const validateSetting = useSettingsStore((state) => state.validateSetting)
   const maxRowsError = useSettingsStore(
     (state) => state.validationErrors['results.maxRows'] ?? null
   )
-
-  const rowLimit = useSettingValue('results.pageSize')
   const maxRows = useSettingValue('results.maxRows')
-  const ceiling = parseMaxRows(maxRows)
-  const rowLimitValue = Number(rowLimit)
-  const rowLimitExceedsCeiling =
-    ceiling !== null && Number.isFinite(rowLimitValue) && rowLimitValue > ceiling
+
+  return (
+    <div>
+      <SettingsFieldLabel htmlFor="settings-max-rows">
+        Maximum rows kept per result
+      </SettingsFieldLabel>
+      <TextInput
+        id="settings-max-rows"
+        type="number"
+        min={RESULTS_MAX_ROWS_MIN}
+        max={RESULTS_MAX_ROWS_MAX}
+        value={maxRows}
+        invalid={maxRowsError !== null}
+        aria-invalid={maxRowsError !== null}
+        aria-describedby={
+          maxRowsError !== null
+            ? 'settings-max-rows-help settings-max-rows-error'
+            : 'settings-max-rows-help'
+        }
+        onChange={(event) => setPendingChange('results.maxRows', event.target.value)}
+        onBlur={() => validateSetting('results.maxRows')}
+        data-testid="settings-max-rows"
+        style={{ width: 120 }}
+      />
+      <p id="settings-max-rows-help" style={CAPTION_STYLE}>
+        Upper bound for any result, including queries with their own LIMIT or CALL. Results that
+        reach it are marked truncated. Applies to queries run after you save.
+      </p>
+      {maxRowsError !== null && (
+        <p
+          id="settings-max-rows-error"
+          style={ERROR_CAPTION_STYLE}
+          data-testid="settings-max-rows-error"
+        >
+          {maxRowsError}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function DataGridSection() {
+  const setPendingChange = useSettingsStore((state) => state.setPendingChange)
   const nullDisplay = useSettingValue('results.nullDisplay')
-  const tableTabsInBottomPanel = useSettingValue('results.tableTabsInBottomPanel')
+
+  return (
+    <SettingsSection title="Data grid" description="Customize how query results are displayed.">
+      <RowLimitField />
+      <MaxRowsField />
+      <div>
+        <SettingsFieldLabel htmlFor="settings-null-display">NULL display text</SettingsFieldLabel>
+        <TextInput
+          id="settings-null-display"
+          value={nullDisplay}
+          onChange={(event) => setPendingChange('results.nullDisplay', event.target.value)}
+          data-testid="settings-null-display"
+          style={{ width: 200 }}
+        />
+      </div>
+    </SettingsSection>
+  )
+}
+
+function ResultCacheSection() {
+  const setPendingChange = useSettingsStore((state) => state.setPendingChange)
   const cacheTTL = useSettingValue('results.cacheTTL')
+
+  return (
+    <SettingsSection
+      title="Result cache"
+      description="Control how long query results and table data are kept in memory before being discarded."
+    >
+      <div>
+        <SettingsFieldLabel id="cache-ttl-label">Cache duration</SettingsFieldLabel>
+        <div style={{ width: 200 }}>
+          <Dropdown
+            id="settings-cache-ttl"
+            labelledBy="cache-ttl-label"
+            options={CACHE_TTL_OPTIONS}
+            value={cacheTTL}
+            onChange={(value) => setPendingChange('results.cacheTTL', value)}
+            data-testid="settings-cache-ttl"
+          />
+        </div>
+      </div>
+    </SettingsSection>
+  )
+}
+
+function WorkspaceLayoutSection() {
+  const setPendingChange = useSettingsStore((state) => state.setPendingChange)
+  const tableTabsInBottomPanel = useSettingValue('results.tableTabsInBottomPanel')
   const maxTabsPerGroup = useSettingValue('results.maxTabsPerGroup')
 
   return (
+    <SettingsSection
+      title="Workspace layout"
+      description="Configure where table browsing tabs appear and how many tabs each group keeps open."
+    >
+      <SettingsToggle
+        label="Show table data tabs in bottom panel"
+        description="Show table data tabs inside the active query editor's result panel for faster switching between query results and table browsing."
+        checked={tableTabsInBottomPanel === 'true'}
+        onChange={(checked) =>
+          setPendingChange('results.tableTabsInBottomPanel', checked ? 'true' : 'false')
+        }
+        data-testid="settings-table-tabs-bottom"
+      />
+      <div>
+        <SettingsFieldLabel id="max-tabs-per-group-label">
+          Max open tabs per group
+        </SettingsFieldLabel>
+        <div style={{ width: 200 }}>
+          <Dropdown
+            id="settings-max-tabs-per-group"
+            labelledBy="max-tabs-per-group-label"
+            options={MAX_TABS_PER_GROUP_OPTIONS}
+            value={maxTabsPerGroup}
+            onChange={(value) => setPendingChange('results.maxTabsPerGroup', value)}
+            data-testid="settings-max-tabs-per-group"
+          />
+        </div>
+        <p style={CAPTION_STYLE}>
+          Opening a tab past the limit closes the least recently used tab in its group. Query tabs
+          and tabs with unsaved changes are never closed automatically.
+        </p>
+      </div>
+    </SettingsSection>
+  )
+}
+
+export function ResultsSettings() {
+  return (
     <div data-testid="settings-results">
-      <SettingsSection title="Data grid" description="Customize how query results are displayed.">
-        <div>
-          <SettingsFieldLabel htmlFor="settings-page-size">Row limit</SettingsFieldLabel>
-          <TextInput
-            id="settings-page-size"
-            type="number"
-            min={10}
-            max={10000}
-            value={rowLimit}
-            onChange={(event) => setPendingChange('results.pageSize', event.target.value)}
-            aria-describedby="settings-page-size-help"
-            data-testid="settings-page-size"
-            style={{ width: 120 }}
-          />
-          <p id="settings-page-size-help" style={CAPTION_STYLE}>
-            Adds a LIMIT to SELECT queries that don't have one. Capped by the maximum below.
-          </p>
-          {rowLimitExceedsCeiling && (
-            <p style={CAPTION_STYLE} data-testid="settings-page-size-capped">
-              Limited to the maximum rows kept per result ({formatCount(ceiling)}).
-            </p>
-          )}
-        </div>
-        <div>
-          <SettingsFieldLabel htmlFor="settings-max-rows">
-            Maximum rows kept per result
-          </SettingsFieldLabel>
-          <TextInput
-            id="settings-max-rows"
-            type="number"
-            min={RESULTS_MAX_ROWS_MIN}
-            max={RESULTS_MAX_ROWS_MAX}
-            value={maxRows}
-            invalid={maxRowsError !== null}
-            aria-invalid={maxRowsError !== null}
-            aria-describedby={
-              maxRowsError !== null
-                ? 'settings-max-rows-help settings-max-rows-error'
-                : 'settings-max-rows-help'
-            }
-            onChange={(event) => setPendingChange('results.maxRows', event.target.value)}
-            onBlur={() => validateSetting('results.maxRows')}
-            data-testid="settings-max-rows"
-            style={{ width: 120 }}
-          />
-          <p id="settings-max-rows-help" style={CAPTION_STYLE}>
-            Upper bound for any result, including queries with their own LIMIT or CALL. Results that
-            reach it are marked truncated. Applies to queries run after you save.
-          </p>
-          {maxRowsError !== null && (
-            <p
-              id="settings-max-rows-error"
-              style={ERROR_CAPTION_STYLE}
-              data-testid="settings-max-rows-error"
-            >
-              {maxRowsError}
-            </p>
-          )}
-        </div>
-        <div>
-          <SettingsFieldLabel htmlFor="settings-null-display">NULL display text</SettingsFieldLabel>
-          <TextInput
-            id="settings-null-display"
-            value={nullDisplay}
-            onChange={(event) => setPendingChange('results.nullDisplay', event.target.value)}
-            data-testid="settings-null-display"
-            style={{ width: 200 }}
-          />
-        </div>
-      </SettingsSection>
-      <SettingsSection
-        title="Result cache"
-        description="Control how long query results and table data are kept in memory before being discarded."
-      >
-        <div>
-          <SettingsFieldLabel id="cache-ttl-label">Cache duration</SettingsFieldLabel>
-          <div style={{ width: 200 }}>
-            <Dropdown
-              id="settings-cache-ttl"
-              labelledBy="cache-ttl-label"
-              options={CACHE_TTL_OPTIONS}
-              value={cacheTTL}
-              onChange={(value) => setPendingChange('results.cacheTTL', value)}
-              data-testid="settings-cache-ttl"
-            />
-          </div>
-        </div>
-      </SettingsSection>
-      <SettingsSection
-        title="Workspace layout"
-        description="Configure where table browsing tabs appear and how many tabs each group keeps open."
-      >
-        <SettingsToggle
-          label="Show table data tabs in bottom panel"
-          description="Show table data tabs inside the active query editor's result panel for faster switching between query results and table browsing."
-          checked={tableTabsInBottomPanel === 'true'}
-          onChange={(checked) =>
-            setPendingChange('results.tableTabsInBottomPanel', checked ? 'true' : 'false')
-          }
-          data-testid="settings-table-tabs-bottom"
-        />
-        <div>
-          <SettingsFieldLabel id="max-tabs-per-group-label">
-            Max open tabs per group
-          </SettingsFieldLabel>
-          <div style={{ width: 200 }}>
-            <Dropdown
-              id="settings-max-tabs-per-group"
-              labelledBy="max-tabs-per-group-label"
-              options={MAX_TABS_PER_GROUP_OPTIONS}
-              value={maxTabsPerGroup}
-              onChange={(value) => setPendingChange('results.maxTabsPerGroup', value)}
-              data-testid="settings-max-tabs-per-group"
-            />
-          </div>
-          <p style={CAPTION_STYLE}>
-            Opening a tab past the limit closes the least recently used tab in its group. Query tabs
-            and tabs with unsaved changes are never closed automatically.
-          </p>
-        </div>
-      </SettingsSection>
+      <DataGridSection />
+      <ResultCacheSection />
+      <WorkspaceLayoutSection />
     </div>
   )
 }

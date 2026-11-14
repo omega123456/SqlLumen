@@ -111,6 +111,23 @@ describe('WorkspaceBody', () => {
     expect(screen.getByTestId('ai-workspace-rail')).toBeInTheDocument()
   })
 
+  it('shows the AI rail and open AI panel when AI is enabled after mount', async () => {
+    act(() => {
+      useSettingsStore.setState({ settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'false' } })
+    })
+    renderWorkspaceBody('query-1')
+    expect(screen.queryByTestId('ai-workspace-rail')).not.toBeInTheDocument()
+
+    act(() => {
+      useSettingsStore.setState({ settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true' } })
+    })
+
+    expect(screen.getByTestId('ai-workspace-rail')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getAllByTestId('ai-panel')).toHaveLength(2)
+    })
+  })
+
   it('does not render the query AI rail for non-query tabs', async () => {
     renderWorkspaceBody('table-1')
     expect(screen.queryByTestId('ai-workspace-rail')).not.toBeInTheDocument()

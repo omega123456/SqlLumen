@@ -1,13 +1,3 @@
-/**
- * Monospace text view — renders the first 5,000 rows of the current view in
- * fixed-width columns (fetched from the Rust cache in chunks). When the view
- * has more rows, a caption strip says so and the copy button becomes
- * "Copy first 5,000"; the full result needs an export.
- *
- * Columns are padded to their max content width (capped at 40 chars) and
- * separated by two spaces.
- */
-
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CopySimple, WarningCircle } from '@phosphor-icons/react'
 import { Button } from '../common/Button'
@@ -26,17 +16,11 @@ import { toErrorMessage } from '../../lib/error-message'
 export interface ResultTextViewProps {
   columns: ColumnMeta[]
   tabId: string
-  /** Result index within the tab (page-cache surface). */
   resultIndex: number
-  /** Query id of the cached result. */
   queryId: string | null
-  /** View version of the current view. */
   viewVersion: number
-  /** Rows in the current view. */
   viewRowCount: number
-  /** True when the result hit the row ceiling. */
   truncated?: boolean
-  /** True when filter conditions are active. */
   isFiltered?: boolean
 }
 
@@ -102,23 +86,27 @@ function CopyAllButton({ isCapped, disabled, onCopy }: CopyAllButtonProps) {
   )
 }
 
-export function ResultTextView({
-  columns,
-  tabId,
-  resultIndex,
-  queryId,
-  viewVersion,
-  viewRowCount,
-  truncated = false,
-  isFiltered = false,
-}: ResultTextViewProps) {
+interface TextRowsRequest {
+  tabId: string
+  resultIndex: number
+  loadKey: string
+  shownCount: number
+}
+
+function reportTextRowsFailure(error: unknown, onExpired: () => void): void {
+  if (isResultsExpiredError(error)) {
+    onExpired()
+    return
+  }
+  const message = toErrorMessage(error)
+  logFrontend('warn', `[result-text-view] could not load rows: ${message}`)
+  showErrorToast("Couldn't load rows", message)
+}
+
+function useTextViewRows({ tabId, resultIndex, loadKey, shownCount }: TextRowsRequest) {
   const markResultsExpired = useQueryStore((state) => state.markResultsExpired)
-  const shownCount = Math.min(viewRowCount, TEXT_VIEW_ROW_CAP)
-  const isCapped = viewRowCount > TEXT_VIEW_ROW_CAP
-  const loadKey = `${queryId ?? ''}:${viewVersion}:${shownCount}`
   const [loaded, setLoaded] = useState<LoadedRows | null>(null)
 
-  // Fetch the first rows of the current view (in 2,000-row chunks).
   useEffect(() => {
     if (shownCount === 0) return
     if (loaded?.key === loadKey) return
@@ -129,26 +117,18 @@ export function ResultTextView({
       })
       .catch((error: unknown) => {
         if (cancelled) return
-        if (isResultsExpiredError(error)) {
-          markResultsExpired(tabId)
-          return
-        }
-        const message = toErrorMessage(error)
-        logFrontend('warn', `[result-text-view] could not load rows: ${message}`)
-        showErrorToast("Couldn't load rows", message)
+        reportTextRowsFailure(error, () => markResultsExpired(tabId))
       })
     return () => {
       cancelled = true
     }
   }, [loadKey, loaded, markResultsExpired, resultIndex, shownCount, tabId])
 
-  const rows = visibleTextRows(shownCount, loaded, loadKey)
-  const formattedText = useMemo(
-    () => (rows ? formatTextOutput(columns, rows) : ''),
-    [columns, rows]
-  )
+  return visibleTextRows(shownCount, loaded, loadKey)
+}
 
-  const handleCopyAll = useCallback(async () => {
+function useCopyText(formattedText: string) {
+  return useCallback(async () => {
     try {
       await writeClipboardText(formattedText)
     } catch (error) {
@@ -157,6 +137,32 @@ export function ResultTextView({
       showErrorToast(CLIPBOARD_ACTION_FAILURES.copy.title, CLIPBOARD_ACTION_FAILURES.copy.message)
     }
   }, [formattedText])
+}
+
+export function ResultTextView({
+  columns,
+  tabId,
+  resultIndex,
+  queryId,
+  viewVersion,
+  viewRowCount,
+  truncated = false,
+  isFiltered = false,
+}: ResultTextViewProps) {
+  const shownCount = Math.min(viewRowCount, TEXT_VIEW_ROW_CAP)
+  const isCapped = viewRowCount > TEXT_VIEW_ROW_CAP
+  const loadKey = `${queryId ?? ''}:${viewVersion}:${shownCount}`
+  const rows = useTextViewRows({
+    tabId: tabId,
+    resultIndex: resultIndex,
+    loadKey: loadKey,
+    shownCount: shownCount,
+  })
+  const formattedText = useMemo(
+    () => (rows ? formatTextOutput(columns, rows) : ''),
+    [columns, rows]
+  )
+  const handleCopyAll = useCopyText(formattedText)
 
   const copyButton = (
     <CopyAllButton

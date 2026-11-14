@@ -4,9 +4,6 @@ import { DEFAULT_UPDATE_INTERVAL } from '../lib/update-intervals'
 import type { SettingsSection } from '../types/schema'
 
 import { logFrontendError } from '../lib/app-log-commands'
-// ---------------------------------------------------------------------------
-// Default values for all settings keys
-// ---------------------------------------------------------------------------
 
 export const SETTINGS_DEFAULTS: Record<string, string> = {
   theme: 'system',
@@ -76,7 +73,6 @@ const SECTION_BY_KEY_PREFIX: Record<string, SettingsSection> = {
   'updates.': 'updates',
 }
 
-/** Maps a settings key prefix to its SettingsSection. */
 function sectionForKey(key: string): SettingsSection | null {
   if (GENERAL_SETTING_KEYS.has(key)) return 'general'
   if (key === 'shortcuts') return 'shortcuts'
@@ -84,17 +80,12 @@ function sectionForKey(key: string): SettingsSection | null {
   return prefix ? SECTION_BY_KEY_PREFIX[prefix] : null
 }
 
-/** Smallest accepted `results.maxRows` (Rust clamps to the same range). */
 export const RESULTS_MAX_ROWS_MIN = 1_000
-/** Largest accepted `results.maxRows`. */
+
 export const RESULTS_MAX_ROWS_MAX = 1_000_000
-/** Validation message for `results.maxRows`. */
+
 export const RESULTS_MAX_ROWS_ERROR = 'Enter a whole number from 1,000 to 1,000,000.'
 
-/**
- * Validators for settings that need one. Each returns an error message, or
- * null when the value is valid. Values are never silently clamped.
- */
 export const SETTINGS_VALIDATORS: Record<string, (value: string) => string | null> = {
   'results.maxRows': (value) => {
     const trimmed = value.trim()
@@ -109,43 +100,24 @@ function isKeyInSection(settingKey: string, section: SettingsSection): boolean {
   return sectionForKey(settingKey) === section
 }
 
-/** Returns all default keys for a given section. */
 function keysForSection(section: SettingsSection): string[] {
   return Object.keys(SETTINGS_DEFAULTS).filter((settingKey) => isKeyInSection(settingKey, section))
 }
 
-// ---------------------------------------------------------------------------
-// Store
-// ---------------------------------------------------------------------------
-
 interface SettingsState {
-  /** Settings as loaded from the backend. */
   settings: Record<string, string>
-  /** Unsaved changes not yet persisted. */
   pendingChanges: Record<string, string>
-  /** Validation error per pending key (set on blur and on save). Save is blocked while any exists. */
   validationErrors: Record<string, string>
-  /** Whether loadSettings has been called and is in progress. */
   isLoading: boolean
-  /** True when there are unsaved pending changes. */
   isDirty: boolean
-  /** Currently active settings section in the UI. */
   activeSection: SettingsSection
 
-  /** Whether the settings dialog is open. */
   isDialogOpen: boolean
-  /** Which section to focus when opening the dialog. */
   dialogSection: string | undefined
 
-  // Actions
   loadSettings: () => Promise<void>
   setPendingChange: (key: string, value: string) => void
-  /**
-   * Run the key's validator against its effective value and record the result
-   * (called on blur). Returns true when the value is valid.
-   */
   validateSetting: (key: string) => boolean
-  /** Saves pending changes. Does nothing while any validation error exists. */
   save: () => Promise<void>
   discard: () => void
   resetSection: (section: SettingsSection) => void
@@ -156,7 +128,129 @@ interface SettingsState {
   closeDialog: () => void
 }
 
-export const useSettingsStore = create<SettingsState>()((set, get) => ({
+async function loadSettings(): Promise<void> {
+  useSettingsStore.setState({ isLoading: true })
+  try {
+    const loaded = await getAllSettings()
+    useSettingsStore.setState({
+      settings: loaded,
+      pendingChanges: {},
+      isDirty: false,
+      isLoading: false,
+    })
+  } catch (error) {
+    logFrontendError('[settings-store] Failed to load settings:', error)
+    useSettingsStore.setState({ isLoading: false })
+  }
+}
+
+function setPendingChange(key: string, value: string): void {
+  const state = useSettingsStore.getState()
+  const newPending = { ...state.pendingChanges, [key]: value }
+  useSettingsStore.setState({
+    pendingChanges: newPending,
+    isDirty: Object.keys(newPending).length > 0,
+  })
+}
+
+function validateSetting(key: string): boolean {
+  const validator = SETTINGS_VALIDATORS[key]
+  const error = validator ? validator(useSettingsStore.getState().getEffectiveSetting(key)) : null
+  const current = useSettingsStore.getState().validationErrors
+  if (error === (current[key] ?? null)) return error === null
+  const next = { ...current }
+  delete next[key]
+  if (error) next[key] = error
+  useSettingsStore.setState({ validationErrors: next })
+  return error === null
+}
+
+async function save(): Promise<void> {
+  const pendingKeys = Object.keys(useSettingsStore.getState().pendingChanges)
+  const allValid = pendingKeys
+    .map((key) => useSettingsStore.getState().validateSetting(key))
+    .every(Boolean)
+  const hasValidationErrors = Object.keys(useSettingsStore.getState().validationErrors).length > 0
+  const canSave = allValid && !hasValidationErrors
+  if (!canSave) return
+
+  const state = useSettingsStore.getState()
+  const entries = Object.entries(state.pendingChanges)
+  const errors: string[] = []
+
+  for (const [key, value] of entries) {
+    try {
+      await setSetting(key, value)
+    } catch (error) {
+      logFrontendError(`[settings-store] Failed to save setting "${key}":`, error)
+      errors.push(key)
+    }
+  }
+
+  const failedKeys = new Set(errors)
+  const remaining: Record<string, string> = {}
+  for (const settingKey of errors) {
+    remaining[settingKey] = state.pendingChanges[settingKey]
+  }
+  const updatedSettings = { ...state.settings }
+  for (const [key, value] of entries) {
+    if (!failedKeys.has(key)) {
+      updatedSettings[key] = value
+    }
+  }
+  useSettingsStore.setState({
+    settings: updatedSettings,
+    pendingChanges: remaining,
+    isDirty: Object.keys(remaining).length > 0,
+  })
+}
+
+function discard(): void {
+  useSettingsStore.setState({ pendingChanges: {}, isDirty: false, validationErrors: {} })
+}
+
+function resetSection(section: SettingsSection): void {
+  const state = useSettingsStore.getState()
+  const keys = keysForSection(section)
+  const newPending = { ...state.pendingChanges }
+  const newErrors = { ...state.validationErrors }
+  for (const key of keys) {
+    newPending[key] = SETTINGS_DEFAULTS[key]
+    delete newErrors[key]
+  }
+  useSettingsStore.setState({
+    pendingChanges: newPending,
+    isDirty: Object.keys(newPending).length > 0,
+    validationErrors: newErrors,
+  })
+}
+
+function getSetting(key: string): string {
+  const state = useSettingsStore.getState()
+  if (key in state.settings) return state.settings[key]
+  return SETTINGS_DEFAULTS[key] ?? ''
+}
+
+function getEffectiveSetting(key: string): string {
+  const state = useSettingsStore.getState()
+  if (key in state.pendingChanges) return state.pendingChanges[key]
+  if (key in state.settings) return state.settings[key]
+  return SETTINGS_DEFAULTS[key] ?? ''
+}
+
+function setActiveSection(section: SettingsSection): void {
+  useSettingsStore.setState({ activeSection: section })
+}
+
+function openDialog(section?: string): void {
+  useSettingsStore.setState({ isDialogOpen: true, dialogSection: section })
+}
+
+function closeDialog(): void {
+  useSettingsStore.setState({ isDialogOpen: false, dialogSection: undefined })
+}
+
+export const useSettingsStore = create<SettingsState>()(() => ({
   settings: {},
   pendingChanges: {},
   validationErrors: {},
@@ -165,121 +259,17 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   activeSection: 'general',
   isDialogOpen: false,
   dialogSection: undefined,
-
-  loadSettings: async () => {
-    set({ isLoading: true })
-    try {
-      const loaded = await getAllSettings()
-      set({ settings: loaded, pendingChanges: {}, isDirty: false, isLoading: false })
-    } catch (error) {
-      logFrontendError('[settings-store] Failed to load settings:', error)
-      set({ isLoading: false })
-    }
-  },
-
-  setPendingChange: (key: string, value: string) => {
-    const state = get()
-    const newPending = { ...state.pendingChanges, [key]: value }
-    set({ pendingChanges: newPending, isDirty: Object.keys(newPending).length > 0 })
-  },
-
-  validateSetting: (key: string): boolean => {
-    const validator = SETTINGS_VALIDATORS[key]
-    const error = validator ? validator(get().getEffectiveSetting(key)) : null
-    const current = get().validationErrors
-    if (error === (current[key] ?? null)) return error === null
-    const next = { ...current }
-    delete next[key]
-    if (error) next[key] = error
-    set({ validationErrors: next })
-    return error === null
-  },
-
-  save: async () => {
-    const pendingKeys = Object.keys(get().pendingChanges)
-    const allValid = pendingKeys.map((key) => get().validateSetting(key)).every(Boolean)
-    const hasValidationErrors = Object.keys(get().validationErrors).length > 0
-    const canSave = allValid && !hasValidationErrors
-    if (!canSave) return
-
-    const state = get()
-    const entries = Object.entries(state.pendingChanges)
-    const errors: string[] = []
-
-    for (const [key, value] of entries) {
-      try {
-        await setSetting(key, value)
-      } catch (error) {
-        logFrontendError(`[settings-store] Failed to save setting "${key}":`, error)
-        errors.push(key)
-      }
-    }
-
-    const failedKeys = new Set(errors)
-    const remaining: Record<string, string> = {}
-    for (const settingKey of errors) {
-      remaining[settingKey] = state.pendingChanges[settingKey]
-    }
-    const updatedSettings = { ...state.settings }
-    for (const [key, value] of entries) {
-      if (!failedKeys.has(key)) {
-        updatedSettings[key] = value
-      }
-    }
-    set({
-      settings: updatedSettings,
-      pendingChanges: remaining,
-      isDirty: Object.keys(remaining).length > 0,
-    })
-  },
-
-  discard: () => {
-    set({ pendingChanges: {}, isDirty: false, validationErrors: {} })
-  },
-
-  resetSection: (section: SettingsSection) => {
-    const state = get()
-    const keys = keysForSection(section)
-    const newPending = { ...state.pendingChanges }
-    const newErrors = { ...state.validationErrors }
-    for (const key of keys) {
-      newPending[key] = SETTINGS_DEFAULTS[key]
-      delete newErrors[key]
-    }
-    set({
-      pendingChanges: newPending,
-      isDirty: Object.keys(newPending).length > 0,
-      validationErrors: newErrors,
-    })
-  },
-
-  getSetting: (key: string): string => {
-    const state = get()
-    // Only committed (saved) values — pending changes are excluded so that
-    // subscribers (e.g. schema-index-store) don't react until save() is called.
-    // UI form fields should use the useSettingValue() hook instead.
-    if (key in state.settings) return state.settings[key]
-    return SETTINGS_DEFAULTS[key] ?? ''
-  },
-
-  getEffectiveSetting: (key: string): string => {
-    const state = get()
-    if (key in state.pendingChanges) return state.pendingChanges[key]
-    if (key in state.settings) return state.settings[key]
-    return SETTINGS_DEFAULTS[key] ?? ''
-  },
-
-  setActiveSection: (section: SettingsSection) => {
-    set({ activeSection: section })
-  },
-
-  openDialog: (section?: string) => {
-    set({ isDialogOpen: true, dialogSection: section })
-  },
-
-  closeDialog: () => {
-    set({ isDialogOpen: false, dialogSection: undefined })
-  },
+  loadSettings: loadSettings,
+  setPendingChange: setPendingChange,
+  validateSetting: validateSetting,
+  save: save,
+  discard: discard,
+  resetSection: resetSection,
+  getSetting: getSetting,
+  getEffectiveSetting: getEffectiveSetting,
+  setActiveSection: setActiveSection,
+  openDialog: openDialog,
+  closeDialog: closeDialog,
 }))
 
 /**
@@ -296,4 +286,12 @@ export function useSettingValue(key: string): string {
     if (key in state.settings) return state.settings[key]
     return SETTINGS_DEFAULTS[key] ?? ''
   })
+}
+
+export function useBottomTableTabsEnabled(): boolean {
+  return useSettingsStore(
+    (state) =>
+      (state.settings['results.tableTabsInBottomPanel'] ??
+        SETTINGS_DEFAULTS['results.tableTabsInBottomPanel']) === 'true'
+  )
 }

@@ -1,36 +1,21 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import {
-  ArrowsClockwise,
-  ArrowSquareOut,
-  CopySimple,
-  Database,
-  Export,
-  FileCode,
-  Info,
-  ListNumbers,
-  PencilSimple,
-  Play,
-  PlusCircle,
-  Table,
-  Trash,
-  Eraser,
-  Rows,
-  Wrench,
-} from '@phosphor-icons/react'
 import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
 import { logFrontend } from '../../lib/app-log-commands'
 import { clampContextMenuPosition, writeClipboardText } from '../../lib/context-menu-utils'
 import { DISMISS_ALL_CONTEXT_MENUS } from '../../lib/context-menu-events'
-import type { CopyObjectCategory, CopyObjectSelection } from '../../lib/copy-to-host-commands'
+import type { CopyObjectSelection } from '../../lib/copy-to-host-commands'
 import { parseNodeId, useSchemaStore, type ConnectionTreeState } from '../../stores/schema-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import type { NodeType, ObjectType, EditableObjectType, TreeNode } from '../../types/schema'
 import { Button } from '../common/Button'
-
-// ---------------------------------------------------------------------------
-// Props
-// ---------------------------------------------------------------------------
+import { buildMenuEntries } from './context-menu/build-menu-entries'
+import {
+  cleanSeparators,
+  isSeparator,
+  type BuildMenuArgs,
+  type MenuEntry,
+} from './context-menu/menu-entry-types'
 
 export interface ObjectBrowserContextMenuProps {
   visible: boolean
@@ -64,53 +49,6 @@ export interface ObjectBrowserContextMenuProps {
   onExportDump?: (databaseName: string, tableName?: string) => void
   onExportDdl?: (databaseName: string, tableName?: string) => void
   onCopyToHost?: (databaseName: string, objectSelection?: CopyObjectSelection) => void
-}
-
-// ---------------------------------------------------------------------------
-// Menu item definitions
-// ---------------------------------------------------------------------------
-
-interface MenuItem {
-  key: string
-  label: string
-  icon: React.ReactNode
-  disabled: boolean
-  destructive: boolean
-  title?: string
-  action: () => void
-}
-
-interface Separator {
-  key: string
-  separator: true
-}
-
-type MenuEntry = MenuItem | Separator
-
-type CopyToHostAction = (databaseName: string, objectSelection?: CopyObjectSelection) => void
-
-function isSeparator(entry: MenuEntry): entry is Separator {
-  return 'separator' in entry && entry.separator
-}
-
-function copyToHostMenuItem(args: {
-  databaseName: string
-  onCopyToHost?: CopyToHostAction
-  closeMenu: () => void
-  objectSelection?: CopyObjectSelection
-}): MenuItem {
-  const { databaseName, onCopyToHost, closeMenu, objectSelection } = args
-  return {
-    key: 'copy-to-host',
-    label: 'Copy to another host...',
-    icon: <ArrowSquareOut size={18} weight="regular" />,
-    disabled: !onCopyToHost,
-    destructive: false,
-    action: () => {
-      onCopyToHost?.(databaseName, objectSelection)
-      closeMenu()
-    },
-  }
 }
 
 type ParsedNodeId = ReturnType<typeof parseNodeId>
@@ -159,55 +97,60 @@ function menuItemClassName(destructive: boolean | undefined): string {
   return 'ui-context-menu__item ui-context-menu__item--destructive'
 }
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
+type NodeActions = Pick<
+  BuildMenuArgs,
+  'openSchemaInfoTab' | 'openViewDataTab' | 'copyName' | 'refreshNode'
+>
 
-export function ObjectBrowserContextMenu({
-  visible,
-  x,
-  y,
-  nodeId,
-  connectionId,
-  isReadOnly,
-  onClose,
-  onCreateDatabase,
-  onAlterDatabase,
-  onRenameDatabase,
-  onDropDatabase,
-  onDropTable,
-  onTruncateTable,
-  onRenameTable,
-  onDesignTable,
-  onCreateTable,
-  onAlterObject,
-  onDropObject,
-  onCreateObject,
-  onExecuteRoutine,
-  onExportDump,
-  onExportDdl,
-  onCopyToHost,
-}: ObjectBrowserContextMenuProps) {
-  const menuRef = useRef<HTMLDivElement>(null)
+interface NodeActionInput {
+  info: MenuNodeInfo
+  connectionId: string
+  closeMenu: () => void
+}
+
+interface MenuPlacement {
+  visible: boolean
+  x: number
+  y: number
+}
+
+function useNodeActions({ info, connectionId, closeMenu }: NodeActionInput): NodeActions {
   const openTab = useWorkspaceStore((state) => state.openTab)
   const refreshDatabase = useSchemaStore((state) => state.refreshDatabase)
-  const nodes = useSchemaStore(
-    (state) =>
-      (state.connectionStates[connectionId] as ConnectionTreeState | undefined)?.nodes ?? null
-  )
+  const { node, nodeType, databaseName, nodeLabel } = info
+  const openObjectTab = (type: 'schema-info' | 'table-data', objectType: ObjectType) => {
+    openTab({
+      type: type,
+      label: nodeLabel,
+      connectionId: connectionId,
+      databaseName: databaseName,
+      objectName: nodeLabel,
+      objectType: objectType,
+    })
+    closeMenu()
+  }
+  return {
+    openSchemaInfoTab: () => openObjectTab('schema-info', nodeType as ObjectType),
+    openViewDataTab: () => openObjectTab('table-data', 'view'),
+    copyName: () => {
+      void writeClipboardText(nodeLabel).catch((error: unknown) => {
+        logFrontend(
+          'warn',
+          `[object-browser-context-menu] Copying the name failed: ${String(error)}`
+        )
+      })
+      closeMenu()
+    },
+    refreshNode: () => {
+      if (refreshesDatabase(nodeType, node)) {
+        void refreshDatabase(connectionId, databaseName)
+      }
+      closeMenu()
+    },
+  }
+}
 
-  const closeMenu = useCallback(() => {
-    onClose()
-  }, [onClose])
-
-  useDismissOnOutsideClick({
-    ref: menuRef,
-    active: visible,
-    onDismiss: closeMenu,
-    options: { closeOnEscape: true },
-  })
-
-  // Listen for dismiss-all events from other context menus
+function useDismissAllContextMenus(visible: boolean, closeMenu: () => void): void {
   useEffect(() => {
     if (!visible) return
     const onDismissAll = () => {
@@ -218,8 +161,13 @@ export function ObjectBrowserContextMenu({
       document.removeEventListener(DISMISS_ALL_CONTEXT_MENUS, onDismissAll)
     }
   }, [visible, closeMenu])
+}
 
-  // Position the menu within the viewport after render
+function useViewportClampedMenu(
+  menuRef: RefObject<HTMLDivElement | null>,
+  placement: MenuPlacement
+): void {
+  const { visible, x, y } = placement
   useLayoutEffect(() => {
     const element = menuRef.current
     if (!visible) return
@@ -235,1107 +183,96 @@ export function ObjectBrowserContextMenu({
     })
     element.style.left = `${position.x}px`
     element.style.top = `${position.y}px`
-  }, [visible, x, y])
+  }, [menuRef, visible, x, y])
+}
 
-  if (!visible) return null
-  if (!nodeId) return null
-
-  const { node, nodeType, databaseName, nodeLabel, categoryType } = resolveMenuNodeInfo(
-    nodes,
-    nodeId
+function MenuEntryView({ entry }: { entry: MenuEntry }) {
+  if (isSeparator(entry)) {
+    return <hr className="ui-context-menu__separator" />
+  }
+  return (
+    <Button
+      variant="bare"
+      className={menuItemClassName(entry.destructive)}
+      role="menuitem"
+      disabled={entry.disabled}
+      data-testid={`ctx-${entry.key}`}
+      title={entry.title}
+      onClick={entry.action}
+    >
+      <span className="ui-context-menu__icon">{entry.icon}</span>
+      <span>{entry.label}</span>
+    </Button>
   )
+}
 
-  // ---------------------------------------------------------------------------
-  // Action helpers
-  // ---------------------------------------------------------------------------
+interface ContextMenuEntriesProps extends ObjectBrowserContextMenuProps {
+  nodeId: string
+  closeMenu: () => void
+}
 
-  const openSchemaInfoTab = () => {
-    // Determine the objectType from the nodeType
-    const objectType = nodeType as ObjectType
-    openTab({
-      type: 'schema-info',
-      label: nodeLabel,
-      connectionId: connectionId,
-      databaseName: databaseName,
-      objectName: nodeLabel,
-      objectType: objectType,
-    })
-    closeMenu()
-  }
-
-  const openViewDataTab = () => {
-    openTab({
-      type: 'table-data',
-      label: nodeLabel,
-      connectionId: connectionId,
-      databaseName: databaseName,
-      objectName: nodeLabel,
-      objectType: 'view' as ObjectType,
-    })
-    closeMenu()
-  }
-
-  const copyName = () => {
-    void writeClipboardText(nodeLabel).catch((error: unknown) => {
-      logFrontend('warn', `[object-browser-context-menu] Copying the name failed: ${String(error)}`)
-    })
-    closeMenu()
-  }
-
-  const refreshNode = () => {
-    if (refreshesDatabase(nodeType, node)) {
-      void refreshDatabase(connectionId, databaseName)
-    }
-    closeMenu()
-  }
-
-  // ---------------------------------------------------------------------------
-  // Build menu items based on node type
-  // ---------------------------------------------------------------------------
-
-  const entries: MenuEntry[] = buildMenuEntries({
-    nodeType: nodeType,
-    databaseName: databaseName,
-    objectName: nodeLabel,
-    categoryType: categoryType,
-    isReadOnly: isReadOnly,
-    openSchemaInfoTab: openSchemaInfoTab,
-    openViewDataTab: openViewDataTab,
-    copyName: copyName,
-    refreshNode: refreshNode,
-    onCreateDatabase: onCreateDatabase,
-    onAlterDatabase: onAlterDatabase,
-    onRenameDatabase: onRenameDatabase,
-    onDropDatabase: onDropDatabase,
-    onDropTable: onDropTable,
-    onTruncateTable: onTruncateTable,
-    onRenameTable: onRenameTable,
-    onDesignTable: onDesignTable,
-    onCreateTable: onCreateTable,
-    onAlterObject: onAlterObject,
-    onDropObject: onDropObject,
-    onCreateObject: onCreateObject,
-    onExecuteRoutine: onExecuteRoutine,
-    onExportDump: onExportDump,
-    onExportDdl: onExportDdl,
-    onCopyToHost: onCopyToHost,
-    closeMenu: closeMenu,
+function useContextMenuEntries(props: ContextMenuEntriesProps): MenuEntry[] {
+  const { connectionId, nodeId, closeMenu } = props
+  const nodes = useSchemaStore(
+    (state) =>
+      (state.connectionStates[connectionId] as ConnectionTreeState | undefined)?.nodes ?? null
+  )
+  const info = resolveMenuNodeInfo(nodes, nodeId)
+  const nodeActions = useNodeActions({ info, connectionId, closeMenu })
+  const entries = buildMenuEntries({
+    ...props,
+    ...nodeActions,
+    nodeType: info.nodeType,
+    databaseName: info.databaseName,
+    objectName: info.nodeLabel,
+    categoryType: info.categoryType,
   })
+  return cleanSeparators(entries)
+}
 
-  // Remove leading/trailing separators and consecutive separators
-  const cleanedEntries = cleanSeparators(entries)
+interface ContextMenuPanelProps extends ContextMenuEntriesProps {
+  menuRef: RefObject<HTMLDivElement | null>
+}
 
+function ContextMenuPanel({ menuRef, ...entryProps }: ContextMenuPanelProps) {
+  const cleanedEntries = useContextMenuEntries(entryProps)
   if (cleanedEntries.length === 0) return null
-
   return createPortal(
     <div
       ref={menuRef}
       className="ui-context-menu"
-      style={{ left: x, top: y }}
+      style={{ left: entryProps.x, top: entryProps.y }}
       role="menu"
       data-testid="object-browser-context-menu"
       onMouseDown={(event) => {
         event.preventDefault()
       }}
     >
-      {cleanedEntries.map((entry) => {
-        if (isSeparator(entry)) {
-          return <hr key={entry.key} className="ui-context-menu__separator" />
-        }
-
-        const itemClass = menuItemClassName(entry.destructive)
-
-        return (
-          <Button
-            variant="bare"
-            key={entry.key}
-            className={itemClass}
-            role="menuitem"
-            disabled={entry.disabled}
-            data-testid={`ctx-${entry.key}`}
-            title={entry.title}
-            onClick={entry.action}
-          >
-            <span className="ui-context-menu__icon">{entry.icon}</span>
-            <span>{entry.label}</span>
-          </Button>
-        )
-      })}
+      {cleanedEntries.map((entry) => (
+        <MenuEntryView key={entry.key} entry={entry} />
+      ))}
     </div>,
     document.body
   )
 }
 
-// ---------------------------------------------------------------------------
-// Menu building
-// ---------------------------------------------------------------------------
+export function ObjectBrowserContextMenu(props: ObjectBrowserContextMenuProps) {
+  const { visible, x, y, nodeId, onClose } = props
+  const menuRef = useRef<HTMLDivElement>(null)
+  const closeMenu = useCallback(() => {
+    onClose()
+  }, [onClose])
 
-interface BuildMenuArgs {
-  nodeType: NodeType
-  databaseName: string
-  objectName: string
-  categoryType?: string
-  isReadOnly: boolean
-  openSchemaInfoTab: () => void
-  openViewDataTab: () => void
-  copyName: () => void
-  refreshNode: () => void
-  onCreateDatabase?: () => void
-  onAlterDatabase?: (databaseName: string) => void
-  onRenameDatabase?: (databaseName: string) => void
-  onDropDatabase?: (databaseName: string) => void
-  onDropTable?: (databaseName: string, tableName: string) => void
-  onTruncateTable?: (databaseName: string, tableName: string) => void
-  onRenameTable?: (databaseName: string, tableName: string) => void
-  onDesignTable?: (databaseName: string, tableName: string) => void
-  onCreateTable?: (databaseName: string) => void
-  onAlterObject?: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
-  onDropObject?: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
-  onCreateObject?: (databaseName: string, objectType: EditableObjectType) => void
-  onExecuteRoutine?: (
-    databaseName: string,
-    routineName: string,
-    routineType: 'procedure' | 'function'
-  ) => void
-  onExportDump?: (databaseName: string, tableName?: string) => void
-  onExportDdl?: (databaseName: string, tableName?: string) => void
-  onCopyToHost?: CopyToHostAction
-  closeMenu: () => void
-}
-
-function buildColumnMenu(args: BuildMenuArgs): MenuEntry[] {
-  return [
-    {
-      key: 'copy-name',
-      label: 'Copy column name',
-      icon: <CopySimple size={18} weight="regular" />,
-      disabled: false,
-      destructive: false,
-      action: args.copyName,
-    },
-  ]
-}
-
-const MENU_BUILDERS_BY_NODE_TYPE: Partial<Record<NodeType, (args: BuildMenuArgs) => MenuEntry[]>> =
-  {
-    database: buildDatabaseMenu,
-    table: buildTableMenu,
-    view: buildViewMenu,
-    procedure: (args) => buildRoutineMenu({ ...args, nodeType: 'procedure' }),
-    function: (args) => buildRoutineMenu({ ...args, nodeType: 'function' }),
-    trigger: (args) => buildTriggerEventMenu({ ...args, nodeType: 'trigger' }),
-    event: (args) => buildTriggerEventMenu({ ...args, nodeType: 'event' }),
-    category: buildCategoryMenu,
-    column: buildColumnMenu,
-  }
-
-function buildMenuEntries(args: BuildMenuArgs): MenuEntry[] {
-  const buildMenu = MENU_BUILDERS_BY_NODE_TYPE[args.nodeType]
-  if (!buildMenu) return []
-  return buildMenu(args)
-}
-
-function buildDatabaseMenu(args: {
-  databaseName: string
-  isReadOnly: boolean
-  refreshNode: () => void
-  onCreateDatabase?: () => void
-  onAlterDatabase?: (databaseName: string) => void
-  onRenameDatabase?: (databaseName: string) => void
-  onDropDatabase?: (databaseName: string) => void
-  onCreateTable?: (databaseName: string) => void
-  onCreateObject?: (databaseName: string, objectType: EditableObjectType) => void
-  onExportDump?: (databaseName: string, tableName?: string) => void
-  onExportDdl?: (databaseName: string, tableName?: string) => void
-  onCopyToHost?: CopyToHostAction
-  closeMenu: () => void
-}): MenuEntry[] {
-  const {
-    databaseName,
-    isReadOnly,
-    refreshNode,
-    onCreateDatabase,
-    onAlterDatabase,
-    onRenameDatabase,
-    onDropDatabase,
-    onCreateTable,
-    onCreateObject,
-    onExportDump,
-    onExportDdl,
-    onCopyToHost,
-    closeMenu,
-  } = args
-
-  if (isReadOnly) {
-    return [
-      {
-        key: 'export-dump',
-        label: 'Export SQL dump...',
-        icon: <Export size={18} weight="regular" />,
-        disabled: !onExportDump,
-        destructive: false,
-        action: () => {
-          onExportDump?.(databaseName)
-          closeMenu()
-        },
-      },
-      copyToHostMenuItem({ databaseName, onCopyToHost, closeMenu }),
-      {
-        key: 'export-ddl',
-        label: 'Export schema DDL...',
-        icon: <FileCode size={18} weight="regular" />,
-        disabled: !onExportDdl,
-        destructive: false,
-        action: () => {
-          onExportDdl?.(databaseName)
-          closeMenu()
-        },
-      },
-      { key: 'sep-ro-1', separator: true },
-      {
-        key: 'refresh',
-        label: 'Refresh',
-        icon: <ArrowsClockwise size={18} weight="regular" />,
-        disabled: false,
-        destructive: false,
-        action: refreshNode,
-      },
-    ]
-  }
-
-  return [
-    {
-      key: 'create-database',
-      label: 'Create database...',
-      icon: <PlusCircle size={18} weight="regular" />,
-      disabled: !onCreateDatabase,
-      destructive: false,
-      action: () => {
-        onCreateDatabase?.()
-        closeMenu()
-      },
-    },
-    {
-      key: 'create-table',
-      label: 'Create table...',
-      icon: <Table size={18} weight="regular" />,
-      disabled: !onCreateTable,
-      destructive: false,
-      action: () => {
-        onCreateTable?.(databaseName)
-        closeMenu()
-      },
-    },
-    {
-      key: 'create-view',
-      label: 'Create view...',
-      icon: <PlusCircle size={18} weight="regular" />,
-      disabled: !onCreateObject,
-      destructive: false,
-      action: () => {
-        onCreateObject?.(databaseName, 'view')
-        closeMenu()
-      },
-    },
-    {
-      key: 'create-procedure',
-      label: 'Create procedure...',
-      icon: <PlusCircle size={18} weight="regular" />,
-      disabled: !onCreateObject,
-      destructive: false,
-      action: () => {
-        onCreateObject?.(databaseName, 'procedure')
-        closeMenu()
-      },
-    },
-    {
-      key: 'create-function',
-      label: 'Create function...',
-      icon: <PlusCircle size={18} weight="regular" />,
-      disabled: !onCreateObject,
-      destructive: false,
-      action: () => {
-        onCreateObject?.(databaseName, 'function')
-        closeMenu()
-      },
-    },
-    {
-      key: 'create-trigger',
-      label: 'Create trigger...',
-      icon: <PlusCircle size={18} weight="regular" />,
-      disabled: !onCreateObject,
-      destructive: false,
-      action: () => {
-        onCreateObject?.(databaseName, 'trigger')
-        closeMenu()
-      },
-    },
-    {
-      key: 'create-event',
-      label: 'Create event...',
-      icon: <PlusCircle size={18} weight="regular" />,
-      disabled: !onCreateObject,
-      destructive: false,
-      action: () => {
-        onCreateObject?.(databaseName, 'event')
-        closeMenu()
-      },
-    },
-    {
-      key: 'alter-database',
-      label: 'Alter database...',
-      icon: <Database size={18} weight="regular" />,
-      disabled: !onAlterDatabase,
-      destructive: false,
-      action: () => {
-        onAlterDatabase?.(databaseName)
-        closeMenu()
-      },
-    },
-    {
-      key: 'rename-database',
-      label: 'Rename database...',
-      icon: <PencilSimple size={18} weight="regular" />,
-      disabled: !onRenameDatabase,
-      destructive: false,
-      action: () => {
-        onRenameDatabase?.(databaseName)
-        closeMenu()
-      },
-    },
-    { key: 'sep-1', separator: true },
-    {
-      key: 'export-dump',
-      label: 'Export SQL dump...',
-      icon: <Export size={18} weight="regular" />,
-      disabled: !onExportDump,
-      destructive: false,
-      action: () => {
-        onExportDump?.(databaseName)
-        closeMenu()
-      },
-    },
-    copyToHostMenuItem({ databaseName, onCopyToHost, closeMenu }),
-    {
-      key: 'export-ddl',
-      label: 'Export schema DDL...',
-      icon: <FileCode size={18} weight="regular" />,
-      disabled: !onExportDdl,
-      destructive: false,
-      action: () => {
-        onExportDdl?.(databaseName)
-        closeMenu()
-      },
-    },
-    { key: 'sep-2', separator: true },
-    {
-      key: 'drop-database',
-      label: 'Drop database...',
-      icon: <Trash size={18} weight="regular" />,
-      disabled: !onDropDatabase,
-      destructive: true,
-      action: () => {
-        onDropDatabase?.(databaseName)
-        closeMenu()
-      },
-    },
-    { key: 'sep-3', separator: true },
-    {
-      key: 'refresh',
-      label: 'Refresh',
-      icon: <ArrowsClockwise size={18} weight="regular" />,
-      disabled: false,
-      destructive: false,
-      action: refreshNode,
-    },
-  ]
-}
-
-function buildTableMenu(args: {
-  databaseName: string
-  objectName: string
-  isReadOnly: boolean
-  openSchemaInfoTab: () => void
-  copyName: () => void
-  refreshNode: () => void
-  onDropTable?: (databaseName: string, tableName: string) => void
-  onTruncateTable?: (databaseName: string, tableName: string) => void
-  onRenameTable?: (databaseName: string, tableName: string) => void
-  onDesignTable?: (databaseName: string, tableName: string) => void
-  onCreateTable?: (databaseName: string) => void
-  onExportDump?: (databaseName: string, tableName?: string) => void
-  onExportDdl?: (databaseName: string, tableName?: string) => void
-  onCopyToHost?: CopyToHostAction
-  closeMenu: () => void
-}): MenuEntry[] {
-  const {
-    databaseName,
-    objectName,
-    isReadOnly,
-    openSchemaInfoTab,
-    copyName,
-    refreshNode,
-    onDropTable,
-    onTruncateTable,
-    onRenameTable,
-    onDesignTable,
-    onCreateTable,
-    onExportDump,
-    onExportDdl,
-    onCopyToHost,
-    closeMenu,
-  } = args
-
-  if (isReadOnly) {
-    return [
-      {
-        key: 'schema-info',
-        label: 'Schema info',
-        icon: <Info size={18} weight="regular" />,
-        disabled: false,
-        destructive: false,
-        action: openSchemaInfoTab,
-      },
-      {
-        key: 'export-dump',
-        label: 'Export SQL dump...',
-        icon: <Export size={18} weight="regular" />,
-        disabled: !onExportDump,
-        destructive: false,
-        action: () => {
-          onExportDump?.(databaseName, objectName)
-          closeMenu()
-        },
-      },
-      { key: 'sep-ro-1', separator: true },
-      copyToHostMenuItem({
-        databaseName: databaseName,
-        onCopyToHost: onCopyToHost,
-        closeMenu: closeMenu,
-        objectSelection: { category: 'tables', name: objectName },
-      }),
-      {
-        key: 'copy-name',
-        label: 'Copy table name',
-        icon: <CopySimple size={18} weight="regular" />,
-        disabled: false,
-        destructive: false,
-        action: copyName,
-      },
-      {
-        key: 'refresh',
-        label: 'Refresh',
-        icon: <ArrowsClockwise size={18} weight="regular" />,
-        disabled: false,
-        destructive: false,
-        action: refreshNode,
-      },
-    ]
-  }
-
-  return [
-    {
-      key: 'create-table',
-      label: 'Create table...',
-      icon: <Table size={18} weight="regular" />,
-      disabled: !onCreateTable,
-      destructive: false,
-      action: () => {
-        onCreateTable?.(databaseName)
-        closeMenu()
-      },
-    },
-    {
-      key: 'select-rows',
-      label: 'Select top 100 rows',
-      icon: <ListNumbers size={18} weight="regular" />,
-      disabled: true, // Phase 4
-      destructive: false,
-      action: () => {
-        /* Phase 4 */
-      },
-    },
-    {
-      key: 'design-table',
-      label: 'Alter table...',
-      icon: <Wrench size={18} weight="regular" />,
-      disabled: !onDesignTable,
-      destructive: false,
-      action: () => {
-        onDesignTable?.(databaseName, objectName)
-        closeMenu()
-      },
-    },
-    {
-      key: 'schema-info',
-      label: 'Schema info',
-      icon: <Info size={18} weight="regular" />,
-      disabled: false,
-      destructive: false,
-      action: openSchemaInfoTab,
-    },
-    { key: 'sep-1', separator: true },
-    {
-      key: 'export-dump',
-      label: 'Export SQL dump...',
-      icon: <Export size={18} weight="regular" />,
-      disabled: !onExportDump,
-      destructive: false,
-      action: () => {
-        onExportDump?.(databaseName, objectName)
-        closeMenu()
-      },
-    },
-    copyToHostMenuItem({
-      databaseName: databaseName,
-      onCopyToHost: onCopyToHost,
-      closeMenu: closeMenu,
-      objectSelection: { category: 'tables', name: objectName },
-    }),
-    {
-      key: 'export-ddl',
-      label: 'Export schema DDL...',
-      icon: <FileCode size={18} weight="regular" />,
-      disabled: !onExportDdl,
-      destructive: false,
-      action: () => {
-        onExportDdl?.(databaseName, objectName)
-        closeMenu()
-      },
-    },
-    { key: 'sep-2', separator: true },
-    {
-      key: 'truncate-table',
-      label: 'Truncate table...',
-      icon: <Eraser size={18} weight="regular" />,
-      disabled: !onTruncateTable,
-      destructive: true,
-      action: () => {
-        onTruncateTable?.(databaseName, objectName)
-        closeMenu()
-      },
-    },
-    {
-      key: 'drop-table',
-      label: 'Drop table...',
-      icon: <Trash size={18} weight="regular" />,
-      disabled: !onDropTable,
-      destructive: true,
-      action: () => {
-        onDropTable?.(databaseName, objectName)
-        closeMenu()
-      },
-    },
-    { key: 'sep-3', separator: true },
-    {
-      key: 'rename-table',
-      label: 'Rename table...',
-      icon: <PencilSimple size={18} weight="regular" />,
-      disabled: !onRenameTable,
-      destructive: false,
-      action: () => {
-        onRenameTable?.(databaseName, objectName)
-        closeMenu()
-      },
-    },
-    {
-      key: 'copy-name',
-      label: 'Copy table name',
-      icon: <CopySimple size={18} weight="regular" />,
-      disabled: false,
-      destructive: false,
-      action: copyName,
-    },
-    {
-      key: 'refresh',
-      label: 'Refresh',
-      icon: <ArrowsClockwise size={18} weight="regular" />,
-      disabled: false,
-      destructive: false,
-      action: refreshNode,
-    },
-  ]
-}
-
-function buildCategoryMenu(args: {
-  categoryType?: string
-  databaseName: string
-  isReadOnly: boolean
-  refreshNode: () => void
-  onCreateTable?: (databaseName: string) => void
-  onCreateObject?: (databaseName: string, objectType: EditableObjectType) => void
-  closeMenu: () => void
-}): MenuEntry[] {
-  const {
-    categoryType,
-    databaseName,
-    isReadOnly,
-    refreshNode,
-    onCreateTable,
-    onCreateObject,
-    closeMenu,
-  } = args
-
-  const entries: MenuEntry[] = []
-
-  const canCreateTable = categoryType === 'table' && !isReadOnly
-  if (canCreateTable) {
-    entries.push({
-      key: 'create-table',
-      label: 'Create table...',
-      icon: <Table size={18} weight="regular" />,
-      disabled: !onCreateTable,
-      destructive: false,
-      action: () => {
-        onCreateTable?.(databaseName)
-        closeMenu()
-      },
-    })
-  }
-
-  // Create items for object-editor categories
-  const objectCategoryMap: Record<string, EditableObjectType> = {
-    view: 'view',
-    procedure: 'procedure',
-    function: 'function',
-    trigger: 'trigger',
-    event: 'event',
-  }
-  const objectType = categoryType ? objectCategoryMap[categoryType] : undefined
-  const isWritable = !isReadOnly
-  if (objectType && isWritable) {
-    entries.push({
-      key: `create-${objectType}`,
-      label: `Create ${categoryType}...`,
-      icon: <PlusCircle size={18} weight="regular" />,
-      disabled: !onCreateObject,
-      destructive: false,
-      action: () => {
-        onCreateObject?.(databaseName, objectType)
-        closeMenu()
-      },
-    })
-  }
-
-  if (entries.length > 0) {
-    entries.push({ key: 'sep-1', separator: true })
-  }
-
-  entries.push({
-    key: 'refresh',
-    label: 'Refresh',
-    icon: <ArrowsClockwise size={18} weight="regular" />,
-    disabled: false,
-    destructive: false,
-    action: refreshNode,
+  useDismissOnOutsideClick({
+    ref: menuRef,
+    active: visible,
+    onDismiss: closeMenu,
+    options: { closeOnEscape: true },
   })
+  useDismissAllContextMenus(visible, closeMenu)
+  useViewportClampedMenu(menuRef, { visible, x, y })
 
-  return entries
-}
-
-function buildViewMenu(args: {
-  databaseName: string
-  objectName: string
-  isReadOnly: boolean
-  openSchemaInfoTab: () => void
-  openViewDataTab: () => void
-  copyName: () => void
-  refreshNode: () => void
-  onAlterObject?: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
-  onDropObject?: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
-  closeMenu: () => void
-}): MenuEntry[] {
-  const {
-    databaseName,
-    objectName,
-    isReadOnly,
-    openSchemaInfoTab,
-    openViewDataTab,
-    copyName,
-    refreshNode,
-    onAlterObject,
-    onDropObject,
-    closeMenu,
-  } = args
-
-  if (isReadOnly) {
-    return [
-      {
-        key: 'view-data',
-        label: 'View data',
-        icon: <Rows size={18} weight="regular" />,
-        disabled: false,
-        destructive: false,
-        action: openViewDataTab,
-      },
-      {
-        key: 'schema-info',
-        label: 'Schema info',
-        icon: <Info size={18} weight="regular" />,
-        disabled: false,
-        destructive: false,
-        action: openSchemaInfoTab,
-      },
-      {
-        key: 'copy-name',
-        label: 'Copy name',
-        icon: <CopySimple size={18} weight="regular" />,
-        disabled: false,
-        destructive: false,
-        action: copyName,
-      },
-      {
-        key: 'refresh',
-        label: 'Refresh',
-        icon: <ArrowsClockwise size={18} weight="regular" />,
-        disabled: false,
-        destructive: false,
-        action: refreshNode,
-      },
-    ]
-  }
-
-  return [
-    {
-      key: 'view-data',
-      label: 'View data',
-      icon: <Rows size={18} weight="regular" />,
-      disabled: false,
-      destructive: false,
-      action: openViewDataTab,
-    },
-    {
-      key: 'schema-info',
-      label: 'Schema info',
-      icon: <Info size={18} weight="regular" />,
-      disabled: false,
-      destructive: false,
-      action: openSchemaInfoTab,
-    },
-    {
-      key: 'alter-view',
-      label: 'Alter view...',
-      icon: <PencilSimple size={18} weight="regular" />,
-      disabled: !onAlterObject,
-      destructive: false,
-      action: () => {
-        onAlterObject?.(databaseName, objectName, 'view')
-        closeMenu()
-      },
-    },
-    { key: 'sep-1', separator: true },
-    {
-      key: 'drop-view',
-      label: 'Drop view...',
-      icon: <Trash size={18} weight="regular" />,
-      disabled: !onDropObject,
-      destructive: true,
-      action: () => {
-        onDropObject?.(databaseName, objectName, 'view')
-        closeMenu()
-      },
-    },
-    { key: 'sep-2', separator: true },
-    {
-      key: 'copy-name',
-      label: 'Copy name',
-      icon: <CopySimple size={18} weight="regular" />,
-      disabled: false,
-      destructive: false,
-      action: copyName,
-    },
-    {
-      key: 'refresh',
-      label: 'Refresh',
-      icon: <ArrowsClockwise size={18} weight="regular" />,
-      disabled: false,
-      destructive: false,
-      action: refreshNode,
-    },
-  ]
-}
-
-function buildRoutineMenu(args: {
-  databaseName: string
-  objectName: string
-  nodeType: 'procedure' | 'function'
-  isReadOnly: boolean
-  openSchemaInfoTab: () => void
-  copyName: () => void
-  refreshNode: () => void
-  onAlterObject?: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
-  onDropObject?: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
-  onExecuteRoutine?: (
-    databaseName: string,
-    routineName: string,
-    routineType: 'procedure' | 'function'
-  ) => void
-  onCopyToHost?: CopyToHostAction
-  closeMenu: () => void
-}): MenuEntry[] {
-  const {
-    databaseName,
-    objectName,
-    nodeType,
-    isReadOnly,
-    openSchemaInfoTab,
-    copyName,
-    refreshNode,
-    onAlterObject,
-    onDropObject,
-    onExecuteRoutine,
-    onCopyToHost,
-    closeMenu,
-  } = args
-  const category: CopyObjectCategory = nodeType === 'procedure' ? 'procedures' : 'functions'
-  const typeLabel = nodeType === 'procedure' ? 'procedure' : 'function'
-
-  if (isReadOnly) {
-    return [
-      {
-        key: 'schema-info',
-        label: 'Schema info',
-        icon: <Info size={18} weight="regular" />,
-        disabled: false,
-        destructive: false,
-        action: openSchemaInfoTab,
-      },
-      copyToHostMenuItem({
-        databaseName: databaseName,
-        onCopyToHost: onCopyToHost,
-        closeMenu: closeMenu,
-        objectSelection: { category: category, name: objectName },
-      }),
-      {
-        key: 'copy-name',
-        label: 'Copy name',
-        icon: <CopySimple size={18} weight="regular" />,
-        disabled: false,
-        destructive: false,
-        action: copyName,
-      },
-      {
-        key: 'refresh',
-        label: 'Refresh',
-        icon: <ArrowsClockwise size={18} weight="regular" />,
-        disabled: false,
-        destructive: false,
-        action: refreshNode,
-      },
-    ]
-  }
-
-  return [
-    {
-      key: 'schema-info',
-      label: 'Schema info',
-      icon: <Info size={18} weight="regular" />,
-      disabled: false,
-      destructive: false,
-      action: openSchemaInfoTab,
-    },
-    {
-      key: 'execute',
-      label: 'Execute',
-      icon: <Play size={18} weight="regular" />,
-      disabled: !onExecuteRoutine,
-      destructive: false,
-      action: () => {
-        onExecuteRoutine?.(databaseName, objectName, nodeType)
-        closeMenu()
-      },
-    },
-    {
-      key: `alter-${nodeType}`,
-      label: `Alter ${typeLabel}...`,
-      icon: <PencilSimple size={18} weight="regular" />,
-      disabled: !onAlterObject,
-      destructive: false,
-      action: () => {
-        onAlterObject?.(databaseName, objectName, nodeType)
-        closeMenu()
-      },
-    },
-    { key: 'sep-1', separator: true },
-    {
-      key: `drop-${nodeType}`,
-      label: `Drop ${typeLabel}...`,
-      icon: <Trash size={18} weight="regular" />,
-      disabled: !onDropObject,
-      destructive: true,
-      action: () => {
-        onDropObject?.(databaseName, objectName, nodeType)
-        closeMenu()
-      },
-    },
-    { key: 'sep-2', separator: true },
-    copyToHostMenuItem({
-      databaseName: databaseName,
-      onCopyToHost: onCopyToHost,
-      closeMenu: closeMenu,
-      objectSelection: { category: category, name: objectName },
-    }),
-    {
-      key: 'copy-name',
-      label: 'Copy name',
-      icon: <CopySimple size={18} weight="regular" />,
-      disabled: false,
-      destructive: false,
-      action: copyName,
-    },
-    {
-      key: 'refresh',
-      label: 'Refresh',
-      icon: <ArrowsClockwise size={18} weight="regular" />,
-      disabled: false,
-      destructive: false,
-      action: refreshNode,
-    },
-  ]
-}
-
-function buildTriggerEventMenu(args: {
-  databaseName: string
-  objectName: string
-  nodeType: 'trigger' | 'event'
-  isReadOnly: boolean
-  openSchemaInfoTab: () => void
-  copyName: () => void
-  refreshNode: () => void
-  onAlterObject?: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
-  onDropObject?: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
-  onCopyToHost?: CopyToHostAction
-  closeMenu: () => void
-}): MenuEntry[] {
-  const {
-    databaseName,
-    objectName,
-    nodeType,
-    isReadOnly,
-    openSchemaInfoTab,
-    copyName,
-    refreshNode,
-    onAlterObject,
-    onDropObject,
-    onCopyToHost,
-    closeMenu,
-  } = args
-  const category: CopyObjectCategory = nodeType === 'trigger' ? 'triggers' : 'events'
-  const typeLabel = nodeType === 'trigger' ? 'trigger' : 'event'
-
-  if (isReadOnly) {
-    return [
-      {
-        key: 'schema-info',
-        label: 'Schema info',
-        icon: <Info size={18} weight="regular" />,
-        disabled: false,
-        destructive: false,
-        action: openSchemaInfoTab,
-      },
-      copyToHostMenuItem({
-        databaseName: databaseName,
-        onCopyToHost: onCopyToHost,
-        closeMenu: closeMenu,
-        objectSelection: { category: category, name: objectName },
-      }),
-      {
-        key: 'copy-name',
-        label: 'Copy name',
-        icon: <CopySimple size={18} weight="regular" />,
-        disabled: false,
-        destructive: false,
-        action: copyName,
-      },
-      {
-        key: 'refresh',
-        label: 'Refresh',
-        icon: <ArrowsClockwise size={18} weight="regular" />,
-        disabled: false,
-        destructive: false,
-        action: refreshNode,
-      },
-    ]
-  }
-
-  return [
-    {
-      key: 'schema-info',
-      label: 'Schema info',
-      icon: <Info size={18} weight="regular" />,
-      disabled: false,
-      destructive: false,
-      action: openSchemaInfoTab,
-    },
-    {
-      key: `alter-${nodeType}`,
-      label: `Alter ${typeLabel}...`,
-      icon: <PencilSimple size={18} weight="regular" />,
-      disabled: !onAlterObject,
-      destructive: false,
-      action: () => {
-        onAlterObject?.(databaseName, objectName, nodeType)
-        closeMenu()
-      },
-    },
-    { key: 'sep-1', separator: true },
-    {
-      key: `drop-${nodeType}`,
-      label: `Drop ${typeLabel}...`,
-      icon: <Trash size={18} weight="regular" />,
-      disabled: !onDropObject,
-      destructive: true,
-      action: () => {
-        onDropObject?.(databaseName, objectName, nodeType)
-        closeMenu()
-      },
-    },
-    { key: 'sep-2', separator: true },
-    copyToHostMenuItem({
-      databaseName: databaseName,
-      onCopyToHost: onCopyToHost,
-      closeMenu: closeMenu,
-      objectSelection: { category: category, name: objectName },
-    }),
-    {
-      key: 'copy-name',
-      label: 'Copy name',
-      icon: <CopySimple size={18} weight="regular" />,
-      disabled: false,
-      destructive: false,
-      action: copyName,
-    },
-    {
-      key: 'refresh',
-      label: 'Refresh',
-      icon: <ArrowsClockwise size={18} weight="regular" />,
-      disabled: false,
-      destructive: false,
-      action: refreshNode,
-    },
-  ]
-}
-
-/** Remove leading/trailing separators and collapse consecutive separators. */
-function hasTrailingSeparator(entries: MenuEntry[]): boolean {
-  if (entries.length === 0) return false
-  return isSeparator(entries[entries.length - 1])
-}
-
-function isRedundantSeparator(entry: MenuEntry, keptEntries: MenuEntry[]): boolean {
-  if (!isSeparator(entry)) return false
-  return keptEntries.length === 0 || hasTrailingSeparator(keptEntries)
-}
-
-function cleanSeparators(entries: MenuEntry[]): MenuEntry[] {
-  const result: MenuEntry[] = []
-  for (const entry of entries) {
-    if (!isRedundantSeparator(entry, result)) {
-      result.push(entry)
-    }
-  }
-  while (hasTrailingSeparator(result)) {
-    result.pop()
-  }
-  return result
+  if (!visible) return null
+  if (!nodeId) return null
+  return <ContextMenuPanel {...props} nodeId={nodeId} closeMenu={closeMenu} menuRef={menuRef} />
 }

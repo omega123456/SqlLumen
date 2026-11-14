@@ -36,53 +36,37 @@ export interface SettingsDialogProps {
   onClose: () => void
 }
 
-export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
-  const activeSection = useSettingsStore((state) => state.activeSection)
-  const setActiveSection = useSettingsStore((state) => state.setActiveSection)
-  const isDirty = useSettingsStore((state) => state.isDirty)
-  const hasValidationErrors = useSettingsStore(
-    (state) => Object.keys(state.validationErrors).length > 0
-  )
+function useLoadSettingsOnOpen(isOpen: boolean): void {
   const loadSettings = useSettingsStore((state) => state.loadSettings)
-  const save = useSettingsStore((state) => state.save)
-  const discard = useSettingsStore((state) => state.discard)
-  const resetSection = useSettingsStore((state) => state.resetSection)
-  const revertPreview = useThemeStore((state) => state.revertPreview)
+  const setActiveSection = useSettingsStore((state) => state.setActiveSection)
   const dialogSection = useSettingsStore((state) => state.dialogSection)
 
-  const [confirmOpen, setConfirmOpen] = useState(false)
-
-  // Load settings when the dialog opens
   useEffect(() => {
     if (isOpen) {
       void loadSettings()
-      // Load shortcuts from settings into shortcut store
       const settingsState = useSettingsStore.getState()
       const shortcutsSerialized = settingsState.getSetting('shortcuts')
       useShortcutStore.getState().loadShortcuts(shortcutsSerialized)
-
-      // If the dialog was opened programmatically to a specific section, navigate there
       if (dialogSection) {
         setActiveSection(dialogSection as SettingsSection)
       }
     }
   }, [isOpen, loadSettings, dialogSection, setActiveSection])
+}
+
+function useSaveSettings(onClose: () => void) {
+  const save = useSettingsStore((state) => state.save)
 
   const handleSave = useCallback(async () => {
     const savedKeys = Object.keys(useSettingsStore.getState().pendingChanges)
     await save()
-    // Invalid values block the save: keep the dialog open on the error.
     if (Object.keys(useSettingsStore.getState().validationErrors).length > 0) return
     const remainingPendingChanges = useSettingsStore.getState().pendingChanges
     const intervalSaveSucceeded =
       savedKeys.includes('updates.checkInterval') &&
       !('updates.checkInterval' in remainingPendingChanges)
-
-    // After saving, reload shortcuts into the live shortcut store from the saved settings
     const savedShortcuts = useSettingsStore.getState().getSetting('shortcuts')
     useShortcutStore.getState().loadShortcuts(savedShortcuts)
-
-    // Clear the zoom preview snapshot so a subsequent Cancel doesn't revert the saved zoom
     useZoomStore.setState({ previewSnapshot: null })
 
     if (intervalSaveSucceeded) {
@@ -91,6 +75,15 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
 
     onClose()
   }, [save, onClose])
+
+  return handleSave
+}
+
+function useCancelSettings(onClose: () => void) {
+  const isDirty = useSettingsStore((state) => state.isDirty)
+  const discard = useSettingsStore((state) => state.discard)
+  const revertPreview = useThemeStore((state) => state.revertPreview)
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   const handleCancel = useCallback(() => {
     if (isDirty) {
@@ -106,24 +99,60 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
     discard()
     revertPreview()
     useZoomStore.getState().revertPreview()
-    // Reload shortcuts from saved settings to revert any local-only changes
     const savedShortcuts = useSettingsStore.getState().getSetting('shortcuts')
     useShortcutStore.getState().loadShortcuts(savedShortcuts)
     setConfirmOpen(false)
     onClose()
   }, [discard, revertPreview, onClose])
 
-  const handleResetSection = useCallback(() => {
-    resetSection(activeSection)
-  }, [resetSection, activeSection])
+  return { confirmOpen, setConfirmOpen, handleCancel, handleConfirmDiscard }
+}
 
-  const handleSectionSelect = useCallback(
-    (section: SettingsSection) => {
-      setActiveSection(section)
-    },
-    [setActiveSection]
+interface SettingsFooterProps {
+  onSave: () => Promise<void>
+  onCancel: () => void
+}
+
+function SettingsFooter({ onSave, onCancel }: SettingsFooterProps) {
+  const activeSection = useSettingsStore((state) => state.activeSection)
+  const isDirty = useSettingsStore((state) => state.isDirty)
+  const hasValidationErrors = useSettingsStore(
+    (state) => Object.keys(state.validationErrors).length > 0
   )
+  const resetSection = useSettingsStore((state) => state.resetSection)
+  return (
+    <div className={styles.footer}>
+      <Button
+        variant="subtle"
+        onClick={() => resetSection(activeSection)}
+        data-testid="settings-reset-section"
+      >
+        Reset section
+      </Button>
+      <div className={styles.footerRight}>
+        <Button
+          variant="accent"
+          onClick={() => void onSave()}
+          disabled={!isDirty || hasValidationErrors}
+          data-testid="settings-save"
+        >
+          Save
+        </Button>
+        <Button onClick={onCancel} data-testid="settings-cancel">
+          Cancel
+        </Button>
+      </div>
+    </div>
+  )
+}
 
+export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
+  const activeSection = useSettingsStore((state) => state.activeSection)
+  const setActiveSection = useSettingsStore((state) => state.setActiveSection)
+  useLoadSettingsOnOpen(isOpen)
+  const handleSave = useSaveSettings(onClose)
+  const { confirmOpen, setConfirmOpen, handleCancel, handleConfirmDiscard } =
+    useCancelSettings(onClose)
   const ActiveSectionContent = SETTINGS_SECTION_CONTENT[activeSection]
 
   return (
@@ -144,35 +173,14 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
               <X size={16} weight="regular" />
             </IconButton>
           </div>
-          <SettingsSidebar activeSection={activeSection} onSelect={handleSectionSelect} />
+          <SettingsSidebar activeSection={activeSection} onSelect={setActiveSection} />
           <div className={styles.scrollArea} data-testid="settings-content">
             <h2 className={styles.pageTitle}>
               {SETTINGS_SECTIONS.find((section) => section.id === activeSection)?.label}
             </h2>
             <ActiveSectionContent />
           </div>
-          <div className={styles.footer}>
-            <Button
-              variant="subtle"
-              onClick={handleResetSection}
-              data-testid="settings-reset-section"
-            >
-              Reset section
-            </Button>
-            <div className={styles.footerRight}>
-              <Button
-                variant="accent"
-                onClick={() => void handleSave()}
-                disabled={!isDirty || hasValidationErrors}
-                data-testid="settings-save"
-              >
-                Save
-              </Button>
-              <Button onClick={handleCancel} data-testid="settings-cancel">
-                Cancel
-              </Button>
-            </div>
-          </div>
+          <SettingsFooter onSave={handleSave} onCancel={handleCancel} />
         </div>
       </DialogShell>
 

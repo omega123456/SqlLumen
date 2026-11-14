@@ -11,24 +11,12 @@ import {
 import { ConnectionWorkspace } from './ConnectionWorkspace'
 import styles from './WorkspaceArea.module.css'
 
-export function WorkspaceArea() {
-  const activeConnections = useConnectionStore((state) => state.activeConnections)
-  const activeTabId = useConnectionStore((state) => state.activeTabId)
-  const openDialog = useConnectionStore((state) => state.openDialog)
+type PendingCascadeClose = ReturnType<typeof useWorkspaceStore.getState>['pendingCascadeClose']
 
-  const activeConnection = activeTabId ? activeConnections[activeTabId] : null
-
-  const activeWorkspaceTabId = useWorkspaceStore((state) =>
-    activeTabId ? (state.activeTabByConnection[activeTabId] ?? null) : null
-  )
-  const pendingCascadeClose = useWorkspaceStore((state) => state.pendingCascadeClose)
-
-  // Shell-level coordinator for the globally visible workspace-tab activity
-  // transition. Retained `ConnectionWorkspace` instances render their session UI
-  // but do not independently emit global activity events. Every visible-tab
-  // transition (whether from a workspace-tab change or a connection switch)
-  // emits the previous deactivation before the next activation, exactly once,
-  // with each event's correct connection context.
+function useWorkspaceTabActivityEvents(
+  activeTabId: string | null,
+  activeWorkspaceTabId: string | null
+): void {
   const previousActiveWorkspaceTabIdRef = useRef<string | null>(null)
   const previousActiveConnectionIdRef = useRef<string | null>(null)
 
@@ -51,32 +39,82 @@ export function WorkspaceArea() {
     previousActiveWorkspaceTabIdRef.current = activeWorkspaceTabId
     previousActiveConnectionIdRef.current = activeTabId
   }, [activeTabId, activeWorkspaceTabId])
+}
 
-  // No active connection → welcome screen
-  if (!activeConnection) {
-    return (
-      <div className={styles.workspace} data-testid="workspace-area">
-        <div className={styles.welcome}>
-          <div className={styles.welcomeTile} aria-hidden="true">
-            <Database size={32} weight="light" />
-          </div>
-          <h2 className={styles.welcomeTitle}>Connect to a server</h2>
-          <p className={styles.welcomeMessage}>
-            Open a saved MySQL or MariaDB connection, or add a new one.
-          </p>
-          <div className={styles.welcomeActions}>
-            <Button variant="accent" onClick={openDialog}>
-              <Plus size={16} weight="regular" aria-hidden="true" />
-              New connection
-            </Button>
-          </div>
+function WelcomeScreen({ onOpenDialog }: { onOpenDialog: () => void }) {
+  return (
+    <div className={styles.workspace} data-testid="workspace-area">
+      <div className={styles.welcome}>
+        <div className={styles.welcomeTile} aria-hidden="true">
+          <Database size={32} weight="light" />
+        </div>
+        <h2 className={styles.welcomeTitle}>Connect to a server</h2>
+        <p className={styles.welcomeMessage}>
+          Open a saved MySQL or MariaDB connection, or add a new one.
+        </p>
+        <div className={styles.welcomeActions}>
+          <Button variant="accent" onClick={onOpenDialog}>
+            <Plus size={16} weight="regular" aria-hidden="true" />
+            New connection
+          </Button>
         </div>
       </div>
-    )
-  }
+    </div>
+  )
+}
 
-  // Retain one workspace subtree per open connection session. Exactly one is
-  // visible and interactive; the rest stay mounted but hidden and inert.
+function CascadeItems({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) return null
+  return (
+    <div>
+      <strong>{title}</strong>
+      <ul>
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function CascadeCloseMessage({ pending }: { pending: PendingCascadeClose }) {
+  if (!pending) return null
+  return (
+    <div>
+      <p>Closing this tab will discard changes in:</p>
+      <CascadeItems title="Query results" items={pending.queryResultItems} />
+      <CascadeItems title="Table data tabs" items={pending.tableDataItems} />
+    </div>
+  )
+}
+
+function CascadeCloseDialog({ pending }: { pending: PendingCascadeClose }) {
+  return (
+    <ConfirmDialog
+      isOpen={pending != null}
+      title="Discard unsaved changes?"
+      message={<CascadeCloseMessage pending={pending} />}
+      confirmLabel="Discard and close"
+      isDestructive
+      onConfirm={() => pending?.onConfirm()}
+      onCancel={() => pending?.onCancel()}
+    />
+  )
+}
+
+export function WorkspaceArea() {
+  const activeConnections = useConnectionStore((state) => state.activeConnections)
+  const activeTabId = useConnectionStore((state) => state.activeTabId)
+  const openDialog = useConnectionStore((state) => state.openDialog)
+  const activeConnection = activeTabId ? activeConnections[activeTabId] : null
+  const activeWorkspaceTabId = useWorkspaceStore((state) =>
+    activeTabId ? (state.activeTabByConnection[activeTabId] ?? null) : null
+  )
+  const pendingCascadeClose = useWorkspaceStore((state) => state.pendingCascadeClose)
+  useWorkspaceTabActivityEvents(activeTabId, activeWorkspaceTabId)
+
+  if (!activeConnection) return <WelcomeScreen onOpenDialog={openDialog} />
+
   return (
     <div className={styles.workspaceTabbed} data-testid="workspace-area">
       <div className={styles.connectionWorkspaceStack}>
@@ -88,41 +126,7 @@ export function WorkspaceArea() {
           />
         ))}
       </div>
-      <ConfirmDialog
-        isOpen={pendingCascadeClose != null}
-        title="Discard unsaved changes?"
-        message={
-          pendingCascadeClose ? (
-            <div>
-              <p>Closing this tab will discard changes in:</p>
-              {pendingCascadeClose.queryResultItems.length > 0 && (
-                <div>
-                  <strong>Query results</strong>
-                  <ul>
-                    {pendingCascadeClose.queryResultItems.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {pendingCascadeClose.tableDataItems.length > 0 && (
-                <div>
-                  <strong>Table data tabs</strong>
-                  <ul>
-                    {pendingCascadeClose.tableDataItems.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          ) : null
-        }
-        confirmLabel="Discard and close"
-        isDestructive
-        onConfirm={() => pendingCascadeClose?.onConfirm()}
-        onCancel={() => pendingCascadeClose?.onCancel()}
-      />
+      <CascadeCloseDialog pending={pendingCascadeClose} />
     </div>
   )
 }

@@ -1,11 +1,7 @@
 import DateTimeCellEditor from '../table-data/DateTimeCellEditor'
 import { getTemporalColumnType } from '../../lib/date-utils'
 import JsonCellEditor from './JsonCellEditor'
-import {
-  ENUM_NULL_SENTINEL,
-  getEnumFallbackValue,
-  isEnumColumn,
-} from '../table-data/enum-field-utils'
+import { isEnumColumn } from '../table-data/enum-field-utils'
 import type { TableDataColumnMeta, ForeignKeyColumnInfo } from '../../types/schema'
 import type { CellEditorBaseProps } from './grid-cell-editors'
 import type { EditorCallbacksContextType } from './editor-callbacks-context'
@@ -23,80 +19,83 @@ export interface CellEditorConfig {
   }
 }
 
-void ENUM_NULL_SENTINEL
-void getEnumFallbackValue
+interface EditorBinding {
+  column: TableDataColumnMeta | undefined
+  callbacks: EditorCallbacksContextType
+  foreignKey: ForeignKeyColumnInfo | undefined
+}
 
-export function getCellEditorForColumn(
-  column: TableDataColumnMeta | undefined,
-  callbacks: EditorCallbacksContextType,
-  foreignKey?: ForeignKeyColumnInfo
-): CellEditorConfig {
-  const temporalType = column ? getTemporalColumnType(column.dataType) : null
-  const sharedEditorOptions = { closeOnExternalRowChange: false }
+interface ColumnEditorBinding extends EditorBinding {
+  column: TableDataColumnMeta
+}
 
-  if (temporalType && column) {
-    return {
-      editorType: 'datetime',
-      renderEditCell: (props: CellEditorBaseProps) => (
-        <DateTimeCellEditor
-          {...props}
-          isNullable={column.isNullable}
-          columnMeta={column}
-          tabId={callbacks.tabId}
-          updateCellValue={callbacks.updateCellValue}
-          syncCellValue={callbacks.syncCellValue}
-        />
-      ),
-      editorOptions: {
-        ...sharedEditorOptions,
-        commitOnOutsideClick: false,
-      },
-    }
+const SHARED_EDITOR_OPTIONS = { closeOnExternalRowChange: false }
+const OVERLAY_EDITOR_OPTIONS = { ...SHARED_EDITOR_OPTIONS, commitOnOutsideClick: false }
+
+function storeCallbackProps(callbacks: EditorCallbacksContextType) {
+  return {
+    tabId: callbacks.tabId,
+    updateCellValue: callbacks.updateCellValue,
+    syncCellValue: callbacks.syncCellValue,
   }
+}
 
-  if (isEnumColumn(column)) {
-    return {
-      editorType: foreignKey ? 'fk' : 'enum',
-      renderEditCell: (props: CellEditorBaseProps) => (
-        <EnumCellEditor
-          {...props}
-          isNullable={column.isNullable}
-          columnMeta={column}
-          foreignKey={foreignKey}
-          tabId={callbacks.tabId}
-          updateCellValue={callbacks.updateCellValue}
-          syncCellValue={callbacks.syncCellValue}
-        />
-      ),
-      editorOptions: {
-        ...sharedEditorOptions,
-        commitOnOutsideClick: false,
-      },
-    }
+function dateTimeEditorConfig({ column, callbacks }: ColumnEditorBinding): CellEditorConfig {
+  return {
+    editorType: 'datetime',
+    renderEditCell: (props: CellEditorBaseProps) => (
+      <DateTimeCellEditor
+        {...props}
+        isNullable={column.isNullable}
+        columnMeta={column}
+        {...storeCallbackProps(callbacks)}
+      />
+    ),
+    editorOptions: OVERLAY_EDITOR_OPTIONS,
   }
+}
 
-  const isJsonColumn = column !== undefined && isJsonSqlType(column.dataType)
-  if (isJsonColumn) {
-    return {
-      editorType: 'json',
-      renderEditCell: (props: CellEditorBaseProps) => (
-        <JsonCellEditor
-          {...props}
-          isNullable={column.isNullable}
-          columnMeta={column}
-          foreignKey={foreignKey}
-          tabId={callbacks.tabId}
-          updateCellValue={callbacks.updateCellValue}
-          syncCellValue={callbacks.syncCellValue}
-        />
-      ),
-      editorOptions: {
-        ...sharedEditorOptions,
-        commitOnOutsideClick: false,
-      },
-    }
+function enumEditorConfig({
+  column,
+  callbacks,
+  foreignKey,
+}: ColumnEditorBinding): CellEditorConfig {
+  return {
+    editorType: foreignKey ? 'fk' : 'enum',
+    renderEditCell: (props: CellEditorBaseProps) => (
+      <EnumCellEditor
+        {...props}
+        isNullable={column.isNullable}
+        columnMeta={column}
+        foreignKey={foreignKey}
+        {...storeCallbackProps(callbacks)}
+      />
+    ),
+    editorOptions: OVERLAY_EDITOR_OPTIONS,
   }
+}
 
+function jsonEditorConfig({
+  column,
+  callbacks,
+  foreignKey,
+}: ColumnEditorBinding): CellEditorConfig {
+  return {
+    editorType: 'json',
+    renderEditCell: (props: CellEditorBaseProps) => (
+      <JsonCellEditor
+        {...props}
+        isNullable={column.isNullable}
+        columnMeta={column}
+        foreignKey={foreignKey}
+        {...storeCallbackProps(callbacks)}
+      />
+    ),
+    editorOptions: OVERLAY_EDITOR_OPTIONS,
+  }
+}
+
+function textEditorConfig({ column, callbacks, foreignKey }: EditorBinding): CellEditorConfig {
   return {
     editorType: foreignKey ? 'fk' : 'text',
     renderEditCell: (props: CellEditorBaseProps) => (
@@ -105,11 +104,27 @@ export function getCellEditorForColumn(
         isNullable={column?.isNullable ?? false}
         columnMeta={column}
         foreignKey={foreignKey}
-        tabId={callbacks.tabId}
-        updateCellValue={callbacks.updateCellValue}
-        syncCellValue={callbacks.syncCellValue}
+        {...storeCallbackProps(callbacks)}
       />
     ),
-    editorOptions: sharedEditorOptions,
+    editorOptions: SHARED_EDITOR_OPTIONS,
   }
+}
+
+function isTemporalColumn(column: TableDataColumnMeta): boolean {
+  return getTemporalColumnType(column.dataType) !== null
+}
+
+export function getCellEditorForColumn(
+  column: TableDataColumnMeta | undefined,
+  callbacks: EditorCallbacksContextType,
+  foreignKey?: ForeignKeyColumnInfo
+): CellEditorConfig {
+  const binding = { column, callbacks, foreignKey }
+  if (!column) return textEditorConfig(binding)
+  const columnBinding = { column, callbacks, foreignKey }
+  if (isTemporalColumn(column)) return dateTimeEditorConfig(columnBinding)
+  if (isEnumColumn(column)) return enumEditorConfig(columnBinding)
+  if (isJsonSqlType(column.dataType)) return jsonEditorConfig(columnBinding)
+  return textEditorConfig(binding)
 }

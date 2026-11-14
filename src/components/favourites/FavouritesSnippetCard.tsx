@@ -15,13 +15,12 @@ export interface FavouritesSnippetCardProps {
   onInsert: () => void
 }
 
-export function FavouritesSnippetCard({
-  favourite,
-  isSelected,
-  onSelect,
-  onEdit,
-  onInsert,
-}: FavouritesSnippetCardProps) {
+interface SnippetCardActionsProps {
+  onEdit: () => void
+  onInsert: () => void
+}
+
+function SnippetCardActions({ onEdit, onInsert }: SnippetCardActionsProps) {
   const handleEdit = useCallback(
     (event: React.MouseEvent) => {
       event.stopPropagation()
@@ -38,6 +37,39 @@ export function FavouritesSnippetCard({
     [onInsert]
   )
 
+  return (
+    <div className={styles.actions}>
+      <Button
+        variant="bare"
+        className={styles.actionButton}
+        title="Edit"
+        onClick={handleEdit}
+        aria-label="Edit snippet"
+        data-testid="snippet-card-edit"
+      >
+        <PencilSimple size={14} weight="regular" />
+      </Button>
+      <Button
+        variant="bare"
+        className={styles.insertButton}
+        title="Insert into editor"
+        onClick={handleInsert}
+        aria-label="Insert into editor"
+        data-testid="snippet-card-insert"
+      >
+        <Play size={14} weight="fill" />
+      </Button>
+    </div>
+  )
+}
+
+export function FavouritesSnippetCard({
+  favourite,
+  isSelected,
+  onSelect,
+  onEdit,
+  onInsert,
+}: FavouritesSnippetCardProps) {
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
       if (isActivationKey(event.key)) {
@@ -62,28 +94,7 @@ export function FavouritesSnippetCard({
         <span className={styles.name} title={favourite.name}>
           {favourite.name}
         </span>
-        <div className={styles.actions}>
-          <Button
-            variant="bare"
-            className={styles.actionButton}
-            title="Edit"
-            onClick={handleEdit}
-            aria-label="Edit snippet"
-            data-testid="snippet-card-edit"
-          >
-            <PencilSimple size={14} weight="regular" />
-          </Button>
-          <Button
-            variant="bare"
-            className={styles.insertButton}
-            title="Insert into editor"
-            onClick={handleInsert}
-            aria-label="Insert into editor"
-            data-testid="snippet-card-insert"
-          >
-            <Play size={14} weight="fill" />
-          </Button>
-        </div>
+        <SnippetCardActions onEdit={onEdit} onInsert={onInsert} />
       </div>
 
       {favourite.description && (

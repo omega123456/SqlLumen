@@ -52,6 +52,26 @@ function nextDrag(current: RowDrag | null, candidate: RowDrag): RowDrag {
   return candidate
 }
 
+function followPointer(
+  rowDrag: PointerRowDrag,
+  event: PointerEvent<HTMLTableRowElement>,
+  columnCount: number
+): RowDrag | null {
+  const offset = event.clientY - rowDrag.startY
+  if (isBelowDragThreshold(rowDrag, offset)) return null
+  const row = event.currentTarget
+  row.style.transform = `translateY(${offset}px)`
+  const rowHeight = row.offsetHeight || MIN_ROW_HEIGHT_PX
+  const to = dropIndexFor({
+    from: rowDrag.from,
+    offset: offset,
+    rowHeight: rowHeight,
+    columnCount: columnCount,
+  })
+  rowDrag.to = to
+  return { from: rowDrag.from, to: to, rowHeight: rowHeight }
+}
+
 export function useColumnRowDrag({
   columnCount,
   onSelect,
@@ -80,19 +100,8 @@ export function useColumnRowDrag({
   const onPointerMove = (event: PointerEvent<HTMLTableRowElement>) => {
     const rowDrag = rowDragRef.current
     if (!rowDrag) return
-    const offset = event.clientY - rowDrag.startY
-    if (isBelowDragThreshold(rowDrag, offset)) return
-    const row = event.currentTarget
-    row.style.transform = `translateY(${offset}px)`
-    const rowHeight = row.offsetHeight || MIN_ROW_HEIGHT_PX
-    const to = dropIndexFor({
-      from: rowDrag.from,
-      offset: offset,
-      rowHeight: rowHeight,
-      columnCount: columnCount,
-    })
-    rowDrag.to = to
-    const candidate = { from: rowDrag.from, to: to, rowHeight: rowHeight }
+    const candidate = followPointer(rowDrag, event, columnCount)
+    if (!candidate) return
     setDrag((current) => nextDrag(current, candidate))
   }
 

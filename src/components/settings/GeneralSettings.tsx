@@ -32,17 +32,11 @@ const SNAPSHOT_KEEP_OPTIONS = [
   { value: '50', label: '50' },
 ]
 
-export function GeneralSettings() {
+function AppearanceSection() {
   const setPendingChange = useSettingsStore((state) => state.setPendingChange)
   const previewTheme = useThemeStore((state) => state.previewTheme)
-
   const theme = useSettingValue('theme')
   const zoom = useSettingValue('appearance.zoom')
-  const sessionRestore = useSettingValue('session.restore') === 'true'
-  const connectionTimeout = useSettingValue('connection.defaultTimeout')
-  const keepalive = useSettingValue('connection.defaultKeepalive')
-  const snapshotFrequency = useSettingValue('snapshots.frequency')
-  const snapshotKeep = useSettingValue('snapshots.keep')
 
   const handleThemeChange = (value: string) => {
     setPendingChange('theme', value)
@@ -55,91 +49,121 @@ export function GeneralSettings() {
   }
 
   return (
+    <SettingsSection title="Appearance" description="Choose how the application looks.">
+      <SettingsDropdownField
+        name="theme"
+        label="Theme"
+        options={THEME_OPTIONS}
+        value={theme}
+        onChange={handleThemeChange}
+      />
+      <SettingsDropdownField
+        name="zoom"
+        label="Zoom"
+        options={ZOOM_OPTIONS}
+        value={zoom}
+        onChange={handleZoomChange}
+      />
+    </SettingsSection>
+  )
+}
+
+function SessionSection() {
+  const setPendingChange = useSettingsStore((state) => state.setPendingChange)
+  const sessionRestore = useSettingValue('session.restore') === 'true'
+
+  return (
+    <SettingsSection title="Session" description="Control session behavior on launch.">
+      <SettingsToggle
+        label="Restore previous session"
+        description="Reopen connections and tabs from the last session on startup."
+        checked={sessionRestore}
+        onChange={(checked) => setPendingChange('session.restore', String(checked))}
+        data-testid="settings-session-restore"
+      />
+    </SettingsSection>
+  )
+}
+
+function SessionSnapshotsSection() {
+  const setPendingChange = useSettingsStore((state) => state.setPendingChange)
+  const snapshotFrequency = useSettingValue('snapshots.frequency')
+  const snapshotKeep = useSettingValue('snapshots.keep')
+
+  return (
+    <SettingsSection
+      title="Session snapshots"
+      description="Periodically capture your open connections and tabs so you can restore them later."
+    >
+      <SettingsDropdownField
+        name="snapshot-frequency"
+        label="Snapshot frequency"
+        options={SNAPSHOT_FREQUENCY_OPTIONS}
+        value={snapshotFrequency}
+        onChange={(value) => setPendingChange('snapshots.frequency', value)}
+      />
+      <SettingsDropdownField
+        name="snapshot-keep"
+        label="Snapshots to keep"
+        options={SNAPSHOT_KEEP_OPTIONS}
+        value={snapshotKeep}
+        onChange={(value) => setPendingChange('snapshots.keep', value)}
+      />
+    </SettingsSection>
+  )
+}
+
+function ConnectionDefaultsSection() {
+  const setPendingChange = useSettingsStore((state) => state.setPendingChange)
+  const connectionTimeout = useSettingValue('connection.defaultTimeout')
+  const keepalive = useSettingValue('connection.defaultKeepalive')
+
+  return (
+    <SettingsSection title="Connection defaults" description="Default values for new connections.">
+      <div>
+        <SettingsFieldLabel htmlFor="settings-connection-timeout">
+          Connection timeout (seconds)
+        </SettingsFieldLabel>
+        <TextInput
+          id="settings-connection-timeout"
+          type="number"
+          min={1}
+          max={120}
+          value={connectionTimeout}
+          onChange={(event) => setPendingChange('connection.defaultTimeout', event.target.value)}
+          data-testid="settings-connection-timeout"
+          style={{ width: 120 }}
+        />
+      </div>
+      <div>
+        <SettingsFieldLabel htmlFor="settings-keepalive">
+          Keepalive interval (seconds)
+        </SettingsFieldLabel>
+        <TextInput
+          id="settings-keepalive"
+          type="number"
+          min={0}
+          max={3600}
+          value={keepalive}
+          onChange={(event) => setPendingChange('connection.defaultKeepalive', event.target.value)}
+          data-testid="settings-keepalive"
+          style={{ width: 120 }}
+        />
+      </div>
+    </SettingsSection>
+  )
+}
+
+export function GeneralSettings() {
+  return (
     <div data-testid="settings-general">
-      <SettingsSection title="Appearance" description="Choose how the application looks.">
-        <SettingsDropdownField
-          name="theme"
-          label="Theme"
-          options={THEME_OPTIONS}
-          value={theme}
-          onChange={handleThemeChange}
-        />
-        <SettingsDropdownField
-          name="zoom"
-          label="Zoom"
-          options={ZOOM_OPTIONS}
-          value={zoom}
-          onChange={handleZoomChange}
-        />
-      </SettingsSection>
+      <AppearanceSection />
 
-      <SettingsSection title="Session" description="Control session behavior on launch.">
-        <SettingsToggle
-          label="Restore previous session"
-          description="Reopen connections and tabs from the last session on startup."
-          checked={sessionRestore}
-          onChange={(checked) => setPendingChange('session.restore', String(checked))}
-          data-testid="settings-session-restore"
-        />
-      </SettingsSection>
+      <SessionSection />
 
-      <SettingsSection
-        title="Session snapshots"
-        description="Periodically capture your open connections and tabs so you can restore them later."
-      >
-        <SettingsDropdownField
-          name="snapshot-frequency"
-          label="Snapshot frequency"
-          options={SNAPSHOT_FREQUENCY_OPTIONS}
-          value={snapshotFrequency}
-          onChange={(value) => setPendingChange('snapshots.frequency', value)}
-        />
-        <SettingsDropdownField
-          name="snapshot-keep"
-          label="Snapshots to keep"
-          options={SNAPSHOT_KEEP_OPTIONS}
-          value={snapshotKeep}
-          onChange={(value) => setPendingChange('snapshots.keep', value)}
-        />
-      </SettingsSection>
+      <SessionSnapshotsSection />
 
-      <SettingsSection
-        title="Connection defaults"
-        description="Default values for new connections."
-      >
-        <div>
-          <SettingsFieldLabel htmlFor="settings-connection-timeout">
-            Connection timeout (seconds)
-          </SettingsFieldLabel>
-          <TextInput
-            id="settings-connection-timeout"
-            type="number"
-            min={1}
-            max={120}
-            value={connectionTimeout}
-            onChange={(event) => setPendingChange('connection.defaultTimeout', event.target.value)}
-            data-testid="settings-connection-timeout"
-            style={{ width: 120 }}
-          />
-        </div>
-        <div>
-          <SettingsFieldLabel htmlFor="settings-keepalive">
-            Keepalive interval (seconds)
-          </SettingsFieldLabel>
-          <TextInput
-            id="settings-keepalive"
-            type="number"
-            min={0}
-            max={3600}
-            value={keepalive}
-            onChange={(event) =>
-              setPendingChange('connection.defaultKeepalive', event.target.value)
-            }
-            data-testid="settings-keepalive"
-            style={{ width: 120 }}
-          />
-        </div>
-      </SettingsSection>
+      <ConnectionDefaultsSection />
     </div>
   )
 }

@@ -284,36 +284,7 @@ const APP_SHORTCUT_ACTIONS: Record<string, () => void> = {
   'reveal-in-object-browser': revealActiveTabInObjectBrowser,
 }
 
-export function AppLayout() {
-  const sidebarPanelRef = usePanelRef()
-  const isSettingsOpen = useSettingsStore((state) => state.isDialogOpen)
-  const openSettingsDialog = useSettingsStore((state) => state.openDialog)
-  const closeSettingsDialog = useSettingsStore((state) => state.closeDialog)
-  const importDialogRequest = useImportDialogStore((state) => state.request)
-  const closeImportDialog = useImportDialogStore((state) => state.closeImportDialog)
-  const initializeCommandPaletteRecents = useCommandPaletteRecentsStore(
-    (state) => state.initializeFromBackend
-  )
-
-  // Activate global keyboard shortcut listener
-  useShortcut()
-
-  useEffect(() => {
-    void initializeCommandPaletteRecents()
-  }, [initializeCommandPaletteRecents])
-
-  const handleSeparatorDoubleClick = () => {
-    sidebarPanelRef.current?.resize('20%')
-  }
-
-  const handleOpenSettings = useCallback(() => {
-    openSettingsDialog()
-  }, [openSettingsDialog])
-
-  const handleCloseSettings = useCallback(() => {
-    closeSettingsDialog()
-  }, [closeSettingsDialog])
-
+function useAppShortcutActions(): void {
   useEffect(() => {
     const store = useShortcutStore.getState()
     const actionEntries = Object.entries(APP_SHORTCUT_ACTIONS)
@@ -326,6 +297,78 @@ export function AppLayout() {
       }
     }
   }, [])
+}
+
+function useCommandPaletteRecentsInit(): void {
+  const initializeCommandPaletteRecents = useCommandPaletteRecentsStore(
+    (state) => state.initializeFromBackend
+  )
+  useEffect(() => {
+    void initializeCommandPaletteRecents()
+  }, [initializeCommandPaletteRecents])
+}
+
+function MainPanels() {
+  const sidebarPanelRef = usePanelRef()
+  const handleSeparatorDoubleClick = () => {
+    sidebarPanelRef.current?.resize('20%')
+  }
+  return (
+    <div className={styles.mainContent}>
+      <Group orientation="horizontal" className={styles.panelGroup}>
+        <Panel
+          panelRef={sidebarPanelRef}
+          id="sidebar"
+          defaultSize="20%"
+          minSize="12%"
+          maxSize="37%"
+          className={styles.sidebarPanel}
+        >
+          <Sidebar />
+        </Panel>
+        <Separator className={styles.resizeHandle} onDoubleClick={handleSeparatorDoubleClick} />
+        <Panel
+          id="workspace"
+          className={styles.workspacePanel}
+          /* Let workspace tab rail extend over the resize gutter (default Panel inner overflow:auto clips it) */
+          style={{ overflow: 'visible' }}
+        >
+          <WorkspaceArea />
+        </Panel>
+      </Group>
+    </div>
+  )
+}
+
+function ImportDialogHost() {
+  const importDialogRequest = useImportDialogStore((state) => state.request)
+  const closeImportDialog = useImportDialogStore((state) => state.closeImportDialog)
+  if (!importDialogRequest) return null
+  return (
+    <SqlImportDialog
+      connectionId={importDialogRequest.connectionId}
+      filePath={importDialogRequest.filePath}
+      onClose={closeImportDialog}
+    />
+  )
+}
+
+export function AppLayout() {
+  const isSettingsOpen = useSettingsStore((state) => state.isDialogOpen)
+  const openSettingsDialog = useSettingsStore((state) => state.openDialog)
+  const closeSettingsDialog = useSettingsStore((state) => state.closeDialog)
+
+  useShortcut()
+  useCommandPaletteRecentsInit()
+  useAppShortcutActions()
+
+  const handleOpenSettings = useCallback(() => {
+    openSettingsDialog()
+  }, [openSettingsDialog])
+
+  const handleCloseSettings = useCallback(() => {
+    closeSettingsDialog()
+  }, [closeSettingsDialog])
 
   return (
     <div className={styles.appLayout} data-testid="app-layout">
@@ -333,41 +376,13 @@ export function AppLayout() {
         onOpenSettings={handleOpenSettings}
         onOpenSnapshots={() => useSnapshotStore.getState().openDialog()}
       />
-      <div className={styles.mainContent}>
-        <Group orientation="horizontal" className={styles.panelGroup}>
-          <Panel
-            panelRef={sidebarPanelRef}
-            id="sidebar"
-            defaultSize="20%"
-            minSize="12%"
-            maxSize="37%"
-            className={styles.sidebarPanel}
-          >
-            <Sidebar />
-          </Panel>
-          <Separator className={styles.resizeHandle} onDoubleClick={handleSeparatorDoubleClick} />
-          <Panel
-            id="workspace"
-            className={styles.workspacePanel}
-            /* Let workspace tab rail extend over the resize gutter (default Panel inner overflow:auto clips it) */
-            style={{ overflow: 'visible' }}
-          >
-            <WorkspaceArea />
-          </Panel>
-        </Group>
-      </div>
+      <MainPanels />
       <StatusBar />
       <ConnectionDialog />
       <SettingsDialog isOpen={isSettingsOpen} onClose={handleCloseSettings} />
       <SnapshotDialog />
       <CommandPalette />
-      {importDialogRequest && (
-        <SqlImportDialog
-          connectionId={importDialogRequest.connectionId}
-          filePath={importDialogRequest.filePath}
-          onClose={closeImportDialog}
-        />
-      )}
+      <ImportDialogHost />
       <ToastViewport />
     </div>
   )

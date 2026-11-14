@@ -1,28 +1,19 @@
 import { logFrontend } from '../../lib/app-log-commands'
-/**
- * Per-connection routine parameter cache.
- * Module-level singleton — NOT a React component.
- * Manages fetching, caching, and invalidation of stored routine parameter metadata.
- */
-
 import type { RoutineParameter } from '../../types/schema'
 import { getRoutineParametersWithReturnType } from '../../lib/object-editor-commands'
 import { toErrorMessage } from '../../lib/error-message'
 
 export interface RoutineParameterCacheEntry {
-  parameters: RoutineParameter[] // ordinalPosition > 0 rows only
-  returnType: string | null // from ordinalPosition === 0 row's dataType, null for procedures
+  parameters: RoutineParameter[]
+  returnType: string | null
   routineType: 'FUNCTION' | 'PROCEDURE'
-  fetchedAt: number // Date.now()
+  fetchedAt: number
 }
 
-/** Cache storage — key format: `connectionId:db:routineName:routineType` */
 const cacheMap = new Map<string, RoutineParameterCacheEntry | null>()
 
-/** In-flight fetch promises — prevents concurrent callers from racing. */
 const pendingFetches = new Map<string, Promise<RoutineParameterCacheEntry | null>>()
 
-/** Per-connection generation counter — prevents stale fetches from repopulating after invalidation. */
 const generationMap = new Map<string, number>()
 
 function getGeneration(connectionId: string): number {
@@ -58,112 +49,96 @@ export interface RoutineIdentity {
   routineType: string
 }
 
-/**
- * Get cached routine parameters for a stored procedure or function.
- * Fetches lazily on first access; deduplicates concurrent requests.
- * Returns null on error (never rejects).
- */
-export async function getRoutineParameters({
-  connectionId,
-  database,
-  routineName,
-  routineType,
-}: RoutineIdentity): Promise<RoutineParameterCacheEntry | null> {
-  const key = makeCacheKey({
-    connectionId: connectionId,
-    database: database,
-    routineName: routineName,
-    routineType: routineType,
-  })
+interface RoutineFetch {
+  identity: RoutineIdentity
+  key: string
+  capturedGeneration: number
+}
 
-  // Cache hit
-  if (cacheMap.has(key)) {
-    return cacheMap.get(key) ?? null
+function toCacheEntry(rows: RoutineParameter[], routineType: string): RoutineParameterCacheEntry {
+  const returnTypeRow = rows.find((parameter) => parameter.ordinalPosition === 0)
+  const parameterRows = rows.filter((parameter) => parameter.ordinalPosition > 0)
+  return {
+    parameters: parameterRows,
+    returnType: returnTypeRow?.dataType ?? null,
+    routineType: toRoutineKind(routineType),
+    fetchedAt: Date.now(),
   }
+}
 
-  // Deduplicate concurrent requests
-  const pendingFetch = pendingFetches.get(key)
-  if (pendingFetch) {
-    return pendingFetch
-  }
-
-  const capturedGeneration = getGeneration(connectionId)
-
-  const fetchPromise = (async (): Promise<RoutineParameterCacheEntry | null> => {
-    try {
-      const ipcRoutineType = toRoutineKind(routineType)
-      const response = await getRoutineParametersWithReturnType({
-        connectionId: connectionId,
-        database: database,
-        routineName: routineName,
-        routineType: ipcRoutineType,
-      })
-      if (!isCurrentGeneration(connectionId, capturedGeneration)) {
-        return null
-      }
-
-      // Backend returns found=false when the routine does not exist in
-      // INFORMATION_SCHEMA.ROUTINES. Cache null to mark this as a confirmed
-      // miss — no need to re-query on every keystroke.  Invalidation (e.g.
-      // after creating a routine or dropping a DB) clears the cache anyway.
-      if (!response.found) {
-        cacheMap.set(key, null)
-        return null
-      }
-
-      const rows = response.parameters
-
-      // For function lookups: zero rows means the function does not exist
-      // (functions always have at least the return-type row at ordinalPosition 0).
-      // Don't cache so a subsequent call re-queries (the user may create it).
-      const isMissingFunction = routineType.toLowerCase() === 'function' && rows.length === 0
-      if (isMissingFunction) {
-        return null
-      }
-
-      // Separate return type row (ordinalPosition === 0) from parameter rows
-      const returnTypeRow = rows.find((parameter) => parameter.ordinalPosition === 0)
-      const parameterRows = rows.filter((parameter) => parameter.ordinalPosition > 0)
-
-      // Coerce routineType to the strict union
-      const normalizedType = toRoutineKind(routineType)
-
-      const entry: RoutineParameterCacheEntry = {
-        parameters: parameterRows,
-        returnType: returnTypeRow?.dataType ?? null,
-        routineType: normalizedType,
-        fetchedAt: Date.now(),
-      }
-
-      cacheMap.set(key, entry)
-      return entry
-    } catch (error) {
-      const message = toErrorMessage(error)
-      logFrontend(
-        'error',
-        `[routine-param-cache] Failed to fetch parameters for ${routineName}: ${message}`
-      )
-      logFrontend(
-        'error',
-        `[routine-param-cache] Failed to fetch parameters for ${routineName}: ${message}`
-      )
-
-      // Do NOT cache the error — transient failures (network glitch, server
-      // restart) must not permanently silence parameter hints.  The missing
-      // cache entry lets the next call retry the fetch.
+async function fetchRoutineEntry({
+  identity,
+  key,
+  capturedGeneration,
+}: RoutineFetch): Promise<RoutineParameterCacheEntry | null> {
+  const { connectionId, routineName, routineType } = identity
+  try {
+    const response = await getRoutineParametersWithReturnType({
+      connectionId: connectionId,
+      database: identity.database,
+      routineName: routineName,
+      routineType: toRoutineKind(routineType),
+    })
+    if (!isCurrentGeneration(connectionId, capturedGeneration)) {
       return null
     }
-  })()
 
-  // Clean up pendingFetches — only delete if this exact promise is still the active
-  // one for the key.  After invalidation a new promise may have replaced it.
+    if (!response.found) {
+      cacheMap.set(key, null)
+      return null
+    }
+
+    const rows = response.parameters
+    const isMissingFunction = routineType.toLowerCase() === 'function' && rows.length === 0
+    if (isMissingFunction) {
+      return null
+    }
+
+    const entry = toCacheEntry(rows, routineType)
+    cacheMap.set(key, entry)
+    return entry
+  } catch (error) {
+    const message = toErrorMessage(error)
+    logFrontend(
+      'error',
+      `[routine-param-cache] Failed to fetch parameters for ${routineName}: ${message}`
+    )
+    return null
+  }
+}
+
+function releasePendingFetchWhenSettled(
+  key: string,
+  fetchPromise: Promise<RoutineParameterCacheEntry | null>
+): void {
   fetchPromise.finally(() => {
     const isOwnPendingFetch = pendingFetches.get(key) === fetchPromise
     if (isOwnPendingFetch) {
       pendingFetches.delete(key)
     }
   })
+}
 
+export async function getRoutineParameters(
+  identity: RoutineIdentity
+): Promise<RoutineParameterCacheEntry | null> {
+  const key = makeCacheKey(identity)
+
+  if (cacheMap.has(key)) {
+    return cacheMap.get(key) ?? null
+  }
+
+  const pendingFetch = pendingFetches.get(key)
+  if (pendingFetch) {
+    return pendingFetch
+  }
+
+  const fetchPromise = fetchRoutineEntry({
+    identity: identity,
+    key: key,
+    capturedGeneration: getGeneration(identity.connectionId),
+  })
+  releasePendingFetchWhenSettled(key, fetchPromise)
   pendingFetches.set(key, fetchPromise)
   return fetchPromise
 }
@@ -211,11 +186,10 @@ export function getCachedRoutineParameters(
       routineName: routineName,
       routineType: rt,
     })
-    if (cacheMap.has(key)) {
-      anyFetched = true
-      const value = cacheMap.get(key)
-      if (value) return value
-    }
+    if (!cacheMap.has(key)) continue
+    anyFetched = true
+    const value = cacheMap.get(key)
+    if (value) return value
   }
   return anyFetched ? null : undefined
 }

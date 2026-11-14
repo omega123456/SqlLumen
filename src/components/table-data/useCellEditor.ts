@@ -18,7 +18,7 @@
  * column definitions).
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { getTemporalColumnType, getTodayMysqlString } from '../../lib/date-utils'
 import { useCellStoreSync } from '../shared/editor-callbacks-context'
 import type { EditorCallbacksContextType } from '../shared/editor-callbacks-context'
@@ -90,30 +90,9 @@ function placeCaretOnFocus(input: HTMLInputElement | null, selectAll: boolean): 
   input?.setSelectionRange(currentLength, currentLength)
 }
 
-export function useCellEditor(
-  params: CellEditorParams,
-  callbacks: EditorCallbacksContextType
-): CellEditorResult {
-  const columnMeta = params.columnMeta
-  const temporalType = getTemporalColumnType(columnMeta.dataType)
-
+function usePreviewAndSync(params: CellEditorParams, callbacks: EditorCallbacksContextType) {
   const { row, column, onRowChange } = params
   const fieldName = column.key
-  const rawValue = row[fieldName]
-
-  const initialNull = rawValue === null || rawValue === undefined
-  const initialValue = initialNull ? null : rawValue
-  const initialInputValue = params.initialInputValue
-  const startsNull = initialInputValue == null && initialNull
-
-  const [isNull, setIsNull] = useState(startsNull)
-  const [value, setValue] = useState<string | null>(initialEditorValue(rawValue, initialInputValue))
-
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  // Resolve callbacks: prefer props when tabId is set, fallback to context
-  // (BaseGridView passes NOOP callbacks with tabId='', so editors fall back
-  // to the context provided by the wrapper component).
   const syncToStore = useCellStoreSync({
     row: row,
     column: column,
@@ -121,19 +100,59 @@ export function useCellEditor(
     updateCellValue: callbacks.updateCellValue,
     syncCellValue: callbacks.syncCellValue,
   })
-
-  const selectAllOnFocus = params.selectAllOnFocus ?? true
-  useEffect(() => {
-    placeCaretOnFocus(inputRef.current, selectAllOnFocus)
-  }, [selectAllOnFocus])
-
-  const previewAndSync = useCallback(
+  return useCallback(
     (nextValue: unknown) => {
       onRowChange({ ...row, [fieldName]: nextValue })
       syncToStore(nextValue)
     },
     [fieldName, onRowChange, row, syncToStore]
   )
+}
+
+interface NullToggleInputs {
+  isNull: boolean
+  setIsNull: (isNull: boolean) => void
+  setValue: (value: string | null) => void
+  previewAndSync: (nextValue: unknown) => void
+  temporalType: ReturnType<typeof getTemporalColumnType>
+}
+
+function useNullToggle(inputs: NullToggleInputs, inputRef: RefObject<HTMLInputElement | null>) {
+  const { isNull, setIsNull, setValue, previewAndSync, temporalType } = inputs
+  return useCallback(() => {
+    if (!isNull) {
+      setIsNull(true)
+      setValue(null)
+      previewAndSync(null)
+      return
+    }
+    const prefill = temporalType ? getTodayMysqlString(temporalType) : ''
+    setIsNull(false)
+    setValue(prefill)
+    previewAndSync(prefill)
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }, [isNull, previewAndSync, temporalType, setIsNull, setValue, inputRef])
+}
+
+export function useCellEditor(
+  params: CellEditorParams,
+  callbacks: EditorCallbacksContextType
+): CellEditorResult {
+  const temporalType = getTemporalColumnType(params.columnMeta.dataType)
+  const rawValue = params.row[params.column.key]
+  const initialNull = rawValue === null || rawValue === undefined
+  const initialValue = initialNull ? null : rawValue
+  const initialInputValue = params.initialInputValue
+  const startsNull = initialInputValue == null && initialNull
+  const [isNull, setIsNull] = useState(startsNull)
+  const [value, setValue] = useState<string | null>(initialEditorValue(rawValue, initialInputValue))
+  const inputRef = useRef<HTMLInputElement>(null)
+  const previewAndSync = usePreviewAndSync(params, callbacks)
+
+  const selectAllOnFocus = params.selectAllOnFocus ?? true
+  useEffect(() => {
+    placeCaretOnFocus(inputRef.current, selectAllOnFocus)
+  }, [selectAllOnFocus])
 
   const handleChange = useCallback(
     (nextValue: string) => {
@@ -143,22 +162,16 @@ export function useCellEditor(
     },
     [previewAndSync]
   )
-
-  const handleToggleNull = useCallback(() => {
-    if (!isNull) {
-      setIsNull(true)
-      setValue(null)
-      previewAndSync(null)
-      return
-    }
-    // Turning NULL off — pre-fill with today's date/time for temporal columns
-    const prefill = temporalType ? getTodayMysqlString(temporalType) : ''
-    setIsNull(false)
-    setValue(prefill)
-    previewAndSync(prefill)
-    setTimeout(() => inputRef.current?.focus(), 0)
-  }, [isNull, previewAndSync, temporalType])
-
+  const handleToggleNull = useNullToggle(
+    {
+      isNull: isNull,
+      setIsNull: setIsNull,
+      setValue: setValue,
+      previewAndSync: previewAndSync,
+      temporalType: temporalType,
+    },
+    inputRef
+  )
   const restoreOriginalValue = useCallback(() => {
     setIsNull(initialNull)
     setValue(initialEditorValue(initialValue, undefined))

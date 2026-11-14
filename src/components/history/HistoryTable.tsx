@@ -155,6 +155,47 @@ function HistoryListContent({ entries, listState, rowActions, onRetry }: History
   )
 }
 
+interface HistoryTableToolbarProps {
+  connectionId: string
+  entryCount: number
+  search: string
+}
+
+function HistoryTableToolbar({ connectionId, entryCount, search }: HistoryTableToolbarProps) {
+  const setSearch = useHistoryStore((state) => state.setSearch)
+  const clearAll = useHistoryStore((state) => state.clearAll)
+  return (
+    <div className={styles.toolbar}>
+      <div className={styles.search}>
+        <MagnifyingGlassIcon size={16} weight="regular" className={styles.searchIcon} />
+        <TextInput
+          className={styles.searchInput}
+          placeholder="Search queries"
+          aria-label="Search queries"
+          value={search}
+          onChange={(event) => setSearch(connectionId, event.target.value)}
+          data-testid="history-search"
+        />
+      </div>
+      <span className={styles.badge} data-testid="history-count-badge">
+        {entryCountLabel(entryCount)}
+      </span>
+      <span className={styles.spacer} />
+      <Button
+        variant="subtle"
+        size="sm"
+        dangerText
+        disabled={entryCount === 0}
+        onClick={() => void clearAll(connectionId)}
+        data-testid="history-clear"
+      >
+        <TrashIcon size={16} weight="regular" />
+        Clear history
+      </Button>
+    </div>
+  )
+}
+
 export function HistoryTable({
   entries,
   selectedEntryId,
@@ -171,8 +212,6 @@ export function HistoryTable({
   )
   const search = useHistoryStore((state) => state.searchByConnection[connectionId] ?? '')
   const loadMore = useHistoryStore((state) => state.loadMore)
-  const setSearch = useHistoryStore((state) => state.setSearch)
-  const clearAll = useHistoryStore((state) => state.clearAll)
 
   // Time-range aware: only offer "load more" while fewer rows are loaded than
   // exist within the active time window (`total` is already scoped to it).
@@ -186,34 +225,11 @@ export function HistoryTable({
 
   return (
     <div className={styles.container} data-testid="history-table">
-      <div className={styles.toolbar}>
-        <div className={styles.search}>
-          <MagnifyingGlassIcon size={16} weight="regular" className={styles.searchIcon} />
-          <TextInput
-            className={styles.searchInput}
-            placeholder="Search queries"
-            aria-label="Search queries"
-            value={search}
-            onChange={(event) => setSearch(connectionId, event.target.value)}
-            data-testid="history-search"
-          />
-        </div>
-        <span className={styles.badge} data-testid="history-count-badge">
-          {entryCountLabel(entries.length)}
-        </span>
-        <span className={styles.spacer} />
-        <Button
-          variant="subtle"
-          size="sm"
-          dangerText
-          disabled={entries.length === 0}
-          onClick={() => void clearAll(connectionId)}
-          data-testid="history-clear"
-        >
-          <TrashIcon size={16} weight="regular" />
-          Clear history
-        </Button>
-      </div>
+      <HistoryTableToolbar
+        connectionId={connectionId}
+        entryCount={entries.length}
+        search={search}
+      />
 
       <div className={styles.tableWrapper}>
         <HistoryListContent

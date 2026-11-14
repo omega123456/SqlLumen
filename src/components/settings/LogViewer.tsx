@@ -1,220 +1,28 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowsClockwise, FileArrowDown } from '@phosphor-icons/react'
-import { format } from 'date-fns'
-import { Button } from '../common/Button'
-import { Dropdown, type DropdownOption } from '../common/Dropdown'
-import { IconButton } from '../common/IconButton'
-import { InfoBar } from '../common/InfoBar'
+import { useCallback, useState } from 'react'
 import { PaginationGroup } from '../shared/toolbar/PaginationGroup'
-import { logFrontend } from '../../lib/app-log-commands'
-import { type LogEntry, type LogLevelFilter, listLogs } from '../../lib/log-commands'
 import { LogExportDialog } from './LogExportDialog'
-import { LogLevelBadge } from './LogLevelBadge'
 import styles from './LogViewer.module.css'
-import { toErrorMessage } from '../../lib/error-message'
-
-const PAGE_SIZE = 20
-const AUTO_REFRESH_MS = 5000
-const SKELETON_ROWS = 8
-
-const LEVEL_OPTIONS: DropdownOption<LogLevelFilter>[] = [
-  { value: 'all', label: 'All' },
-  { value: 'error', label: 'Error+' },
-  { value: 'warn', label: 'Warn+' },
-  { value: 'info', label: 'Info+' },
-  { value: 'debug', label: 'Debug+' },
-  { value: 'trace', label: 'Trace' },
-]
-
-function formatTimestamp(timestamp: string): string {
-  return format(new Date(timestamp), 'MMM dd HH:mm:ss')
-}
-
-function rowClass(level: string): string {
-  const normalized = level.toLowerCase()
-  if (normalized === 'error') return styles.rowError
-  if (normalized === 'warn') return styles.rowWarn
-  return ''
-}
+import { LogList } from './log-viewer/LogList'
+import { LogViewerToolbar } from './log-viewer/LogViewerToolbar'
+import { LOG_PAGE_SIZE, useLogPages, type LogPages } from './log-viewer/use-log-pages'
 
 function logCountSummary(total: number, page: number, entryCount: number): string {
   if (total === 0) return 'No log entries'
-  const firstEntryIndex = (page - 1) * PAGE_SIZE + 1
+  const firstEntryIndex = (page - 1) * LOG_PAGE_SIZE + 1
   const lastEntryIndex = Math.min(total, firstEntryIndex + entryCount - 1)
   return `${firstEntryIndex}-${lastEntryIndex} of ${total}`
 }
 
-function LogSkeletonBody() {
-  return (
-    <tbody data-testid="log-viewer-loading" aria-busy="true">
-      {Array.from({ length: SKELETON_ROWS }, (_, index) => (
-        <tr key={index} className={styles.row}>
-          <td className={styles.cell}>
-            <span className={`${styles.skeletonBar} ${styles.skeletonBadge}`} />
-          </td>
-          <td className={`${styles.cell} ${styles.messageCell}`}>
-            <span className={`${styles.skeletonBar} ${styles.skeletonMessage}`} />
-          </td>
-          <td className={`${styles.cell} ${styles.timestampCell}`}>
-            <span className={`${styles.skeletonBar} ${styles.skeletonTimestamp}`} />
-          </td>
-        </tr>
-      ))}
-    </tbody>
-  )
-}
-
-function LogEntriesBody({ entries }: { entries: LogEntry[] }) {
-  return (
-    <tbody>
-      {entries.map((entry) => (
-        <tr key={entry.id} className={`${styles.row} ${rowClass(entry.level)}`}>
-          <td className={styles.cell}>
-            <LogLevelBadge level={entry.level} />
-          </td>
-          <td className={`${styles.cell} ${styles.messageCell}`}>
-            <span
-              className={styles.messageText}
-              title={entry.message}
-              data-testid={`log-viewer-message-${entry.id}`}
-            >
-              {entry.message}
-            </span>
-          </td>
-          <td className={`${styles.cell} ${styles.timestampCell}`}>
-            {formatTimestamp(entry.timestamp)}
-          </td>
-        </tr>
-      ))}
-    </tbody>
-  )
-}
-
-interface LogListProps {
-  errorMessage: string | null
-  isLoading: boolean
-  entries: LogEntry[]
-}
-
-function LogList({ errorMessage, isLoading, entries }: LogListProps) {
-  if (errorMessage) {
-    return (
-      <InfoBar
-        severity="error"
-        className={styles.errorState}
-        message="Failed to load logs."
-        data-testid="log-viewer-error"
-      />
-    )
-  }
-  const hasNoMatchingEntries = !isLoading && entries.length === 0
-  if (hasNoMatchingEntries) {
-    return (
-      <div className={styles.state} data-testid="log-viewer-empty">
-        No log entries match this filter.
-      </div>
-    )
-  }
-  return (
-    <div className={styles.tableWrapper}>
-      <table className={styles.table}>
-        <thead className={styles.tableHead}>
-          <tr>
-            <th className={`${styles.tableHeader} ${styles.levelColumn}`} scope="col">
-              Level
-            </th>
-            <th className={styles.tableHeader} scope="col">
-              Message
-            </th>
-            <th className={`${styles.tableHeader} ${styles.timestampColumn}`} scope="col">
-              Timestamp
-            </th>
-          </tr>
-        </thead>
-        {isLoading ? <LogSkeletonBody /> : <LogEntriesBody entries={entries} />}
-      </table>
-    </div>
-  )
-}
-
-export function LogViewer() {
-  const [entries, setEntries] = useState<LogEntry[]>([])
-  const [page, setPage] = useState(1)
-  const [total, setTotal] = useState(0)
-  const [levelFilter, setLevelFilter] = useState<LogLevelFilter>('all')
-  const [isLoading, setIsLoading] = useState(true)
-  const [isRefreshing, setIsRefreshing] = useState(false)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [autoRefresh, setAutoRefresh] = useState(true)
-  const [exportOpen, setExportOpen] = useState(false)
-  const requestIdRef = useRef(0)
-
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
-  const countSummary = logCountSummary(total, page, entries.length)
-
-  const loadPage = useCallback(
-    async (nextPage: number, nextLevel: LogLevelFilter, refreshOnly = false) => {
-      const requestId = ++requestIdRef.current
-      const setBusy = refreshOnly ? setIsRefreshing : setIsLoading
-      setBusy(true)
-
-      try {
-        const response = await listLogs(nextPage, nextLevel)
-        if (requestId !== requestIdRef.current) {
-          return
-        }
-        setEntries(response.entries)
-        setTotal(response.total)
-        // Only an explicit load reconciles the page; a background refresh must not
-        // move the user off the page they are currently viewing.
-        if (!refreshOnly) {
-          setPage(response.page)
-        }
-        setErrorMessage(null)
-      } catch (error) {
-        if (requestId !== requestIdRef.current) {
-          return
-        }
-        const message = toErrorMessage(error)
-        setErrorMessage(message)
-        logFrontend('error', `[log-viewer] Failed to load logs: ${message}`)
-      } finally {
-        if (requestId === requestIdRef.current) {
-          setIsLoading(false)
-          setIsRefreshing(false)
-        }
-      }
-    },
-    []
-  )
-
-  useEffect(() => {
-    void loadPage(page, levelFilter)
-    // page and levelFilter are the fetch key for this view.
-  }, [loadPage, page, levelFilter])
-
-  useEffect(() => {
-    if (!autoRefresh) {
-      return
-    }
-
-    const intervalId = window.setInterval(() => {
-      void loadPage(page, levelFilter, true)
-    }, AUTO_REFRESH_MS)
-
-    return () => {
-      window.clearInterval(intervalId)
-    }
-  }, [autoRefresh, loadPage, page, levelFilter])
-
+function usePaginationProps(logPages: LogPages) {
+  const { page, setPage, total, isLoading } = logPages
+  const totalPages = Math.max(1, Math.ceil(total / LOG_PAGE_SIZE))
   const handlePageSubmit = useCallback(
     (nextPage: number) => setPage(Math.min(Math.max(1, nextPage), totalPages)),
-    [totalPages]
+    [totalPages, setPage]
   )
-
-  const paginationProps = {
+  return {
     currentPage: page,
-    pageSize: PAGE_SIZE,
+    pageSize: LOG_PAGE_SIZE,
     totalPages: totalPages,
     onPageSizeChange: () => {},
     onPrevPage: () => setPage((currentPage) => Math.max(1, currentPage - 1)),
@@ -224,65 +32,18 @@ export function LogViewer() {
     showPageSize: false,
     showFirstLastButtons: true,
   } as const
+}
+
+export function LogViewer() {
+  const logPages = useLogPages()
+  const [exportOpen, setExportOpen] = useState(false)
+  const paginationProps = usePaginationProps(logPages)
+  const countSummary = logCountSummary(logPages.total, logPages.page, logPages.entries.length)
 
   return (
     <>
       <section className={styles.container} aria-label="Application logs" data-testid="log-viewer">
-        <div className={styles.toolbar}>
-          <div className={styles.toolbarLeft}>
-            <Dropdown
-              id="log-viewer-level-filter"
-              ariaLabel="Severity level"
-              options={LEVEL_OPTIONS}
-              value={levelFilter}
-              onChange={(value) => {
-                setPage(1)
-                setLevelFilter(value)
-              }}
-              data-testid="log-viewer-level-filter"
-              triggerClassName={styles.filterDropdown}
-            />
-          </div>
-
-          <div className={styles.toolbarRight}>
-            <IconButton
-              aria-label="Refresh logs"
-              title="Refresh logs"
-              onClick={() => void loadPage(page, levelFilter, true)}
-              className={`${styles.refreshButton} ${isRefreshing ? styles.refreshing : ''}`}
-              data-testid="log-viewer-refresh"
-            >
-              <ArrowsClockwise size={16} weight="bold" />
-            </IconButton>
-
-            <Button
-              variant="bare"
-              aria-label="Auto-refresh"
-              aria-pressed={autoRefresh}
-              onClick={() => setAutoRefresh((value) => !value)}
-              className={`${styles.autoRefreshToggle} ${
-                autoRefresh ? styles.autoRefreshActive : ''
-              }`}
-              data-testid="log-viewer-auto-refresh-status"
-            >
-              <span
-                className={autoRefresh ? styles.pulseDot : styles.pulseDotOff}
-                aria-hidden="true"
-              />
-              {autoRefresh ? 'Auto-refresh on' : 'Auto-refresh off'}
-            </Button>
-
-            <Button
-              variant="subtle"
-              size="sm"
-              onClick={() => setExportOpen(true)}
-              data-testid="log-viewer-export"
-            >
-              <FileArrowDown size={14} weight="bold" />
-              Export
-            </Button>
-          </div>
-        </div>
+        <LogViewerToolbar logPages={logPages} onExport={() => setExportOpen(true)} />
 
         <div className={styles.paginationBar}>
           <PaginationGroup {...paginationProps} />
@@ -291,7 +52,11 @@ export function LogViewer() {
           </span>
         </div>
 
-        <LogList errorMessage={errorMessage} isLoading={isLoading} entries={entries} />
+        <LogList
+          errorMessage={logPages.errorMessage}
+          isLoading={logPages.isLoading}
+          entries={logPages.entries}
+        />
 
         <div className={styles.paginationBar}>
           <PaginationGroup {...paginationProps} />

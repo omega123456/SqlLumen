@@ -1,6 +1,6 @@
 import { MagnifyingGlass } from '@phosphor-icons/react'
 import { TextInput } from '../common/TextInput'
-import type { CommandPaletteInputProps } from './CommandPalette'
+import type { CommandPaletteInputProps } from './palette-types'
 import { CommandPaletteFilterPill } from './CommandPaletteFilterPill'
 import styles from './CommandPaletteInput.module.css'
 

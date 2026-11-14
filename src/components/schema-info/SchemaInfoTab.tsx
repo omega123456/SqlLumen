@@ -136,15 +136,11 @@ function SchemaInfoHeaderActions({
   )
 }
 
-export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
+function useSchemaInfo(tab: SchemaInfoTabType, isActive: boolean) {
   const [data, setData] = useState<SchemaInfoResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const loadedKeyRef = useRef<string | null>(null)
-  const setSubTab = useWorkspaceStore((state) => state.setSubTab)
-
-  const visibleSubTabs = SUB_TAB_VISIBILITY[tab.objectType]
-  const activeSubTab = tab.subTabId ?? getDefaultSubTab(tab.objectType)
   const requestKey = `${tab.connectionId}::${tab.databaseName}::${tab.objectName}::${tab.objectType}`
 
   useEffect(() => {
@@ -155,7 +151,6 @@ export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
     if (!isActive) return
     if (alreadyLoadedCurrentObject) return
 
-    // Clear stale state immediately before fetching new data
     queueMicrotask(() => {
       if (cancelled) {
         return
@@ -201,13 +196,10 @@ export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
     tab.objectType,
   ])
 
-  const handleSubTabClick = useCallback(
-    (subTab: SubTab) => {
-      setSubTab(tab.connectionId, tab.id, subTab)
-    },
-    [setSubTab, tab.connectionId, tab.id]
-  )
+  return { data, loading, error }
+}
 
+function useSchemaInfoActions(tab: SchemaInfoTabType) {
   const handleAlterTable = useCallback(() => {
     useWorkspaceStore.getState().openTab({
       type: 'table-designer',
@@ -228,7 +220,57 @@ export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
     })
   }, [tab.connectionId, tab.databaseName, tab.objectName, tab.objectType])
 
+  return { handleAlterTable, handleViewData }
+}
+
+function SchemaInfoHeader({ tab }: { tab: SchemaInfoTabType }) {
+  const actions = useSchemaInfoActions(tab)
   const TileIcon = TILE_ICONS[tab.objectType]
+  return (
+    <div className={styles.header} data-testid="schema-info-header">
+      <span className={styles.tile} aria-hidden>
+        <TileIcon size={16} weight="regular" />
+      </span>
+      <div className={styles.titleBlock}>
+        <h1 className={styles.objectName}>{tab.objectName}</h1>
+        <span className={styles.caption}>
+          {OBJECT_TYPE_LABELS[tab.objectType]} · {tab.databaseName}
+        </span>
+      </div>
+      <SchemaInfoHeaderActions
+        objectType={tab.objectType}
+        onAlterTable={actions.handleAlterTable}
+        onViewData={actions.handleViewData}
+      />
+    </div>
+  )
+}
+
+interface SchemaInfoSubTabBarProps {
+  tab: SchemaInfoTabType
+  activeSubTab: SubTab
+}
+
+function SchemaInfoSubTabBar({ tab, activeSubTab }: SchemaInfoSubTabBarProps) {
+  const setSubTab = useWorkspaceStore((state) => state.setSubTab)
+  return (
+    <UnderlineTabBar className={styles.subTabBar}>
+      {SUB_TAB_VISIBILITY[tab.objectType].map((subTab) => (
+        <UnderlineTab
+          key={subTab}
+          active={activeSubTab === subTab}
+          onClick={() => setSubTab(tab.connectionId, tab.id, subTab)}
+        >
+          {SUB_TAB_LABELS[subTab]}
+        </UnderlineTab>
+      ))}
+    </UnderlineTabBar>
+  )
+}
+
+export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
+  const { data, loading, error } = useSchemaInfo(tab, isActive)
+  const activeSubTab = tab.subTabId ?? getDefaultSubTab(tab.objectType)
 
   if (loading) {
     return (
@@ -250,39 +292,14 @@ export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
 
   return (
     <div className={styles.container} data-testid="schema-info-tab">
-      {/* Page header (prototype `.vh`): icon tile, name, "<Type> · <database>" caption */}
-      <div className={styles.header} data-testid="schema-info-header">
-        <span className={styles.tile} aria-hidden>
-          <TileIcon size={16} weight="regular" />
-        </span>
-        <div className={styles.titleBlock}>
-          <h1 className={styles.objectName}>{tab.objectName}</h1>
-          <span className={styles.caption}>
-            {OBJECT_TYPE_LABELS[tab.objectType]} · {tab.databaseName}
-          </span>
-        </div>
-        <SchemaInfoHeaderActions
-          objectType={tab.objectType}
-          onAlterTable={handleAlterTable}
-          onViewData={handleViewData}
-        />
-      </div>
+      <SchemaInfoHeader tab={tab} />
 
-      {/* Stats row (tables only); column count shown on every sub-tab */}
       {tab.objectType === 'table' && data.metadata && (
         <StatsRow metadata={data.metadata} columnCount={data.columns.length} />
       )}
 
-      {/* Sub-tab navigation */}
-      <UnderlineTabBar className={styles.subTabBar}>
-        {visibleSubTabs.map((st) => (
-          <UnderlineTab key={st} active={activeSubTab === st} onClick={() => handleSubTabClick(st)}>
-            {SUB_TAB_LABELS[st]}
-          </UnderlineTab>
-        ))}
-      </UnderlineTabBar>
+      <SchemaInfoSubTabBar tab={tab} activeSubTab={activeSubTab} />
 
-      {/* Sub-tab content */}
       <div className={styles.subTabContent}>
         {SUB_TAB_PANELS[activeSubTab](data, tab.objectType)}
       </div>

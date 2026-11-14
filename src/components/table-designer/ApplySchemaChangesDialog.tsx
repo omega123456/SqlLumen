@@ -25,23 +25,15 @@ export interface ApplySchemaChangesDialogProps {
   onCancel: () => void
 }
 
-export function ApplySchemaChangesDialog({
-  isOpen,
-  ddl,
-  warnings,
-  connectionId,
-  database,
-  schemaMode,
-  tableLabel,
-  onSuccess,
-  onCancel,
-}: ApplySchemaChangesDialogProps) {
+type ApplyRequest = Pick<
+  ApplySchemaChangesDialogProps,
+  'isOpen' | 'ddl' | 'connectionId' | 'database' | 'schemaMode' | 'tableLabel' | 'onSuccess'
+>
+
+function useApplySchemaChanges(request: ApplyRequest) {
+  const { isOpen, ddl, connectionId, database, schemaMode, tableLabel, onSuccess } = request
   const [isExecuting, setIsExecuting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const highlightedDdl = useMemo(
-    () => SqlSyntaxHighlighter.highlightSql(ddl, SQL_HIGHLIGHT_CLASS_NAMES),
-    [ddl]
-  )
 
   useEffect(() => {
     if (!isOpen) {
@@ -71,6 +63,64 @@ export function ApplySchemaChangesDialog({
     }
   }
 
+  return { isExecuting, error, handleExecute }
+}
+
+function SchemaWarnings({ warnings }: { warnings: string[] }) {
+  if (warnings.length === 0) return null
+  return (
+    <div className={styles.warningSection} data-testid="apply-schema-warnings">
+      <div className={styles.warningHeader}>
+        <WarningCircle size={18} weight="fill" />
+        <span>Warnings</span>
+      </div>
+      <ul className={styles.warningList}>
+        {warnings.map((warning) => (
+          <li key={warning}>{warning}</li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+interface ApplyActionsProps {
+  isExecuting: boolean
+  onExecute: () => void
+  onCancel: () => void
+}
+
+function ApplyActions({ isExecuting, onExecute, onCancel }: ApplyActionsProps) {
+  return (
+    <div className={styles.actions}>
+      <Button
+        variant="accent"
+        className={styles.executeButton}
+        onClick={onExecute}
+        disabled={isExecuting}
+        data-testid="apply-schema-confirm"
+      >
+        {isExecuting ? 'Executing...' : 'Execute changes'}
+      </Button>
+      <Button
+        className={styles.cancelButton}
+        onClick={onCancel}
+        disabled={isExecuting}
+        data-testid="apply-schema-cancel"
+      >
+        Cancel
+      </Button>
+    </div>
+  )
+}
+
+export function ApplySchemaChangesDialog(props: ApplySchemaChangesDialogProps) {
+  const { isOpen, ddl, warnings, onCancel } = props
+  const { isExecuting, error, handleExecute } = useApplySchemaChanges(props)
+  const highlightedDdl = useMemo(
+    () => SqlSyntaxHighlighter.highlightSql(ddl, SQL_HIGHLIGHT_CLASS_NAMES),
+    [ddl]
+  )
+
   return (
     <DialogShell
       isOpen={isOpen}
@@ -91,19 +141,7 @@ export function ApplySchemaChangesDialog({
           <code>{highlightedDdl}</code>
         </pre>
 
-        {warnings.length > 0 && (
-          <div className={styles.warningSection} data-testid="apply-schema-warnings">
-            <div className={styles.warningHeader}>
-              <WarningCircle size={18} weight="fill" />
-              <span>Warnings</span>
-            </div>
-            <ul className={styles.warningList}>
-              {warnings.map((warning) => (
-                <li key={warning}>{warning}</li>
-              ))}
-            </ul>
-          </div>
-        )}
+        <SchemaWarnings warnings={warnings} />
 
         {error && (
           <div className={styles.error} data-testid="apply-schema-error">
@@ -111,25 +149,11 @@ export function ApplySchemaChangesDialog({
           </div>
         )}
 
-        <div className={styles.actions}>
-          <Button
-            variant="accent"
-            className={styles.executeButton}
-            onClick={handleExecute}
-            disabled={isExecuting}
-            data-testid="apply-schema-confirm"
-          >
-            {isExecuting ? 'Executing...' : 'Execute changes'}
-          </Button>
-          <Button
-            className={styles.cancelButton}
-            onClick={onCancel}
-            disabled={isExecuting}
-            data-testid="apply-schema-cancel"
-          >
-            Cancel
-          </Button>
-        </div>
+        <ApplyActions
+          isExecuting={isExecuting}
+          onExecute={() => void handleExecute()}
+          onCancel={onCancel}
+        />
       </div>
     </DialogShell>
   )

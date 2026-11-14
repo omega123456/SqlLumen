@@ -27,25 +27,17 @@ function hasAttachedContextIn(tab: TabAiState | undefined): boolean {
   return tab?.attachedContext != null
 }
 
-export function AiChatMessages({
-  tabId,
-  connectionId,
-  onTriggerDiff,
-  onSuggestionFill,
-  onSqlAccepted,
-}: AiChatMessagesProps) {
-  const messages = useAiStore((state) => state.tabs[tabId]?.messages ?? EMPTY_MESSAGES)
-  const error = useAiStore((state) => state.tabs[tabId]?.error ?? null)
-  const isGenerating = useAiStore((state) => state.tabs[tabId]?.isGenerating ?? false)
+function lastAssistantIndexOf(visibleMessages: AiMessage[]): number {
+  for (let index = visibleMessages.length - 1; index >= 0; index--) {
+    const message = visibleMessages[index]
+    if (message.role === 'assistant') return index
+  }
+  return -1
+}
+
+function useScrollAnchor(visibleMessages: AiMessage[]) {
   const scrollAnchorRef = useRef<HTMLDivElement>(null)
-  const [internalSuggestion, setInternalSuggestion] = useState('')
 
-  const hasAttachedContext = useAiStore((state) => hasAttachedContextIn(state.tabs[tabId]))
-  const visibleMessages = messages.filter(
-    (message) => !(message.kind && HIDDEN_PROMPT_ONLY_KINDS.has(message.kind))
-  )
-
-  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     const element = scrollAnchorRef.current
     if (typeof element?.scrollIntoView === 'function') {
@@ -53,7 +45,11 @@ export function AiChatMessages({
     }
   }, [visibleMessages])
 
-  const handleRetry = useCallback(() => {
+  return scrollAnchorRef
+}
+
+function useRetryLastMessage(tabId: string, connectionId: string | null | undefined) {
+  return useCallback(() => {
     if (!connectionId) return
     const settings = useSettingsStore.getState()
     const temperature = parseFloat(
@@ -66,6 +62,10 @@ export function AiChatMessages({
     const model = settings.pendingChanges['ai.model'] ?? settings.settings['ai.model'] ?? ''
     useAiStore.getState().retryLastMessage(tabId, connectionId, { temperature, maxTokens, model })
   }, [tabId, connectionId])
+}
+
+function useSuggestionFill(onSuggestionFill: AiChatMessagesProps['onSuggestionFill']) {
+  const [internalSuggestion, setInternalSuggestion] = useState('')
 
   const handleSuggestionClick = useCallback(
     (text: string) => {
@@ -78,14 +78,30 @@ export function AiChatMessages({
     [onSuggestionFill]
   )
 
-  // Determine which is the last assistant message for streaming indicator
-  const lastAssistantIndex = (() => {
-    for (let index = visibleMessages.length - 1; index >= 0; index--) {
-      const message = visibleMessages[index]
-      if (message.role === 'assistant') return index
-    }
-    return -1
-  })()
+  return { internalSuggestion, handleSuggestionClick }
+}
+
+export function AiChatMessages({
+  tabId,
+  connectionId,
+  onTriggerDiff,
+  onSuggestionFill,
+  onSqlAccepted,
+}: AiChatMessagesProps) {
+  const messages = useAiStore((state) => state.tabs[tabId]?.messages ?? EMPTY_MESSAGES)
+  const error = useAiStore((state) => state.tabs[tabId]?.error ?? null)
+  const isGenerating = useAiStore((state) => state.tabs[tabId]?.isGenerating ?? false)
+
+  const hasAttachedContext = useAiStore((state) => hasAttachedContextIn(state.tabs[tabId]))
+  const visibleMessages = messages.filter(
+    (message) => !(message.kind && HIDDEN_PROMPT_ONLY_KINDS.has(message.kind))
+  )
+
+  const scrollAnchorRef = useScrollAnchor(visibleMessages)
+  const handleRetry = useRetryLastMessage(tabId, connectionId)
+
+  const { internalSuggestion, handleSuggestionClick } = useSuggestionFill(onSuggestionFill)
+  const lastAssistantIndex = lastAssistantIndexOf(visibleMessages)
 
   const showWelcome = visibleMessages.length === 0 && !error
 

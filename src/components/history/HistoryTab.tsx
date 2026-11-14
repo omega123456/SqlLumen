@@ -38,11 +38,7 @@ function rangeToSince(range: TimeRange): string | null {
   return new Date(Date.now() - RANGE_MS[range]).toISOString()
 }
 
-export function HistoryTab({ tab, isActive = true }: HistoryTabProps) {
-  const activeConnections = useConnectionStore((state) => state.activeConnections)
-  const activeConnection = activeConnections[tab.connectionId]
-  const connectionId = activeConnection ? tab.connectionId : null
-
+function useHistoryEntries(connectionId: string | null) {
   const loadHistory = useHistoryStore((state) => state.loadHistory)
   const entries = useHistoryStore((state) =>
     connectionId ? (state.entriesByConnection[connectionId] ?? EMPTY_ENTRIES) : EMPTY_ENTRIES
@@ -53,7 +49,11 @@ export function HistoryTab({ tab, isActive = true }: HistoryTabProps) {
   const error = useHistoryStore((state) =>
     connectionId ? (state.errorByConnection[connectionId] ?? null) : null
   )
+  return { loadHistory, entries, isLoading, error }
+}
 
+function useHistoryTabView(connectionId: string | null, isActive: boolean) {
+  const { loadHistory, entries, isLoading, error } = useHistoryEntries(connectionId)
   const [timeRange, setTimeRange] = useState<TimeRange>('all')
   const [selectedEntryId, setSelectedEntryId] = useState<number | null>(null)
 
@@ -70,22 +70,17 @@ export function HistoryTab({ tab, isActive = true }: HistoryTabProps) {
     [connectionId, loadHistory]
   )
 
-  // Refresh whenever the tab becomes active, the connection changes, or the
-  // time range changes. Re-fetching on activation keeps the view current and
-  // resets any "load more" window so stale rows are never shown.
   useEffect(() => {
     if (!isActive) return
     if (!connectionId) return
     reload(timeRange)
   }, [isActive, connectionId, timeRange, reload])
 
-  // Find the selected entry from the current list
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.id === selectedEntryId) ?? null,
     [entries, selectedEntryId]
   )
 
-  // Handle "Open in editor" — reuse active query tab if one exists
   const handleOpenInEditor = useCallback(
     (entry: HistoryEntry) => {
       if (!connectionId) return
@@ -93,6 +88,27 @@ export function HistoryTab({ tab, isActive = true }: HistoryTabProps) {
     },
     [connectionId]
   )
+
+  return {
+    entries,
+    isLoading,
+    error,
+    timeRange,
+    selectedEntryId,
+    selectedEntry,
+    setSelectedEntryId,
+    handleTimeRangeChange,
+    handleOpenInEditor,
+    reload,
+  }
+}
+
+export function HistoryTab({ tab, isActive = true }: HistoryTabProps) {
+  const activeConnections = useConnectionStore((state) => state.activeConnections)
+  const activeConnection = activeConnections[tab.connectionId]
+  const connectionId = activeConnection ? tab.connectionId : null
+
+  const view = useHistoryTabView(connectionId, isActive)
 
   if (!connectionId) {
     return (
@@ -107,27 +123,27 @@ export function HistoryTab({ tab, isActive = true }: HistoryTabProps) {
   return (
     <div className={styles.container} data-testid="history-tab">
       <div className={styles.filterSide}>
-        <HistoryFilterPanel value={timeRange} onChange={handleTimeRangeChange} />
+        <HistoryFilterPanel value={view.timeRange} onChange={view.handleTimeRangeChange} />
       </div>
 
       <Group orientation="horizontal" className={styles.panelGroup}>
         <Panel minSize="30%" className={styles.tablePanel}>
           <HistoryTable
-            entries={entries}
-            selectedEntryId={selectedEntryId}
-            onSelectEntry={setSelectedEntryId}
-            onOpenInEditor={handleOpenInEditor}
+            entries={view.entries}
+            selectedEntryId={view.selectedEntryId}
+            onSelectEntry={view.setSelectedEntryId}
+            onOpenInEditor={view.handleOpenInEditor}
             connectionId={connectionId}
-            isLoading={isLoading}
-            error={error}
-            onRetry={() => reload(timeRange)}
+            isLoading={view.isLoading}
+            error={view.error}
+            onRetry={() => view.reload(view.timeRange)}
           />
         </Panel>
         <Separator className={styles.resizeHandle} />
         <Panel defaultSize="330px" minSize="240px" className={styles.detailPanel}>
           <HistoryDetailPanel
-            entry={selectedEntry}
-            onOpenInEditor={handleOpenInEditor}
+            entry={view.selectedEntry}
+            onOpenInEditor={view.handleOpenInEditor}
             connectionName={activeConnection?.profile.name}
           />
         </Panel>

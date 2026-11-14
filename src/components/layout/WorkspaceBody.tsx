@@ -1,5 +1,5 @@
 import { useEffect, lazy, Suspense } from 'react'
-import type { ReactNode } from 'react'
+import type { ReactNode, RefObject } from 'react'
 import {
   Group,
   Panel,
@@ -78,31 +78,63 @@ function syncAiPanelOpenState(tabId: string, collapsed: boolean): void {
   }
 }
 
-export function WorkspaceBody({
-  tabs,
-  activeTabId,
-  connectionId,
-  sessionId,
-  renderTabStack,
-}: WorkspaceBodyProps) {
-  const queryTabs = tabs.filter(isQueryEditorTab)
-  const activeQueryTab = findActiveQueryTab(queryTabs, activeTabId)
-  const activeQueryTabId = activeQueryTab?.id ?? null
+interface AiPanelHostsProps {
+  queryTabs: QueryEditorTab[]
+  activeQueryTabId: string | null
+}
+
+function AiPanelHosts({ queryTabs, activeQueryTabId }: AiPanelHostsProps) {
+  const triggerDiff = useAiDiffTrigger()
+  const setLastFocusedSurface = useWorkspaceStore((state) => state.setLastFocusedSurface)
+  return (
+    <>
+      {queryTabs.map((tab) => {
+        const isActive = tab.id === activeQueryTabId
+        return (
+          <div
+            key={tab.id}
+            className={styles.aiPanelHost}
+            style={isActive ? undefined : { visibility: 'hidden', pointerEvents: 'none' }}
+            aria-hidden={isActive ? undefined : true}
+            data-testid="workspace-ai-panel-host"
+            data-tab-id={tab.id}
+            onFocusCapture={() => setLastFocusedSurface(tab.id, 'ai-input')}
+          >
+            <Suspense fallback={<AiPanelSkeleton />}>
+              <LazyAiPanel
+                tabId={tab.id}
+                connectionId={tab.connectionId}
+                onTriggerDiff={(sql, range) => {
+                  triggerDiff(tab.id, sql, range)
+                }}
+              />
+            </Suspense>
+          </div>
+        )
+      })}
+    </>
+  )
+}
+
+function useAiEnabledSetting(): boolean {
+  return useSettingsStore(
+    (state) =>
+      (state.pendingChanges['ai.enabled'] ?? state.settings['ai.enabled'] ?? 'false') === 'true'
+  )
+}
+
+interface AiPanelLayout {
+  aiChatPanelRef: RefObject<PanelImperativeHandle | null>
+  aiPanelDefaultSize: string
+  handleAiChatResize: () => void
+}
+
+function useAiPanelLayout(activeQueryTabId: string | null): AiPanelLayout {
   const isActiveQueryPanelOpen = useAiStore((state) =>
     activeQueryTabId ? (state.tabs[activeQueryTabId]?.isPanelOpen ?? false) : false
   )
   const aiChatPanelRef = usePanelRef()
-  const triggerDiff = useAiDiffTrigger()
-  const setLastFocusedSurface = useWorkspaceStore((state) => state.setLastFocusedSurface)
-  const aiEnabled = useSettingsStore(
-    (state) =>
-      (state.pendingChanges['ai.enabled'] ?? state.settings['ai.enabled'] ?? 'false') === 'true'
-  )
-  const hasQueryTabs = queryTabs.length > 0
-  const showActiveQueryAiLayout = aiEnabled && activeQueryTab != null
-  const shouldRenderAiPanelStack = aiEnabled && hasQueryTabs
   const shouldExpandAiPanel = activeQueryTabId != null && isActiveQueryPanelOpen
-  const aiPanelDefaultSize = aiPanelDefaultSizeFor(shouldExpandAiPanel)
 
   useEffect(() => {
     if (!shouldExpandAiPanel) {
@@ -119,9 +151,51 @@ export function WorkspaceBody({
     dispatchWorkspaceLayoutResize()
   }
 
-  function handleWorkspacePanelResize(): void {
-    dispatchWorkspaceLayoutResize()
+  return {
+    aiChatPanelRef: aiChatPanelRef,
+    aiPanelDefaultSize: aiPanelDefaultSizeFor(shouldExpandAiPanel),
+    handleAiChatResize: handleAiChatResize,
   }
+}
+
+interface AiPanelStackProps {
+  queryTabs: QueryEditorTab[]
+  activeQueryTabId: string | null
+  layout: AiPanelLayout
+}
+
+function AiPanelStack({ queryTabs, activeQueryTabId, layout }: AiPanelStackProps) {
+  const { aiChatPanelRef, aiPanelDefaultSize, handleAiChatResize } = layout
+  return (
+    <Panel
+      panelRef={aiChatPanelRef}
+      defaultSize={aiPanelDefaultSize}
+      minSize="15%"
+      maxSize="48%"
+      collapsible={true}
+      collapsedSize="0%"
+      className={styles.aiSide}
+      onResize={handleAiChatResize}
+    >
+      <AiPanelHosts queryTabs={queryTabs} activeQueryTabId={activeQueryTabId} />
+    </Panel>
+  )
+}
+
+export function WorkspaceBody({
+  tabs,
+  activeTabId,
+  connectionId,
+  sessionId,
+  renderTabStack,
+}: WorkspaceBodyProps) {
+  const queryTabs = tabs.filter(isQueryEditorTab)
+  const activeQueryTab = findActiveQueryTab(queryTabs, activeTabId)
+  const activeQueryTabId = activeQueryTab?.id ?? null
+  const aiEnabled = useAiEnabledSetting()
+  const showActiveQueryAiLayout = aiEnabled && activeQueryTab != null
+  const shouldRenderAiPanelStack = aiEnabled && queryTabs.length > 0
+  const aiPanelLayout = useAiPanelLayout(activeQueryTabId)
 
   return (
     <div className={styles.body} data-testid="workspace-body">
@@ -130,48 +204,18 @@ export function WorkspaceBody({
           defaultSize="75%"
           minSize="35%"
           className={styles.tabStack}
-          onResize={handleWorkspacePanelResize}
+          onResize={() => dispatchWorkspaceLayoutResize()}
         >
           {renderTabStack({ tabs, activeTabId, connectionId, sessionId })}
         </Panel>
         {showActiveQueryAiLayout ? <QueryWorkspaceAiRail tab={activeQueryTab} /> : null}
         {showActiveQueryAiLayout ? <Separator className={styles.separator} /> : null}
         {shouldRenderAiPanelStack ? (
-          <Panel
-            panelRef={aiChatPanelRef}
-            defaultSize={aiPanelDefaultSize}
-            minSize="15%"
-            maxSize="48%"
-            collapsible={true}
-            collapsedSize="0%"
-            className={styles.aiSide}
-            onResize={handleAiChatResize}
-          >
-            {queryTabs.map((tab) => {
-              const isActive = tab.id === activeQueryTabId
-              return (
-                <div
-                  key={tab.id}
-                  className={styles.aiPanelHost}
-                  style={isActive ? undefined : { visibility: 'hidden', pointerEvents: 'none' }}
-                  aria-hidden={isActive ? undefined : true}
-                  data-testid="workspace-ai-panel-host"
-                  data-tab-id={tab.id}
-                  onFocusCapture={() => setLastFocusedSurface(tab.id, 'ai-input')}
-                >
-                  <Suspense fallback={<AiPanelSkeleton />}>
-                    <LazyAiPanel
-                      tabId={tab.id}
-                      connectionId={tab.connectionId}
-                      onTriggerDiff={(sql, range) => {
-                        triggerDiff(tab.id, sql, range)
-                      }}
-                    />
-                  </Suspense>
-                </div>
-              )
-            })}
-          </Panel>
+          <AiPanelStack
+            queryTabs={queryTabs}
+            activeQueryTabId={activeQueryTabId}
+            layout={aiPanelLayout}
+          />
         ) : null}
       </Group>
     </div>

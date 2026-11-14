@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, type ComponentType, type FunctionComponent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  type ComponentType,
+  type CSSProperties,
+  type FunctionComponent,
+} from 'react'
 import {
   GridCellKind,
   type GridCell,
@@ -178,6 +185,89 @@ function restoreValueProps(editorData: NonNullable<ReturnType<typeof extractEdit
   return { cancelRestoreValue: editorData.cancelRestoreValue }
 }
 
+interface OverlayEditorValueInput {
+  value: GridCell
+  initialInputValue: string | undefined
+  onFinishedEditing: CustomEditorProps['onFinishedEditing']
+}
+
+interface OverlayLayout {
+  expandedWidth: number
+  requestedOverlayWidth: number
+  resolvedOverlayHeight: number | undefined
+}
+
+const DEFAULT_OVERLAY_EXTRA_WIDTH = 20
+const DEFAULT_OVERLAY_TEST_ID = 'glide-overlay-editor'
+
+function useOverlayEditorValue(input: OverlayEditorValueInput) {
+  const { value, initialInputValue, onFinishedEditing } = input
+  const currentValueRef = useRef(applyInitialInputValue(value, initialInputValue))
+  const appliedInitialInputValueRef = useRef(initialInputValue)
+  const close = useCallback(
+    (commitChanges?: boolean) => {
+      onFinishedEditing(commitChanges === false ? undefined : currentValueRef.current)
+    },
+    [onFinishedEditing]
+  )
+
+  useEffect(() => {
+    if (initialInputValue == null) {
+      currentValueRef.current = value
+      appliedInitialInputValueRef.current = undefined
+      return
+    }
+
+    if (appliedInitialInputValueRef.current !== initialInputValue) {
+      currentValueRef.current = applyInitialInputValue(value, initialInputValue)
+      appliedInitialInputValueRef.current = initialInputValue
+    }
+  }, [initialInputValue, value])
+
+  return { currentValueRef, close }
+}
+
+function resolveOverlayLayout(
+  config: GlideOverlayConfig,
+  editorData: GlideEditorCellData,
+  target: Rectangle
+): OverlayLayout {
+  const reserveMarkerWidth = config.reserveMarkerWidth ?? true
+  const overlayExtraWidth = config.overlayExtraWidth ?? DEFAULT_OVERLAY_EXTRA_WIDTH
+  const targetWidth = getEditorTargetWidth(target)
+  const markerCount = reserveMarkerWidth ? getMarkerCount(editorData, editorData.columnMeta) : 0
+  const expandedWidth = Math.max(
+    config.overlayMinWidth ?? 0,
+    getExpandedEditorWidth(targetWidth, markerCount)
+  )
+  return {
+    expandedWidth: expandedWidth,
+    requestedOverlayWidth: expandedWidth + overlayExtraWidth,
+    resolvedOverlayHeight: resolveOverlayHeight(config.overlayHeight, target),
+  }
+}
+
+function overlayRootStyle(layout: OverlayLayout): CSSProperties {
+  return {
+    display: 'flex',
+    alignItems: 'stretch',
+    ...overlaySizeStyle(layout.expandedWidth, layout.resolvedOverlayHeight),
+    minWidth: 0,
+    overflow: 'hidden',
+    boxSizing: 'border-box',
+  }
+}
+
+function editedTextCell(value: GridCell, nextValue: unknown): GridCell {
+  const text = nextValue == null ? '' : String(nextValue)
+  return {
+    ...(value as TextCell),
+    data: text,
+    displayData: nextValue == null ? 'NULL' : text,
+    copyData: nextValue == null ? 'NULL' : text,
+  }
+}
+
 export function wrapEditorAsGlideOverlay(
   EditorComponent: VendorNeutralEditorComponent,
   config: GlideOverlayConfig = {}
@@ -188,62 +278,25 @@ export function wrapEditorAsGlideOverlay(
     onChange,
     onFinishedEditing,
   }: CustomEditorProps) {
-    const {
-      testId,
-      reserveMarkerWidth = true,
-      overlayExtraWidth = 20,
-      overlayMinWidth,
-      overlayHeight,
-    } = config
     const editorData = extractEditorData(value)
     const initialInputValue = editorData?.initialInputValue
-    const currentValueRef = useRef(applyInitialInputValue(value, initialInputValue))
-    const appliedInitialInputValueRef = useRef(initialInputValue)
-    const close = useCallback(
-      (commitChanges?: boolean) => {
-        onFinishedEditing(commitChanges === false ? undefined : currentValueRef.current)
-      },
-      [onFinishedEditing]
-    )
-
-    useEffect(() => {
-      if (initialInputValue == null) {
-        currentValueRef.current = value
-        appliedInitialInputValueRef.current = undefined
-        return
-      }
-
-      if (appliedInitialInputValueRef.current !== initialInputValue) {
-        currentValueRef.current = applyInitialInputValue(value, initialInputValue)
-        appliedInitialInputValueRef.current = initialInputValue
-      }
-    }, [initialInputValue, value])
+    const { currentValueRef, close } = useOverlayEditorValue({
+      value,
+      initialInputValue,
+      onFinishedEditing,
+    })
 
     if (!editorData) return null
 
     const { row, columnKey, columnMeta, isNullable, foreignKey, selectAllOnFocus } = editorData
-    const targetWidth = getEditorTargetWidth(target)
-    const markerCount = reserveMarkerWidth ? getMarkerCount(editorData, columnMeta) : 0
-    const expandedWidth = Math.max(
-      overlayMinWidth ?? 0,
-      getExpandedEditorWidth(targetWidth, markerCount)
-    )
-    const requestedOverlayWidth = expandedWidth + overlayExtraWidth
-    const resolvedOverlayHeight = resolveOverlayHeight(overlayHeight, target)
+    const layout = resolveOverlayLayout(config, editorData, target)
 
     return (
       <div
-        data-testid={testId ?? 'glide-overlay-editor'}
+        data-testid={config.testId ?? DEFAULT_OVERLAY_TEST_ID}
         data-sqllumen-glide-editor-root="true"
-        data-sqllumen-editor-width={String(requestedOverlayWidth)}
-        style={{
-          display: 'flex',
-          alignItems: 'stretch',
-          ...overlaySizeStyle(expandedWidth, resolvedOverlayHeight),
-          minWidth: 0,
-          overflow: 'hidden',
-          boxSizing: 'border-box',
-        }}
+        data-sqllumen-editor-width={String(layout.requestedOverlayWidth)}
+        style={overlayRootStyle(layout)}
       >
         <EditorComponent
           row={row}
@@ -255,14 +308,7 @@ export function wrapEditorAsGlideOverlay(
           {...restoreValueProps(editorData)}
           selectAllOnFocus={selectAllOnFocus}
           onRowChange={(nextRow) => {
-            const nextValue = nextRow[columnKey]
-            const text = nextValue == null ? '' : String(nextValue)
-            const nextCell = {
-              ...(value as TextCell),
-              data: text,
-              displayData: nextValue == null ? 'NULL' : text,
-              copyData: nextValue == null ? 'NULL' : text,
-            }
+            const nextCell = editedTextCell(value, nextRow[columnKey])
             currentValueRef.current = nextCell
             onChange(nextCell)
           }}

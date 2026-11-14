@@ -93,59 +93,44 @@ export interface ProcessListToolbarProps {
   workspaceTabId?: string
 }
 
-export function ProcessListToolbar({
-  connectionId,
-  sessionId,
-  onRefresh,
-  isActive = true,
-  workspaceTabId,
-}: ProcessListToolbarProps) {
-  const rows = useProcessListStore((state) => state.rowsByConnection[connectionId] ?? emptyRows)
-  const selectedIds = useProcessListStore(
-    (state) => state.selectedIdsByConnection[connectionId] ?? emptySet
-  )
-  const isFetching = useProcessListStore(
-    (state) => state.isFetchingByConnection[connectionId] ?? false
-  )
-  const refreshIntervalMs = useProcessListStore(
-    (state) => state.refreshIntervalMsByConnection[connectionId] ?? DEFAULT_REFRESH_INTERVAL_MS
-  )
-  const excludeIdleConnections = useProcessListStore(
-    (state) =>
-      state.excludeIdleConnectionsByConnection[connectionId] ?? DEFAULT_EXCLUDE_IDLE_CONNECTIONS
-  )
-  const lastRefreshedAt = useProcessListStore(
-    (state) => state.lastRefreshedAtByConnection[connectionId] ?? null
-  )
-  const isConfirmDialogOpen = useProcessListStore(
-    (state) => state.isConfirmDialogOpenByConnection[connectionId] ?? false
-  )
-  const setRefreshInterval = useProcessListStore((state) => state.setRefreshInterval)
-  const setExcludeIdleConnections = useProcessListStore((state) => state.setExcludeIdleConnections)
+function notifyKillResults(results: KillResult[]): void {
+  const successCount = results.filter((result) => result.success).length
+  const failures = results.filter((result) => !result.success)
+
+  if (successCount > 0) {
+    showSuccessToast(successCount === 1 ? '1 process killed' : `${successCount} processes killed`)
+  }
+
+  if (failures.length > 0) {
+    const failureSummary = failures
+      .map((failure) => `ID ${failure.id}: ${failure.error ?? 'Unknown error'}`)
+      .join('; ')
+    showWarningToast(
+      failures.length === 1
+        ? '1 process failed to kill'
+        : `${failures.length} processes failed to kill`,
+      failureSummary
+    )
+  }
+}
+
+interface KillDialogsInput {
+  connectionId: string
+  sessionId: string
+  isActive: boolean
+}
+
+function useKillDialogLifecycle({ connectionId, isActive }: KillDialogsInput, reset: () => void) {
   const setConfirmDialogOpen = useProcessListStore((state) => state.setConfirmDialogOpen)
   const setSummaryDialogOpen = useProcessListStore((state) => state.setSummaryDialogOpen)
-  const killSelectedProcesses = useProcessListStore((state) => state.killSelectedProcesses)
-  const setSelectedIds = useProcessListStore((state) => state.setSelectedIds)
-  const fetchProcessList = useProcessListStore((state) => state.fetchProcessList)
-
-  const isReadOnly = useConnectionStore(
-    (state) => state.activeConnections[connectionId]?.profile.readOnly ?? false
-  )
-  const visibleRows = filterProcessListRows(rows, excludeIdleConnections)
-  const selectedCount = selectedIds.size
-  const rowCount = visibleRows.length
-
-  const [killResults, setKillResults] = useState<KillResult[] | null>(null)
-  const [isKilling, setIsKilling] = useState(false)
   const isMountedRef = useRef(false)
 
   useEffect(() => {
     if (isActive) return
     setConfirmDialogOpen(connectionId, false)
     setSummaryDialogOpen(connectionId, false)
-    setKillResults(null)
-    setIsKilling(false)
-  }, [connectionId, isActive, setConfirmDialogOpen, setSummaryDialogOpen])
+    reset()
+  }, [connectionId, isActive, setConfirmDialogOpen, setSummaryDialogOpen, reset])
 
   useEffect(() => {
     isMountedRef.current = true
@@ -160,44 +145,23 @@ export function ProcessListToolbar({
     }
   }, [connectionId, setSummaryDialogOpen])
 
-  const notifyKillResults = useCallback((results: KillResult[]) => {
-    const successCount = results.filter((result) => result.success).length
-    const failures = results.filter((result) => !result.success)
+  return isMountedRef
+}
 
-    if (successCount > 0) {
-      showSuccessToast(successCount === 1 ? '1 process killed' : `${successCount} processes killed`)
-    }
-
-    if (failures.length > 0) {
-      const failureSummary = failures
-        .map((failure) => `ID ${failure.id}: ${failure.error ?? 'Unknown error'}`)
-        .join('; ')
-      showWarningToast(
-        failures.length === 1
-          ? '1 process failed to kill'
-          : `${failures.length} processes failed to kill`,
-        failureSummary
-      )
-    }
+function useKillDialogs(input: KillDialogsInput) {
+  const { connectionId, sessionId } = input
+  const setConfirmDialogOpen = useProcessListStore((state) => state.setConfirmDialogOpen)
+  const setSummaryDialogOpen = useProcessListStore((state) => state.setSummaryDialogOpen)
+  const killSelectedProcesses = useProcessListStore((state) => state.killSelectedProcesses)
+  const setSelectedIds = useProcessListStore((state) => state.setSelectedIds)
+  const fetchProcessList = useProcessListStore((state) => state.fetchProcessList)
+  const [killResults, setKillResults] = useState<KillResult[] | null>(null)
+  const [isKilling, setIsKilling] = useState(false)
+  const resetKillState = useCallback(() => {
+    setKillResults(null)
+    setIsKilling(false)
   }, [])
-
-  const handleIntervalChange = useCallback(
-    (value: string) => {
-      setRefreshInterval(connectionId, Number(value))
-    },
-    [connectionId, setRefreshInterval]
-  )
-
-  const handleFilterChange = useCallback(
-    (value: string) => {
-      setExcludeIdleConnections(connectionId, value === EXCLUDE_IDLE_FILTER_VALUE)
-    },
-    [connectionId, setExcludeIdleConnections]
-  )
-
-  const handleKillClick = useCallback(() => {
-    setConfirmDialogOpen(connectionId, true)
-  }, [connectionId, setConfirmDialogOpen])
+  const isMountedRef = useKillDialogLifecycle(input, resetKillState)
 
   const handleConfirmKill = useCallback(async () => {
     setIsKilling(true)
@@ -223,15 +187,11 @@ export function ProcessListToolbar({
   }, [
     connectionId,
     sessionId,
+    isMountedRef,
     killSelectedProcesses,
-    notifyKillResults,
     setConfirmDialogOpen,
     setSummaryDialogOpen,
   ])
-
-  const handleCancelKill = useCallback(() => {
-    setConfirmDialogOpen(connectionId, false)
-  }, [connectionId, setConfirmDialogOpen])
 
   const handleCloseSummary = useCallback(() => {
     setKillResults(null)
@@ -240,66 +200,153 @@ export function ProcessListToolbar({
     fetchProcessList(connectionId, sessionId, true)
   }, [connectionId, sessionId, setSummaryDialogOpen, setSelectedIds, fetchProcessList])
 
-  const killLabel = killButtonLabel(selectedCount)
+  return { killResults, isKilling, handleConfirmKill, handleCloseSummary }
+}
+
+interface ProcessListStatusSectionProps {
+  connectionId: string
+  rowCount: number
+  onRefresh: () => void
+}
+
+function ProcessListStatusSection({
+  connectionId,
+  rowCount,
+  onRefresh,
+}: ProcessListStatusSectionProps) {
+  const isFetching = useProcessListStore(
+    (state) => state.isFetchingByConnection[connectionId] ?? false
+  )
+  const lastRefreshedAt = useProcessListStore(
+    (state) => state.lastRefreshedAtByConnection[connectionId] ?? null
+  )
+  const isReadOnly = useConnectionStore(
+    (state) => state.activeConnections[connectionId]?.profile.readOnly ?? false
+  )
+  return (
+    <div className={styles.leftSection}>
+      <StatusArea status={isFetching ? 'loading' : 'success'} totalRows={rowCount} />
+
+      {isReadOnly && (
+        <span className={styles.readonlyBadge} data-testid="processlist-readonly-badge">
+          &#x1F512; READ-ONLY
+        </span>
+      )}
+
+      <div className={styles.divider} />
+
+      <Button
+        variant="bare"
+        className={styles.iconButton}
+        onClick={onRefresh}
+        title="Refresh"
+        data-testid="processlist-refresh-button"
+        aria-label="Refresh"
+      >
+        <ArrowCounterClockwise size={16} weight="bold" />
+      </Button>
+
+      {lastRefreshedAt !== null && (
+        <span className={styles.meta} data-testid="processlist-last-updated">
+          Last updated: {formatProcessListRefreshTime(lastRefreshedAt)}
+        </span>
+      )}
+    </div>
+  )
+}
+
+interface ProcessListRefreshControlsProps {
+  connectionId: string
+  excludeIdleConnections: boolean
+  workspaceTabId: string | undefined
+}
+
+function ProcessListRefreshControls({
+  connectionId,
+  excludeIdleConnections,
+  workspaceTabId,
+}: ProcessListRefreshControlsProps) {
+  const refreshIntervalMs = useProcessListStore(
+    (state) => state.refreshIntervalMsByConnection[connectionId] ?? DEFAULT_REFRESH_INTERVAL_MS
+  )
+  const setRefreshInterval = useProcessListStore((state) => state.setRefreshInterval)
+  const setExcludeIdleConnections = useProcessListStore((state) => state.setExcludeIdleConnections)
+  return (
+    <>
+      <Dropdown
+        id="processlist-filter"
+        ariaLabel="Process list filter"
+        data-testid="processlist-filter-dropdown"
+        options={FILTER_OPTIONS}
+        value={excludeIdleConnections ? EXCLUDE_IDLE_FILTER_VALUE : SHOW_ALL_FILTER_VALUE}
+        onChange={(value) =>
+          setExcludeIdleConnections(connectionId, value === EXCLUDE_IDLE_FILTER_VALUE)
+        }
+        workspaceTabId={workspaceTabId}
+        className={styles.autoWidthDropdown}
+        triggerClassName={sharedToolbarStyles.pageSizeSelect}
+      />
+
+      <Dropdown
+        id="processlist-interval"
+        ariaLabel="Auto-refresh interval"
+        data-testid="processlist-interval-dropdown"
+        options={INTERVAL_OPTIONS}
+        value={String(refreshIntervalMs)}
+        onChange={(value) => setRefreshInterval(connectionId, Number(value))}
+        workspaceTabId={workspaceTabId}
+        className={styles.autoWidthDropdown}
+        triggerClassName={sharedToolbarStyles.pageSizeSelect}
+      />
+    </>
+  )
+}
+
+function useProcessListToolbarRows(connectionId: string) {
+  const rows = useProcessListStore((state) => state.rowsByConnection[connectionId] ?? emptyRows)
+  const selectedIds = useProcessListStore(
+    (state) => state.selectedIdsByConnection[connectionId] ?? emptySet
+  )
+  const excludeIdleConnections = useProcessListStore(
+    (state) =>
+      state.excludeIdleConnectionsByConnection[connectionId] ?? DEFAULT_EXCLUDE_IDLE_CONNECTIONS
+  )
+  const isConfirmDialogOpen = useProcessListStore(
+    (state) => state.isConfirmDialogOpenByConnection[connectionId] ?? false
+  )
+  const rowCount = filterProcessListRows(rows, excludeIdleConnections).length
+  return { rows, selectedIds, excludeIdleConnections, isConfirmDialogOpen, rowCount }
+}
+
+export function ProcessListToolbar({
+  connectionId,
+  sessionId,
+  onRefresh,
+  isActive = true,
+  workspaceTabId,
+}: ProcessListToolbarProps) {
+  const { rows, selectedIds, excludeIdleConnections, isConfirmDialogOpen, rowCount } =
+    useProcessListToolbarRows(connectionId)
+  const setConfirmDialogOpen = useProcessListStore((state) => state.setConfirmDialogOpen)
+  const killDialogs = useKillDialogs({
+    connectionId: connectionId,
+    sessionId: sessionId,
+    isActive: isActive,
+  })
 
   return (
     <div className={styles.toolbar} data-testid="processlist-toolbar">
-      {/* Left section: Status + refresh + meta */}
-      <div className={styles.leftSection}>
-        {/* Status — shared component */}
-        <StatusArea status={isFetching ? 'loading' : 'success'} totalRows={rowCount} />
+      <ProcessListStatusSection
+        connectionId={connectionId}
+        rowCount={rowCount}
+        onRefresh={onRefresh}
+      />
 
-        {/* Read-only badge */}
-        {isReadOnly && (
-          <span className={styles.readonlyBadge} data-testid="processlist-readonly-badge">
-            &#x1F512; READ-ONLY
-          </span>
-        )}
-
-        <div className={styles.divider} />
-
-        <Button
-          variant="bare"
-          className={styles.iconButton}
-          onClick={onRefresh}
-          title="Refresh"
-          data-testid="processlist-refresh-button"
-          aria-label="Refresh"
-        >
-          <ArrowCounterClockwise size={16} weight="bold" />
-        </Button>
-
-        {lastRefreshedAt !== null && (
-          <span className={styles.meta} data-testid="processlist-last-updated">
-            Last updated: {formatProcessListRefreshTime(lastRefreshedAt)}
-          </span>
-        )}
-      </div>
-
-      {/* Right section: Interval dropdown + Kill button */}
       <div className={styles.rightSection}>
-        <Dropdown
-          id="processlist-filter"
-          ariaLabel="Process list filter"
-          data-testid="processlist-filter-dropdown"
-          options={FILTER_OPTIONS}
-          value={excludeIdleConnections ? EXCLUDE_IDLE_FILTER_VALUE : SHOW_ALL_FILTER_VALUE}
-          onChange={handleFilterChange}
+        <ProcessListRefreshControls
+          connectionId={connectionId}
+          excludeIdleConnections={excludeIdleConnections}
           workspaceTabId={workspaceTabId}
-          className={styles.autoWidthDropdown}
-          triggerClassName={sharedToolbarStyles.pageSizeSelect}
-        />
-
-        <Dropdown
-          id="processlist-interval"
-          ariaLabel="Auto-refresh interval"
-          data-testid="processlist-interval-dropdown"
-          options={INTERVAL_OPTIONS}
-          value={String(refreshIntervalMs)}
-          onChange={handleIntervalChange}
-          workspaceTabId={workspaceTabId}
-          className={styles.autoWidthDropdown}
-          triggerClassName={sharedToolbarStyles.pageSizeSelect}
         />
 
         <div className={styles.divider} />
@@ -308,11 +355,11 @@ export function ProcessListToolbar({
           variant="bare"
           className={styles.toolbarButtonDanger}
           data-testid="processlist-kill-button"
-          disabled={selectedCount === 0}
-          onClick={handleKillClick}
+          disabled={selectedIds.size === 0}
+          onClick={() => setConfirmDialogOpen(connectionId, true)}
         >
           <StopCircle size={16} weight="regular" />
-          {killLabel}
+          {killButtonLabel(selectedIds.size)}
         </Button>
       </div>
 
@@ -324,13 +371,16 @@ export function ProcessListToolbar({
         }
         confirmLabel="Kill"
         isDestructive
-        isLoading={isKilling}
-        nonDismissible={isKilling}
-        onConfirm={handleConfirmKill}
-        onCancel={handleCancelKill}
+        isLoading={killDialogs.isKilling}
+        nonDismissible={killDialogs.isKilling}
+        onConfirm={killDialogs.handleConfirmKill}
+        onCancel={() => setConfirmDialogOpen(connectionId, false)}
       />
 
-      <KillSummaryDialog results={killResults} onClose={handleCloseSummary} />
+      <KillSummaryDialog
+        results={killDialogs.killResults}
+        onClose={killDialogs.handleCloseSummary}
+      />
     </div>
   )
 }

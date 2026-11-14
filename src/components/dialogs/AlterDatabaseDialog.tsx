@@ -58,15 +58,51 @@ function AlterDatabaseEncodingSection({
   return <EncodingFields idPrefix="alter-db" encoding={encoding} />
 }
 
-export function AlterDatabaseDialog({
-  isOpen,
-  connectionId,
-  databaseName,
-  onSuccess,
-  onCancel,
-}: AlterDatabaseDialogProps) {
+const ALTER_DIALOG_MAX_WIDTH = 480
+
+interface AlterDatabaseActionsProps {
+  canSubmit: boolean
+  isSubmitting: boolean
+  onCancel: () => void
+}
+
+function AlterDatabaseActions({ canSubmit, isSubmitting, onCancel }: AlterDatabaseActionsProps) {
+  return (
+    <div className={styles.actions}>
+      <Button
+        variant="accent"
+        type="submit"
+        disabled={!canSubmit}
+        data-testid="alter-db-submit-button"
+      >
+        {isSubmitting ? 'Saving...' : 'Alter database'}
+      </Button>
+      <Button onClick={onCancel} disabled={isSubmitting} data-testid="alter-db-cancel-button">
+        Cancel
+      </Button>
+    </div>
+  )
+}
+
+function AlterDatabaseError({ message }: { message: string | null }) {
+  if (!message) return null
+  return (
+    <div className={styles.error} data-testid="alter-db-error">
+      {message}
+    </div>
+  )
+}
+
+type PatchDialogState = (patch: Partial<AlterDatabaseDialogState>) => void
+
+interface DatabaseTarget {
+  connectionId: string
+  databaseName: string
+}
+
+function useAlterDialogState(isOpen: boolean, target: DatabaseTarget) {
+  const { connectionId, databaseName } = target
   const [dialogState, setDialogState] = useState<AlterDatabaseDialogState>(IDLE_DIALOG_STATE)
-  const { detailsLoading, initialEncoding, isSubmitting, detailsError, submitError } = dialogState
 
   const patchDialogState = useCallback((patch: Partial<AlterDatabaseDialogState>) => {
     setDialogState((current) => ({ ...current, ...patch }))
@@ -77,7 +113,6 @@ export function AlterDatabaseDialog({
     setDialogState(IDLE_DIALOG_STATE)
   }, [isOpen])
 
-  // Load current database details on open
   useEffect(() => {
     if (!isOpen) return
     let cancelled = false
@@ -86,20 +121,18 @@ export function AlterDatabaseDialog({
       patchDialogState({ detailsLoading: true, detailsError: null, submitError: null })
       try {
         const details = await getDatabaseDetails(connectionId, databaseName)
-        if (!cancelled) {
-          patchDialogState({
-            initialEncoding: {
-              charset: details.defaultCharacterSet,
-              collation: details.defaultCollation,
-            },
-          })
-        }
+        if (cancelled) return
+        patchDialogState({
+          initialEncoding: {
+            charset: details.defaultCharacterSet,
+            collation: details.defaultCollation,
+          },
+        })
       } catch (error) {
-        if (!cancelled) {
-          const message = toErrorMessage(error)
-          patchDialogState({ detailsError: message })
-          showErrorToast('Failed to load database', message)
-        }
+        if (cancelled) return
+        const message = toErrorMessage(error)
+        patchDialogState({ detailsError: message })
+        showErrorToast('Failed to load database', message)
       } finally {
         if (!cancelled) {
           patchDialogState({ detailsLoading: false })
@@ -113,21 +146,19 @@ export function AlterDatabaseDialog({
     }
   }, [isOpen, connectionId, databaseName, patchDialogState])
 
-  const encoding = useDatabaseEncoding({
-    connectionId: connectionId,
-    isOpen: isOpen,
-    initialCharset: initialEncoding.charset,
-    initialCollation: initialEncoding.collation,
-  })
+  return { dialogState: dialogState, patchDialogState: patchDialogState }
+}
 
-  // Combine loading states
-  const isLoading = detailsLoading || encoding.isLoading
+interface AlterSubmitInputs {
+  target: DatabaseTarget
+  encoding: ReturnType<typeof useDatabaseEncoding>
+  onSuccess: () => void
+  patchDialogState: PatchDialogState
+}
 
-  // Combine errors
-  const displayError = firstErrorMessage([submitError, detailsError, encoding.error])
-  const hasBlockingLoadError = detailsError !== null || encoding.error !== null
-  const canSubmit = !isLoading && !hasBlockingLoadError && !isSubmitting
-
+function useAlterSubmit({ target, encoding, onSuccess, patchDialogState }: AlterSubmitInputs) {
+  const { connectionId, databaseName } = target
+  const { charset, collation } = encoding
   const handleSubmit = useCallback(async () => {
     patchDialogState({ isSubmitting: true, submitError: null })
 
@@ -135,8 +166,8 @@ export function AlterDatabaseDialog({
       await alterDatabase({
         connectionId: connectionId,
         name: databaseName,
-        charset: encoding.charset || null,
-        collation: encoding.collation || null,
+        charset: charset || null,
+        collation: collation || null,
       })
       onSuccess()
     } catch (error) {
@@ -146,22 +177,43 @@ export function AlterDatabaseDialog({
     } finally {
       patchDialogState({ isSubmitting: false })
     }
-  }, [
-    connectionId,
-    databaseName,
-    encoding.charset,
-    encoding.collation,
-    onSuccess,
-    patchDialogState,
-  ])
+  }, [connectionId, databaseName, charset, collation, onSuccess, patchDialogState])
 
-  const handleFormSubmit = useFormSubmit(handleSubmit)
+  return useFormSubmit(handleSubmit)
+}
+
+export function AlterDatabaseDialog({
+  isOpen,
+  connectionId,
+  databaseName,
+  onSuccess,
+  onCancel,
+}: AlterDatabaseDialogProps) {
+  const target = { connectionId: connectionId, databaseName: databaseName }
+  const { dialogState, patchDialogState } = useAlterDialogState(isOpen, target)
+  const { detailsLoading, initialEncoding, isSubmitting, detailsError, submitError } = dialogState
+  const encoding = useDatabaseEncoding({
+    connectionId: connectionId,
+    isOpen: isOpen,
+    initialCharset: initialEncoding.charset,
+    initialCollation: initialEncoding.collation,
+  })
+  const handleFormSubmit = useAlterSubmit({
+    target: target,
+    encoding: encoding,
+    onSuccess: onSuccess,
+    patchDialogState: patchDialogState,
+  })
+
+  const isLoading = detailsLoading || encoding.isLoading
+  const hasBlockingLoadError = detailsError !== null || encoding.error !== null
+  const canSubmit = !isLoading && !hasBlockingLoadError && !isSubmitting
 
   return (
     <DialogShell
       isOpen={isOpen}
       onClose={onCancel}
-      maxWidth={480}
+      maxWidth={ALTER_DIALOG_MAX_WIDTH}
       testId="alter-database-dialog"
       ariaLabel="Alter database"
       nonDismissible={isSubmitting}
@@ -176,25 +228,11 @@ export function AlterDatabaseDialog({
         encoding={encoding}
       />
 
-      {displayError && (
-        <div className={styles.error} data-testid="alter-db-error">
-          {displayError}
-        </div>
-      )}
+      <AlterDatabaseError
+        message={firstErrorMessage([submitError, detailsError, encoding.error])}
+      />
 
-      <div className={styles.actions}>
-        <Button
-          variant="accent"
-          type="submit"
-          disabled={!canSubmit}
-          data-testid="alter-db-submit-button"
-        >
-          {isSubmitting ? 'Saving...' : 'Alter database'}
-        </Button>
-        <Button onClick={onCancel} disabled={isSubmitting} data-testid="alter-db-cancel-button">
-          Cancel
-        </Button>
-      </div>
+      <AlterDatabaseActions canSubmit={canSubmit} isSubmitting={isSubmitting} onCancel={onCancel} />
     </DialogShell>
   )
 }

@@ -24,7 +24,7 @@
 import { useState } from 'react'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
-import { useSettingsStore, SETTINGS_DEFAULTS } from '../../stores/settings-store'
+import { useBottomTableTabsEnabled } from '../../stores/settings-store'
 import { WorkspaceTabs } from '../workspace/WorkspaceTabs'
 import { FavoriteDialog } from '../history-favorites/FavoriteDialog'
 import { useFavoritesStore } from '../../stores/favorites-store'
@@ -74,30 +74,50 @@ export interface ConnectionWorkspaceProps {
   isActive: boolean
 }
 
-export function ConnectionWorkspace({ sessionId, isActive }: ConnectionWorkspaceProps) {
-  const activeConnection = useConnectionStore((state) => state.activeConnections[sessionId] ?? null)
+type ActiveConnection = NonNullable<
+  ReturnType<typeof useConnectionStore.getState>['activeConnections'][string]
+>
 
-  const bottomTableTabsEnabled = useSettingsStore(
-    (state) =>
-      (state.settings['results.tableTabsInBottomPanel'] ??
-        SETTINGS_DEFAULTS['results.tableTabsInBottomPanel']) === 'true'
-  )
+interface TabPanelStackProps {
+  tabs: WorkspaceTab[]
+  panelTabs: WorkspaceTab[]
+  visibleActiveWorkspaceTabId: string | null
+  sessionId: string
+  activeConnection: ActiveConnection
+}
 
-  const favoriteDialogOpen = useFavoritesStore((state) => state.dialogOpen)
-
-  const tabs = useWorkspaceStore((state) => state.tabsByConnection[sessionId] ?? EMPTY_TABS)
-  const selectedWorkspaceTabId = useWorkspaceStore(
-    (state) => state.activeTabByConnection[sessionId] ?? null
-  )
-
-  // While the connection is hidden, no workspace tab is visibly active. This
-  // reuses the existing inactive-child cleanup and pause behavior throughout the
-  // descendant tree (WorkspaceBody, WorkspaceTabPanel, grids, editors, polling).
-  const visibleActiveWorkspaceTabId = isActive ? selectedWorkspaceTabId : null
+function TabPanelStack(stack: TabPanelStackProps) {
+  const { tabs, panelTabs, visibleActiveWorkspaceTabId, sessionId, activeConnection } = stack
   const activeTab = tabs.find((tab) => tab.id === visibleActiveWorkspaceTabId) ?? null
+  return (
+    <div className={styles.panelStack}>
+      {tabs.length === 0 && (
+        <div className={styles.connectedPlaceholder}>
+          <p className={styles.connectedText}>
+            Connected to {activeConnection.profile.name} ({activeConnection.profile.host}:
+            {activeConnection.profile.port})
+          </p>
+        </div>
+      )}
+      {panelTabs.map((tab) => (
+        <WorkspaceTabPanel
+          key={tab.id}
+          tab={tab}
+          isActive={tab.id === visibleActiveWorkspaceTabId}
+          connectionId={sessionId}
+          sessionId={sessionId}
+        />
+      ))}
+      {tabs.length > 0 && !activeTab && (
+        <div className={styles.connectedPlaceholder}>
+          <p className={styles.connectedText}>Select a tab to view content</p>
+        </div>
+      )}
+    </div>
+  )
+}
 
-  // Per-session stable panel ordering so retained DOM instances are preserved
-  // across reorders independently of any other connection's workspace.
+function useStablePanelTabs(tabs: WorkspaceTab[], bottomTableTabsEnabled: boolean) {
   const [panelOrder, setPanelOrder] = useState<string[]>(() => tabs.map((tab) => tab.id))
   const [previousTabs, setPreviousTabs] = useState(tabs)
 
@@ -108,10 +128,22 @@ export function ConnectionWorkspace({ sessionId, isActive }: ConnectionWorkspace
     setPreviousTabs(tabs)
   }
 
-  const panelTabs = nextPanelOrder
+  return nextPanelOrder
     .map((tabId) => tabs.find((tab) => tab.id === tabId) ?? null)
     .filter((tab): tab is WorkspaceTab => tab != null)
     .filter((tab) => !isBottomPanelTableTab(tab, bottomTableTabsEnabled))
+}
+
+export function ConnectionWorkspace({ sessionId, isActive }: ConnectionWorkspaceProps) {
+  const activeConnection = useConnectionStore((state) => state.activeConnections[sessionId] ?? null)
+  const bottomTableTabsEnabled = useBottomTableTabsEnabled()
+  const favoriteDialogOpen = useFavoritesStore((state) => state.dialogOpen)
+  const tabs = useWorkspaceStore((state) => state.tabsByConnection[sessionId] ?? EMPTY_TABS)
+  const selectedWorkspaceTabId = useWorkspaceStore(
+    (state) => state.activeTabByConnection[sessionId] ?? null
+  )
+  const visibleActiveWorkspaceTabId = isActive ? selectedWorkspaceTabId : null
+  const panelTabs = useStablePanelTabs(tabs, bottomTableTabsEnabled)
 
   if (!activeConnection) {
     return null
@@ -131,30 +163,13 @@ export function ConnectionWorkspace({ sessionId, isActive }: ConnectionWorkspace
             connectionId={sessionId}
             sessionId={sessionId}
             renderTabStack={() => (
-              <div className={styles.panelStack}>
-                {tabs.length === 0 && (
-                  <div className={styles.connectedPlaceholder}>
-                    <p className={styles.connectedText}>
-                      Connected to {activeConnection.profile.name} ({activeConnection.profile.host}:
-                      {activeConnection.profile.port})
-                    </p>
-                  </div>
-                )}
-                {panelTabs.map((tab) => (
-                  <WorkspaceTabPanel
-                    key={tab.id}
-                    tab={tab}
-                    isActive={tab.id === visibleActiveWorkspaceTabId}
-                    connectionId={sessionId}
-                    sessionId={sessionId}
-                  />
-                ))}
-                {tabs.length > 0 && !activeTab && (
-                  <div className={styles.connectedPlaceholder}>
-                    <p className={styles.connectedText}>Select a tab to view content</p>
-                  </div>
-                )}
-              </div>
+              <TabPanelStack
+                tabs={tabs}
+                panelTabs={panelTabs}
+                visibleActiveWorkspaceTabId={visibleActiveWorkspaceTabId}
+                sessionId={sessionId}
+                activeConnection={activeConnection}
+              />
             )}
           />
         </AiDiffBridgeProvider>

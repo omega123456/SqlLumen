@@ -2,7 +2,7 @@ import { Stack, XCircle } from '@phosphor-icons/react'
 import { Button } from '../common/Button'
 import { ObjectTypeIcon } from '../shared/ObjectTypeIcon'
 import type { PaletteResultType } from '../../types/schema'
-import type { CommandPaletteFilterPillValue } from './CommandPalette'
+import type { CommandPaletteFilterPillValue } from './palette-types'
 import styles from './CommandPaletteInput.module.css'
 
 export interface CommandPaletteFilterPillProps {

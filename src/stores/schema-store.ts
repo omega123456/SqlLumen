@@ -34,39 +34,29 @@ export { SCHEMA_CATEGORIES } from './schema-store/connection-tree'
 
 export interface ConnectionTreeState {
   nodes: Record<string, TreeNode>
-  /** parentId → sorted child IDs (read-path optimization). */
   childIdsByParentId: Record<string, string[]>
   expandedNodes: Set<string>
   loadingNodes: Set<string>
-  /** Currently selected node within this connection. */
   selectedNodeId: string | null
-  /** Search filter text for this connection's tree. */
   filterText: string
-  /** Increments on refresh/clear to invalidate in-flight async requests. */
   loadGeneration: number
 }
 
-/** A request for the object browser to scroll to and focus a node. */
 export interface TreeRevealRequest {
   connectionId: string
   nodeId: string
-  /** Increments on every request so repeated reveals of the same node still fire. */
   seq: number
 }
 
 export interface SchemaState {
-  /** Per-connection tree data. */
   connectionStates: Record<string, ConnectionTreeState>
-  /** Latest "reveal in object browser" request (null until the first one). */
   revealRequest: TreeRevealRequest | null
 
-  // Actions
   loadDatabases: (connectionId: string) => Promise<void>
   loadChildren: (connectionId: string, nodeId: string) => Promise<void>
   toggleExpand: (nodeId: string, connectionId: string) => void
   ensurePathExpanded: (connectionId: string, nodeId: string) => void
   selectNode: (nodeId: string, connectionId: string) => void
-  /** Ask the object browser to show its tree, scroll to `nodeId` and focus it. */
   requestReveal: (connectionId: string, nodeId: string) => void
   setFilter: (text: string, connectionId: string) => void
   refreshDatabase: (connectionId: string, databaseName: string) => Promise<void>
@@ -156,116 +146,135 @@ const CHILD_LOADERS: Partial<Record<TreeNode['type'], ChildLoader>> = {
   table: loadTableColumns,
 }
 
-export const useSchemaStore = create<SchemaState>()((set, get) => {
-  const patchTree = (connectionId: string, patch: Partial<ConnectionTreeState>) => {
-    set((state) => patchConnectionTree(state, { connectionId: connectionId, patch: patch }))
+function patchTree(connectionId: string, patch: Partial<ConnectionTreeState>) {
+  useSchemaStore.setState((state) =>
+    patchConnectionTree(state, { connectionId: connectionId, patch: patch })
+  )
+}
+
+function treeOf(connectionId: string) {
+  return getConnectionState(useSchemaStore.getState(), connectionId)
+}
+
+async function loadDatabases(connectionId: string): Promise<void> {
+  if (!useSchemaStore.getState().connectionStates[connectionId]) {
+    patchTree(connectionId, createDefaultConnectionState())
   }
 
-  const treeOf = (connectionId: string) => getConnectionState(get(), connectionId)
+  const generation = useSchemaStore.getState().connectionStates[connectionId].loadGeneration
+  const databases = await listDatabases(connectionId)
+  if (!isCurrentLoadGeneration(useSchemaStore.getState(), connectionId, generation)) return
 
-  return {
-    connectionStates: {},
-    revealRequest: null,
+  patchTree(connectionId, treeWithListedDatabases(treeOf(connectionId), databases))
+}
 
-    loadDatabases: async (connectionId: string) => {
-      if (!get().connectionStates[connectionId]) {
-        patchTree(connectionId, createDefaultConnectionState())
-      }
+async function loadChildren(connectionId: string, nodeId: string): Promise<void> {
+  const connectionState = treeOf(connectionId)
+  const node = connectionState.nodes[nodeId]
+  if (!node) return
+  if (node.isLoaded) return
 
-      const generation = get().connectionStates[connectionId].loadGeneration
-      const databases = await listDatabases(connectionId)
-      if (!isCurrentLoadGeneration(get(), connectionId, generation)) return
-
-      patchTree(connectionId, treeWithListedDatabases(treeOf(connectionId), databases))
-    },
-
-    loadChildren: async (connectionId: string, nodeId: string) => {
-      const connectionState = treeOf(connectionId)
-      const node = connectionState.nodes[nodeId]
-      if (!node) return
-      if (node.isLoaded) return
-
-      if (node.type === 'database') {
-        patchTree(connectionId, treeWithDatabaseCategories(connectionState, nodeId))
-        return
-      }
-
-      const loadChildNodes = CHILD_LOADERS[node.type]
-      if (!loadChildNodes) return
-      await fetchChildren(
-        { get: get, set: set },
-        {
-          connectionId: connectionId,
-          nodeId: nodeId,
-          fetchNodes: () => loadChildNodes(connectionId, nodeId),
-        }
-      )
-    },
-
-    toggleExpand: (nodeId: string, connectionId: string) => {
-      const connectionState = treeOf(connectionId)
-      const node = connectionState.nodes[nodeId]
-      if (!node) return
-      if (!node.hasChildren) return
-
-      const wasExpanded = connectionState.expandedNodes.has(nodeId)
-      patchTree(connectionId, treeWithToggledExpansion(connectionState, nodeId))
-      if (wasExpanded) return
-      if (!node.isLoaded) {
-        void get().loadChildren(connectionId, nodeId)
-      }
-    },
-
-    ensurePathExpanded: (connectionId: string, nodeId: string) => {
-      const expansion = treeWithPathExpanded(treeOf(connectionId), nodeId)
-      if (!expansion) return
-      patchTree(connectionId, expansion)
-    },
-
-    selectNode: (nodeId: string, connectionId: string) => {
-      patchTree(connectionId, { selectedNodeId: nodeId })
-    },
-
-    requestReveal: (connectionId: string, nodeId: string) => {
-      set((state) => nextRevealRequest(state, { connectionId: connectionId, nodeId: nodeId }))
-    },
-
-    setFilter: (text: string, connectionId: string) => {
-      patchTree(connectionId, { filterText: text })
-    },
-
-    refreshDatabase: async (connectionId: string, databaseName: string) => {
-      const refreshed = treeWithDatabaseRefreshed(treeOf(connectionId), databaseName)
-      patchTree(connectionId, refreshed)
-
-      const refreshedNodeId = databaseNodeId(databaseName)
-      if (refreshed.expandedNodes.has(refreshedNodeId)) {
-        await get().loadChildren(connectionId, refreshedNodeId)
-      }
-    },
-
-    refreshAll: async (connectionId: string) => {
-      patchTree(connectionId, treeResetKeepingView(treeOf(connectionId)))
-      await get().loadDatabases(connectionId)
-      void invalidateMetadataCache(connectionId).catch((error) => {
-        logFrontendWarning(
-          '[schema-store] Failed to invalidate backend metadata cache during refreshAll:',
-          error
-        )
-      })
-    },
-
-    refreshCategory: async (connectionId: string, databaseName: string, categoryType: string) => {
-      const connectionState = treeOf(connectionId)
-      const categoryNodeId = makeNodeId('category', databaseName, categoryType)
-      if (!connectionState.nodes[categoryNodeId]) return
-
-      patchTree(connectionId, treeWithCategoryRefreshed(connectionState, categoryNodeId))
-      await get().loadChildren(connectionId, categoryNodeId)
-    },
-
-    clearConnectionState: (connectionId: string) => {
-      set((state) => removeConnectionTree(state, connectionId))
-    },
+  if (node.type === 'database') {
+    patchTree(connectionId, treeWithDatabaseCategories(connectionState, nodeId))
+    return
   }
-})
+
+  const loadChildNodes = CHILD_LOADERS[node.type]
+  if (!loadChildNodes) return
+  await fetchChildren(
+    { get: useSchemaStore.getState, set: useSchemaStore.setState },
+    {
+      connectionId: connectionId,
+      nodeId: nodeId,
+      fetchNodes: () => loadChildNodes(connectionId, nodeId),
+    }
+  )
+}
+
+function toggleExpand(nodeId: string, connectionId: string): void {
+  const connectionState = treeOf(connectionId)
+  const node = connectionState.nodes[nodeId]
+  if (!node) return
+  if (!node.hasChildren) return
+
+  const wasExpanded = connectionState.expandedNodes.has(nodeId)
+  patchTree(connectionId, treeWithToggledExpansion(connectionState, nodeId))
+  if (wasExpanded) return
+  if (!node.isLoaded) {
+    void useSchemaStore.getState().loadChildren(connectionId, nodeId)
+  }
+}
+
+function ensurePathExpanded(connectionId: string, nodeId: string): void {
+  const expansion = treeWithPathExpanded(treeOf(connectionId), nodeId)
+  if (!expansion) return
+  patchTree(connectionId, expansion)
+}
+
+function selectNode(nodeId: string, connectionId: string): void {
+  patchTree(connectionId, { selectedNodeId: nodeId })
+}
+
+function requestReveal(connectionId: string, nodeId: string): void {
+  useSchemaStore.setState((state) =>
+    nextRevealRequest(state, { connectionId: connectionId, nodeId: nodeId })
+  )
+}
+
+function setFilter(text: string, connectionId: string): void {
+  patchTree(connectionId, { filterText: text })
+}
+
+async function refreshDatabase(connectionId: string, databaseName: string): Promise<void> {
+  const refreshed = treeWithDatabaseRefreshed(treeOf(connectionId), databaseName)
+  patchTree(connectionId, refreshed)
+
+  const refreshedNodeId = databaseNodeId(databaseName)
+  if (refreshed.expandedNodes.has(refreshedNodeId)) {
+    await useSchemaStore.getState().loadChildren(connectionId, refreshedNodeId)
+  }
+}
+
+async function refreshAll(connectionId: string): Promise<void> {
+  patchTree(connectionId, treeResetKeepingView(treeOf(connectionId)))
+  await useSchemaStore.getState().loadDatabases(connectionId)
+  void invalidateMetadataCache(connectionId).catch((error) => {
+    logFrontendWarning(
+      '[schema-store] Failed to invalidate backend metadata cache during refreshAll:',
+      error
+    )
+  })
+}
+
+async function refreshCategory(
+  connectionId: string,
+  databaseName: string,
+  categoryType: string
+): Promise<void> {
+  const connectionState = treeOf(connectionId)
+  const categoryNodeId = makeNodeId('category', databaseName, categoryType)
+  if (!connectionState.nodes[categoryNodeId]) return
+
+  patchTree(connectionId, treeWithCategoryRefreshed(connectionState, categoryNodeId))
+  await useSchemaStore.getState().loadChildren(connectionId, categoryNodeId)
+}
+
+function clearConnectionState(connectionId: string): void {
+  useSchemaStore.setState((state) => removeConnectionTree(state, connectionId))
+}
+
+export const useSchemaStore = create<SchemaState>()(() => ({
+  connectionStates: {},
+  revealRequest: null,
+  loadDatabases: loadDatabases,
+  loadChildren: loadChildren,
+  toggleExpand: toggleExpand,
+  ensurePathExpanded: ensurePathExpanded,
+  selectNode: selectNode,
+  requestReveal: requestReveal,
+  setFilter: setFilter,
+  refreshDatabase: refreshDatabase,
+  refreshAll: refreshAll,
+  refreshCategory: refreshCategory,
+  clearConnectionState: clearConnectionState,
+}))

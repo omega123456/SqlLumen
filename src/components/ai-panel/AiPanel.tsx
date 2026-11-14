@@ -25,8 +25,21 @@ export interface AiPanelProps {
   ) => void
 }
 
-export function AiPanel({ tabId, connectionId, onTriggerDiff }: AiPanelProps) {
-  const [suggestionText, setSuggestionText] = useState<string | undefined>(undefined)
+function useIsMissingEmbeddingModel(): boolean {
+  const aiEnabled = useSettingsStore(
+    (state) =>
+      (state.pendingChanges['ai.enabled'] ?? state.settings['ai.enabled'] ?? 'false') === 'true'
+  )
+  const embeddingModel = useSettingsStore(
+    (state) =>
+      state.pendingChanges['ai.embeddingModel'] ?? state.settings['ai.embeddingModel'] ?? ''
+  )
+  return aiEnabled && !embeddingModel
+}
+
+type AiPanelStatusBarsProps = Pick<AiPanelProps, 'tabId' | 'connectionId'>
+
+function AiPanelStatusBars({ tabId, connectionId }: AiPanelStatusBarsProps) {
   const isWaitingForIndex = useAiStore((state) => state.tabs[tabId]?.isWaitingForIndex ?? false)
   const profileId = useConnectionStore(
     (state) =>
@@ -36,15 +49,44 @@ export function AiPanel({ tabId, connectionId, onTriggerDiff }: AiPanelProps) {
     profileId ? state.reembedStatus[profileId] : undefined
   )
   const isReembedding = reembedStatus?.status === 'running'
+  return (
+    <>
+      {isWaitingForIndex && (
+        <InfoBar
+          severity="info"
+          className={styles.indexWaiting}
+          message="Waiting for schema index..."
+          data-testid="ai-index-waiting"
+        />
+      )}
+      {isReembedding && reembedStatus && reembedStatus.total > 0 && (
+        <InfoBar
+          severity="info"
+          className={styles.indexWaiting}
+          message={`Re-embedding memories... ${reembedStatus.done}/${reembedStatus.total}`}
+          data-testid="ai-memory-reembed-banner"
+        />
+      )}
+    </>
+  )
+}
 
-  const aiEnabled = useSettingsStore(
-    (state) =>
-      (state.pendingChanges['ai.enabled'] ?? state.settings['ai.enabled'] ?? 'false') === 'true'
+function useRecordAcceptedSql(connectionId: AiPanelProps['connectionId']) {
+  return useCallback(
+    (sql: string) => {
+      if (!connectionId) return
+      const tables = extractTablesFromSql(sql)
+      if (tables.length > 0) {
+        useAiFeedbackStore.getState().recordAccepted(connectionId, tables)
+      }
+    },
+    [connectionId]
   )
-  const embeddingModel = useSettingsStore(
-    (state) =>
-      state.pendingChanges['ai.embeddingModel'] ?? state.settings['ai.embeddingModel'] ?? ''
-  )
+}
+
+export function AiPanel({ tabId, connectionId, onTriggerDiff }: AiPanelProps) {
+  const [suggestionText, setSuggestionText] = useState<string | undefined>(undefined)
+  const isMissingEmbeddingModel = useIsMissingEmbeddingModel()
 
   const handleTriggerDiff = onTriggerDiff
     ? (sql: string) => {
@@ -62,18 +104,8 @@ export function AiPanel({ tabId, connectionId, onTriggerDiff }: AiPanelProps) {
     setSuggestionText(undefined)
   }, [])
 
-  const handleSqlAccepted = useCallback(
-    (sql: string) => {
-      if (!connectionId) return
-      const tables = extractTablesFromSql(sql)
-      if (tables.length > 0) {
-        useAiFeedbackStore.getState().recordAccepted(connectionId, tables)
-      }
-    },
-    [connectionId]
-  )
+  const handleSqlAccepted = useRecordAcceptedSql(connectionId)
 
-  const isMissingEmbeddingModel = aiEnabled && !embeddingModel
   if (isMissingEmbeddingModel) {
     return (
       <div className={styles.panel} data-testid="ai-panel">
@@ -93,22 +125,7 @@ export function AiPanel({ tabId, connectionId, onTriggerDiff }: AiPanelProps) {
   return (
     <div className={styles.panel} data-testid="ai-panel">
       <AiPanelHeader tabId={tabId} />
-      {isWaitingForIndex && (
-        <InfoBar
-          severity="info"
-          className={styles.indexWaiting}
-          message="Waiting for schema index..."
-          data-testid="ai-index-waiting"
-        />
-      )}
-      {isReembedding && reembedStatus && reembedStatus.total > 0 && (
-        <InfoBar
-          severity="info"
-          className={styles.indexWaiting}
-          message={`Re-embedding memories... ${reembedStatus.done}/${reembedStatus.total}`}
-          data-testid="ai-memory-reembed-banner"
-        />
-      )}
+      <AiPanelStatusBars tabId={tabId} connectionId={connectionId} />
       <AiChatMessages
         tabId={tabId}
         connectionId={connectionId}

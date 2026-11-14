@@ -2,8 +2,8 @@ import { Stack } from '@phosphor-icons/react'
 import { useEffect, useRef } from 'react'
 import { ObjectTypeIcon } from '../shared/ObjectTypeIcon'
 import type { PaletteTypeFilter } from '../../types/schema'
-import type { CommandPaletteFilterPillValue } from './CommandPalette'
-import { buildSlashOptions } from './slash-options'
+import type { CommandPaletteFilterPillValue } from './palette-types'
+import { buildSlashOptions, type SlashOption } from './slash-options'
 import { Button } from '../common/Button'
 import styles from './SlashCommandDropdown.module.css'
 
@@ -12,6 +12,66 @@ export interface SlashCommandDropdownProps {
   databases: ReadonlyArray<string>
   activeIndex: number
   onSelect: (pill: CommandPaletteFilterPillValue) => void
+}
+
+function SlashOptionIcon({ option }: { option: SlashOption }) {
+  if (option.kind === 'keyword') {
+    return (
+      <span className={styles.optionIcon}>
+        <ObjectTypeIcon objectType={option.pill.value as PaletteTypeFilter} />
+      </span>
+    )
+  }
+  return (
+    <span className={styles.optionIcon} aria-hidden="true">
+      <Stack size={16} weight="fill" />
+    </span>
+  )
+}
+
+interface SlashOptionSectionProps {
+  label: string
+  options: SlashOption[]
+  firstOptionIndex: number
+  activeIndex: number
+  onSelect: (pill: CommandPaletteFilterPillValue) => void
+}
+
+function SlashOptionSection({
+  label,
+  options,
+  firstOptionIndex,
+  activeIndex,
+  onSelect,
+}: SlashOptionSectionProps) {
+  if (options.length === 0) return null
+  return (
+    <section className={styles.section} aria-label={label}>
+      <div className={styles.sectionLabel}>{label}</div>
+      {options.map((option, index) => {
+        const isActive = firstOptionIndex + index === activeIndex
+
+        return (
+          <Button
+            variant="bare"
+            key={option.id}
+            role="option"
+            aria-selected={isActive}
+            className={styles.option}
+            data-active={isActive ? 'true' : 'false'}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onSelect(option.pill)}
+          >
+            <SlashOptionIcon option={option} />
+            <span className={styles.optionCopy}>
+              <span className={styles.optionLabel}>{option.pill.label}</span>
+              <span className={styles.optionMeta}>{option.meta}</span>
+            </span>
+          </Button>
+        )
+      })}
+    </section>
+  )
 }
 
 export function SlashCommandDropdown({
@@ -46,65 +106,20 @@ export function SlashCommandDropdown({
       aria-label="Slash commands"
       data-testid="command-palette-slash-dropdown"
     >
-      {keywordOptions.length > 0 ? (
-        <section className={styles.section} aria-label="Keywords">
-          <div className={styles.sectionLabel}>Keywords</div>
-          {keywordOptions.map((option, index) => {
-            const isActive = index === activeIndex
-
-            return (
-              <Button
-                variant="bare"
-                key={option.id}
-                role="option"
-                aria-selected={isActive}
-                className={styles.option}
-                data-active={isActive ? 'true' : 'false'}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => onSelect(option.pill)}
-              >
-                <span className={styles.optionIcon}>
-                  <ObjectTypeIcon objectType={option.pill.value as PaletteTypeFilter} />
-                </span>
-                <span className={styles.optionCopy}>
-                  <span className={styles.optionLabel}>{option.pill.label}</span>
-                  <span className={styles.optionMeta}>{option.meta}</span>
-                </span>
-              </Button>
-            )
-          })}
-        </section>
-      ) : null}
-      {databaseOptions.length > 0 ? (
-        <section className={styles.section} aria-label="Databases">
-          <div className={styles.sectionLabel}>Databases</div>
-          {databaseOptions.map((option, index) => {
-            const optionIndex = keywordOptions.length + index
-            const isActive = optionIndex === activeIndex
-
-            return (
-              <Button
-                variant="bare"
-                key={option.id}
-                role="option"
-                aria-selected={isActive}
-                className={styles.option}
-                data-active={isActive ? 'true' : 'false'}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => onSelect(option.pill)}
-              >
-                <span className={styles.optionIcon} aria-hidden="true">
-                  <Stack size={16} weight="fill" />
-                </span>
-                <span className={styles.optionCopy}>
-                  <span className={styles.optionLabel}>{option.pill.label}</span>
-                  <span className={styles.optionMeta}>{option.meta}</span>
-                </span>
-              </Button>
-            )
-          })}
-        </section>
-      ) : null}
+      <SlashOptionSection
+        label="Keywords"
+        options={keywordOptions}
+        firstOptionIndex={0}
+        activeIndex={activeIndex}
+        onSelect={onSelect}
+      />
+      <SlashOptionSection
+        label="Databases"
+        options={databaseOptions}
+        firstOptionIndex={keywordOptions.length}
+        activeIndex={activeIndex}
+        onSelect={onSelect}
+      />
     </div>
   )
 }

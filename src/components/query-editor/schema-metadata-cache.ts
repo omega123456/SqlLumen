@@ -419,16 +419,23 @@ function searchableEntries(
   )
 }
 
-function searchableRoutines(routinesByDatabase: Record<string, RoutineMeta[]>): SearchableObject[] {
+function searchableRoutinesOfDatabase(
+  database: string,
+  routines: RoutineMeta[]
+): SearchableObject[] {
   const searchableObjects: SearchableObject[] = []
-  for (const [database, routines] of Object.entries(routinesByDatabase)) {
-    for (const routine of routines) {
-      const objectType = ROUTINE_OBJECT_TYPES[routine.routineType.trim().toUpperCase()]
-      if (!objectType) continue
-      searchableObjects.push({ database: database, objectType: objectType, name: routine.name })
-    }
+  for (const routine of routines) {
+    const objectType = ROUTINE_OBJECT_TYPES[routine.routineType.trim().toUpperCase()]
+    if (!objectType) continue
+    searchableObjects.push({ database: database, objectType: objectType, name: routine.name })
   }
   return searchableObjects
+}
+
+function searchableRoutines(routinesByDatabase: Record<string, RoutineMeta[]>): SearchableObject[] {
+  return Object.entries(routinesByDatabase).flatMap(([database, routines]) =>
+    searchableRoutinesOfDatabase(database, routines)
+  )
 }
 
 export function getSearchableObjects(connectionId: string): SearchableObject[] {

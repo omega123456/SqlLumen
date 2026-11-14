@@ -1,6 +1,6 @@
 import Editor from '@monaco-editor/react'
 import type * as Monaco from 'monaco-editor'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, type RefObject } from 'react'
 import { ElevatedCodePanel } from '../common/ElevatedCodePanel'
 import { JsonSyntaxHighlighter } from '../../lib/json-syntax-highlighter'
 import { isEquivalentJson, normalizeJson, prettyPrintJson } from '../../lib/json-text'
@@ -24,6 +24,54 @@ interface JsonFormFieldProps {
   testId?: string
 }
 
+const JSON_HIGHLIGHT_CLASS_NAMES = {
+  key: styles.key,
+  string: styles.string,
+  number: styles.number,
+  boolean: styles.boolean,
+  null: styles.null,
+  punctuation: styles.punctuation,
+}
+
+const JSON_FORM_EDITOR_OPTIONS: Monaco.editor.IStandaloneEditorConstructionOptions = {
+  automaticLayout: true,
+  minimap: { enabled: false },
+  scrollBeyondLastLine: false,
+  contextmenu: false,
+  quickSuggestions: false,
+}
+
+function useJsonFormMonacoTheme(): ReturnType<typeof getMonacoThemeName> {
+  const theme = useThemeStore((state) => state.theme)
+  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
+  return useMemo(() => getMonacoThemeName(theme, resolvedTheme === 'dark'), [resolvedTheme, theme])
+}
+
+function JsonNullValue({ testId }: { testId: string }) {
+  return (
+    <div className={`${styles.field} ${styles.nullValue}`} data-testid={testId}>
+      NULL
+    </div>
+  )
+}
+
+function JsonReadOnlyValue({ prettyValue, testId }: { prettyValue: string; testId: string }) {
+  return (
+    <div className={`${styles.field} ${styles.readOnly}`} data-testid={testId}>
+      <ElevatedCodePanel
+        hideHeader={true}
+        className={styles.readPanel}
+        bodyClassName={styles.readPanelBody}
+        preClassName={styles.readPanelPre}
+        codeClassName={styles.readPanelCode}
+        data-testid={`${testId}-panel`}
+      >
+        {JsonSyntaxHighlighter.highlightJson(prettyValue, JSON_HIGHLIGHT_CLASS_NAMES)}
+      </ElevatedCodePanel>
+    </div>
+  )
+}
+
 export function JsonFormField({
   value,
   onChange,
@@ -31,58 +79,15 @@ export function JsonFormField({
   isNull,
   testId = 'json-form-field',
 }: JsonFormFieldProps) {
-  const theme = useThemeStore((state) => state.theme)
-  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
-  const monacoTheme = useMemo(
-    () => getMonacoThemeName(theme, resolvedTheme === 'dark'),
-    [resolvedTheme, theme]
-  )
-
+  const monacoTheme = useJsonFormMonacoTheme()
   const originalValue = toStringValue(value)
   const prettyValue = useMemo(
     () => (isNull ? '' : prettyPrintJson(originalValue)),
     [isNull, originalValue]
   )
 
-  if (!isEditable) {
-    if (isNull) {
-      return (
-        <div className={`${styles.field} ${styles.nullValue}`} data-testid={testId}>
-          NULL
-        </div>
-      )
-    }
-
-    return (
-      <div className={`${styles.field} ${styles.readOnly}`} data-testid={testId}>
-        <ElevatedCodePanel
-          hideHeader={true}
-          className={styles.readPanel}
-          bodyClassName={styles.readPanelBody}
-          preClassName={styles.readPanelPre}
-          codeClassName={styles.readPanelCode}
-          data-testid={`${testId}-panel`}
-        >
-          {JsonSyntaxHighlighter.highlightJson(prettyValue, {
-            key: styles.key,
-            string: styles.string,
-            number: styles.number,
-            boolean: styles.boolean,
-            null: styles.null,
-            punctuation: styles.punctuation,
-          })}
-        </ElevatedCodePanel>
-      </div>
-    )
-  }
-
-  if (isNull) {
-    return (
-      <div className={`${styles.field} ${styles.nullValue}`} data-testid={testId}>
-        NULL
-      </div>
-    )
-  }
+  if (isNull) return <JsonNullValue testId={testId} />
+  if (!isEditable) return <JsonReadOnlyValue prettyValue={prettyValue} testId={testId} />
 
   return (
     <div className={styles.field} data-testid={testId}>
@@ -105,6 +110,43 @@ interface JsonFormFieldEditorProps {
   testId?: string
 }
 
+interface ExternalJsonSync {
+  externalValue: string
+  draftValueRef: RefObject<string>
+  editorRef: RefObject<Monaco.editor.IStandaloneCodeEditor | null>
+}
+
+function isSameJsonDocument(draftValue: string, externalValue: string): boolean {
+  if (externalValue === draftValue) return true
+  const currentNormalized = normalizeJson(draftValue)
+  const nextNormalized = normalizeJson(externalValue)
+  return (
+    currentNormalized !== null && nextNormalized !== null && currentNormalized === nextNormalized
+  )
+}
+
+function replaceDraftWithExternalValue(sync: ExternalJsonSync): void {
+  const { externalValue, draftValueRef, editorRef } = sync
+  draftValueRef.current = externalValue
+  const editor = editorRef.current
+  const isEditorOutOfSync = editor !== null && editor.getValue() !== externalValue
+  if (isEditorOutOfSync) {
+    editor.setValue(externalValue)
+  }
+}
+
+function useSyncExternalJsonValue(sync: ExternalJsonSync): void {
+  const { externalValue, draftValueRef, editorRef } = sync
+  const lastSyncedExternalValueRef = useRef(externalValue)
+  useEffect(() => {
+    if (externalValue === lastSyncedExternalValueRef.current) return
+    const shouldPreserveEditorValue = isSameJsonDocument(draftValueRef.current, externalValue)
+    lastSyncedExternalValueRef.current = externalValue
+    if (shouldPreserveEditorValue) return
+    replaceDraftWithExternalValue({ externalValue, draftValueRef, editorRef })
+  }, [draftValueRef, editorRef, externalValue])
+}
+
 function JsonFormFieldEditor({
   externalValue,
   originalValue,
@@ -113,7 +155,6 @@ function JsonFormFieldEditor({
   testId,
 }: JsonFormFieldEditorProps) {
   const draftValueRef = useRef(externalValue)
-  const lastSyncedExternalValueRef = useRef(externalValue)
   const monacoRef = useRef<typeof Monaco | null>(null)
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
 
@@ -125,32 +166,7 @@ function JsonFormFieldEditor({
     monacoRef.current.editor.setTheme(monacoTheme)
   }, [monacoTheme])
 
-  useEffect(() => {
-    if (externalValue === lastSyncedExternalValueRef.current) {
-      return
-    }
-
-    const currentNormalized = normalizeJson(draftValueRef.current)
-    const nextNormalized = normalizeJson(externalValue)
-    const shouldPreserveEditorValue =
-      externalValue === draftValueRef.current ||
-      (currentNormalized !== null &&
-        nextNormalized !== null &&
-        currentNormalized === nextNormalized)
-
-    lastSyncedExternalValueRef.current = externalValue
-
-    if (shouldPreserveEditorValue) {
-      return
-    }
-
-    draftValueRef.current = externalValue
-    const editor = editorRef.current
-    const isEditorOutOfSync = editor !== null && editor.getValue() !== externalValue
-    if (isEditorOutOfSync) {
-      editor.setValue(externalValue)
-    }
-  }, [externalValue])
+  useSyncExternalJsonValue({ externalValue, draftValueRef, editorRef })
 
   return (
     <div className={styles.editorShell} data-testid={testId}>
@@ -172,13 +188,7 @@ function JsonFormFieldEditor({
             draftValueRef.current = nextValue ?? ''
             onChange(resolveChangedValue(originalValue, draftValueRef.current))
           }}
-          options={{
-            automaticLayout: true,
-            minimap: { enabled: false },
-            scrollBeyondLastLine: false,
-            contextmenu: false,
-            quickSuggestions: false,
-          }}
+          options={JSON_FORM_EDITOR_OPTIONS}
         />
       </div>
     </div>

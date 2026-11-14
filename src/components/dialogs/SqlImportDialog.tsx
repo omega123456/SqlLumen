@@ -175,32 +175,31 @@ export interface SqlImportDialogProps {
   onClose: () => void
 }
 
-export default function SqlImportDialog({ connectionId, filePath, onClose }: SqlImportDialogProps) {
-  // Options
-  const [stopOnError, setStopOnError] = useState(true)
+const IMPORT_DIALOG_MAX_WIDTH = 520
 
-  // Import state
+interface ImportJobInputs {
+  connectionId: string
+  filePath: string
+  stopOnError: boolean
+}
+
+function useSqlImportJob({ connectionId, filePath, stopOnError }: ImportJobInputs) {
   const [isImporting, setIsImporting] = useState(false)
   const [jobId, setJobId] = useState<string | null>(null)
   const [progress, setProgress] = useState<ImportJobProgress | null>(null)
-
-  const isTerminal = isTerminalJobStatus(progress?.status)
-
-  const handleImportFinished = (finishedProgress: ImportJobProgress) => {
-    setIsImporting(false)
-    announceImportOutcome(finishedProgress)
-  }
 
   useJobProgressPolling({
     jobId: jobId,
     fetchProgress: getImportProgress,
     onProgress: setProgress,
-    onFinished: handleImportFinished,
+    onFinished: (finishedProgress: ImportJobProgress) => {
+      setIsImporting(false)
+      announceImportOutcome(finishedProgress)
+    },
     pollFailureMessage: '[sql-import] Failed to poll progress:',
   })
 
-  // Handle import start
-  const handleImport = useCallback(async () => {
+  const startImport = useCallback(async () => {
     if (!filePath) return
     setIsImporting(true)
     setProgress(null)
@@ -214,8 +213,7 @@ export default function SqlImportDialog({ connectionId, filePath, onClose }: Sql
     }
   }, [connectionId, filePath, stopOnError])
 
-  // Handle cancel
-  const handleCancel = useCallback(async () => {
+  const cancelRunningImport = useCallback(async () => {
     if (!jobId) return
     try {
       await cancelImport(jobId)
@@ -224,69 +222,127 @@ export default function SqlImportDialog({ connectionId, filePath, onClose }: Sql
     }
   }, [jobId])
 
-  const fileName = fileNameFromPath(filePath)
+  return {
+    isImporting: isImporting,
+    progress: progress,
+    startImport: startImport,
+    cancelRunningImport: cancelRunningImport,
+  }
+}
+
+function ImportDialogHeader({
+  isImporting,
+  onClose,
+}: {
+  isImporting: boolean
+  onClose: () => void
+}) {
+  return (
+    <div className={styles.header}>
+      <h2 className={styles.title}>Import SQL script</h2>
+      <Button
+        variant="bare"
+        className={styles.closeButton}
+        onClick={onClose}
+        aria-label="Close"
+        disabled={isImporting}
+        data-testid="import-close-button"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path d="M18 6L6 18M6 6l12 12" />
+        </svg>
+      </Button>
+    </div>
+  )
+}
+
+interface ImportOptionsProps {
+  fileName: string
+  stopOnError: boolean
+  onStopOnErrorChange: (checked: boolean) => void
+  disabled: boolean
+}
+
+function ImportFileAndOptions({
+  fileName,
+  stopOnError,
+  onStopOnErrorChange,
+  disabled,
+}: ImportOptionsProps) {
+  return (
+    <>
+      <div className={styles.fieldGroup}>
+        <span className={styles.label}>File</span>
+        <div className={styles.filePath} data-testid="import-file-path">
+          {fileName}
+        </div>
+      </div>
+      <div className={styles.fieldGroup}>
+        <span className={styles.label}>Options</span>
+        <div className={styles.checkboxRow}>
+          <Checkbox
+            id="import-stop-on-error"
+            checked={stopOnError}
+            onChange={(event) => onStopOnErrorChange(event.target.checked)}
+            disabled={disabled}
+            data-testid="import-stop-on-error"
+          />
+          <label htmlFor="import-stop-on-error" className={styles.checkboxLabel}>
+            Stop on first error
+          </label>
+        </div>
+      </div>
+    </>
+  )
+}
+
+function ImportProgressDetails({
+  progress,
+  isTerminal,
+}: {
+  progress: ImportJobProgress | null
+  isTerminal: boolean
+}) {
+  if (!progress) return null
+  return (
+    <>
+      <ImportProgressPanel progress={progress} />
+      {isTerminal && <ImportStatusMessage progress={progress} />}
+      <ImportErrorList errors={progress.errors} />
+    </>
+  )
+}
+
+export default function SqlImportDialog({ connectionId, filePath, onClose }: SqlImportDialogProps) {
+  const [stopOnError, setStopOnError] = useState(true)
+  const job = useSqlImportJob({
+    connectionId: connectionId,
+    filePath: filePath,
+    stopOnError: stopOnError,
+  })
+  const { isImporting, progress } = job
+  const isTerminal = isTerminalJobStatus(progress?.status)
 
   return (
     <DialogShell
       isOpen={true}
       onClose={onClose}
-      maxWidth={520}
+      maxWidth={IMPORT_DIALOG_MAX_WIDTH}
       testId="sql-import-dialog"
       ariaLabel="Import SQL script"
       disableFocusManagement={isPlaywrightBuild()}
       nonDismissible={isImporting}
     >
       <div className={styles.root}>
-        {/* Header */}
-        <div className={styles.header}>
-          <h2 className={styles.title}>Import SQL script</h2>
-          <Button
-            variant="bare"
-            className={styles.closeButton}
-            onClick={onClose}
-            aria-label="Close"
-            disabled={isImporting}
-            data-testid="import-close-button"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </Button>
-        </div>
-
-        {/* Body */}
+        <ImportDialogHeader isImporting={isImporting} onClose={onClose} />
         <div className={styles.body}>
-          {/* File path */}
-          <div className={styles.fieldGroup}>
-            <span className={styles.label}>File</span>
-            <div className={styles.filePath} data-testid="import-file-path">
-              {fileName}
-            </div>
-          </div>
-
-          {/* Options */}
-          <div className={styles.fieldGroup}>
-            <span className={styles.label}>Options</span>
-            <div className={styles.checkboxRow}>
-              <Checkbox
-                id="import-stop-on-error"
-                checked={stopOnError}
-                onChange={(event) => setStopOnError(event.target.checked)}
-                disabled={isImporting || isTerminal}
-                data-testid="import-stop-on-error"
-              />
-              <label htmlFor="import-stop-on-error" className={styles.checkboxLabel}>
-                Stop on first error
-              </label>
-            </div>
-          </div>
-
-          {progress && <ImportProgressPanel progress={progress} />}
-
-          {isTerminal && progress && <ImportStatusMessage progress={progress} />}
-
-          {progress && <ImportErrorList errors={progress.errors} />}
-
+          <ImportFileAndOptions
+            fileName={fileNameFromPath(filePath)}
+            stopOnError={stopOnError}
+            onStopOnErrorChange={setStopOnError}
+            disabled={isImporting || isTerminal}
+          />
+          <ImportProgressDetails progress={progress} isTerminal={isTerminal} />
           <InfoBar
             severity="info"
             message={
@@ -297,12 +353,11 @@ export default function SqlImportDialog({ connectionId, filePath, onClose }: Sql
             }
             data-testid="import-footer-text"
           />
-
           <ImportActions
             isImporting={isImporting}
             isTerminal={isTerminal}
-            onImport={handleImport}
-            onCancelImport={handleCancel}
+            onImport={job.startImport}
+            onCancelImport={job.cancelRunningImport}
             onClose={onClose}
           />
         </div>
