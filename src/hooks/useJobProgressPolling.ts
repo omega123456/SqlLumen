@@ -28,21 +28,39 @@ export function useJobProgressPolling<TProgress extends JobProgressSnapshot>({
   useEffect(() => {
     if (!jobId) return
 
+    let stopped = false
+    let nextPollTimeoutId: ReturnType<typeof setTimeout> | undefined
+
+    const stopPolling = () => {
+      stopped = true
+      clearTimeout(nextPollTimeoutId)
+    }
+
+    const scheduleNextPoll = () => {
+      if (stopped) return
+      nextPollTimeoutId = setTimeout(poll, JOB_PROGRESS_POLL_INTERVAL_MS)
+    }
+
     const handleProgress = (progress: TProgress) => {
+      if (stopped) return
       reportProgress(progress)
-      if (!isTerminalJobStatus(progress.status)) return
+      if (!isTerminalJobStatus(progress.status)) {
+        scheduleNextPoll()
+        return
+      }
       stopPolling()
       reportFinished(progress)
     }
 
-    const poll = () => {
-      requestProgress(jobId)
-        .then(handleProgress)
-        .catch((error: unknown) => logFrontendError(pollFailureMessage, error))
+    const handleFailure = (error: unknown) => {
+      logFrontendError(pollFailureMessage, error)
+      scheduleNextPoll()
     }
 
-    const intervalId = setInterval(poll, JOB_PROGRESS_POLL_INTERVAL_MS)
-    const stopPolling = () => clearInterval(intervalId)
+    const poll = () => {
+      requestProgress(jobId).then(handleProgress).catch(handleFailure)
+    }
+
     poll()
 
     return stopPolling

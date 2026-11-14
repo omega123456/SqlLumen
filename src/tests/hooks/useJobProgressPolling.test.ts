@@ -90,6 +90,44 @@ describe('useJobProgressPolling', () => {
     expect(fetchProgress).toHaveBeenCalledTimes(2)
   })
 
+  it('waits for the pending request before polling again', async () => {
+    let resolvePending: (progress: TestProgress) => void = () => {}
+    const fetchProgress = vi.fn(
+      () =>
+        new Promise<TestProgress>((resolve) => {
+          resolvePending = resolve
+        })
+    )
+    const { onFinished } = renderPolling('job-5', fetchProgress)
+
+    await advancePollInterval()
+    await advancePollInterval()
+    expect(fetchProgress).toHaveBeenCalledTimes(1)
+
+    await act(async () => resolvePending({ status: 'completed' }))
+    await advancePollInterval()
+
+    expect(fetchProgress).toHaveBeenCalledTimes(1)
+    expect(onFinished).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores a response that arrives after unmount', async () => {
+    let resolvePending: (progress: TestProgress) => void = () => {}
+    const fetchProgress = vi.fn(
+      () =>
+        new Promise<TestProgress>((resolve) => {
+          resolvePending = resolve
+        })
+    )
+    const { unmount, onProgress, onFinished } = renderPolling('job-6', fetchProgress)
+
+    unmount()
+    await act(async () => resolvePending({ status: 'completed' }))
+
+    expect(onProgress).not.toHaveBeenCalled()
+    expect(onFinished).not.toHaveBeenCalled()
+  })
+
   it('stops polling on unmount', async () => {
     const fetchProgress = vi.fn(async () => ({ status: 'running' as const }))
     const { unmount } = renderPolling('job-4', fetchProgress)

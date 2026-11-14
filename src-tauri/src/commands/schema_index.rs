@@ -133,12 +133,13 @@ fn register_session_profile(
     Ok(())
 }
 
-fn take_in_flight_build(
-    state: &AppState,
-    profile_id: &str,
-) -> Result<Option<tokio_util::sync::CancellationToken>, String> {
+fn cancel_in_flight_build(state: &AppState, profile_id: &str) -> Result<bool, String> {
     let mut tokens = state.index_build_tokens.lock().map_err(lock_error)?;
-    Ok(tokens.remove(profile_id))
+    let Some(token) = tokens.remove(profile_id) else {
+        return Ok(false);
+    };
+    token.cancel();
+    Ok(true)
 }
 
 fn is_build_in_progress(state: &AppState, profile_id: &str) -> Result<bool, String> {

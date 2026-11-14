@@ -96,17 +96,17 @@ pub(super) fn schedule_index_build(
         profile_id,
         settings,
     } = scheduled;
+    let pool = state
+        .registry
+        .get_pool(&session_id)
+        .ok_or_else(|| format!("No MySQL pool for session '{session_id}'"))?;
+
     let token = CancellationToken::new();
     state
         .index_build_tokens
         .lock()
         .map_err(lock_error)?
         .insert(profile_id.clone(), token.clone());
-
-    let pool = state
-        .registry
-        .get_pool(&session_id)
-        .ok_or_else(|| format!("No MySQL pool for session '{session_id}'"))?;
 
     tracing::info!(
         session_id = %session_id,
@@ -118,18 +118,22 @@ pub(super) fn schedule_index_build(
         kind.scheduling_description()
     );
 
+    let config = BuildConfig {
+        connection_id: profile_id.clone(),
+        model_id: settings.model,
+        endpoint: settings.endpoint,
+    };
+    let db = state.db.clone();
+    let http_client = state.http_client.clone();
+    let build_tokens = state.index_build_tokens.clone();
     let job = IndexBuildJob {
         kind,
         app_handle,
-        profile_id: profile_id.clone(),
-        config: BuildConfig {
-            connection_id: profile_id,
-            model_id: settings.model,
-            endpoint: settings.endpoint,
-        },
-        db: state.db.clone(),
-        http_client: state.http_client.clone(),
-        build_tokens: state.index_build_tokens.clone(),
+        profile_id,
+        config,
+        db,
+        http_client,
+        build_tokens,
         pool,
         token,
     };
@@ -162,9 +166,19 @@ pub(super) async fn run_index_build_job(job: IndexBuildJob) {
         Err(error) => report_index_build_failure(&job, error),
     }
 
-    if let Ok(mut tokens) = job.build_tokens.lock() {
-        tokens.remove(&job.profile_id);
+    release_build_token(&job);
+}
+
+#[cfg(not(coverage))]
+fn release_build_token(job: &IndexBuildJob) {
+    let Ok(mut tokens) = job.build_tokens.lock() else {
+        return;
+    };
+    let token_already_removed_by_canceller = job.token.is_cancelled();
+    if token_already_removed_by_canceller {
+        return;
     }
+    tokens.remove(&job.profile_id);
 }
 
 #[cfg(not(coverage))]
@@ -215,13 +229,12 @@ pub async fn force_rebuild_schema_index_impl(
     let profile_id = resolve_session_profile(state, &session_id)?;
     register_session_profile(state, &session_id, &profile_id)?;
 
-    if let Some(old_token) = take_in_flight_build(state, &profile_id)? {
+    if cancel_in_flight_build(state, &profile_id)? {
         tracing::info!(
             profile_id = %profile_id,
             at = %Utc::now().to_rfc3339(),
-            "schema_index force_rebuild: cancelling in-flight build for profile before wipe"
+            "schema_index force_rebuild: cancelled in-flight build for profile before wipe"
         );
-        old_token.cancel();
     }
 
     wipe_profile_chunks(state, &profile_id)?;
@@ -251,9 +264,7 @@ pub async fn force_rebuild_schema_index_impl(
 ) -> Result<(), String> {
     let profile_id = resolve_session_profile(state, &session_id)?;
 
-    if let Some(old_token) = take_in_flight_build(state, &profile_id)? {
-        old_token.cancel();
-    }
+    cancel_in_flight_build(state, &profile_id)?;
     wipe_profile_chunks(state, &profile_id)?;
 
     let embedding_model = read_setting(&state.db, EMBEDDING_MODEL_SETTING)?;

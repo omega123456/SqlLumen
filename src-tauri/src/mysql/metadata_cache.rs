@@ -29,6 +29,15 @@ pub struct TableKeyMetadata {
     pub columns: Vec<TableDataColumnMeta>,
 }
 
+impl TableKeyMetadata {
+    pub fn without_primary_key(columns: Vec<TableDataColumnMeta>) -> Self {
+        Self {
+            primary_key: None,
+            columns,
+        }
+    }
+}
+
 pub struct TableEviction<'a> {
     pub connection_id: &'a str,
     pub affected_tables: &'a [AffectedTable],

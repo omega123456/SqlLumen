@@ -99,12 +99,13 @@ fn key_metadata(
     let has_auto_increment = columns
         .iter()
         .any(|column| is_auto_increment_key_column(column, &key_columns));
+    let primary_key = Some(PrimaryKeyInfo {
+        key_columns,
+        has_auto_increment,
+        is_unique_key_fallback,
+    });
     TableKeyMetadata {
-        primary_key: Some(PrimaryKeyInfo {
-            key_columns,
-            has_auto_increment,
-            is_unique_key_fallback,
-        }),
+        primary_key,
         columns,
     }
 }
@@ -191,10 +192,7 @@ pub async fn fetch_table_pk_impl(
     .await?;
     let unique_key = first_not_null_unique_key(&columns, group_unique_constraints(&unique_rows));
     let Some(unique_key_columns) = unique_key else {
-        return Ok(TableKeyMetadata {
-            primary_key: None,
-            columns,
-        });
+        return Ok(TableKeyMetadata::without_primary_key(columns));
     };
     Ok(key_metadata(columns, unique_key_columns, true))
 }
@@ -226,10 +224,7 @@ pub async fn fetch_table_pk_cached(
     Ok(context
         .metadata_cache
         .get(&key)
-        .unwrap_or_else(|| TableKeyMetadata {
-            primary_key: None,
-            columns: Vec::new(),
-        }))
+        .unwrap_or_else(|| TableKeyMetadata::without_primary_key(Vec::new())))
 }
 
 #[cfg(not(coverage))]
@@ -352,11 +347,14 @@ pub async fn fetch_table_data_impl(
     );
     log_table_data_sql(&data_sql, &filter_clause.params);
 
+    let cancel_key = (context.connection_id.to_string(), query.tab_id.clone());
+    let sql = data_sql.as_str();
+    let params = filter_clause.params.as_slice();
     let page_fetch = CancellablePageFetch {
         running_queries,
-        cancel_key: (context.connection_id.to_string(), query.tab_id.clone()),
-        sql: &data_sql,
-        params: &filter_clause.params,
+        cancel_key,
+        sql,
+        params,
     };
     let data_rows = fetch_cancellable_page_rows(context.pool, page_fetch).await?;
     let execution_time_ms = start.elapsed().as_millis() as u64;

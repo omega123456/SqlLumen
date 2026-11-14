@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 
 const ESTIMATED_POPUP_HEIGHT_PX = 380
 const POPUP_WIDTH_PX = 300
@@ -59,18 +59,13 @@ export function useDateTimePickerPosition(
   anchorElement: HTMLElement | null,
   onAnchorMissing: () => void
 ): PopupPosition {
-  const [position, setPosition] = useState<PopupPosition>(UNANCHORED_POPUP_POSITION)
-
   useEffect(() => {
-    if (!anchorElement) {
-      onAnchorMissing()
-      return
-    }
-    const measureFrame = requestAnimationFrame(() => {
-      setPosition(measurePopupPosition(anchorElement))
-    })
-    return () => cancelAnimationFrame(measureFrame)
+    if (anchorElement) return
+    onAnchorMissing()
   }, [anchorElement, onAnchorMissing])
 
-  return position
+  return useMemo(() => {
+    if (!anchorElement) return UNANCHORED_POPUP_POSITION
+    return measurePopupPosition(anchorElement)
+  }, [anchorElement])
 }

@@ -49,7 +49,6 @@ export function StatusArea({
         </span>
       )}
 
-
       {customContent}
     </div>
   )

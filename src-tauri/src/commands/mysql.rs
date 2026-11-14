@@ -343,12 +343,10 @@ fn release_profile_session_reference(state: &AppState, profile_id: &str) -> bool
 }
 
 fn cancel_profile_index_build(state: &AppState, profile_id: &str) {
-    let build_token = match state.index_build_tokens.lock() {
-        Ok(mut tokens) => tokens.remove(profile_id),
-        Err(_) => None,
-    };
-    if let Some(token) = build_token {
-        token.cancel();
+    if let Ok(mut tokens) = state.index_build_tokens.lock() {
+        if let Some(token) = tokens.remove(profile_id) {
+            token.cancel();
+        }
     }
     if let Ok(mut counts) = state.session_ref_counts.lock() {
         counts.remove(profile_id);
