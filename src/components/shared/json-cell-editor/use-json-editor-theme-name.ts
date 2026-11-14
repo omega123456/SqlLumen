@@ -1,23 +1,14 @@
 import { useEffect, useState } from 'react'
 import { getMonacoThemeName } from '../../../lib/monaco-theme'
+import { currentTheme, observeThemeChange, type ThemeName } from '../../../lib/theme-tokens'
 import { useThemeStore } from '../../../stores/theme-store'
-import { getCurrentDomTheme } from './json-cell-editor-values'
 
 export function useJsonEditorThemeName(): string {
-  const [domTheme, setDomTheme] = useState<'light' | 'dark'>(() => getCurrentDomTheme())
+  const [domTheme, setDomTheme] = useState<ThemeName>(() => currentTheme())
   const theme = useThemeStore((state) => state.theme)
 
   useEffect(() => {
-    const observer = new MutationObserver(() => {
-      setDomTheme(getCurrentDomTheme())
-    })
-
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['data-theme'],
-    })
-
-    return () => observer.disconnect()
+    return observeThemeChange(() => setDomTheme(currentTheme()))
   }, [])
 
   const effectiveTheme = theme === 'system' ? theme : domTheme

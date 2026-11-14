@@ -7,6 +7,7 @@ beforeEach(() => {
   // Reset store state between tests
   useThemeStore.setState({ theme: 'system', resolvedTheme: 'light', _previewSnapshot: null })
   document.documentElement.removeAttribute('data-theme')
+  document.documentElement.classList.remove('dark')
   setupMatchMedia(false) // default: system prefers light
 })
 
@@ -23,6 +24,16 @@ describe('useThemeStore — setTheme', () => {
     await useThemeStore.getState().setTheme('light')
     expect(useThemeStore.getState().theme).toBe('light')
     expect(useThemeStore.getState().resolvedTheme).toBe('light')
+  })
+
+  it('setTheme writes both the dark class and the data-theme attribute', async () => {
+    await useThemeStore.getState().setTheme('dark')
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+
+    await useThemeStore.getState().setTheme('light')
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light')
   })
 
   it('setTheme to "dark" sets resolvedTheme to "dark"', async () => {
@@ -239,7 +250,7 @@ describe('useThemeStore — follows the OS by default (Fluent redesign decision)
     [true, 'dark'],
     [false, 'light'],
   ] as const)(
-    'with no saved theme and OS dark=%s, resolves to %s and keys the token set off data-theme',
+    'with no saved theme and OS dark=%s, resolves to %s and keys the token set off the dark class and data-theme',
     async (prefersDark, expected) => {
       setupMatchMedia(prefersDark)
       ipc.override('get_setting', () => null)
@@ -248,8 +259,8 @@ describe('useThemeStore — follows the OS by default (Fluent redesign decision)
 
       expect(useThemeStore.getState().theme).toBe('system')
       expect(useThemeStore.getState().resolvedTheme).toBe(expected)
-      // tokens.css: dark primitives live on :root, light primitives on [data-theme='light']
       expect(document.documentElement.getAttribute('data-theme')).toBe(expected)
+      expect(document.documentElement.classList.contains('dark')).toBe(expected === 'dark')
     }
   )
 

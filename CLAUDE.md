@@ -103,7 +103,8 @@ src/
     dialogs/         # ExportDialog, ConfirmDialog, create/alter DB, DialogShell, …
     connection-dialog/
     object-browser/
-  styles/            # tokens.css, global.css, data-grid-precision.css
+  index.css          # Tailwind entry: @import, @plugin, @custom-variant and the @theme static token block
+  styles/            # Legacy tokens.css, global.css, data-grid-precision.css (shrinking) + vendor/ (Monaco, hljs, Glide overlays, fonts)
   types/             # Shared TypeScript types (connection.ts, schema.ts, …)
   tests/             # Mirrors src/ layout; setup.ts wires the shared IPC harness plus Monaco/polyfills
 
@@ -130,7 +131,7 @@ src-tauri/
 - **Imports:** Named imports preferred. Use `import type` for type-only imports. Rough order: external libs → `../lib/` → relative `./`.
 - **Components:** Functional only. Use `forwardRef` for DOM-forwarding primitives. Props type named `<ComponentName>Props`.
 - **Naming:** Components/types `PascalCase`; hooks `useCamelCase`; files/utilities `kebab-case`; constants `UPPER_SNAKE_CASE`.
-- **CSS:** CSS Modules (`*.module.css`). Design tokens are CSS custom properties in `src/styles/tokens.css` scoped under `[data-theme="light|dark"]`. Never hard-code colors or spacing values.
+- **Styling:** Tailwind v4 utilities under the **Styling constraint** section below. Components not yet migrated still use CSS Modules (`LEGACY_MODULES` in `src/tests/styles/legacy-css-modules.ts`); never add a new `*.module.css`.
 - **State:** Zustand stores in `src/stores/`. Local state via `useState`/`useReducer`. Layout via `react-resizable-panels` v4 — sizes as strings (`"20%"`).
 - **Shared UI primitives over native HTML:** Reuse existing components from `src/components/common/` and `src/components/shared/` (for example `Button`, `TextInput`, `Checkbox`, `Dropdown`, `Textarea`) for fields, actions, and controls. Do **not** drop in raw `<button>`, `<input>`, `<select>`, `<textarea>`, or other native equivalents when the codebase already has a component for that role. Add a new shared primitive only when nothing existing fits or the user explicitly asks for one.
 - **Shared data grid:** Always use the shared `DataGrid` wrapper (`src/components/shared/DataGrid.tsx`). Do not reorder rows client-side when the backend owns sort order.
@@ -151,6 +152,23 @@ Silent error swallowing is **forbidden** without a log line:
 - `#[serde(rename_all = "camelCase")]` on all structs serialized over IPC.
 - Command handlers are thin wrappers; business logic lives in `*_impl` functions taking `&AppState` (testable without the Tauri runtime).
 - Never embed `#[cfg(test)]` or `#[test]` in `src-tauri/src/` — all tests go in `src-tauri/tests/` only.
+
+---
+
+## Styling constraint (NON-NEGOTIABLE)
+
+The migration plan is `.agent/plans/2026-11-14_tailwind-utilities-migration_plan.md`; the decision is recorded in `.agent/adr/2026-11-14--frontend-styling-is-tailwind-v4-utilities-with-paired-light-dark-theme-tokens--86110ad4.md`.
+
+- **Pure Tailwind v4 utility classes only.** No custom CSS rules, no `@apply`, no square-bracket values or variants (`w-[237px]`, `data-[x]:`), no `!` important modifier, no `var(--` strings in components.
+- **`src/index.css` contains only `@import`, `@plugin`, `@custom-variant` and the `@theme static` block.** Every colour, spacing, type step, radius, shadow, animation, breakpoint, easing and transition property is a **named token** there. Need a new value? Add a named token, then use the generated utility.
+- **Colours are paired per theme.** Tokens are `--color-light-<name>` and `--color-dark-<name>` (names come from the Fluent primitives, for example `surface-container`, `fill-subtle-hover`). Write `bg-light-surface-container dark:bg-dark-surface-container`; every `-light-` utility has a `dark:` twin with the same variants. Never use `/NN` opacity modifiers; add a literal alpha token such as `primary-a35` instead. Colours identical in both themes have no theme prefix. `.dark` on `<html>` is the theme switch (`data-theme` is still written until the last migration phase).
+- **Px, not rem.** `--spacing` is `4px`; named px tokens cover control heights, tree rows, grid rows and widths. Type-ramp tokens carry their line height (`text-body` is 14px/20px); use the size-only twin (`text-size-body`) only where a rule set just the font size, and a `leading-*` token for unitless line heights.
+- **Class strings are full literals.** Never build them with interpolation. State picks classes through TypeScript lookup tables (`Record<Variant, string>` beside each primitive); never put two utilities for the same property on one element and never rely on cascade order. Shared strings live in `src/lib/class-names.ts` (`joinClassNames` is there too) and `src/lib/focus-ring.ts`; split the file by domain if it grows past the line limit.
+- **Animations** use the `--animate-*` tokens; every animation has a `-paused` twin applied with `window-blurred:`. Buttons set an explicit `cursor-pointer` or `cursor-default`. Every `overflow-auto` element gets the shared scrollbar classes.
+- **Inline `style`** is only for numbers computed at runtime. Read theme values from TypeScript only through `src/lib/theme-tokens.ts` (`currentTheme`, `readThemeColor`, `readToken`, `readPixelToken`, `observeThemeChange`).
+- **Vendor CSS exception:** hand-written CSS is allowed only in `src/styles/vendor/` for DOM SqlLumen does not render (Monaco, highlight.js, Glide overlays, datepicker, colour picker, scrollbars, fonts), with no colour literals.
+- **Enforcement:** `src/tests/styles/tailwind-conformance.test.ts` (CSS file allowlist, `index.css` directives, paired tokens, Fluent value table) and ESLint `local/tailwind-classes` (scoped through `CONFORMANCE_RULE_SCOPES`, widened as areas migrate).
+- **Screenshot parity:** a styling migration must not change the baselines. Never update baselines or loosen thresholds to make a migration pass.
 
 ---
 
@@ -189,7 +207,7 @@ Keep every test in a dedicated file under the appropriate test root (`src/tests/
   update the existing component scenario instead of adding another baseline.
 - **Do not increase Playwright screenshot pixel tolerance** (or any visual diff threshold) to make tests pass; fix the UI/regression or intentionally update baselines instead.
 - **Do not change screenshot threshold values in `playwright.config.mjs` (`expect.toHaveScreenshot`, including the value at `playwright.config.mjs:52`) unless the user gives explicit permission in the current request.**
-- Add `data-testid` attributes on new layout surfaces when CSS modules prevent reliable selectors.
+- Add `data-testid` attributes on new layout surfaces. Select by `data-testid`, role, `aria-*` or a `data-*` attribute that is the lookup key (`data-variant`, `data-active`); never select or assert by a Tailwind utility class.
 - Update `playwright-ipc-mock.ts` for any new IPC command called from the UI (`VITE_PLAYWRIGHT=true` build). When doing so, **never embed inline SQL-matching logic or fixture data directly in the `switch` cases** — all fixture data belongs in `src/tests/playwright-fixtures/` (one file per domain, e.g. `json-table.ts`, `users.ts`) and must be wired through the `FixtureRegistryApi` in `src/tests/playwright-fixtures/index.ts` so the data can be looked up and overridden per-test without touching the mock router.
 - After intentional visual changes, regenerate baselines: `pnpm test:e2e -- --update-snapshots` and commit the updated snapshot files. This rebuilds all snapshots (not just `screenshots.spec.ts`).
 - **Skip screenshots** only when the change is non-visual plumbing or DOM/CSS is identical (pure refactor). When in doubt, add a baseline.

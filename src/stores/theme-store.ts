@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { logFrontend } from '../lib/app-log-commands'
 import { getThemeSetting, setThemeSetting } from '../lib/tauri-commands'
+import { applyResolvedTheme } from '../lib/theme-tokens'
 import { syncNativeTheme } from '../lib/window-commands'
 
 export type Theme = 'light' | 'dark' | 'system'
@@ -20,7 +21,7 @@ function resolveTheme(theme: Theme): ResolvedTheme {
 
 function applyTheme(theme: Theme): ResolvedTheme {
   const resolved = resolveTheme(theme)
-  document.documentElement.setAttribute('data-theme', resolved)
+  applyResolvedTheme(resolved)
   void syncNativeTheme(theme)
   return resolved
 }

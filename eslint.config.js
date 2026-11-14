@@ -4,11 +4,25 @@ import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
-import { localRulesPlugin } from './scripts/eslint-named-conditions.mjs'
+import { localRulesPlugin as namedConditionsPlugin } from './scripts/eslint-named-conditions.mjs'
+import { tailwindRulesPlugin } from './scripts/eslint-tailwind-classes.mjs'
 
 const PRODUCTION_SOURCE_FILES = ['src/**/*.{ts,tsx}']
 const TEST_SOURCE_FILES = ['src/tests/**']
 const CONSOLE_SINK_FILES = ['src/lib/app-log-commands.ts']
+const TAILWIND_CLASS_RULE_FILES = [
+  'src/lib/class-names.ts',
+  'src/lib/focus-ring.ts',
+  'src/lib/theme-tokens.ts',
+  'src/hooks/use-glide-grid-theme.ts',
+  'src/hooks/use-grid-dimensions.ts',
+  'src/components/shared/glide/glide-cell-content.ts',
+  'src/components/shared/glide/glide-row-markers.ts',
+  'src/components/shared/json-cell-editor/use-json-editor-theme-name.ts',
+]
+const localRulesPlugin = {
+  rules: { ...namedConditionsPlugin.rules, ...tailwindRulesPlugin.rules },
+}
 
 const MINIMUM_IDENTIFIER_LENGTH = 2
 const NUMBERS_ALLOWED_INLINE = [0, 1, -1]
@@ -76,6 +90,10 @@ const CONFORMANCE_RULE_SCOPES = [
   {
     files: PRODUCTION_SOURCE_FILES,
     rules: { 'local/named-conditions': 'error' },
+  },
+  {
+    files: TAILWIND_CLASS_RULE_FILES,
+    rules: { 'local/tailwind-classes': 'error' },
   },
   {
     files: PRODUCTION_SOURCE_FILES,

@@ -9,6 +9,7 @@ import {
   type RefObject,
   type SyntheticEvent,
 } from 'react'
+import { joinClassNames } from '../../lib/class-names'
 import { isActivationKey, isMiddleMouseButton } from '../../lib/input-events'
 import styles from './UnderlineTabs.module.css'
 import {
@@ -89,10 +90,6 @@ type ResolvedUnderlineTabProps = UnderlineTabProps &
 interface ResolvedTabViewProps {
   props: ResolvedUnderlineTabProps
   elementRef: RefObject<HTMLDivElement | HTMLButtonElement | null>
-}
-
-function joinClassNames(classNames: string[]): string {
-  return classNames.filter(Boolean).join(' ')
 }
 
 function dropIndicatorClassName(dropIndicator: UnderlineTabProps['dropIndicator']): string {

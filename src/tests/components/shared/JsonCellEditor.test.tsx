@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { type ComponentProps, useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { applyResolvedTheme } from '../../../lib/theme-tokens'
 import { useThemeStore } from '../../../stores/theme-store'
 import JsonCellEditor from '../../../components/shared/JsonCellEditor'
 
@@ -103,7 +104,7 @@ describe('JsonCellEditor', () => {
     mockDisconnect.mockClear()
     vi.stubGlobal('MutationObserver', MockMutationObserver)
     useThemeStore.setState({ theme: 'light', resolvedTheme: 'light', _previewSnapshot: null })
-    document.documentElement.setAttribute('data-theme', 'light')
+    applyResolvedTheme('light')
   })
 
   it('pretty-prints the initial value and registers Monaco themes on mount', async () => {
@@ -365,11 +366,11 @@ describe('JsonCellEditor', () => {
     expect(screen.getByTestId('json-monaco')).toHaveValue('{')
   })
 
-  it('updates the Monaco theme when the document theme attribute changes', async () => {
+  it('updates the Monaco theme when the document theme class changes', async () => {
     renderEditor()
 
     await act(async () => {
-      document.documentElement.setAttribute('data-theme', 'dark')
+      applyResolvedTheme('dark')
       mutationObserverCallback?.([], {} as MutationObserver)
     })
 

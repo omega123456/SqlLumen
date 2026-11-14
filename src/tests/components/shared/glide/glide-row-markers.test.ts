@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   glideSelectionToProcessList,
   processListSelectionToGlide,
-  PROCESS_LIST_ROW_MARKER_THEME,
+  processListRowMarkerTheme,
 } from '../../../../components/shared/glide/glide-row-markers'
 import type { ProcessRow } from '../../../../lib/processlist-commands'
 
@@ -13,8 +13,18 @@ const rows: ProcessRow[] = [
 ]
 
 describe('glide-row-markers', () => {
-  it('defines marker theme', () => {
-    expect(PROCESS_LIST_ROW_MARKER_THEME.accentColor).toBeTruthy()
+  it('reads the marker theme from the current theme tokens', () => {
+    document.documentElement.style.setProperty('--color-light-primary', '#0067c0')
+    document.documentElement.style.setProperty(
+      '--color-light-primary-a12',
+      'rgba(0, 103, 192, 0.12)'
+    )
+    document.documentElement.style.setProperty('--color-light-on-surface-variant', '#5d5d5d')
+    expect(processListRowMarkerTheme()).toEqual({
+      accentColor: '#0067c0',
+      accentLight: 'rgba(0, 103, 192, 0.12)',
+      textMedium: '#5d5d5d',
+    })
   })
   it('maps process selections to Glide rows', () => {
     const selection = processListSelectionToGlide([2], rows)

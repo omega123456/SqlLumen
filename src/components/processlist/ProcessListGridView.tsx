@@ -9,6 +9,7 @@ import type { GridColumnDescriptor } from '../../types/shared-data-view'
 import type { GridColumn, GridHandle } from '../shared/glide/glide-grid-types'
 import styles from './ProcessListGridView.module.css'
 import { isPlaywrightBuild } from '../../lib/tauri-env'
+import { readPixelToken } from '../../lib/theme-tokens'
 import { isNonEmptyString, isNullish, isPositiveNumber } from '../../lib/value-checks'
 
 const FALLBACK_HEADER_HEIGHT_PX = 32
@@ -141,15 +142,10 @@ function parseColumnWidths(host: HTMLElement): number[] {
   return parsedWidths.filter(isPositiveNumber)
 }
 
-function cssPixelsOr(rootStyles: CSSStyleDeclaration, property: string, fallback: number): number {
-  return parseFloat(rootStyles.getPropertyValue(property)) || fallback
-}
-
 function gridRowMetrics() {
-  const rootStyles = getComputedStyle(document.documentElement)
   return {
-    headerHeight: cssPixelsOr(rootStyles, '--grid-header-height', FALLBACK_HEADER_HEIGHT_PX),
-    rowHeight: cssPixelsOr(rootStyles, '--grid-row-height', FALLBACK_ROW_HEIGHT_PX),
+    headerHeight: readPixelToken('--spacing-grid-header', FALLBACK_HEADER_HEIGHT_PX),
+    rowHeight: readPixelToken('--spacing-grid-row', FALLBACK_ROW_HEIGHT_PX),
   }
 }
 

@@ -1,10 +1,13 @@
 import { CompactSelection, type GridSelection, type Theme } from '@glideapps/glide-data-grid'
 import type { ProcessRow } from '../../../lib/processlist-commands'
+import { readThemeColor } from '../../../lib/theme-tokens'
 
-export const PROCESS_LIST_ROW_MARKER_THEME: Partial<Theme> = {
-  accentColor: 'var(--primary)',
-  accentLight: 'rgba(var(--primary-rgb), 0.12)',
-  textMedium: 'var(--on-surface-variant)',
+export function processListRowMarkerTheme(): Partial<Theme> {
+  return {
+    accentColor: readThemeColor('primary'),
+    accentLight: readThemeColor('primary-a12'),
+    textMedium: readThemeColor('on-surface-variant'),
+  }
 }
 
 export function processListSelectionToGlide(

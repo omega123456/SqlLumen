@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { mockIPC } from '@tauri-apps/api/mocks'
 
 import './lib/monaco-worker-setup'
+import './index.css'
 import './styles/global.css'
 import App from './App'
 import { playwrightIpcMockHandler } from './lib/playwright-ipc-mock'
@@ -10,6 +11,7 @@ import { useSettingsStore } from './stores/settings-store'
 import { useConnectionStore } from './stores/connection-store'
 import { initAiMemoryStore } from './stores/ai-memory-store'
 import { hasTauriApis, isPlaywrightBuild } from './lib/tauri-env'
+import { applyResolvedTheme } from './lib/theme-tokens'
 import { logBootstrapFailure, logFrontend } from './lib/app-log-commands'
 import type * as Monaco from 'monaco-editor'
 import { isBlank } from './lib/value-checks'
@@ -148,12 +150,12 @@ async function applySavedAppearance(): Promise<void> {
   try {
     await useSettingsStore.getState().loadSettings()
     const theme = useSettingsStore.getState().getSetting('theme')
-    document.documentElement.setAttribute('data-theme', resolveInitialTheme(theme))
+    applyResolvedTheme(resolveInitialTheme(theme))
     applySavedZoom()
   } catch (error) {
     logFrontend('warn', `[main] Applying saved appearance settings failed: ${String(error)}`)
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-    document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light')
+    applyResolvedTheme(prefersDark ? 'dark' : 'light')
   }
 }
 

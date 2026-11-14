@@ -7,6 +7,7 @@ import {
   isBlobPlaceholderText,
 } from '../../../lib/blob-utils'
 import { logParseFallback } from '../../../lib/app-log-commands'
+import { currentTheme, readThemeColor, readToken, type ThemeName } from '../../../lib/theme-tokens'
 import type { BlobEnvelope } from '../../../types/schema'
 
 export interface CellStateFlags {
@@ -34,16 +35,15 @@ export interface ClassifyCellValueOptions {
 
 export type ClassifiedCellValue = CellStateFlags & { displayValue: string; copyValue: string }
 
-let nullTokenCache: { theme: string | null; color: string; mono: string } | null = null
+let nullTokenCache: { theme: ThemeName; color: string; mono: string } | null = null
 
 function nullTokens(): { color: string; mono: string } {
-  const theme = document.documentElement.getAttribute('data-theme')
+  const theme = currentTheme()
   if (nullTokenCache?.theme === theme) return nullTokenCache
-  const styles = getComputedStyle(document.documentElement)
   nullTokenCache = {
     theme: theme,
-    color: styles.getPropertyValue('--td-null-text-color').trim(),
-    mono: styles.getPropertyValue('--font-mono').trim(),
+    color: readThemeColor('outline'),
+    mono: readToken('--font-mono'),
   }
   return nullTokenCache
 }

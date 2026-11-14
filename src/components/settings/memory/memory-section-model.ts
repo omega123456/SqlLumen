@@ -59,7 +59,3 @@ export function parseDragPayload(dataTransfer: DataTransfer): MemoryDragPayload 
 export function hasMemoryDragType(dataTransfer: DataTransfer): boolean {
   return Array.from(dataTransfer.types).includes(MEMORY_DRAG_MIME_TYPE)
 }
-
-export function joinClassNames(classNames: string[]): string {
-  return classNames.filter(Boolean).join(' ')
-}

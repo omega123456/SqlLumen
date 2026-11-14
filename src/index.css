@@ -1,0 +1,481 @@
+@import 'tailwindcss/theme' layer(theme);
+@import 'tailwindcss/utilities' layer(utilities);
+@plugin "tailwind-scrollbar" {
+  preferredstrategy: pseudoelements;
+  nocompatible: true;
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+@custom-variant mica (&:where(.mica, .mica *));
+@custom-variant hover (&:hover);
+@custom-variant window-blurred (&:where([data-window-focused='false'] *));
+@custom-variant resize-dragging (&:where([data-separator='active'], [data-resize-handle-state='drag'], [data-resize-handle-active]));
+
+@theme static {
+  --color-*: initial;
+  --color-dark-surface: #202020;
+  --color-dark-surface-dim: #202020;
+  --color-dark-surface-bright: #2c2c2c;
+  --color-dark-surface-container-lowest: #1c1c1c;
+  --color-dark-surface-container-low: #272727;
+  --color-dark-surface-container: #272727;
+  --color-dark-surface-container-high: #2c2c2c;
+  --color-dark-surface-container-highest: rgba(255, 255, 255, 0.07);
+  --color-dark-surface-variant: rgba(255, 255, 255, 0.07);
+  --color-dark-surface-strip: rgba(0, 0, 0, 0.16);
+  --color-dark-background: #202020;
+  --color-dark-on-background: #ffffff;
+  --color-dark-status-bar-surface: #202020;
+  --color-dark-inverse-surface: #ffffff;
+  --color-dark-inverse-on-surface: #202020;
+  --color-dark-stroke-card: rgba(255, 255, 255, 0.07);
+  --color-dark-stroke-divider: rgba(255, 255, 255, 0.08);
+  --color-dark-stroke-flyout: rgba(0, 0, 0, 0.35);
+  --color-dark-stroke-control: rgba(255, 255, 255, 0.07);
+  --color-dark-stroke-control-bottom: rgba(255, 255, 255, 0.04);
+  --color-dark-stroke-text-field: #9a9a9a;
+  --color-dark-outline-variant: rgba(255, 255, 255, 0.07);
+  --color-dark-fill-control: rgba(255, 255, 255, 0.06);
+  --color-dark-fill-control-hover: rgba(255, 255, 255, 0.084);
+  --color-dark-fill-control-pressed: rgba(255, 255, 255, 0.033);
+  --color-dark-fill-subtle-hover: rgba(255, 255, 255, 0.06);
+  --color-dark-fill-subtle-pressed: rgba(255, 255, 255, 0.04);
+  --color-dark-fill-neutral-selected: rgba(255, 255, 255, 0.07);
+  --color-dark-fill-accent-tint: rgba(76, 194, 255, 0.15);
+  --color-dark-on-surface: #ffffff;
+  --color-dark-on-surface-variant: #cfcfcf;
+  --color-dark-outline: #9d9d9d;
+  --color-dark-text-disabled: #717171;
+  --color-dark-secondary: #cfcfcf;
+  --color-dark-secondary-container: rgba(255, 255, 255, 0.07);
+  --color-dark-primary: #4cc2ff;
+  --color-dark-surface-tint: #4cc2ff;
+  --color-dark-accent-hover: #47b1e8;
+  --color-dark-on-primary: #000000;
+  --color-dark-primary-container: rgba(76, 194, 255, 0.15);
+  --color-dark-on-primary-container: #4cc2ff;
+  --color-dark-error: #ff99a4;
+  --color-dark-error-container: #442726;
+  --color-dark-on-error: #000000;
+  --color-dark-on-error-container: #ff99a4;
+  --color-dark-danger-fill: #d13438;
+  --color-dark-warning: #fce100;
+  --color-dark-warning-container: #433519;
+  --color-dark-tertiary: #6ccb5f;
+  --color-dark-tertiary-container: #393d1b;
+  --color-dark-focus-outer: #ffffff;
+  --color-dark-focus-inner: #000000;
+  --color-dark-smoke: rgba(0, 0, 0, 0.45);
+  --color-dark-folder: #f6c445;
+  --color-dark-token-text: #d4d4d4;
+  --color-dark-token-keyword: #569cd6;
+  --color-dark-token-string: #ce9178;
+  --color-dark-token-number: #b5cea8;
+  --color-dark-token-identifier: #9cdcfe;
+  --color-dark-token-comment: #6a9955;
+  --color-dark-token-function: #dcdcaa;
+  --color-dark-token-operator: #d4d4d4;
+  --color-dark-token-type: #569cd6;
+  --color-dark-primary-a12: rgba(76, 194, 255, 0.12);
+  --color-dark-primary-a15: rgba(76, 194, 255, 0.15);
+  --color-dark-primary-a18: rgba(76, 194, 255, 0.18);
+  --color-dark-primary-a20: rgba(76, 194, 255, 0.2);
+  --color-dark-primary-a25: rgba(76, 194, 255, 0.25);
+  --color-dark-primary-a28: rgba(76, 194, 255, 0.28);
+  --color-dark-primary-a30: rgba(76, 194, 255, 0.3);
+  --color-dark-primary-a35: rgba(76, 194, 255, 0.35);
+  --color-dark-primary-a45: rgba(76, 194, 255, 0.45);
+  --color-dark-error-a06: rgba(255, 153, 164, 0.06);
+  --color-dark-error-a20: rgba(255, 153, 164, 0.2);
+  --color-dark-error-a30: rgba(255, 153, 164, 0.3);
+  --color-dark-error-a40: rgba(255, 153, 164, 0.4);
+  --color-dark-tertiary-a28: rgba(108, 203, 95, 0.28);
+  --color-dark-tertiary-a35: rgba(108, 203, 95, 0.35);
+  --color-dark-warning-a06: rgba(252, 225, 0, 0.06);
+  --color-dark-warning-a16: rgba(252, 225, 0, 0.16);
+  --color-dark-warning-a20: rgba(252, 225, 0, 0.2);
+  --color-dark-warning-a28: rgba(252, 225, 0, 0.28);
+  --color-dark-warning-container-a28: rgba(67, 53, 25, 0.28);
+  --color-dark-warning-container-a45: rgba(67, 53, 25, 0.45);
+  --color-dark-on-primary-a30: rgba(0, 0, 0, 0.3);
+  --color-dark-primary-pressed: color-mix(
+    in srgb,
+    var(--color-dark-primary) 80%,
+    var(--color-dark-surface)
+  );
+  --color-dark-danger-fill-hover: color-mix(
+    in srgb,
+    var(--color-dark-danger-fill) 90%,
+    var(--color-on-danger-fill)
+  );
+  --color-dark-card-hover: color-mix(
+    in srgb,
+    var(--color-dark-surface-container-high) 92%,
+    var(--color-dark-on-surface)
+  );
+  --color-dark-card-accent-hover: color-mix(
+    in srgb,
+    var(--color-dark-surface-container-high) 88%,
+    var(--color-dark-primary)
+  );
+  --color-light-surface: #f3f3f3;
+  --color-light-surface-dim: #f3f3f3;
+  --color-light-surface-bright: #ffffff;
+  --color-light-surface-container-lowest: #ffffff;
+  --color-light-surface-container-low: #f9f9f9;
+  --color-light-surface-container: #f9f9f9;
+  --color-light-surface-container-high: #ffffff;
+  --color-light-surface-container-highest: rgba(0, 0, 0, 0.06);
+  --color-light-surface-variant: rgba(0, 0, 0, 0.06);
+  --color-light-surface-strip: rgba(0, 0, 0, 0.035);
+  --color-light-background: #f3f3f3;
+  --color-light-on-background: #1b1b1b;
+  --color-light-status-bar-surface: #f3f3f3;
+  --color-light-inverse-surface: #1b1b1b;
+  --color-light-inverse-on-surface: #f3f3f3;
+  --color-light-stroke-card: rgba(0, 0, 0, 0.07);
+  --color-light-stroke-divider: rgba(0, 0, 0, 0.08);
+  --color-light-stroke-flyout: rgba(0, 0, 0, 0.1);
+  --color-light-stroke-control: rgba(0, 0, 0, 0.08);
+  --color-light-stroke-control-bottom: rgba(0, 0, 0, 0.17);
+  --color-light-stroke-text-field: #767676;
+  --color-light-outline-variant: rgba(0, 0, 0, 0.07);
+  --color-light-fill-control: rgba(255, 255, 255, 0.7);
+  --color-light-fill-control-hover: rgba(249, 249, 249, 0.5);
+  --color-light-fill-control-pressed: rgba(249, 249, 249, 0.3);
+  --color-light-fill-subtle-hover: rgba(0, 0, 0, 0.04);
+  --color-light-fill-subtle-pressed: rgba(0, 0, 0, 0.025);
+  --color-light-fill-neutral-selected: rgba(0, 0, 0, 0.06);
+  --color-light-fill-accent-tint: rgba(0, 103, 192, 0.11);
+  --color-light-on-surface: #1b1b1b;
+  --color-light-on-surface-variant: #5d5d5d;
+  --color-light-outline: #6e6e6e;
+  --color-light-text-disabled: #a3a3a3;
+  --color-light-secondary: #5d5d5d;
+  --color-light-secondary-container: rgba(0, 0, 0, 0.06);
+  --color-light-primary: #0067c0;
+  --color-light-surface-tint: #0067c0;
+  --color-light-accent-hover: #1975c5;
+  --color-light-on-primary: #ffffff;
+  --color-light-primary-container: rgba(0, 103, 192, 0.11);
+  --color-light-on-primary-container: #0067c0;
+  --color-light-error: #c42b1c;
+  --color-light-error-container: #fde7e9;
+  --color-light-on-error: #ffffff;
+  --color-light-on-error-container: #c42b1c;
+  --color-light-danger-fill: #c42b1c;
+  --color-light-warning: #9d5d00;
+  --color-light-warning-container: #fff4ce;
+  --color-light-tertiary: #0f7b0f;
+  --color-light-tertiary-container: #dff6dd;
+  --color-light-focus-outer: #1b1b1b;
+  --color-light-focus-inner: #ffffff;
+  --color-light-smoke: rgba(0, 0, 0, 0.3);
+  --color-light-folder: #e8a92a;
+  --color-light-token-text: #1b1b1b;
+  --color-light-token-keyword: #0000ff;
+  --color-light-token-string: #a31515;
+  --color-light-token-number: #098658;
+  --color-light-token-identifier: #001080;
+  --color-light-token-comment: #008000;
+  --color-light-token-function: #795e26;
+  --color-light-token-operator: #1b1b1b;
+  --color-light-token-type: #0000ff;
+  --color-light-primary-a12: rgba(0, 103, 192, 0.12);
+  --color-light-primary-a15: rgba(0, 103, 192, 0.15);
+  --color-light-primary-a18: rgba(0, 103, 192, 0.18);
+  --color-light-primary-a20: rgba(0, 103, 192, 0.2);
+  --color-light-primary-a25: rgba(0, 103, 192, 0.25);
+  --color-light-primary-a28: rgba(0, 103, 192, 0.28);
+  --color-light-primary-a30: rgba(0, 103, 192, 0.3);
+  --color-light-primary-a35: rgba(0, 103, 192, 0.35);
+  --color-light-primary-a45: rgba(0, 103, 192, 0.45);
+  --color-light-error-a06: rgba(196, 43, 28, 0.06);
+  --color-light-error-a20: rgba(196, 43, 28, 0.2);
+  --color-light-error-a30: rgba(196, 43, 28, 0.3);
+  --color-light-error-a40: rgba(196, 43, 28, 0.4);
+  --color-light-tertiary-a28: rgba(15, 123, 15, 0.28);
+  --color-light-tertiary-a35: rgba(15, 123, 15, 0.35);
+  --color-light-warning-a06: rgba(157, 93, 0, 0.06);
+  --color-light-warning-a16: rgba(157, 93, 0, 0.16);
+  --color-light-warning-a20: rgba(157, 93, 0, 0.2);
+  --color-light-warning-a28: rgba(157, 93, 0, 0.28);
+  --color-light-warning-container-a28: rgba(255, 244, 206, 0.28);
+  --color-light-warning-container-a45: rgba(255, 244, 206, 0.45);
+  --color-light-on-primary-a30: rgba(255, 255, 255, 0.3);
+  --color-light-primary-pressed: color-mix(
+    in srgb,
+    var(--color-light-primary) 80%,
+    var(--color-light-surface)
+  );
+  --color-light-danger-fill-hover: color-mix(
+    in srgb,
+    var(--color-light-danger-fill) 90%,
+    var(--color-on-danger-fill)
+  );
+  --color-light-card-hover: color-mix(
+    in srgb,
+    var(--color-light-surface-container-high) 92%,
+    var(--color-light-on-surface)
+  );
+  --color-light-card-accent-hover: color-mix(
+    in srgb,
+    var(--color-light-surface-container-high) 88%,
+    var(--color-light-primary)
+  );
+  --color-on-danger-fill: #ffffff;
+  --color-stroke-accent: rgba(255, 255, 255, 0.08);
+  --color-stroke-accent-bottom: rgba(0, 0, 0, 0.4);
+  --color-view-icon: #a78bfa;
+  --color-smoke-palette: rgba(0, 0, 0, 0.18);
+
+  --font-*: initial;
+  --font-headline:
+    'Segoe UI Variable Display', 'Segoe UI', 'Selawik', system-ui, -apple-system, 'Helvetica Neue',
+    Arial, sans-serif;
+  --font-body:
+    'Segoe UI Variable Text', 'Segoe UI', 'Selawik', system-ui, -apple-system, 'Helvetica Neue',
+    Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Menlo, monospace;
+  --default-font-family: var(--font-body);
+  --default-mono-font-family: var(--font-mono);
+
+  --font-weight-*: initial;
+  --font-weight-regular: 400;
+  --font-weight-semibold: 600;
+
+  --text-*: initial;
+  --text-title: 28px;
+  --text-title--line-height: 36px;
+  --text-subtitle: 20px;
+  --text-subtitle--line-height: 28px;
+  --text-body: 14px;
+  --text-body--line-height: 20px;
+  --text-row: 13px;
+  --text-row--line-height: 18px;
+  --text-caption: 12px;
+  --text-caption--line-height: 16px;
+  --text-mono: 13px;
+  --text-mono--line-height: 20px;
+  --text-size-title: 28px;
+  --text-size-subtitle: 20px;
+  --text-size-body: 14px;
+  --text-size-row: 13px;
+  --text-size-caption: 12px;
+  --text-size-mono: 13px;
+
+  --leading-*: initial;
+  --leading-flat: 1;
+  --leading-snug: 1.35;
+  --leading-compact: 1.4;
+  --leading-cozy: 1.45;
+  --leading-body: 1.5;
+  --leading-loose: 1.6;
+  --leading-normal: normal;
+
+  --spacing: 4px;
+  --spacing-control: 32px;
+  --spacing-control-sm: 28px;
+  --spacing-menu-item: 32px;
+  --spacing-title-strip: 40px;
+  --spacing-command-bar: 44px;
+  --spacing-tab: 32px;
+  --spacing-tab-strip: 38px;
+  --spacing-status-bar: 24px;
+  --spacing-tree-row: 28px;
+  --spacing-tree-indent: 16px;
+  --spacing-grid-row: 28px;
+  --spacing-grid-header: 32px;
+  --spacing-grid-cell-x: 10px;
+  --spacing-grid-cell-y: 4px;
+  --spacing-grid-scrollbar: 8px;
+  --spacing-resize-handle: 4px;
+  --spacing-progress-bar: 4px;
+  --spacing-context-menu: 260px;
+  --spacing-toast: 380px;
+
+  --radius-*: initial;
+  --radius-control: 4px;
+  --radius-card: 6px;
+  --radius-overlay: 8px;
+  --radius-bar: 3px;
+
+  --shadow-*: initial;
+  --shadow-dark-flyout: 0 8px 16px rgba(0, 0, 0, 0.26);
+  --shadow-light-flyout: 0 8px 16px rgba(0, 0, 0, 0.14);
+  --shadow-dark-dialog: 0 32px 64px rgba(0, 0, 0, 0.37), 0 2px 21px rgba(0, 0, 0, 0.37);
+  --shadow-light-dialog: 0 32px 64px rgba(0, 0, 0, 0.19), 0 2px 21px rgba(0, 0, 0, 0.15);
+  --shadow-dark-focus-ring:
+    0 0 0 1px var(--color-dark-focus-inner), 0 0 0 3px var(--color-dark-focus-outer);
+  --shadow-light-focus-ring:
+    0 0 0 1px var(--color-light-focus-inner), 0 0 0 3px var(--color-light-focus-outer);
+  --shadow-dark-elevated: 0 0 0 1px var(--color-dark-stroke-card);
+  --shadow-light-elevated: 0 0 0 1px var(--color-light-stroke-card);
+  --shadow-dark-field-focus: inset 0 -1px 0 var(--color-dark-primary);
+  --shadow-light-field-focus: inset 0 -1px 0 var(--color-light-primary);
+
+  --breakpoint-*: initial;
+  --breakpoint-compact: 641px;
+  --breakpoint-narrow: 721px;
+  --breakpoint-medium: 901px;
+  --breakpoint-wide: 921px;
+
+  --ease-*: initial;
+  --ease-out: ease-out;
+  --ease-in-out: ease-in-out;
+  --ease-rail: cubic-bezier(0.2, 0, 0, 1);
+  --default-transition-timing-function: ease;
+
+  --transition-property-bg: background-color;
+  --transition-property-background: background;
+  --transition-property-color: color;
+  --transition-property-border-color: border-color;
+  --transition-property-width: width;
+  --transition-property-left: left;
+  --transition-property-opacity: opacity;
+  --transition-property-shadow: box-shadow;
+  --transition-property-transform: transform;
+
+  --animate-*: initial;
+  --animate-spin-600ms: spin 0.6s linear infinite;
+  --animate-spin-600ms-paused: spin 0.6s linear infinite paused;
+  --animate-spin-700ms: spin 0.7s linear infinite;
+  --animate-spin-700ms-paused: spin 0.7s linear infinite paused;
+  --animate-spin-800ms: spin 0.8s linear infinite;
+  --animate-spin-800ms-paused: spin 0.8s linear infinite paused;
+  --animate-spin-850ms: spin 0.85s linear infinite;
+  --animate-spin-850ms-paused: spin 0.85s linear infinite paused;
+  --animate-spin-1000ms: spin 1s linear infinite;
+  --animate-spin-1000ms-paused: spin 1s linear infinite paused;
+  --animate-fade-in: fade-in 100ms ease;
+  --animate-fade-in-paused: fade-in 100ms ease paused;
+  --animate-fade-in-delayed: fade-in 300ms ease 300ms forwards;
+  --animate-fade-in-delayed-paused: fade-in 300ms ease 300ms forwards paused;
+  --animate-skeleton-fade-in: fade-in 0.15s ease-out 0.15s forwards;
+  --animate-skeleton-fade-in-paused: fade-in 0.15s ease-out 0.15s forwards paused;
+  --animate-shimmer-wave: shimmer-wave 1.6s ease-in-out infinite;
+  --animate-shimmer-wave-paused: shimmer-wave 1.6s ease-in-out infinite paused;
+  --animate-pulse: pulse 1s infinite;
+  --animate-pulse-paused: pulse 1s infinite paused;
+  --animate-pulse-dim: pulse-dim 1.5s ease-in-out infinite;
+  --animate-pulse-dim-paused: pulse-dim 1.5s ease-in-out infinite paused;
+  --animate-blink: blink 1s ease-in-out infinite;
+  --animate-blink-paused: blink 1s ease-in-out infinite paused;
+  --animate-panel-in: panel-in 0.12s ease;
+  --animate-panel-in-paused: panel-in 0.12s ease paused;
+  --animate-rail-item-enter: rail-item-enter 150ms cubic-bezier(0.2, 0, 0, 1);
+  --animate-rail-item-enter-paused: rail-item-enter 150ms cubic-bezier(0.2, 0, 0, 1) paused;
+  --animate-rail-item-leave: rail-item-leave 150ms cubic-bezier(0.2, 0, 0, 1) forwards;
+  --animate-rail-item-leave-paused: rail-item-leave 150ms cubic-bezier(0.2, 0, 0, 1) forwards paused;
+  --animate-rail-tooltip-in: rail-tooltip-in 90ms ease;
+  --animate-rail-tooltip-in-paused: rail-tooltip-in 90ms ease paused;
+  --animate-indeterminate-slide: indeterminate-slide 1.6s ease-in-out infinite;
+  --animate-indeterminate-slide-paused: indeterminate-slide 1.6s ease-in-out infinite paused;
+  --animate-toast-progress: toast-progress-shrink linear forwards;
+  --animate-toast-progress-paused: toast-progress-shrink linear forwards paused;
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes shimmer-wave {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+
+  @keyframes pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+
+  @keyframes pulse-dim {
+    0%,
+    100% {
+      opacity: 0.5;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  @keyframes blink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0;
+    }
+  }
+
+  @keyframes panel-in {
+    from {
+      opacity: 0;
+      transform: translateY(2px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes rail-item-enter {
+    from {
+      height: 0;
+      opacity: 0;
+    }
+  }
+
+  @keyframes rail-item-leave {
+    to {
+      height: 0;
+      margin-top: -4px;
+      opacity: 0;
+    }
+  }
+
+  @keyframes rail-tooltip-in {
+    from {
+      opacity: 0;
+      transform: translateX(-2px);
+    }
+  }
+
+  @keyframes indeterminate-slide {
+    from {
+      left: -40%;
+    }
+    to {
+      left: 100%;
+    }
+  }
+
+  @keyframes toast-progress-shrink {
+    from {
+      width: 100%;
+    }
+    to {
+      width: 0%;
+    }
+  }
+}

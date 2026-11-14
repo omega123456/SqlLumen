@@ -11,7 +11,7 @@
   font-weight: 400;
   font-display: swap;
   unicode-range: U+0000-2025, U+2027-FFFF;
-  src: url('../assets/fonts/selawik-regular.woff2') format('woff2');
+  src: url('../../assets/fonts/selawik-regular.woff2') format('woff2');
 }
 
 @font-face {
@@ -19,7 +19,7 @@
   font-weight: 600;
   font-display: swap;
   unicode-range: U+0000-2025, U+2027-FFFF;
-  src: url('../assets/fonts/selawik-semibold.woff2') format('woff2');
+  src: url('../../assets/fonts/selawik-semibold.woff2') format('woff2');
 }
 
 @font-face {
@@ -27,5 +27,5 @@
   font-weight: 600;
   font-display: swap;
   unicode-range: U+0000-2025, U+2027-FFFF;
-  src: url('../assets/fonts/selawik-bold.woff2') format('woff2');
+  src: url('../../assets/fonts/selawik-bold.woff2') format('woff2');
 }

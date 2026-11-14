@@ -14,6 +14,7 @@ import { applyWindowBackdrop } from './lib/window-commands'
 import '@glideapps/glide-data-grid/dist/index.css'
 import '@glideapps/glide-data-grid-cells/dist/index.css'
 import './styles/data-grid-precision.css'
+import './styles/vendor/glide-overlays.css'
 
 function App() {
   const initialize = useThemeStore((state) => state.initialize)

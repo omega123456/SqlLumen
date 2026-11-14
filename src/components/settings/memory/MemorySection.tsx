@@ -2,7 +2,8 @@ import { useId, useState, type ReactNode } from 'react'
 import type { MemoryDragPayload } from './MemoryRow'
 import type { AiMemory, MemoryScope } from '../../../lib/ai-memory-commands'
 import styles from './MemorySection.module.css'
-import { joinClassNames, type MemoryOwner } from './memory-section-model'
+import { joinClassNames } from '../../../lib/class-names'
+import type { MemoryOwner } from './memory-section-model'
 import {
   MemoryAddArea,
   MemoryDropSkeleton,

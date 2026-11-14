@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as MonacoEditorReactModule from '@monaco-editor/react'
 import { JsonFormField } from '../../../components/shared/JsonFormField'
+import { applyResolvedTheme } from '../../../lib/theme-tokens'
 import { useThemeStore } from '../../../stores/theme-store'
 
 const mockDefineTheme = vi.fn()
@@ -70,7 +71,7 @@ function createMonacoEditorMock() {
 describe('JsonFormField', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    document.documentElement.setAttribute('data-theme', 'dark')
+    applyResolvedTheme('dark')
     useThemeStore.setState({ theme: 'dark', resolvedTheme: 'dark', _previewSnapshot: null })
     vi.spyOn(MonacoEditorReactModule, 'default').mockImplementation(createMonacoEditorMock())
   })

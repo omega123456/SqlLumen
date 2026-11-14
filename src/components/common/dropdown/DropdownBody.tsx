@@ -1,5 +1,6 @@
 import { ListboxButton } from '@headlessui/react'
 import { CaretDown } from '@phosphor-icons/react'
+import { joinClassNames } from '../../../lib/class-names'
 import { DropdownChrome } from './DropdownChrome'
 import { DropdownOptionsPanel } from './DropdownOptionsPanel'
 import type { DropdownController } from './use-dropdown-controller'
@@ -13,10 +14,6 @@ interface DropdownBodyProps<TValue extends string> {
   dropdownProps: DropdownProps<TValue>
   controller: DropdownController
   elements: DropdownElementRefs
-}
-
-function joinClassNames(baseClassName: string, extraClassName: string | undefined): string {
-  return [baseClassName, extraClassName].filter(Boolean).join(' ')
 }
 
 function triggerRoleProps<TValue extends string>(dropdownProps: DropdownProps<TValue>) {
@@ -54,7 +51,7 @@ function DropdownTrigger<TValue extends string>({
       ref={triggerRef}
       id={id}
       {...triggerRoleProps(dropdownProps)}
-      className={joinClassNames('ui-dropdown__trigger', triggerClassName)}
+      className={joinClassNames(['ui-dropdown__trigger', triggerClassName])}
       aria-labelledby={labelledBy}
       aria-label={ariaLabel}
       aria-controls={controller.listboxId}
@@ -87,7 +84,7 @@ export function DropdownBody<TValue extends string>({
 }: DropdownBodyProps<TValue>) {
   const { rootRef } = elements
   return (
-    <div className={joinClassNames('ui-dropdown', dropdownProps.className)} ref={rootRef}>
+    <div className={joinClassNames(['ui-dropdown', dropdownProps.className])} ref={rootRef}>
       <DropdownChrome
         open={open}
         optionCount={dropdownProps.options.length}

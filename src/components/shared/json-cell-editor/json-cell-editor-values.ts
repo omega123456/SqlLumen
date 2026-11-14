@@ -44,11 +44,6 @@ export function getJsonFallbackValue(
   return '{}'
 }
 
-export function getCurrentDomTheme(): 'light' | 'dark' {
-  const theme = document.documentElement.getAttribute('data-theme')
-  return theme === 'dark' ? 'dark' : 'light'
-}
-
 export function isCommitKeybinding(event: KeyboardEvent<HTMLDivElement>): boolean {
   return event.key === 'Enter' && (event.metaKey || event.ctrlKey)
 }

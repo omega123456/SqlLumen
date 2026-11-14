@@ -200,8 +200,11 @@ describe('CanvasBaseGridView — windowed rendering', () => {
     expect(gridProps().getCellsForSelection).toBeUndefined()
   })
 
-  it('draws a flat --skeleton-base bar for unloaded rows instead of the cell content', () => {
-    document.documentElement.style.setProperty('--skeleton-base', 'rgb(1, 2, 3)')
+  it('draws a flat skeleton bar for unloaded rows instead of the cell content', () => {
+    document.documentElement.style.setProperty(
+      '--color-light-fill-neutral-selected',
+      'rgb(1, 2, 3)'
+    )
     const source = fakeSource(10, new Set([0]))
     renderWindowed(source)
     const ctx = { save: vi.fn(), restore: vi.fn(), fillRect: vi.fn(), fillStyle: '' }

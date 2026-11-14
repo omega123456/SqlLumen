@@ -2,9 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-const css = readFileSync(resolve(process.cwd(), 'src/styles/data-grid-precision.css'), 'utf8')
+function readStyle(relativePath: string): string {
+  return readFileSync(resolve(process.cwd(), relativePath), 'utf8')
+}
 
-describe('data-grid-precision.css', () => {
+const css =
+  readStyle('src/styles/data-grid-precision.css') +
+  readStyle('src/styles/vendor/glide-overlays.css')
+
+describe('data-grid-precision.css and vendor/glide-overlays.css', () => {
   it('contains Glide host and editor styles', () => {
     expect(css).toContain('.glide-grid-host')
     expect(css).toContain('.dvn-scroller')
