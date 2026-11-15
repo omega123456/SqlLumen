@@ -7,7 +7,6 @@ import {
   type EditableCellKey,
 } from '../column-editor-model'
 import type { ColumnCellProps, ColumnRowModel } from './column-row-types'
-import styles from '../ColumnEditor.module.css'
 
 export function stopClick(event: ReactMouseEvent) {
   event.stopPropagation()
@@ -15,15 +14,6 @@ export function stopClick(event: ReactMouseEvent) {
 
 export function cellOf(row: ColumnRowModel, cellKey: EditableCellKey): ActiveCell {
   return { rowIndex: row.columnIndex, cellKey: cellKey }
-}
-
-export function selectedRowInputClass(isSelected: boolean, unselectedClass: string): string {
-  return isSelected ? styles.activeInput : unselectedClass
-}
-
-export function editableInputClass(row: ColumnRowModel, isActive: boolean): string {
-  const activityClass = isActive ? styles.activeInput : styles.inactiveInput
-  return selectedRowInputClass(row.isSelected, activityClass)
 }
 
 export function updateField(

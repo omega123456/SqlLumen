@@ -8,16 +8,24 @@ export interface FieldValueState {
 export const NEUTRAL_FIELD_VALUE_STATE: FieldValueState = { modified: false, isNull: false }
 
 type FieldEdgeTone = 'valid' | 'invalid' | 'modified'
-type FieldTextTone = 'default' | 'null'
+type FieldTextTone = 'default' | 'null' | 'accent'
+export type FieldTextEmphasis = 'standard' | 'accent'
+export type FieldFill = 'responsive' | 'steady'
 
 const FIELD_SHAPE = 'rounded-control border appearance-none outline-none'
 
-const FIELD_FILL =
-  'bg-light-fill-control dark:bg-dark-fill-control not-disabled:hover:bg-light-fill-control-hover dark:not-disabled:hover:bg-dark-fill-control-hover focus:bg-light-surface-container-high dark:focus:bg-dark-surface-container-high disabled:bg-light-fill-subtle-pressed dark:disabled:bg-dark-fill-subtle-pressed'
+const FIELD_FILL_CLASSES: Record<FieldFill, string> = {
+  responsive:
+    'bg-light-fill-control dark:bg-dark-fill-control not-disabled:hover:bg-light-fill-control-hover dark:not-disabled:hover:bg-dark-fill-control-hover focus:bg-light-surface-container-high dark:focus:bg-dark-surface-container-high disabled:bg-light-fill-subtle-pressed dark:disabled:bg-dark-fill-subtle-pressed',
+  steady:
+    'bg-light-fill-control dark:bg-dark-fill-control disabled:bg-light-fill-subtle-pressed dark:disabled:bg-dark-fill-subtle-pressed',
+}
 
 const FIELD_TEXT_CLASSES: Record<FieldTextTone, string> = {
   default:
     'text-light-on-surface dark:text-dark-on-surface disabled:text-light-text-disabled dark:disabled:text-dark-text-disabled placeholder:text-light-outline dark:placeholder:text-dark-outline disabled:cursor-not-allowed',
+  accent:
+    'text-light-primary dark:text-dark-primary disabled:text-light-text-disabled dark:disabled:text-dark-text-disabled placeholder:text-light-outline dark:placeholder:text-dark-outline disabled:cursor-not-allowed',
   null: 'italic text-light-outline dark:text-dark-outline disabled:text-light-text-disabled dark:disabled:text-dark-text-disabled placeholder:text-light-outline dark:placeholder:text-dark-outline disabled:cursor-not-allowed',
 }
 
@@ -43,21 +51,37 @@ function edgeTone(invalid: boolean, fieldState: FieldValueState): FieldEdgeTone 
   return 'valid'
 }
 
-function textTone(fieldState: FieldValueState): FieldTextTone {
+function textTone(fieldState: FieldValueState, emphasis: FieldTextEmphasis): FieldTextTone {
   if (fieldState.isNull) return 'null'
+  if (emphasis === 'accent') return 'accent'
   return 'default'
 }
 
-export function fieldChromeClassName(
-  invalid: boolean,
-  fieldState: FieldValueState = NEUTRAL_FIELD_VALUE_STATE
-): string {
+export const INVALID_CONTROL_EDGE =
+  'border-b-light-error dark:border-b-dark-error shadow-light-field-error dark:shadow-dark-field-error'
+
+export const INVALID_CONTROL_FOCUS_RING =
+  'focus-visible:outline-none focus-visible:shadow-light-field-error-focus-ring dark:focus-visible:shadow-dark-field-error-focus-ring'
+
+export interface FieldAppearance {
+  invalid?: boolean
+  fieldState?: FieldValueState
+  emphasis?: FieldTextEmphasis
+  fill?: FieldFill
+}
+
+export function fieldChromeClassName({
+  invalid = false,
+  fieldState = NEUTRAL_FIELD_VALUE_STATE,
+  emphasis = 'standard',
+  fill = 'responsive',
+}: FieldAppearance = {}): string {
   return joinClassNames([
     FIELD_SHAPE,
-    FIELD_FILL,
-    FIELD_TEXT_CLASSES[textTone(fieldState)],
+    FIELD_FILL_CLASSES[fill],
+    FIELD_TEXT_CLASSES[textTone(fieldState, emphasis)],
     FIELD_EDGE_CLASSES[edgeTone(invalid, fieldState)],
   ])
 }
 
-export const FIELD_CHROME = fieldChromeClassName(false)
+export const FIELD_CHROME = fieldChromeClassName()

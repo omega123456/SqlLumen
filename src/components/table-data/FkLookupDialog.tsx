@@ -1,6 +1,5 @@
 import { DialogShell } from '../dialogs/DialogShell'
 import { FilterDialog } from '../dialogs/FilterDialog'
-import styles from './FkLookupDialog.module.css'
 import { isApplyEnabled } from './fk-lookup-dialog/fk-lookup-model'
 import { LookupFooter, LookupHeader, LookupToolbar } from './fk-lookup-dialog/FkLookupChrome'
 import { LookupBody } from './fk-lookup-dialog/LookupBody'
@@ -27,10 +26,9 @@ export interface FkLookupDialogProps {
 
 export type { LookupPageRequest } from './fk-lookup-dialog/fk-lookup-model'
 
-export function FkLookupDialog(props: FkLookupDialogProps) {
-  const { isOpen, onClose, referencedColumn, isReadOnly } = props
+function useFkLookupDialogState(props: FkLookupDialogProps) {
+  const { isOpen, referencedColumn, isReadOnly } = props
   const data = useFkLookupData(props, props)
-  const { columns } = data.page
   const queryHandlers = useLookupQueryHandlers(data)
   const { isFilterDialogOpen } = queryHandlers
   const selection = useLookupSelection(
@@ -49,6 +47,14 @@ export function FkLookupDialog(props: FkLookupDialogProps) {
     isLoading: data.isLoading,
     error: data.error,
   })
+  return { data, queryHandlers, selection, grid, canApplySelection }
+}
+
+export function FkLookupDialog(props: FkLookupDialogProps) {
+  const { isOpen, onClose } = props
+  const { data, queryHandlers, selection, grid, canApplySelection } = useFkLookupDialogState(props)
+  const { isFilterDialogOpen } = queryHandlers
+  const { columns } = data.page
 
   return (
     <>
@@ -61,7 +67,10 @@ export function FkLookupDialog(props: FkLookupDialogProps) {
         ariaLabel="Foreign key lookup"
         nonDismissible={isFilterDialogOpen}
       >
-        <div className={styles.dialogContent} data-testid="fk-lookup-dialog-content">
+        <div
+          className="flex h-lookup-dialog min-h-100 flex-col"
+          data-testid="fk-lookup-dialog-content"
+        >
           <LookupHeader {...props} />
           <LookupToolbar data={data} queryHandlers={queryHandlers} />
           <LookupBody

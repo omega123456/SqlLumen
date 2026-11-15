@@ -11,7 +11,7 @@ import {
   DesignerSubTabBar,
 } from './table-designer-tab/DesignerParts'
 import { useDesignerApplyFlow } from './table-designer-tab/use-designer-apply-flow'
-import styles from './TableDesignerTab.module.css'
+import { SCROLLBAR, joinClassNames } from '../../lib/class-names'
 
 interface TableDesignerTabProps {
   tab: TableDesignerTabType
@@ -59,7 +59,7 @@ export function TableDesignerTab({ tab, isActive = true }: TableDesignerTabProps
   const isUnsavedChangesDialogVisible = hasPendingNavigation && !flow.isApplyDialogOpen
 
   return (
-    <div className={styles.container} data-testid="table-designer-tab">
+    <div className="flex h-full w-full flex-col overflow-hidden" data-testid="table-designer-tab">
       <DesignerHeader
         view={view}
         objectName={objectName}
@@ -72,7 +72,10 @@ export function TableDesignerTab({ tab, isActive = true }: TableDesignerTabProps
         selectedSubTab={view.selectedSubTab}
         onSelect={(subTabKey) => setSelectedSubTab(tabId, subTabKey)}
       />
-      <div className={styles.content} data-testid="table-designer-content">
+      <div
+        className={joinClassNames(['flex min-h-0 flex-1 flex-col overflow-auto', SCROLLBAR])}
+        data-testid="table-designer-content"
+      >
         <DesignerContent
           view={view}
           subTab={{ tabId: tabId, connectionId: connectionId, databaseName: databaseName }}

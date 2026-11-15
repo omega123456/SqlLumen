@@ -17,6 +17,7 @@ const PERMANENT_CSS_FILES = [
   'styles/vendor/hljs-theme.css',
   'styles/vendor/monaco-parameter-hints.css',
   'styles/vendor/monaco-suggest-widget.css',
+  'styles/vendor/react-datepicker.css',
 ]
 const ALLOWED_INDEX_DIRECTIVES = ['@import', '@plugin', '@custom-variant', '@theme']
 const COLOUR_LITERAL = /#[0-9a-fA-F]{3,8}\b|rgba?\(\s*\d|hsla?\(|oklch\(/

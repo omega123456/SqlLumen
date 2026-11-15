@@ -1,5 +1,6 @@
 import { joinClassNames } from '../../../lib/class-names'
 import { FOCUS_RING } from '../../../lib/focus-ring'
+import { INVALID_CONTROL_EDGE, INVALID_CONTROL_FOCUS_RING } from '../../../lib/class-names-field'
 
 export type ButtonVariant =
   | 'default'
@@ -11,7 +12,7 @@ export type ButtonVariant =
   | 'danger'
   | 'bare'
 
-export type ButtonSize = 'md' | 'sm' | 'xs'
+export type ButtonSize = 'md' | 'sm' | 'xs' | 'cell' | 'toolbar'
 
 type StyledButtonVariant = Exclude<ButtonVariant, 'bare'>
 type ButtonTextTone =
@@ -33,9 +34,27 @@ const SOLID_DISABLED =
 const SUBTLE_SURFACE =
   'bg-transparent border-transparent not-disabled:hover:bg-light-fill-subtle-hover dark:not-disabled:hover:bg-dark-fill-subtle-hover not-disabled:active:bg-light-fill-subtle-pressed dark:not-disabled:active:bg-dark-fill-subtle-pressed'
 
+type ButtonEdgeTone = 'valid' | 'invalid'
+
+const DEFAULT_SIDE_STROKE =
+  'border-x-light-stroke-control dark:border-x-dark-stroke-control border-t-light-stroke-control dark:border-t-dark-stroke-control'
+
+const DEFAULT_EDGE_CLASSES: Record<ButtonEdgeTone, string> = {
+  valid: joinClassNames([
+    DEFAULT_SIDE_STROKE,
+    'border-b-light-stroke-control-bottom dark:border-b-dark-stroke-control-bottom',
+  ]),
+  invalid: joinClassNames([DEFAULT_SIDE_STROKE, INVALID_CONTROL_EDGE]),
+}
+
+const FOCUS_CLASSES: Record<ButtonEdgeTone, string> = {
+  valid: FOCUS_RING,
+  invalid: INVALID_CONTROL_FOCUS_RING,
+}
+
 const SURFACE_CLASSES: Record<StyledButtonVariant, string> = {
   default: joinClassNames([
-    'bg-light-fill-control dark:bg-dark-fill-control border-x-light-stroke-control dark:border-x-dark-stroke-control border-t-light-stroke-control dark:border-t-dark-stroke-control border-b-light-stroke-control-bottom dark:border-b-dark-stroke-control-bottom',
+    'bg-light-fill-control dark:bg-dark-fill-control',
     'not-disabled:hover:bg-light-fill-control-hover dark:not-disabled:hover:bg-dark-fill-control-hover not-disabled:active:bg-light-fill-control-pressed dark:not-disabled:active:bg-dark-fill-control-pressed',
     SOLID_DISABLED,
   ]),
@@ -101,6 +120,14 @@ const SIZE_CLASSES: Record<ButtonSize, Record<ButtonShape, string>> = {
     labelled: 'h-6 gap-1.5 px-2.5 align-middle text-size-row leading-5',
     iconOnly: 'size-6 gap-1.5 px-0 align-middle text-size-row leading-5',
   },
+  cell: {
+    labelled: 'h-7.5 gap-2 px-3 text-size-row leading-5',
+    iconOnly: 'size-7.5 gap-2 px-0 text-size-row leading-5',
+  },
+  toolbar: {
+    labelled: 'h-control-sm gap-1.5 px-2.5 text-row',
+    iconOnly: 'h-control-sm w-control-sm gap-1.5 px-0 text-row',
+  },
 }
 
 export interface ButtonClassOptions {
@@ -108,6 +135,7 @@ export interface ButtonClassOptions {
   size: ButtonSize
   dangerText: boolean
   iconOnly: boolean
+  invalid: boolean
   contentAlign: ButtonContentAlign
   className: string | undefined
 }
@@ -116,6 +144,17 @@ function textTone(variant: StyledButtonVariant, dangerText: boolean): ButtonText
   if (!dangerText) return VARIANT_TEXT_TONE[variant]
   if (variant === 'danger') return 'errorExceptOnHover'
   return 'error'
+}
+
+function edgeTone(variant: StyledButtonVariant, invalid: boolean): ButtonEdgeTone {
+  const isInvalidDefault = variant === 'default' && invalid
+  if (isInvalidDefault) return 'invalid'
+  return 'valid'
+}
+
+function edgeClasses(variant: StyledButtonVariant, tone: ButtonEdgeTone): string | undefined {
+  if (variant === 'default') return DEFAULT_EDGE_CLASSES[tone]
+  return undefined
 }
 
 function shapeOf(iconOnly: boolean): ButtonShape {
@@ -128,14 +167,17 @@ export function buttonClassName({
   size,
   dangerText,
   iconOnly,
+  invalid,
   contentAlign,
   className,
 }: ButtonClassOptions): string | undefined {
   if (variant === 'bare') return className
+  const tone = edgeTone(variant, invalid)
   return joinClassNames([
     'inline-flex items-center rounded-control border cursor-default whitespace-nowrap font-body font-regular disabled:cursor-not-allowed',
-    FOCUS_RING,
+    FOCUS_CLASSES[tone],
     SURFACE_CLASSES[variant],
+    edgeClasses(variant, tone),
     TEXT_CLASSES[textTone(variant, dangerText)],
     'disabled:text-light-text-disabled dark:disabled:text-dark-text-disabled',
     ALIGN_CLASSES[contentAlign],

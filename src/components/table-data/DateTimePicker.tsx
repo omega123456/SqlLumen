@@ -4,15 +4,17 @@ import DatePicker from 'react-datepicker'
 import type { TemporalColumnType } from '../../lib/date-utils'
 import { TextInput } from '../common/TextInput'
 import { Button } from '../common/Button'
-import styles from './DateTimePicker.module.css'
 import { useDateTimePickerPosition } from './useDateTimePickerPosition'
 import { CalendarHeader } from './date-time-picker/CalendarHeader'
 import { CALENDAR_COLUMN_TYPES } from './date-time-picker/date-time-picker-model'
 import { usePickerDismissal } from './date-time-picker/use-picker-dismissal'
 import { usePickerValue } from './date-time-picker/use-picker-value'
 import { FIELD_CHROME } from '../../lib/class-names-field'
+import { FOCUS_RING } from '../../lib/focus-ring'
+import { joinClassNames } from '../../lib/class-names'
 
 import 'react-datepicker/dist/react-datepicker.css'
+import '../../styles/vendor/react-datepicker.css'
 
 export interface DateTimePickerProps {
   value: string | null
@@ -33,7 +35,7 @@ interface CalendarSectionProps {
 
 function CalendarSection({ localDate, onChange, onTodayClick }: CalendarSectionProps) {
   return (
-    <div className={styles.calendarSection} data-testid="calendar-section">
+    <div className="px-3 pt-3 pb-1" data-sqllumen-datetime-calendar data-testid="calendar-section">
       <DatePicker
         selected={localDate}
         onChange={onChange}
@@ -60,12 +62,20 @@ interface TimeSectionProps {
 
 function TimeSection({ timeInput, disabled, onChange }: TimeSectionProps) {
   return (
-    <div className={styles.timeSection} data-testid="time-section">
-      <label className={styles.timeLabel}>TIME</label>
+    <div
+      className="flex items-center gap-2 border-t border-light-stroke-divider px-3.5 py-2.5 dark:border-dark-stroke-divider"
+      data-testid="time-section"
+    >
+      <label className="shrink-0 font-body text-size-caption font-semibold text-light-on-surface-variant dark:text-dark-on-surface-variant">
+        TIME
+      </label>
       <TextInput
         variant="bare"
         type="text"
-        className={`${FIELD_CHROME} ${styles.timeInput}`}
+        className={joinClassNames([
+          FIELD_CHROME,
+          'flex-1 px-2.5 py-1.5 font-mono text-size-row transition-border-color-and-shadow duration-120',
+        ])}
         value={timeInput}
         onChange={onChange}
         placeholder="HH:MM:SS"
@@ -85,10 +95,13 @@ interface PickerButtonsProps {
 
 function PickerButtons({ disabled, hasDate, onCancel, onApply }: PickerButtonsProps) {
   return (
-    <div className={styles.buttonRow}>
+    <div className="flex justify-end gap-2 border-t border-light-stroke-divider px-3.5 pt-2.5 pb-3.5 dark:border-dark-stroke-divider">
       <Button
         variant="bare"
-        className={styles.cancelButton}
+        className={joinClassNames([
+          'cursor-pointer rounded-control bg-transparent px-4 py-1.5 font-body text-size-caption font-semibold text-light-on-surface-variant transition-background-and-color duration-120 hover:bg-light-surface-container-high hover:text-light-on-surface disabled:cursor-default disabled:opacity-50 dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-high dark:hover:text-dark-on-surface',
+          FOCUS_RING,
+        ])}
         onClick={onCancel}
         disabled={disabled}
         data-testid="btn-picker-cancel"
@@ -97,7 +110,10 @@ function PickerButtons({ disabled, hasDate, onCancel, onApply }: PickerButtonsPr
       </Button>
       <Button
         variant="bare"
-        className={`${styles.applyButton} ${hasDate ? '' : styles.applyButtonDisabled}`}
+        className={joinClassNames([
+          'cursor-pointer rounded-control bg-light-primary px-5 py-1.5 font-body text-size-caption font-semibold text-light-on-primary transition-filter-and-shadow duration-120 not-disabled:hover:brightness-110 disabled:cursor-default disabled:opacity-50 dark:bg-dark-primary dark:text-dark-on-primary',
+          FOCUS_RING,
+        ])}
         onClick={onApply}
         disabled={disabled || !hasDate}
         data-testid="btn-picker-apply"
@@ -106,6 +122,18 @@ function PickerButtons({ disabled, hasDate, onCancel, onApply }: PickerButtonsPr
       </Button>
     </div>
   )
+}
+
+type PickerAvailability = 'enabled' | 'disabled'
+
+const PICKER_PORTAL_CLASSES: Record<PickerAvailability, string> = {
+  enabled: 'fixed z-1100 click-outside-ignore',
+  disabled: 'fixed z-1100 click-outside-ignore pointer-events-none opacity-50',
+}
+
+function pickerAvailability(disabled: boolean): PickerAvailability {
+  if (disabled) return 'disabled'
+  return 'enabled'
 }
 
 function useMergedPopupRef(externalPopupRef: RefObject<HTMLDivElement | null> | undefined) {
@@ -141,11 +169,11 @@ export function DateTimePicker({
   const popup = (
     <div
       ref={mergedPopupRef}
-      className={`${styles.pickerPortal} click-outside-ignore ${disabled ? styles.disabled : ''}`}
+      className={PICKER_PORTAL_CLASSES[pickerAvailability(disabled)]}
       style={{ top: position.top, left: position.left }}
       data-testid="date-time-picker-popup"
     >
-      <div className={styles.pickerWrapper}>
+      <div className="w-75 overflow-hidden rounded-overlay border border-light-stroke-flyout bg-light-surface-container-high font-body text-light-on-surface shadow-light-flyout dark:border-dark-stroke-flyout dark:bg-dark-surface-container-high dark:text-dark-on-surface dark:shadow-dark-flyout">
         {CALENDAR_COLUMN_TYPES.has(columnType) && (
           <CalendarSection
             localDate={picker.localDate}

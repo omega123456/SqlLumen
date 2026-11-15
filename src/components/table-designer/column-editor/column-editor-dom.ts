@@ -1,6 +1,6 @@
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, RefObject } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, RefObject } from 'react'
 import type { TableDesignerColumnDef } from '../../../types/schema'
-import type { ActiveCell, RowDrag, TraversalDirection } from '../column-editor-model'
+import type { ActiveCell, TraversalDirection } from '../column-editor-model'
 
 export type EditableKeyHandler = (event: ReactKeyboardEvent<HTMLElement>, cell: ActiveCell) => void
 
@@ -29,11 +29,6 @@ export function openOverrideTrigger(triggerRef: RefObject<HTMLButtonElement | nu
   if (!trigger) return
   trigger.focus()
   trigger.click()
-}
-
-export function dragRowHeightStyle(drag: RowDrag | null): CSSProperties | undefined {
-  if (!drag) return undefined
-  return { '--drag-row-height': `${drag.rowHeight}px` } as CSSProperties
 }
 
 export function rowKeyFor(column: TableDesignerColumnDef, columnIndex: number): string {

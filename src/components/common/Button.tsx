@@ -14,6 +14,7 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   size?: ButtonSize
   dangerText?: boolean
   iconOnly?: boolean
+  invalid?: boolean
   contentAlign?: ButtonContentAlign
 }
 
@@ -23,6 +24,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     size = 'md',
     dangerText = false,
     iconOnly = false,
+    invalid = false,
     contentAlign = 'center',
     className,
     type = 'button',
@@ -37,9 +39,18 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       data-variant={variant}
       data-size={size}
       data-icon-only={dataFlag(iconOnly)}
+      data-invalid={dataFlag(invalid)}
       data-danger-text={dataFlag(dangerText)}
       data-align={contentAlign}
-      className={buttonClassName({ variant, size, dangerText, iconOnly, contentAlign, className })}
+      className={buttonClassName({
+        variant,
+        size,
+        dangerText,
+        iconOnly,
+        invalid,
+        contentAlign,
+        className,
+      })}
       {...rest}
     />
   )

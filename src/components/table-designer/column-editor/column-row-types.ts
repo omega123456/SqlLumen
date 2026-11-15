@@ -22,7 +22,6 @@ export interface ColumnRowController {
   rememberEditStart: (cell: ActiveCell, value: string) => void
   forgetEditStart: (cell: ActiveCell) => void
   handleEditableKeyDown: (event: ReactKeyboardEvent<HTMLElement>, cell: ActiveCell) => void
-  isActiveCell: (cell: ActiveCell) => boolean
   deleteColumn: (columnIndex: number) => void
   defaultCell: DefaultCellControls
 }

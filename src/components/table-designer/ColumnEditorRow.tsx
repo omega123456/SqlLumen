@@ -1,6 +1,6 @@
-import { DotsSixVertical, Trash } from '@phosphor-icons/react'
-import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
-import { Button } from '../common/Button'
+import { DotsSixVertical } from '@phosphor-icons/react'
+import type { CSSProperties } from 'react'
+import { dataFlag } from '../../lib/data-attributes'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { TextInput, type TextInputProps } from '../common/TextInput'
 import { Checkbox } from '../common/Checkbox'
@@ -24,14 +24,19 @@ import { CellFrame } from './column-editor/CellFrame'
 import {
   ariaInvalidValue,
   cellOf,
-  editableInputClass,
   isCellModified,
   stopClick,
   updateField,
 } from './column-editor/column-cell-helpers'
 import type { ColumnCellProps } from './column-editor/column-row-types'
+import { columnRowClassName } from './column-editor/column-row-classes'
 import { DefaultValueCell } from './column-editor/DefaultValueCell'
-import styles from './ColumnEditor.module.css'
+import {
+  DesignerBodyCell,
+  DesignerDeleteButton,
+  DesignerRowAccent,
+} from './designer-table/DesignerTableParts'
+import { selectedAccent } from './designer-table/designer-accent'
 
 export type {
   ColumnRowController,
@@ -44,33 +49,42 @@ const SIGNEDNESS_DROPDOWN_OPTIONS: DropdownOption[] = [
   { value: 'UNSIGNED', label: 'Unsigned' },
 ]
 
+const CELL_DROPDOWN_TRANSITION = 'transition-bg-and-color'
+
 const TYPE_DROPDOWN_OPTIONS: DropdownOption[] = MYSQL_TYPES.map((type) => ({
   value: type.name,
   label: type.name,
   description: type.group,
 }))
 
-function columnRowClassName(isSelected: boolean, isDragSource: boolean): string {
-  return `${styles.row} ${isSelected ? styles.selectedRow : ''} ${
-    isDragSource ? styles.dragSource : ''
-  }`
-}
-
-function dragRowStyle(dragShift: number): CSSProperties | undefined {
+function dragRowStyle(drag: RowDrag | null, columnIndex: number): CSSProperties | undefined {
+  if (!drag) return undefined
+  const dragShift = dragShiftFor(drag, columnIndex)
   if (!dragShift) return undefined
-  return { transform: `translateY(calc(${dragShift} * var(--drag-row-height)))` }
+  return { transform: `translateY(${dragShift * drag.rowHeight}px)` }
 }
 
 type TextCellInputProps = Pick<TextInputProps, 'invalid' | 'aria-invalid' | 'title' | 'disabled'>
 
+interface TextCellLayout {
+  frameClassName: string
+  inputClassName: string
+}
+
+const TEXT_CELL_LAYOUTS: Record<TextCellKey, TextCellLayout> = {
+  name: { frameClassName: 'w-37.5', inputClassName: 'font-mono' },
+  length: { frameClassName: 'w-17.5', inputClassName: 'font-mono text-right' },
+  comment: { frameClassName: 'w-42.5', inputClassName: '' },
+}
+
 interface TextColumnCellProps extends ColumnCellProps {
   cellKey: TextCellKey
-  inputClassName: string
   inputProps: TextCellInputProps
 }
 
 function TextColumnCell(props: TextColumnCellProps) {
-  const { row, controller, cellKey, inputClassName, inputProps } = props
+  const { row, controller, cellKey, inputProps } = props
+  const layout = TEXT_CELL_LAYOUTS[cellKey]
   const cell = cellOf(row, cellKey)
   const value = row.column[cellKey]
   const activateWithBaseline = () => {
@@ -78,17 +92,18 @@ function TextColumnCell(props: TextColumnCellProps) {
     controller.rememberEditStart(cell, value)
   }
   return (
-    <td className={styles.bodyCell}>
+    <DesignerBodyCell>
       <CellFrame
         modified={isCellModified(props, cellKey)}
         testId={`cell-${row.columnIndex}-${cellKey}`}
+        className={layout.frameClassName}
       >
         <TextInput
           type="text"
           variant="tableCell"
           value={value}
           {...inputProps}
-          className={`${editableInputClass(row, controller.isActiveCell(cell))} ${inputClassName}`}
+          className={layout.inputClassName}
           data-row-index={row.columnIndex}
           data-cell-key={cellKey}
           data-testid={`column-${cellKey}-${row.columnIndex}`}
@@ -99,7 +114,7 @@ function TextColumnCell(props: TextColumnCellProps) {
           onChange={(event) => updateField(props, cellKey, event.target.value)}
         />
       </CellFrame>
-    </td>
+    </DesignerBodyCell>
   )
 }
 
@@ -114,8 +129,12 @@ function TypeCell(props: ColumnCellProps) {
   const { row, controller } = props
   const cell = cellOf(row, 'type')
   return (
-    <td className={styles.bodyCell}>
-      <CellFrame modified={isCellModified(props, 'type')} testId={`cell-${row.columnIndex}-type`}>
+    <DesignerBodyCell>
+      <CellFrame
+        modified={isCellModified(props, 'type')}
+        testId={`cell-${row.columnIndex}-type`}
+        className="w-32.5"
+      >
         <div onClick={stopClick}>
           <Dropdown
             id={`column-type-${controller.tabId}-${row.columnIndex}`}
@@ -132,11 +151,12 @@ function TypeCell(props: ColumnCellProps) {
             onChange={(nextType) => changeColumnType(props, nextType)}
             onTriggerFocus={() => controller.activateCell(cell)}
             onTriggerKeyDown={(event) => controller.handleEditableKeyDown(event, cell)}
-            triggerClassName={`${styles.cellDropdown} ${styles.typeInput}`}
+            triggerSize="cell"
+            triggerClassName={CELL_DROPDOWN_TRANSITION}
           />
         </div>
       </CellFrame>
-    </td>
+    </DesignerBodyCell>
   )
 }
 
@@ -153,10 +173,11 @@ function SignednessCell(props: ColumnCellProps) {
     updateField(props, 'typeModifier', nextModifier)
   }
   return (
-    <td className={styles.bodyCell}>
+    <DesignerBodyCell>
       <CellFrame
         modified={isCellModified(props, 'typeModifier')}
         testId={`cell-${row.columnIndex}-signedness`}
+        className="w-29.5"
       >
         <Dropdown
           id={`column-signedness-${controller.tabId}-${row.columnIndex}`}
@@ -174,10 +195,11 @@ function SignednessCell(props: ColumnCellProps) {
           onTriggerFocus={activateWithBaseline}
           onTriggerBlur={() => controller.forgetEditStart(cell)}
           onTriggerKeyDown={(event) => controller.handleEditableKeyDown(event, cell)}
-          triggerClassName={`${styles.cellDropdown} ${styles.signedInput}`}
+          triggerSize="cell"
+          triggerClassName={CELL_DROPDOWN_TRANSITION}
         />
       </CellFrame>
-    </td>
+    </DesignerBodyCell>
   )
 }
 
@@ -193,7 +215,7 @@ interface CheckboxColumnCellProps extends ColumnCellProps {
 function CheckboxColumnCell(props: CheckboxColumnCellProps) {
   const { row, field, testSuffix, disabled, onCheckedChange } = props
   return (
-    <td className={`${styles.bodyCell} ${styles.checkboxCell}`}>
+    <DesignerBodyCell className="w-16 text-center">
       <CellFrame
         modified={isCellModified(props, field)}
         testId={`cell-${row.columnIndex}-${testSuffix}`}
@@ -206,7 +228,7 @@ function CheckboxColumnCell(props: CheckboxColumnCellProps) {
           onChange={(event) => onCheckedChange(event.target.checked)}
         />
       </CellFrame>
-    </td>
+    </DesignerBodyCell>
   )
 }
 
@@ -221,38 +243,31 @@ function changePrimaryKey(props: ColumnCellProps, checked: boolean) {
   }
 }
 
-function RowNumberCell({ columnIndex }: { columnIndex: number }) {
+function RowNumberCell({ columnIndex, isSelected }: { columnIndex: number; isSelected: boolean }) {
   return (
-    <td className={`${styles.bodyCell} ${styles.rowNumberCell}`}>
-      <span className={styles.rowAccent} aria-hidden />
-      <span className={styles.rowNumber}>{columnIndex + 1}</span>
-      <span className={styles.dragHandle} aria-hidden>
+    <DesignerBodyCell className="w-9 text-center text-light-outline tabular-nums dark:text-dark-outline">
+      <DesignerRowAccent accent={selectedAccent(isSelected)} />
+      <span className="group-hover/row:invisible">{columnIndex + 1}</span>
+      <span
+        className="absolute inset-0 flex items-center justify-center text-light-on-surface-variant opacity-0 transition-opacity group-hover/row:opacity-90 dark:text-dark-on-surface-variant"
+        aria-hidden
+      >
         <DotsSixVertical size={16} weight="bold" />
       </span>
-    </td>
+    </DesignerBodyCell>
   )
 }
 
 function DeleteCell({ row, controller }: ColumnCellProps) {
-  const deleteLabel = `Delete column ${row.column.name || row.columnIndex + 1}`
-  const deleteColumn = (event: ReactMouseEvent) => {
-    event.stopPropagation()
-    controller.deleteColumn(row.columnIndex)
-  }
+  const { column, columnIndex } = row
   return (
-    <td className={`${styles.bodyCell} ${styles.deleteCell}`}>
-      <Button
-        variant="subtle"
-        size="sm"
-        dangerText
-        iconOnly
-        aria-label={deleteLabel}
-        data-testid={`column-delete-${row.columnIndex}`}
-        onClick={deleteColumn}
-      >
-        <Trash size={14} weight="bold" />
-      </Button>
-    </td>
+    <DesignerBodyCell className="w-10.5">
+      <DesignerDeleteButton
+        label={`Delete column ${column.name || columnIndex + 1}`}
+        testId={`column-delete-${columnIndex}`}
+        onDelete={() => controller.deleteColumn(columnIndex)}
+      />
+    </DesignerBodyCell>
   )
 }
 
@@ -308,8 +323,13 @@ export function ColumnRow({ row, controller, rowDrag }: ColumnRowProps) {
   const isDragSource = drag?.from === columnIndex
   return (
     <tr
-      className={columnRowClassName(row.isSelected, isDragSource)}
-      style={dragRowStyle(dragShiftFor(drag, columnIndex))}
+      className={columnRowClassName({
+        isSelected: row.isSelected,
+        isDragging: drag !== null,
+        isDragSource: isDragSource,
+      })}
+      style={dragRowStyle(drag, columnIndex)}
+      data-selected={dataFlag(row.isSelected)}
       data-testid={`column-row-${columnIndex}`}
       onClick={() => handlers.onRowClick(columnIndex)}
       onPointerDown={(event) => handlers.onPointerDown(event, columnIndex)}
@@ -317,29 +337,18 @@ export function ColumnRow({ row, controller, rowDrag }: ColumnRowProps) {
       onPointerUp={handlers.onPointerUp}
       onPointerCancel={handlers.onPointerCancel}
     >
-      <RowNumberCell columnIndex={columnIndex} />
-      <TextColumnCell
-        {...cellProps}
-        cellKey="name"
-        inputClassName={styles.nameInput}
-        inputProps={nameInputProps(nameError)}
-      />
+      <RowNumberCell columnIndex={columnIndex} isSelected={row.isSelected} />
+      <TextColumnCell {...cellProps} cellKey="name" inputProps={nameInputProps(nameError)} />
       <TypeCell {...cellProps} />
       <TextColumnCell
         {...cellProps}
         cellKey="length"
-        inputClassName={styles.lengthInput}
         inputProps={{ disabled: isTypeWithoutLength(column.type) }}
       />
       <SignednessCell {...cellProps} />
       <ColumnFlagCells {...cellProps} />
       <DefaultValueCell {...cellProps} />
-      <TextColumnCell
-        {...cellProps}
-        cellKey="comment"
-        inputClassName={styles.commentInput}
-        inputProps={{}}
-      />
+      <TextColumnCell {...cellProps} cellKey="comment" inputProps={{}} />
       <DeleteCell {...cellProps} />
     </tr>
   )

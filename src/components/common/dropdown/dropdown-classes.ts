@@ -1,6 +1,10 @@
 import { joinClassNames, SCROLLBAR } from '../../../lib/class-names'
 import { FOCUS_RING } from '../../../lib/focus-ring'
-import { NEUTRAL_FIELD_VALUE_STATE } from '../../../lib/class-names-field'
+import {
+  INVALID_CONTROL_EDGE,
+  INVALID_CONTROL_FOCUS_RING,
+  NEUTRAL_FIELD_VALUE_STATE,
+} from '../../../lib/class-names-field'
 import {
   gridCellOverlayTriggerClassName,
   gridCellTriggerClassName,
@@ -15,15 +19,20 @@ import type {
   DropdownTriggerWidth,
 } from './dropdown-types'
 
-type TriggerBorderTone = 'default' | 'modified'
+type TriggerBorderTone = 'default' | 'modified' | 'invalid'
+type TriggerFocus = 'ring' | 'ringOverErrorEdge'
+type TriggerDisabledLook = 'blocked' | 'waiting'
 type TriggerTextTone = 'default' | 'null'
 type TriggerFill = 'closed' | 'open'
 type OptionFill = 'idle' | 'highlighted' | 'selected' | 'disabled'
 type PanelPosition = 'viewport' | 'dialog'
 
 const TRIGGER_SIZE_CLASSES: Record<DropdownTriggerSize, string> = {
-  md: 'h-control text-body',
-  sm: 'h-control-sm text-size-row leading-5',
+  md: 'h-control pr-2 pl-2.5 font-body text-body',
+  sm: 'h-control-sm pr-2 pl-2.5 font-body text-size-row leading-5',
+  cell: 'h-7.5 pr-2 pl-2.5 font-body text-size-row leading-5',
+  monoCell: 'h-control px-2 py-1.75 font-mono text-size-caption leading-5 transition-bg-and-color',
+  field: 'h-control min-h-10 px-3 py-2.5 font-body text-size-caption leading-5',
 }
 
 const TRIGGER_WIDTH_CLASSES: Record<DropdownTriggerWidth, string> = {
@@ -42,6 +51,20 @@ const TRIGGER_BORDER_CLASSES: Record<TriggerBorderTone, string> = {
   default:
     'border-x-light-stroke-control dark:border-x-dark-stroke-control border-t-light-stroke-control dark:border-t-dark-stroke-control border-b-light-stroke-control-bottom dark:border-b-dark-stroke-control-bottom disabled:border-light-stroke-control dark:disabled:border-dark-stroke-control',
   modified: 'border-light-primary dark:border-dark-primary',
+  invalid: joinClassNames([
+    'border-x-light-stroke-control dark:border-x-dark-stroke-control border-t-light-stroke-control dark:border-t-dark-stroke-control disabled:border-light-stroke-control dark:disabled:border-dark-stroke-control',
+    INVALID_CONTROL_EDGE,
+  ]),
+}
+
+const TRIGGER_FOCUS_CLASSES: Record<TriggerFocus, string> = {
+  ring: FOCUS_RING,
+  ringOverErrorEdge: INVALID_CONTROL_FOCUS_RING,
+}
+
+const TRIGGER_DISABLED_LOOK_CLASSES: Record<TriggerDisabledLook, string> = {
+  blocked: 'disabled:cursor-not-allowed',
+  waiting: 'disabled:cursor-wait disabled:opacity-70',
 }
 
 const TRIGGER_TEXT_CLASSES: Record<TriggerTextTone, string> = {
@@ -65,9 +88,20 @@ const PANEL_POSITION_CLASSES: Record<PanelPosition, string> = {
   dialog: 'absolute',
 }
 
-function triggerBorderTone(fieldState: DropdownFieldState): TriggerBorderTone {
-  if (fieldState.modified) return 'modified'
+function triggerBorderTone(appearance: DropdownTriggerAppearance): TriggerBorderTone {
+  if (appearance.invalid) return 'invalid'
+  if (appearance.fieldState.modified) return 'modified'
   return 'default'
+}
+
+function triggerFocus(appearance: DropdownTriggerAppearance): TriggerFocus {
+  if (appearance.invalid) return 'ringOverErrorEdge'
+  return 'ring'
+}
+
+function triggerDisabledLook(appearance: DropdownTriggerAppearance): TriggerDisabledLook {
+  if (appearance.waiting) return 'waiting'
+  return 'blocked'
 }
 
 function triggerTextTone(fieldState: DropdownFieldState): TriggerTextTone {
@@ -100,6 +134,8 @@ export function triggerAppearanceOf<TValue extends string>(
     width: props.triggerWidth ?? 'fill',
     chrome: props.triggerChrome ?? 'field',
     fieldState: props.fieldState ?? NEUTRAL_FIELD_VALUE_STATE,
+    invalid: props.invalid ?? false,
+    waiting: props.waiting ?? false,
   }
 }
 
@@ -111,16 +147,16 @@ export interface DropdownTriggerClassOptions {
 }
 
 const TRIGGER_FRAME =
-  'group flex items-center justify-between gap-2 whitespace-nowrap text-left cursor-default disabled:cursor-not-allowed'
+  'group flex items-center justify-between gap-2 whitespace-nowrap text-left cursor-default'
 
 function fieldTriggerClassName({ open, appearance }: DropdownTriggerClassOptions): string {
   return joinClassNames([
-    'pr-2 pl-2.5 rounded-control border font-body font-regular',
-    FOCUS_RING,
+    'rounded-control border font-regular',
+    TRIGGER_FOCUS_CLASSES[triggerFocus(appearance)],
     TRIGGER_FILL_CLASSES[triggerFill(open)],
     TRIGGER_SIZE_CLASSES[appearance.size],
     TRIGGER_WIDTH_CLASSES[appearance.width],
-    TRIGGER_BORDER_CLASSES[triggerBorderTone(appearance.fieldState)],
+    TRIGGER_BORDER_CLASSES[triggerBorderTone(appearance)],
     TRIGGER_TEXT_CLASSES[triggerTextTone(appearance.fieldState)],
   ])
 }
@@ -137,6 +173,7 @@ const TRIGGER_CHROME_CLASS_BUILDERS: Record<
 export function dropdownTriggerClassName(options: DropdownTriggerClassOptions): string {
   return joinClassNames([
     TRIGGER_FRAME,
+    TRIGGER_DISABLED_LOOK_CLASSES[triggerDisabledLook(options.appearance)],
     TRIGGER_CHROME_CLASS_BUILDERS[options.appearance.chrome](options),
     options.className,
   ])

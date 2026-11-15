@@ -17,7 +17,7 @@ export interface DropdownOption<TValue extends string = string> {
 
 export type DropdownPlacement = 'top' | 'bottom'
 
-export type DropdownTriggerSize = 'md' | 'sm'
+export type DropdownTriggerSize = 'md' | 'sm' | 'cell' | 'monoCell' | 'field'
 
 export type DropdownTriggerWidth = 'fill' | 'auto' | 'combo'
 
@@ -30,6 +30,8 @@ export interface DropdownTriggerAppearance {
   width: DropdownTriggerWidth
   chrome: DropdownTriggerChrome
   fieldState: DropdownFieldState
+  invalid: boolean
+  waiting: boolean
 }
 
 export type DropdownFixedLayout = {
@@ -65,6 +67,8 @@ export type CommonDropdownProps<TValue extends string = string> = DropdownLabelP
   triggerWidth?: DropdownTriggerWidth
   triggerChrome?: DropdownTriggerChrome
   fieldState?: DropdownFieldState
+  invalid?: boolean
+  waiting?: boolean
   onTriggerKeyDown?: (event: ReactKeyboardEvent<HTMLButtonElement>) => void
   onListKeyDown?: (event: ReactKeyboardEvent<HTMLUListElement>) => void
   onOpenChange?: (open: boolean) => void

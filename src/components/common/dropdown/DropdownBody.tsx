@@ -7,7 +7,7 @@ import { DropdownChrome } from './DropdownChrome'
 import { DropdownOptionsPanel } from './DropdownOptionsPanel'
 import type { DropdownController } from './use-dropdown-controller'
 import type { DropdownElementRefs } from './DropdownChrome'
-import { isMultiSelect, type DropdownProps } from './dropdown-types'
+import { isMultiSelect, type DropdownProps, type DropdownTriggerAppearance } from './dropdown-types'
 
 const DEFAULT_CHEVRON_SIZE = 16
 
@@ -28,6 +28,18 @@ interface DropdownTriggerProps<TValue extends string> {
   dropdownProps: DropdownProps<TValue>
   controller: DropdownController
   triggerRef: (node: HTMLButtonElement | null) => void
+}
+
+function triggerStateAttributes(appearance: DropdownTriggerAppearance) {
+  return {
+    'data-size': appearance.size,
+    'data-width': appearance.width,
+    'data-chrome': appearance.chrome,
+    'data-modified': dataFlag(appearance.fieldState.modified),
+    'data-null': dataFlag(appearance.fieldState.isNull),
+    'data-invalid': dataFlag(appearance.invalid),
+    'data-waiting': dataFlag(appearance.waiting),
+  }
 }
 
 function DropdownTrigger<TValue extends string>({
@@ -63,11 +75,7 @@ function DropdownTrigger<TValue extends string>({
       aria-labelledby={labelledBy}
       aria-label={ariaLabel}
       aria-controls={controller.listboxId}
-      data-size={appearance.size}
-      data-width={appearance.width}
-      data-chrome={appearance.chrome}
-      data-modified={dataFlag(appearance.fieldState.modified)}
-      data-null={dataFlag(appearance.fieldState.isNull)}
+      {...triggerStateAttributes(appearance)}
       data-panel-placement={open ? controller.panelLayout.placement : undefined}
       data-testid={dataTestId}
       {...triggerRest}

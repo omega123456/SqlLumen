@@ -1,20 +1,24 @@
-import { Trash } from '@phosphor-icons/react'
 import type { TableDesignerIndexDef } from '../../../types/schema'
 import { Button } from '../../common/Button'
 import { Dropdown, type DropdownOption } from '../../common/Dropdown'
 import { TextInput } from '../../common/TextInput'
 import {
-  MAX_LISTED_COLUMN_LABELS,
   ariaInvalidFor,
-  errorClassName,
   formatSelectedColumnsSummary,
-  indexInputClassName,
-  indexRowStripeClassName,
   stopRowSelection,
   type IndexRowContext,
   type IndexRowPosition,
 } from './index-editor-model'
-import styles from '../IndexEditor.module.css'
+import {
+  DesignerBodyCell,
+  DesignerDeleteButton,
+  DesignerDeleteCell,
+  DesignerFieldError,
+  DesignerIndicatorCell,
+  DesignerRow,
+  DesignerRowNumberCell,
+} from '../designer-table/DesignerTableParts'
+import { type DesignerAccent } from '../designer-table/designer-accent'
 
 const FIRST_SECONDARY_INDEX_ROW_NUMBER = 2
 
@@ -28,15 +32,6 @@ interface IndexRowProps {
   index: TableDesignerIndexDef
   position: IndexRowPosition
   context: IndexRowContext
-}
-
-function FieldError({ error, testId }: { error: string | undefined; testId: string }) {
-  if (!error) return null
-  return (
-    <div className={styles.errorText} data-testid={testId}>
-      {error}
-    </div>
-  )
 }
 
 interface IndexColumnsSelectorProps {
@@ -60,8 +55,10 @@ function AddColumnsFirstButton({
   return (
     <Button
       type="button"
+      size="cell"
       contentAlign="start"
-      className={`${styles.columnButton} ${errorClassName(columnsError)}`}
+      className="w-full min-w-0"
+      invalid={Boolean(columnsError)}
       aria-invalid={ariaInvalidFor(columnsError)}
       title={columnsError}
       data-testid={`index-columns-button-${visibleIndex}`}
@@ -95,8 +92,6 @@ function IndexColumnsSelector({
     )
   }
 
-  const isColumnListSummarized = index.columns.length > MAX_LISTED_COLUMN_LABELS
-  const summaryClassName = isColumnListSummarized ? styles.columnButtonSummary : ''
   return (
     <Dropdown
       id={`index-columns-${tabId}-${visibleIndex}`}
@@ -113,7 +108,9 @@ function IndexColumnsSelector({
       focusListOnOpen={false}
       renderTriggerValue={formatSelectedColumnsSummary}
       renderOptionLabel={(option) => <span>{option.label}</span>}
-      triggerClassName={`${styles.columnButton} ${styles.columnButtonFixed} ${summaryClassName} ${errorClassName(columnsError)}`}
+      triggerSize="cell"
+      triggerClassName="min-w-0"
+      invalid={Boolean(columnsError)}
       triggerProps={{
         'aria-invalid': ariaInvalidFor(columnsError),
         title: columnsError,
@@ -135,15 +132,14 @@ interface IndexCellProps extends IndexRowProps {
 }
 
 function IndexNameCell({ index, position, context, error }: IndexCellProps) {
-  const { storeIndex, visibleIndex, isSelected } = position
+  const { storeIndex, visibleIndex } = position
   return (
-    <td className={styles.bodyCell}>
+    <DesignerBodyCell>
       <TextInput
         type="text"
         variant="tableCell"
         value={index.name}
         invalid={!!error}
-        className={indexInputClassName(isSelected)}
         aria-invalid={ariaInvalidFor(error)}
         title={error}
         data-testid={`index-name-${visibleIndex}`}
@@ -156,8 +152,8 @@ function IndexNameCell({ index, position, context, error }: IndexCellProps) {
           })
         }
       />
-      <FieldError error={error} testId={`index-name-error-${visibleIndex}`} />
-    </td>
+      <DesignerFieldError error={error} testId={`index-name-error-${visibleIndex}`} />
+    </DesignerBodyCell>
   )
 }
 
@@ -165,7 +161,7 @@ function IndexTypeCell({ index, position, context }: IndexCellProps) {
   const { tabId } = context
   const { storeIndex, visibleIndex } = position
   return (
-    <td className={styles.bodyCell}>
+    <DesignerBodyCell>
       <div onClick={stopRowSelection}>
         <Dropdown
           id={`index-type-${tabId}-${visibleIndex}`}
@@ -176,33 +172,30 @@ function IndexTypeCell({ index, position, context }: IndexCellProps) {
           onChange={(value) =>
             context.updateIndex(tabId, { index: storeIndex, field: 'indexType', value: value })
           }
-          triggerClassName={styles.cellSelect}
+          triggerSize="monoCell"
         />
       </div>
-    </td>
+    </DesignerBodyCell>
   )
 }
 
 function IndexDeleteCell({ index, position, context }: IndexCellProps) {
   const { storeIndex, visibleIndex } = position
   return (
-    <td className={`${styles.bodyCell} ${styles.deleteCell}`}>
-      <Button
-        variant="subtle"
-        size="sm"
-        dangerText
-        iconOnly
-        aria-label={`Delete index ${index.name || visibleIndex + 1}`}
-        data-testid={`index-delete-${visibleIndex}`}
-        onClick={(event) => {
-          event.stopPropagation()
-          context.onDelete(storeIndex)
-        }}
-      >
-        <Trash size={14} weight="bold" />
-      </Button>
-    </td>
+    <DesignerDeleteCell>
+      <DesignerDeleteButton
+        label={`Delete index ${index.name || visibleIndex + 1}`}
+        testId={`index-delete-${visibleIndex}`}
+        onDelete={() => context.onDelete(storeIndex)}
+      />
+    </DesignerDeleteCell>
   )
+}
+
+function indexAccent(position: IndexRowPosition): DesignerAccent {
+  if (position.isSelected) return 'selected'
+  if (position.isNew) return 'added'
+  return 'idle'
 }
 
 export function IndexRow(props: IndexRowProps) {
@@ -211,22 +204,19 @@ export function IndexRow(props: IndexRowProps) {
   const displayIndex = visibleIndex + FIRST_SECONDARY_INDEX_ROW_NUMBER
   const nameError = context.validationErrors[`indexes.${storeIndex}.name`]
   const columnsError = context.validationErrors[`indexes.${storeIndex}.columns`]
-  const newRowClassName = position.isNew ? styles.newRow : ''
 
   return (
-    <tr
-      className={`${styles.row} ${indexRowStripeClassName(isSelected, displayIndex)} ${newRowClassName}`}
+    <DesignerRow
+      isSelected={isSelected}
       data-testid={`index-row-${visibleIndex}`}
       onClick={() => context.onSelect(storeIndex)}
     >
-      <td className={`${styles.bodyCell} ${styles.indicatorCell}`}>
-        <span className={styles.rowAccent} aria-hidden />
-      </td>
-      <td className={`${styles.bodyCell} ${styles.rowNumberCell}`}>{displayIndex}</td>
+      <DesignerIndicatorCell accent={indexAccent(position)} />
+      <DesignerRowNumberCell>{displayIndex}</DesignerRowNumberCell>
       <IndexNameCell {...props} error={nameError} />
       <IndexTypeCell {...props} />
-      <td className={styles.bodyCell}>
-        <div className={styles.columnSelector} onClick={stopRowSelection}>
+      <DesignerBodyCell>
+        <div className="relative" onClick={stopRowSelection}>
           <IndexColumnsSelector
             index={index}
             position={position}
@@ -234,9 +224,9 @@ export function IndexRow(props: IndexRowProps) {
             columnsError={columnsError}
           />
         </div>
-        <FieldError error={columnsError} testId={`index-columns-error-${visibleIndex}`} />
-      </td>
+        <DesignerFieldError error={columnsError} testId={`index-columns-error-${visibleIndex}`} />
+      </DesignerBodyCell>
       <IndexDeleteCell {...props} />
-    </tr>
+    </DesignerRow>
   )
 }

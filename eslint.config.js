@@ -80,6 +80,12 @@ const TAILWIND_CLASS_RULE_FILES = [
   'src/components/object-browser/**/*.tsx',
   'src/components/object-editor/*.tsx',
   'src/components/schema-info/*.tsx',
+  'src/components/table-data/*.tsx',
+  'src/components/table-data/**/*.ts',
+  'src/components/table-data/**/*.tsx',
+  'src/components/table-designer/*.tsx',
+  'src/components/table-designer/**/*.ts',
+  'src/components/table-designer/**/*.tsx',
 ]
 const localRulesPlugin = {
   rules: { ...namedConditionsPlugin.rules, ...tailwindRulesPlugin.rules },

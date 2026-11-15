@@ -9,7 +9,8 @@ import {
   type TableDesignerTabState,
 } from '../../stores/table-designer-store'
 import { Button } from '../common/Button'
-import styles from './DdlPreviewTab.module.css'
+import { SCROLLBAR, joinClassNames } from '../../lib/class-names'
+import { DesignerPanel } from './designer-table/DesignerTableParts'
 
 import { logFrontendError } from '../../lib/app-log-commands'
 import { toErrorMessage } from '../../lib/error-message'
@@ -38,6 +39,15 @@ function isShowingLiveDdl(preview: DdlPreviewState): boolean {
   return !preview.isDdlLoading && !preview.ddlError
 }
 
+type DdlPreviewStatus = 'loading' | 'error'
+
+const STATUS_BLOCK_CLASSES: Record<DdlPreviewStatus, string> = {
+  loading:
+    'flex min-h-30 w-full items-center justify-center rounded-card border border-light-stroke-card bg-light-surface-container-lowest px-4 py-3.5 font-body text-mono-relaxed text-light-on-surface-variant dark:border-dark-stroke-card dark:bg-dark-surface-container-lowest dark:text-dark-on-surface-variant',
+  error:
+    'flex min-h-30 w-full items-center justify-center rounded-card border border-light-stroke-card bg-light-surface-container-lowest px-4 py-3.5 font-body text-mono-relaxed text-light-error dark:border-dark-stroke-card dark:bg-dark-surface-container-lowest dark:text-dark-error',
+}
+
 interface DdlPreviewBodyProps {
   preview: DdlPreviewState
   highlightedSql: ReactNode[]
@@ -46,7 +56,7 @@ interface DdlPreviewBodyProps {
 function DdlPreviewBody({ preview, highlightedSql }: DdlPreviewBodyProps) {
   if (preview.isDdlLoading) {
     return (
-      <div className={styles.state} data-testid="ddl-preview-loading">
+      <div className={STATUS_BLOCK_CLASSES.loading} data-testid="ddl-preview-loading">
         Generating...
       </div>
     )
@@ -54,14 +64,20 @@ function DdlPreviewBody({ preview, highlightedSql }: DdlPreviewBodyProps) {
 
   if (preview.ddlError) {
     return (
-      <div className={`${styles.state} ${styles.error}`} data-testid="ddl-preview-error">
+      <div className={STATUS_BLOCK_CLASSES.error} data-testid="ddl-preview-error">
         {preview.ddlError}
       </div>
     )
   }
 
   return (
-    <pre className={styles.codeBlock} data-testid="ddl-preview-code">
+    <pre
+      className={joinClassNames([
+        'min-h-0 w-full flex-initial overflow-auto rounded-card border border-light-stroke-card bg-light-surface-container-lowest px-4 py-3.5 font-mono text-mono-relaxed whitespace-pre text-light-token-text select-text dark:border-dark-stroke-card dark:bg-dark-surface-container-lowest dark:text-dark-token-text',
+        SCROLLBAR,
+      ])}
+      data-testid="ddl-preview-code"
+    >
       <code>{highlightedSql}</code>
     </pre>
   )
@@ -93,8 +109,8 @@ export function DdlPreviewTab({ tabId }: DdlPreviewTabProps) {
   }
 
   return (
-    <div className={styles.container} data-testid="table-designer-ddl-preview">
-      <div className={styles.header}>
+    <DesignerPanel testId="table-designer-ddl-preview">
+      <div className="flex h-command-bar flex-none items-center gap-1 px-4">
         <Button
           variant="subtle"
           size="sm"
@@ -109,13 +125,15 @@ export function DdlPreviewTab({ tabId }: DdlPreviewTabProps) {
         </Button>
       </div>
 
-      <div className={styles.body}>
+      <div className="flex min-h-0 flex-1 flex-col px-5 pb-3">
         <DdlPreviewBody preview={preview} highlightedSql={highlightedSql} />
       </div>
 
       {isShowingLiveDdl(preview) && (
-        <div className={styles.footer}>Live updating as changes are detected</div>
+        <div className="px-5 pb-4 text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant">
+          Live updating as changes are detected
+        </div>
       )}
-    </div>
+    </DesignerPanel>
   )
 }

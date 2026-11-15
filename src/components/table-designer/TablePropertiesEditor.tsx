@@ -1,10 +1,10 @@
 import { SpinnerGap } from '@phosphor-icons/react'
+import type { LabelHTMLAttributes } from 'react'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
 import { Textarea } from '../common/Textarea'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
 import type { TableDesignerProperties } from '../../types/schema'
-import styles from './TablePropertiesEditor.module.css'
 import {
   ENGINE_DROPDOWN_OPTIONS,
   ROW_FORMAT_DROPDOWN_OPTIONS,
@@ -18,12 +18,17 @@ import {
   useCollationOptions,
 } from './table-properties-editor/use-property-options'
 import { FIELD_CHROME } from '../../lib/class-names-field'
+import { SCROLLBAR, joinClassNames } from '../../lib/class-names'
 
 interface TablePropertiesEditorProps {
   tabId: string
   connectionId: string
   databaseName: string
 }
+
+const FIELD_GROUP = 'flex flex-col gap-2'
+
+const TEXT_CONTROL = 'w-full min-h-10 px-3 py-2.5 font-body text-size-caption'
 
 interface PropertyOptions {
   options: DropdownOption[]
@@ -37,7 +42,13 @@ type PropertyChange = <TField extends keyof TableDesignerProperties>(
 
 function LabelSpinner({ isLoading }: { isLoading: boolean }) {
   if (!isLoading) return null
-  return <SpinnerGap size={12} className={styles.spinner} aria-hidden />
+  return (
+    <SpinnerGap
+      size={12}
+      className="animate-spin-850ms text-light-primary window-blurred:animate-spin-850ms-paused dark:text-dark-primary"
+      aria-hidden
+    />
+  )
 }
 
 interface PropertyDropdownFieldProps {
@@ -51,15 +62,24 @@ interface PropertyDropdownFieldProps {
   disabled?: boolean
 }
 
+function PropertyLabel(props: LabelHTMLAttributes<HTMLLabelElement>) {
+  return (
+    <label
+      className="inline-flex items-center gap-1.5 text-size-caption font-semibold text-light-on-surface-variant dark:text-dark-on-surface-variant"
+      {...props}
+    />
+  )
+}
+
 function PropertyDropdownField(field: PropertyDropdownFieldProps) {
   const labelId = `table-properties-${field.field}-label-${field.tabId}`
   const hasLoadingState = field.isLoading !== undefined
   return (
-    <div className={styles.fieldGroup}>
-      <label className={styles.label} id={labelId}>
+    <div className={FIELD_GROUP}>
+      <PropertyLabel id={labelId}>
         {hasLoadingState ? <span>{field.label}</span> : field.label}
         {hasLoadingState && <LabelSpinner isLoading={field.isLoading === true} />}
-      </label>
+      </PropertyLabel>
       <Dropdown
         id={`table-properties-${field.field}-${field.tabId}`}
         labelledBy={labelId}
@@ -69,7 +89,8 @@ function PropertyDropdownField(field: PropertyDropdownFieldProps) {
         data-testid={`table-properties-${field.field}`}
         onChange={field.onChange}
         workspaceTabId={field.tabId}
-        triggerClassName={styles.dropdownControl}
+        triggerSize="field"
+        waiting={field.disabled}
       />
     </div>
   )
@@ -83,16 +104,16 @@ interface PropertyFieldsProps {
 
 function AutoIncrementField({ tabId, properties, onChange }: PropertyFieldsProps) {
   return (
-    <div className={styles.fieldGroup}>
-      <label className={styles.label} htmlFor={`table-properties-auto-increment-${tabId}`}>
+    <div className={FIELD_GROUP}>
+      <PropertyLabel htmlFor={`table-properties-auto-increment-${tabId}`}>
         Auto increment
-      </label>
+      </PropertyLabel>
       <TextInput
         id={`table-properties-auto-increment-${tabId}`}
         variant="bare"
         type="number"
         min="1"
-        className={`${FIELD_CHROME} ${styles.control}`}
+        className={joinClassNames([FIELD_CHROME, TEXT_CONTROL])}
         value={autoIncrementInputValue(properties)}
         data-testid="table-properties-auto-increment"
         onChange={(event) => onChange('autoIncrement', parseAutoIncrement(event.target.value))}
@@ -103,14 +124,12 @@ function AutoIncrementField({ tabId, properties, onChange }: PropertyFieldsProps
 
 function CommentField({ tabId, properties, onChange }: PropertyFieldsProps) {
   return (
-    <div className={`${styles.fieldGroup} ${styles.fullWidth}`}>
-      <label className={styles.label} htmlFor={`table-properties-comment-${tabId}`}>
-        Comment
-      </label>
+    <div className={joinClassNames([FIELD_GROUP, 'col-span-full max-wide:col-auto'])}>
+      <PropertyLabel htmlFor={`table-properties-comment-${tabId}`}>Comment</PropertyLabel>
       <Textarea
         id={`table-properties-comment-${tabId}`}
         variant="bare"
-        className={`${FIELD_CHROME} ${styles.control} ${styles.textarea}`}
+        className={joinClassNames([FIELD_CHROME, TEXT_CONTROL, 'min-h-30 resize-y'])}
         value={properties.comment}
         data-testid="table-properties-comment"
         onChange={(event) => onChange('comment', event.target.value)}
@@ -188,9 +207,12 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
   const fieldProps = { tabId: tabId, properties: properties, onChange: handlePropertyChange }
 
   return (
-    <div className={styles.container} data-testid="table-properties-editor">
-      <div className={styles.grid}>
-        <div className={styles.column}>
+    <div
+      className={joinClassNames(['flex min-h-0 flex-1 overflow-y-auto px-5 py-4', SCROLLBAR])}
+      data-testid="table-properties-editor"
+    >
+      <div className="grid w-full grid-cols-2 gap-4 max-wide:grid-cols-1">
+        <div className="flex flex-col gap-4">
           <CharsetAndEngineFields
             fieldProps={fieldProps}
             selectedCharset={selectedCharset}
@@ -200,7 +222,7 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
           <AutoIncrementField {...fieldProps} />
         </div>
 
-        <div className={styles.column}>
+        <div className="flex flex-col gap-4">
           <PropertyDropdownField
             tabId={tabId}
             field="row-format"

@@ -4,8 +4,6 @@ import type {
 } from '../../../stores/table-designer-store'
 import type { TableDesignerIndexDef } from '../../../types/schema'
 import type { DropdownOption } from '../../common/Dropdown'
-import { isEven } from '../../../lib/units'
-import styles from '../IndexEditor.module.css'
 
 export const MAX_LISTED_COLUMN_LABELS = 2
 
@@ -73,19 +71,6 @@ export interface IndexRowContext {
   updateIndex: TableDesignerStore['updateIndex']
   onSelect: (storeIndex: number) => void
   onDelete: (storeIndex: number) => void
-}
-
-export function indexRowStripeClassName(isSelected: boolean, displayIndex: number): string {
-  if (isSelected) return styles.selectedRow
-  return isEven(displayIndex) ? styles.evenRow : styles.oddRow
-}
-
-export function indexInputClassName(isSelected: boolean): string {
-  return isSelected ? styles.activeInput : styles.inactiveInput
-}
-
-export function errorClassName(error: string | undefined): string {
-  return error ? styles.inputError : ''
 }
 
 export function ariaInvalidFor(error: string | undefined): 'true' | 'false' {

@@ -6,7 +6,6 @@ import {
 } from '../../stores/table-designer-store'
 import type { TableDesignerIndexDef } from '../../types/schema'
 import { Button } from '../common/Button'
-import styles from './IndexEditor.module.css'
 import { isBlank } from '../../lib/value-checks'
 import {
   canDeleteSelectedIndex,
@@ -19,12 +18,33 @@ import {
   type VisibleIndexRow,
 } from './index-editor/index-editor-model'
 import { IndexRow } from './index-editor/IndexRow'
+import {
+  DesignerBodyCell,
+  DesignerDeleteCell,
+  DesignerGridCard,
+  DesignerIndicatorCell,
+  DesignerPanel,
+  DesignerRow,
+  DesignerRowNumberCell,
+  DesignerTableHead,
+  DesignerToolbar,
+  DesignerToolbarDivider,
+  type DesignerHeaderColumn,
+} from './designer-table/DesignerTableParts'
+import { selectedAccent } from './designer-table/designer-accent'
 
 interface IndexEditorProps {
   tabId: string
 }
 
-const INDEX_COLUMN_LABELS = ['', '#', 'Name', 'Type', 'Columns', '']
+const INDEX_HEADER_COLUMNS: DesignerHeaderColumn[] = [
+  { label: '', widthClassName: 'w-4' },
+  { label: '#', widthClassName: 'w-10', isCentred: true },
+  { label: 'Name' },
+  { label: 'Type', widthClassName: 'w-35' },
+  { label: 'Columns', widthClassName: 'w-65' },
+  { label: '', widthClassName: 'w-10.5', isCentred: true },
+]
 
 interface IndexToolbarProps {
   canDeleteSelected: boolean
@@ -34,12 +54,12 @@ interface IndexToolbarProps {
 
 function IndexToolbar({ canDeleteSelected, onAdd, onDeleteSelected }: IndexToolbarProps) {
   return (
-    <div className={styles.toolbar}>
+    <DesignerToolbar>
       <Button size="sm" onClick={onAdd} data-testid="index-editor-add">
         <Plus size={16} weight="regular" />
         <span>Add index</span>
       </Button>
-      <span className={styles.toolbarDivider} aria-hidden />
+      <DesignerToolbarDivider />
       <Button
         variant="subtle"
         size="sm"
@@ -51,7 +71,7 @@ function IndexToolbar({ canDeleteSelected, onAdd, onDeleteSelected }: IndexToolb
         <Trash size={16} weight="regular" />
         <span>Delete selected</span>
       </Button>
-    </div>
+    </DesignerToolbar>
   )
 }
 
@@ -63,40 +83,16 @@ interface PrimaryIndexRowProps {
 
 function PrimaryIndexRow({ primaryIndex, isSelected, onSelect }: PrimaryIndexRowProps) {
   return (
-    <tr
-      className={`${styles.row} ${isSelected ? styles.selectedRow : styles.evenRow}`}
-      data-testid="index-row-primary"
-      onClick={onSelect}
-    >
-      <td className={`${styles.bodyCell} ${styles.indicatorCell}`}>
-        <span className={styles.rowAccent} aria-hidden />
-      </td>
-      <td className={`${styles.bodyCell} ${styles.rowNumberCell}`}>1</td>
-      <td className={styles.bodyCell} data-testid="index-primary-name">
-        <span className={styles.readonlyText}>PRIMARY</span>
-      </td>
-      <td className={styles.bodyCell} data-testid="index-primary-type">
-        <span className={styles.readonlyText}>PRIMARY</span>
-      </td>
-      <td className={styles.bodyCell} data-testid="index-primary-columns">
-        <span className={styles.readonlyText}>{primaryIndex.columns.join(', ') || '—'}</span>
-      </td>
-      <td className={`${styles.bodyCell} ${styles.deleteCell}`} />
-    </tr>
-  )
-}
-
-function IndexTableHead() {
-  return (
-    <thead className={styles.tableHead}>
-      <tr>
-        {INDEX_COLUMN_LABELS.map((label, index) => (
-          <th key={`${label}-${index}`} className={styles.headerCell} scope="col">
-            {label}
-          </th>
-        ))}
-      </tr>
-    </thead>
+    <DesignerRow isSelected={isSelected} data-testid="index-row-primary" onClick={onSelect}>
+      <DesignerIndicatorCell accent={selectedAccent(isSelected)} />
+      <DesignerRowNumberCell>1</DesignerRowNumberCell>
+      <DesignerBodyCell data-testid="index-primary-name">PRIMARY</DesignerBodyCell>
+      <DesignerBodyCell data-testid="index-primary-type">PRIMARY</DesignerBodyCell>
+      <DesignerBodyCell data-testid="index-primary-columns">
+        {primaryIndex.columns.join(', ') || '—'}
+      </DesignerBodyCell>
+      <DesignerDeleteCell />
+    </DesignerRow>
   )
 }
 
@@ -113,33 +109,29 @@ function IndexTable(table: IndexTableProps) {
   const { tabState, primaryIndex, visibleIndexes, rowContext } = table
   const effectiveSelectedRow = table.selectedRow
   return (
-    <div className={styles.gridCard}>
-      <div className={styles.tableScroller}>
-        <table className={styles.table}>
-          <IndexTableHead />
-          <tbody className={styles.tableBody}>
-            <PrimaryIndexRow
-              primaryIndex={primaryIndex}
-              isSelected={effectiveSelectedRow === 'primary'}
-              onSelect={table.onSelectPrimary}
-            />
-            {visibleIndexes.map(({ index, storeIndex }, visibleIndex) => (
-              <IndexRow
-                key={`index-${storeIndex}`}
-                index={index}
-                position={{
-                  storeIndex: storeIndex,
-                  visibleIndex: visibleIndex,
-                  isSelected: effectiveSelectedRow === storeIndex,
-                  isNew: isNewIndex(tabState, index),
-                }}
-                context={rowContext}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <DesignerGridCard layout="indexes">
+      <DesignerTableHead columns={INDEX_HEADER_COLUMNS} />
+      <tbody className="font-mono text-size-caption">
+        <PrimaryIndexRow
+          primaryIndex={primaryIndex}
+          isSelected={effectiveSelectedRow === 'primary'}
+          onSelect={table.onSelectPrimary}
+        />
+        {visibleIndexes.map(({ index, storeIndex }, visibleIndex) => (
+          <IndexRow
+            key={`index-${storeIndex}`}
+            index={index}
+            position={{
+              storeIndex: storeIndex,
+              visibleIndex: visibleIndex,
+              isSelected: effectiveSelectedRow === storeIndex,
+              isNew: isNewIndex(tabState, index),
+            }}
+            context={rowContext}
+          />
+        ))}
+      </tbody>
+    </DesignerGridCard>
   )
 }
 
@@ -196,7 +188,7 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
   }
 
   return (
-    <div className={styles.container} data-testid="index-editor">
+    <DesignerPanel testId="index-editor">
       <IndexToolbar
         canDeleteSelected={canDeleteSelectedIndex(effectiveSelectedRow, visibleIndexes)}
         onAdd={() => {
@@ -216,6 +208,6 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
         rowContext={rowContext}
         onSelectPrimary={() => setSelectedRow('primary')}
       />
-    </div>
+    </DesignerPanel>
   )
 }

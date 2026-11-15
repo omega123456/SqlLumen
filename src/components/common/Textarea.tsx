@@ -20,7 +20,7 @@ export type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
 
 function variantClassName(variant: TextareaVariant, invalid: boolean): string {
   if (variant === 'bare') return ''
-  return joinClassNames([fieldChromeClassName(invalid), CHROME_VARIANT_CLASSES[variant]])
+  return joinClassNames([fieldChromeClassName({ invalid }), CHROME_VARIANT_CLASSES[variant]])
 }
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(

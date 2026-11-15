@@ -16,23 +16,30 @@ import {
   useAvailableDatabases,
   useReferencedLookups,
 } from './foreign-key-editor/use-referenced-lookups'
-import styles from './ForeignKeyEditor.module.css'
+import {
+  DesignerGridCard,
+  DesignerPanel,
+  DesignerTableHead,
+  DesignerToolbar,
+  DesignerToolbarDivider,
+  type DesignerHeaderColumn,
+} from './designer-table/DesignerTableParts'
 
 interface ForeignKeyEditorProps {
   tabId: string
 }
 
-const FOREIGN_KEY_COLUMN_LABELS = [
-  '',
-  '#',
-  'FK name',
-  'Source column',
-  'Referenced DB',
-  'Referenced table',
-  'Referenced column',
-  'On delete',
-  'On update',
-  '',
+const FOREIGN_KEY_HEADER_COLUMNS: DesignerHeaderColumn[] = [
+  { label: '', widthClassName: 'w-4' },
+  { label: '#', widthClassName: 'w-10', isCentred: true },
+  { label: 'FK name', widthClassName: 'w-53.75' },
+  { label: 'Source column', widthClassName: 'w-37.5' },
+  { label: 'Referenced DB', widthClassName: 'w-53' },
+  { label: 'Referenced table', widthClassName: 'w-53' },
+  { label: 'Referenced column', widthClassName: 'w-50' },
+  { label: 'On delete', widthClassName: 'w-37.5' },
+  { label: 'On update', widthClassName: 'w-37.5' },
+  { label: '', widthClassName: 'w-10.5', isCentred: true },
 ]
 
 function useSourceColumnOptions(columns: TableDesignerColumnDef[]): DropdownOption[] {
@@ -74,12 +81,12 @@ interface ForeignKeyToolbarProps {
 
 function ForeignKeyToolbar({ canDeleteSelected, onAdd, onDeleteSelected }: ForeignKeyToolbarProps) {
   return (
-    <div className={styles.toolbar}>
+    <DesignerToolbar>
       <Button size="sm" onClick={onAdd} data-testid="foreign-key-editor-add">
         <Link size={16} weight="regular" />
         <span>Add FK</span>
       </Button>
-      <span className={styles.toolbarDivider} aria-hidden />
+      <DesignerToolbarDivider />
       <Button
         variant="subtle"
         size="sm"
@@ -91,7 +98,7 @@ function ForeignKeyToolbar({ canDeleteSelected, onAdd, onDeleteSelected }: Forei
         <Trash size={16} weight="regular" />
         <span>Delete selected</span>
       </Button>
-    </div>
+    </DesignerToolbar>
   )
 }
 
@@ -103,34 +110,22 @@ interface ForeignKeyTableProps {
 
 function ForeignKeyTable({ foreignKeys, selectedRow, rowContext }: ForeignKeyTableProps) {
   return (
-    <div className={styles.gridCard}>
-      <div className={styles.tableScroller}>
-        <table className={styles.table}>
-          <thead className={styles.tableHead}>
-            <tr>
-              {FOREIGN_KEY_COLUMN_LABELS.map((label, index) => (
-                <th key={`${label}-${index}`} className={styles.headerCell} scope="col">
-                  {label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className={styles.tableBody}>
-            {foreignKeys.map((foreignKey, foreignKeyIndex) => (
-              <ForeignKeyRow
-                key={`fk-${foreignKeyIndex}`}
-                foreignKey={foreignKey}
-                position={{
-                  index: foreignKeyIndex,
-                  isSelected: selectedRow === foreignKeyIndex,
-                }}
-                context={rowContext}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <DesignerGridCard layout="foreignKeys">
+      <DesignerTableHead columns={FOREIGN_KEY_HEADER_COLUMNS} />
+      <tbody className="font-mono text-size-caption">
+        {foreignKeys.map((foreignKey, foreignKeyIndex) => (
+          <ForeignKeyRow
+            key={`fk-${foreignKeyIndex}`}
+            foreignKey={foreignKey}
+            position={{
+              index: foreignKeyIndex,
+              isSelected: selectedRow === foreignKeyIndex,
+            }}
+            context={rowContext}
+          />
+        ))}
+      </tbody>
+    </DesignerGridCard>
   )
 }
 
@@ -167,7 +162,7 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
   }
 
   return (
-    <div className={styles.container} data-testid="foreign-key-editor">
+    <DesignerPanel testId="foreign-key-editor">
       <ForeignKeyToolbar
         canDeleteSelected={canDeleteForeignKeyAt(foreignKeys, effectiveSelectedRow)}
         onAdd={() => {
@@ -183,6 +178,6 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
         selectedRow={effectiveSelectedRow}
         rowContext={rowContext}
       />
-    </div>
+    </DesignerPanel>
   )
 }

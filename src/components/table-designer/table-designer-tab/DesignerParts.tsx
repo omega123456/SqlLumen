@@ -16,8 +16,15 @@ import {
   pluralizeColumns,
   type DesignerTabView,
 } from './designer-tab-view'
-import styles from '../TableDesignerTab.module.css'
-import { FIELD_CHROME } from '../../../lib/class-names-field'
+import { ACCENT_TILE } from '../../../lib/class-names-tile'
+
+function DesignerHeadingText({ children }: { children: ReactNode }) {
+  return (
+    <h1 className="truncate font-headline text-subtitle font-semibold text-light-on-surface dark:text-dark-on-surface">
+      {children}
+    </h1>
+  )
+}
 
 interface DesignerHeadingProps {
   isCreateMode: boolean
@@ -33,17 +40,16 @@ function DesignerHeading({
   onTableNameChange,
 }: DesignerHeadingProps) {
   if (!isCreateMode) {
-    return <h1 className={styles.heading}>Alter table {tableName || objectName}</h1>
+    return <DesignerHeadingText>Alter table {tableName || objectName}</DesignerHeadingText>
   }
   return (
     <>
-      <h1 className={styles.heading}>Create table</h1>
+      <DesignerHeadingText>Create table</DesignerHeadingText>
       <TextInput
-        variant="bare"
+        variant="accentName"
         type="text"
         value={tableName}
         placeholder="table_name"
-        className={`${FIELD_CHROME} ${styles.tableNameInput}`}
         data-testid="table-designer-name-input"
         onChange={(event) => onTableNameChange(event.target.value)}
       />
@@ -67,6 +73,15 @@ const SUB_TAB_CONTENT: Record<DesignerSubTab, (props: SubTabContentProps) => Rea
   ddl: ({ tabId }) => <DdlPreviewTab tabId={tabId} />,
 }
 
+type DesignerStatus = 'loading' | 'error'
+
+const STATUS_PANEL_CLASSES: Record<DesignerStatus, string> = {
+  loading:
+    'mx-5 my-3 flex min-h-60 flex-col items-center justify-center gap-2 rounded-card border border-light-stroke-card text-light-on-surface-variant dark:border-dark-stroke-card dark:text-dark-on-surface-variant',
+  error:
+    'mx-5 my-3 flex min-h-60 items-center justify-center rounded-card border border-light-stroke-card p-6 text-light-error dark:border-dark-stroke-card dark:text-dark-error',
+}
+
 interface DesignerContentProps {
   view: DesignerTabView
   subTab: SubTabContentProps
@@ -75,7 +90,7 @@ interface DesignerContentProps {
 export function DesignerContent({ view, subTab }: DesignerContentProps) {
   if (view.loadError) {
     return (
-      <div className={styles.errorState} data-testid="table-designer-error">
+      <div className={STATUS_PANEL_CLASSES.error} data-testid="table-designer-error">
         {view.loadError}
       </div>
     )
@@ -83,8 +98,11 @@ export function DesignerContent({ view, subTab }: DesignerContentProps) {
 
   if (view.isLoading) {
     return (
-      <div className={styles.loadingState} data-testid="table-designer-loading">
-        <div className={styles.spinner} aria-hidden />
+      <div className={STATUS_PANEL_CLASSES.loading} data-testid="table-designer-loading">
+        <div
+          className="size-6 animate-spin-850ms rounded-pill border-2 border-light-stroke-card border-t-light-primary window-blurred:animate-spin-850ms-paused dark:border-dark-stroke-card dark:border-t-dark-primary"
+          aria-hidden
+        />
         <span>Loading table schema...</span>
       </div>
     )
@@ -106,18 +124,21 @@ interface DesignerHeaderProps {
 export function DesignerHeader(header: DesignerHeaderProps) {
   const { view } = header
   return (
-    <div className={styles.header} data-testid="table-designer-header">
-      <span className={styles.tile} aria-hidden>
+    <div className="flex items-center gap-3 px-5 pt-4 pb-1.5" data-testid="table-designer-header">
+      <span className={ACCENT_TILE} aria-hidden>
         <Wrench size={16} weight="regular" />
       </span>
-      <div className={styles.headingStack}>
+      <div className="flex min-w-0 flex-1 flex-col">
         <DesignerHeading
           isCreateMode={view.mode === 'create'}
           tableName={view.tableName}
           objectName={header.objectName}
           onTableNameChange={header.onTableNameChange}
         />
-        <span className={styles.caption} data-testid="table-designer-caption">
+        <span
+          className="text-size-caption leading-5 text-light-on-surface-variant dark:text-dark-on-surface-variant"
+          data-testid="table-designer-caption"
+        >
           {header.databaseName} · {pluralizeColumns(view.columnCount)}
         </span>
       </div>
@@ -147,11 +168,7 @@ interface DesignerSubTabBarProps {
 
 export function DesignerSubTabBar({ selectedSubTab, onSelect }: DesignerSubTabBarProps) {
   return (
-    <UnderlineTabBar
-      rowHeight="tall"
-      className={styles.subTabBar}
-      data-testid="table-designer-subtabs"
-    >
+    <UnderlineTabBar rowHeight="tall" className="px-3" data-testid="table-designer-subtabs">
       {SUB_TAB_ORDER.map((subTabKey) => (
         <UnderlineTab
           key={subTabKey}

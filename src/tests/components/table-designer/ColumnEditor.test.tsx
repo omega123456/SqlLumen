@@ -206,9 +206,7 @@ describe('ColumnEditor', () => {
       pointer('pointerMove', row0, 26)
 
       expect(row0.style.transform).toBe('translateY(16px)')
-      await waitFor(() =>
-        expect(row1.style.transform).toBe('translateY(calc(-1 * var(--drag-row-height)))')
-      )
+      await waitFor(() => expect(row1.style.transform).toBe('translateY(-30px)'))
 
       // Past the last row clamps to the last slot
       pointer('pointerMove', row0, 500)
@@ -218,7 +216,7 @@ describe('ColumnEditor', () => {
       expect(screen.getByTestId('column-row-0').style.transform).toBe('')
       // The click that ends the drag must not select a row
       fireEvent.click(screen.getByTestId('column-row-1'))
-      expect(screen.getByTestId('column-row-1').className).not.toMatch(/selectedRow/)
+      expect(screen.getByTestId('column-row-1')).not.toHaveAttribute('data-selected')
     })
 
     it('a cancelled drag puts the row back', async () => {
@@ -250,7 +248,7 @@ describe('ColumnEditor', () => {
 
       expect(row0.style.transform).toBe('')
       expect(columnNames(getTab)).toEqual(['id', 'email'])
-      await waitFor(() => expect(row0.className).toMatch(/selectedRow/))
+      await waitFor(() => expect(row0).toHaveAttribute('data-selected'))
     })
   })
 
@@ -264,7 +262,7 @@ describe('ColumnEditor', () => {
     expect(getTab()?.currentSchema.columns[1]?.name).toBe('email_address')
   })
 
-  it('TypeCombobox change updates column type in store', async () => {
+  it('changing the type dropdown updates the column type in store', async () => {
     const { user, getTab } = renderEditor()
 
     await user.click(screen.getByTestId('column-type-1'))

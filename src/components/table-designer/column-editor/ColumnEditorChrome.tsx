@@ -1,28 +1,29 @@
 import { ArrowDown, ArrowUp, Plus, Trash } from '@phosphor-icons/react'
 import { Button } from '../../common/Button'
 import type { SelectionMoves, TraversalDirection } from '../column-editor-model'
-import styles from '../ColumnEditor.module.css'
+import {
+  DesignerBodyCell,
+  DesignerTableHead,
+  DesignerToolbar,
+  DesignerToolbarDivider,
+  type DesignerHeaderColumn,
+} from '../designer-table/DesignerTableParts'
 
-interface HeaderCell {
-  label: string
-  centred: boolean
-}
-
-const HEADER_CELLS: HeaderCell[] = [
-  { label: '#', centred: true },
-  { label: 'Name', centred: false },
-  { label: 'Type', centred: false },
-  { label: 'Length', centred: false },
-  { label: 'Signed', centred: false },
-  { label: 'Nullable', centred: true },
-  { label: 'PK', centred: true },
-  { label: 'AI', centred: true },
-  { label: 'Default', centred: false },
-  { label: 'Comment', centred: false },
-  { label: '', centred: false },
+const HEADER_COLUMNS: DesignerHeaderColumn[] = [
+  { label: '#', isCentred: true },
+  { label: 'Name' },
+  { label: 'Type' },
+  { label: 'Length' },
+  { label: 'Signed' },
+  { label: 'Nullable', isCentred: true },
+  { label: 'PK', isCentred: true },
+  { label: 'AI', isCentred: true },
+  { label: 'Default' },
+  { label: 'Comment' },
+  { label: '' },
 ]
 
-const GHOST_ROW_LABEL_SPAN = HEADER_CELLS.length - 1
+const GHOST_ROW_LABEL_SPAN = HEADER_COLUMNS.length - 1
 
 interface ColumnEditorToolbarProps {
   moves: SelectionMoves
@@ -38,7 +39,7 @@ export function ColumnEditorToolbar({
   onDeleteSelected,
 }: ColumnEditorToolbarProps) {
   return (
-    <div className={styles.toolbar}>
+    <DesignerToolbar>
       <Button size="sm" onClick={onAdd} data-testid="column-editor-add">
         <Plus size={16} weight="regular" />
         <span>Add column</span>
@@ -63,7 +64,7 @@ export function ColumnEditorToolbar({
         <ArrowDown size={16} weight="regular" />
         <span>Move down</span>
       </Button>
-      <span className={styles.toolbarDivider} aria-hidden />
+      <DesignerToolbarDivider />
       <Button
         variant="subtle"
         size="sm"
@@ -75,35 +76,25 @@ export function ColumnEditorToolbar({
         <Trash size={16} weight="regular" />
         <span>Delete</span>
       </Button>
-    </div>
+    </DesignerToolbar>
   )
 }
 
 export function ColumnEditorHead() {
-  return (
-    <thead className={styles.tableHead}>
-      <tr>
-        {HEADER_CELLS.map(({ label, centred }, index) => (
-          <th
-            key={`${label}-${index}`}
-            className={`${styles.headerCell} ${centred ? styles.centred : ''}`}
-            scope="col"
-          >
-            {label}
-          </th>
-        ))}
-      </tr>
-    </thead>
-  )
+  return <DesignerTableHead columns={HEADER_COLUMNS} />
 }
 
 export function GhostAddRow({ onAdd }: { onAdd: () => void }) {
   return (
-    <tr className={styles.ghostRow} onClick={onAdd} data-testid="column-editor-ghost-add">
-      <td className={styles.bodyCell}>+</td>
-      <td className={styles.bodyCell} colSpan={GHOST_ROW_LABEL_SPAN}>
+    <tr
+      className="cursor-pointer text-light-primary italic hover:bg-light-fill-subtle-hover dark:text-dark-primary dark:hover:bg-dark-fill-subtle-hover"
+      onClick={onAdd}
+      data-testid="column-editor-ghost-add"
+    >
+      <DesignerBodyCell edge="closing">+</DesignerBodyCell>
+      <DesignerBodyCell edge="closing" colSpan={GHOST_ROW_LABEL_SPAN}>
         Click to add new column...
-      </td>
+      </DesignerBodyCell>
     </tr>
   )
 }

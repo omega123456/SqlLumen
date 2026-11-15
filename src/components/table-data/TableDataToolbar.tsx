@@ -2,7 +2,6 @@ import { useCallback } from 'react'
 import { useTableDataStore } from '../../stores/table-data-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { StatusArea } from '../shared/toolbar/StatusArea'
-import styles from './TableDataToolbar.module.css'
 import {
   deleteCopyFor,
   deleteTargetCountFor,
@@ -16,6 +15,7 @@ import {
   RestoringStatusHint,
   RowActionButtons,
   ToolbarBadges,
+  ToolbarDivider,
 } from './table-data-toolbar/ToolbarParts'
 import { ToolbarDialogs, ToolbarRightSection } from './table-data-toolbar/ToolbarRightSection'
 import {
@@ -80,8 +80,11 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
   const handleCopySelectedRows = useCopyCheckedRows(view)
 
   return (
-    <div className={styles.toolbar} data-testid="table-data-toolbar">
-      <div className={styles.leftSection}>
+    <div
+      className="flex h-command-bar shrink-0 items-center gap-1 px-2"
+      data-testid="table-data-toolbar"
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
         <StatusArea
           status={isBusy ? 'loading' : 'success'}
           executionTimeMs={positiveOrUndefined(view.executionTimeMs)}
@@ -92,7 +95,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
           isConnectionReadOnly={isConnectionReadOnly}
           showNoKeyBadge={isNoKeyBadgeVisible(isView, view)}
         />
-        <div className={styles.divider} />
+        <ToolbarDivider />
         {!isView && (
           <RowActionButtons
             availability={toolbar.availability}

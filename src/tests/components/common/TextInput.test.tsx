@@ -25,6 +25,14 @@ describe('TextInput', () => {
     )
   })
 
+  it('exposes the accent name variant as its lookup key', () => {
+    render(<TextInput variant="accentName" aria-label="Table name" />)
+    expect(screen.getByRole('textbox', { name: 'Table name' })).toHaveAttribute(
+      'data-variant',
+      'accentName'
+    )
+  })
+
   it('forwards ref', () => {
     const ref = createRef<HTMLInputElement>()
     render(<TextInput ref={ref} defaultValue="a" />)

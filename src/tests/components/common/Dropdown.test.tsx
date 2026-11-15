@@ -572,6 +572,48 @@ describe('Dropdown trigger variants', () => {
     expect(trigger).toHaveAttribute('data-width', 'auto')
   })
 
+  it.each(['cell', 'monoCell', 'field'] as const)('exposes the %s trigger size', (triggerSize) => {
+    render(
+      <Dropdown
+        id="d"
+        ariaLabel="Pick"
+        options={options}
+        value="a"
+        onChange={vi.fn()}
+        triggerSize={triggerSize}
+      />
+    )
+
+    expect(screen.getByRole('combobox', { name: 'Pick' })).toHaveAttribute('data-size', triggerSize)
+  })
+
+  it('flags the invalid and waiting trigger states', () => {
+    render(
+      <Dropdown
+        id="d"
+        ariaLabel="Pick"
+        options={options}
+        value="a"
+        onChange={vi.fn()}
+        invalid
+        waiting
+        disabled
+      />
+    )
+
+    const trigger = screen.getByRole('combobox', { name: 'Pick' })
+    expect(trigger).toHaveAttribute('data-invalid', 'true')
+    expect(trigger).toHaveAttribute('data-waiting', 'true')
+  })
+
+  it('does not flag a valid, idle trigger', () => {
+    render(<Dropdown id="d" ariaLabel="Pick" options={options} value="a" onChange={vi.fn()} />)
+
+    const trigger = screen.getByRole('combobox', { name: 'Pick' })
+    expect(trigger).not.toHaveAttribute('data-invalid')
+    expect(trigger).not.toHaveAttribute('data-waiting')
+  })
+
   it('flags the modified and NULL field state on the trigger', () => {
     render(
       <Dropdown

@@ -1,19 +1,22 @@
-import { Trash } from '@phosphor-icons/react'
 import type { TableDesignerStore } from '../../../stores/table-designer-store'
 import type { TableDesignerForeignKeyDef } from '../../../types/schema'
-import { Button } from '../../common/Button'
 import { Dropdown, type DropdownOption } from '../../common/Dropdown'
 import { TextInput } from '../../common/TextInput'
 import {
   EMPTY_TEXT_FALLBACK,
-  cellInputClassName,
-  cellSelectClassName,
   referencedTargetKeyFor,
-  rowStripeClassName,
   stopRowSelection,
 } from './foreign-key-editor-model'
 import type { ReferencedLookups } from './use-referenced-lookups'
-import styles from '../ForeignKeyEditor.module.css'
+import {
+  DesignerBodyCell,
+  DesignerDeleteButton,
+  DesignerDeleteCell,
+  DesignerIndicatorCell,
+  DesignerRow,
+  DesignerRowNumberCell,
+} from '../designer-table/DesignerTableParts'
+import { selectedAccent } from '../designer-table/designer-accent'
 
 const ACTION_OPTIONS = ['NO ACTION', 'CASCADE', 'SET NULL', 'RESTRICT']
 
@@ -45,17 +48,14 @@ interface ForeignKeyRowProps {
 }
 
 export function ForeignKeyRow({ foreignKey, position, context }: ForeignKeyRowProps) {
-  const rowClassName = `${styles.row} ${rowStripeClassName(position.isSelected, position.index)}`
   return (
-    <tr
-      className={rowClassName}
+    <DesignerRow
+      isSelected={position.isSelected}
       data-testid={`fk-row-${position.index}`}
       onClick={() => context.onSelect(position.index)}
     >
-      <td className={`${styles.bodyCell} ${styles.indicatorCell}`}>
-        <span className={styles.rowAccent} aria-hidden />
-      </td>
-      <td className={`${styles.bodyCell} ${styles.rowNumberCell}`}>{position.index + 1}</td>
+      <DesignerIndicatorCell accent={selectedAccent(position.isSelected)} />
+      <DesignerRowNumberCell>{position.index + 1}</DesignerRowNumberCell>
       {foreignKey.isComposite ? (
         <CompositeForeignKeyCells
           foreignKey={foreignKey}
@@ -65,7 +65,7 @@ export function ForeignKeyRow({ foreignKey, position, context }: ForeignKeyRowPr
       ) : (
         <EditableForeignKeyCells foreignKey={foreignKey} position={position} context={context} />
       )}
-    </tr>
+    </DesignerRow>
   )
 }
 
@@ -83,13 +83,13 @@ function CompositeForeignKeyCells({
   const referencedDatabase = foreignKey.referencedDatabase || databaseName || EMPTY_TEXT_FALLBACK
   return (
     <>
-      <td className={styles.bodyCell}>
-        <span className={styles.readonlyText}>{foreignKey.name || EMPTY_TEXT_FALLBACK}</span>
-      </td>
-      <td className={styles.bodyCell} colSpan={5}>
-        <div className={styles.compositeCell} data-testid={`fk-composite-badge-${index}`}>
-          <span className={styles.warningBadge}>Multi-column — view only</span>
-          <div className={styles.compositeSummary}>
+      <DesignerBodyCell>{foreignKey.name || EMPTY_TEXT_FALLBACK}</DesignerBodyCell>
+      <DesignerBodyCell colSpan={5}>
+        <div className="flex flex-col gap-2" data-testid={`fk-composite-badge-${index}`}>
+          <span className="inline-flex self-start rounded-pill bg-light-warning-container-a45 px-2 py-1 text-size-caption font-semibold text-light-warning dark:bg-dark-warning-container-a45 dark:text-dark-warning">
+            Multi-column — view only
+          </span>
+          <div className="flex flex-wrap gap-2 text-light-on-surface-variant dark:text-dark-on-surface-variant">
             <span>{foreignKey.sourceColumn || EMPTY_TEXT_FALLBACK}</span>
             <span>→</span>
             <span>
@@ -98,14 +98,10 @@ function CompositeForeignKeyCells({
             </span>
           </div>
         </div>
-      </td>
-      <td className={styles.bodyCell}>
-        <span className={styles.readonlyText}>{foreignKey.onDelete || EMPTY_TEXT_FALLBACK}</span>
-      </td>
-      <td className={styles.bodyCell}>
-        <span className={styles.readonlyText}>{foreignKey.onUpdate || EMPTY_TEXT_FALLBACK}</span>
-      </td>
-      <td className={`${styles.bodyCell} ${styles.deleteCell}`} />
+      </DesignerBodyCell>
+      <DesignerBodyCell>{foreignKey.onDelete || EMPTY_TEXT_FALLBACK}</DesignerBodyCell>
+      <DesignerBodyCell>{foreignKey.onUpdate || EMPTY_TEXT_FALLBACK}</DesignerBodyCell>
+      <DesignerDeleteCell />
     </>
   )
 }
@@ -145,7 +141,7 @@ function ReferencedColumnCell({
   referencedDatabase,
 }: ReferencedColumnCellProps) {
   const { tabId, updateForeignKey, referencedLookups } = context
-  const { index, isSelected } = position
+  const { index } = position
   const targetKey = referencedTargetKeyFor(referencedDatabase, foreignKey.referencedTable)
   const columnNames = referencedColumnNamesFor(referencedLookups, targetKey)
   const isLoading = isReferencedColumnLoadingFor(referencedLookups, targetKey)
@@ -160,7 +156,6 @@ function ReferencedColumnCell({
         variant="tableCell"
         value={foreignKey.referencedColumn}
         placeholder="column name"
-        className={cellInputClassName(isSelected)}
         data-testid={`fk-referenced-column-${index}`}
         onClick={stopRowSelection}
         onChange={(event) => updateReferencedColumn(event.target.value)}
@@ -181,7 +176,7 @@ function ReferencedColumnCell({
         data-testid={`fk-referenced-column-${index}`}
         onChange={updateReferencedColumn}
         workspaceTabId={tabId}
-        triggerClassName={cellSelectClassName()}
+        triggerSize="monoCell"
       />
     </div>
   )
@@ -203,7 +198,7 @@ interface ForeignKeyDropdownCellProps {
 function ForeignKeyDropdownCell(cell: ForeignKeyDropdownCellProps) {
   const { field, position, tabId } = cell
   return (
-    <td className={styles.bodyCell}>
+    <DesignerBodyCell>
       <div onClick={stopRowSelection}>
         <Dropdown
           id={`fk-${field}-${tabId}-${position.index}`}
@@ -213,11 +208,11 @@ function ForeignKeyDropdownCell(cell: ForeignKeyDropdownCellProps) {
           data-testid={`fk-${field}-${position.index}`}
           onChange={cell.onChange}
           workspaceTabId={tabId}
-          triggerClassName={cellSelectClassName()}
+          triggerSize="monoCell"
           disabled={cell.disabled}
         />
       </div>
-    </td>
+    </DesignerBodyCell>
   )
 }
 
@@ -229,22 +224,13 @@ interface ForeignKeyDeleteCellProps {
 
 function ForeignKeyDeleteCell({ foreignKey, index, onDelete }: ForeignKeyDeleteCellProps) {
   return (
-    <td className={`${styles.bodyCell} ${styles.deleteCell}`}>
-      <Button
-        variant="subtle"
-        size="sm"
-        dangerText
-        iconOnly
-        aria-label={`Delete foreign key ${foreignKey.name || index + 1}`}
-        data-testid={`fk-delete-${index}`}
-        onClick={(event) => {
-          event.stopPropagation()
-          onDelete(index)
-        }}
-      >
-        <Trash size={14} weight="bold" />
-      </Button>
-    </td>
+    <DesignerDeleteCell>
+      <DesignerDeleteButton
+        label={`Delete foreign key ${foreignKey.name || index + 1}`}
+        testId={`fk-delete-${index}`}
+        onDelete={() => onDelete(index)}
+      />
+    </DesignerDeleteCell>
   )
 }
 
@@ -289,14 +275,14 @@ function ReferenceTargetCells({ foreignKey, position, context, update }: Foreign
         }}
         disabled={referencedDatabase === ''}
       />
-      <td className={styles.bodyCell}>
+      <DesignerBodyCell>
         <ReferencedColumnCell
           foreignKey={foreignKey}
           position={position}
           context={context}
           referencedDatabase={referencedDatabase}
         />
-      </td>
+      </DesignerBodyCell>
     </>
   )
 }
@@ -333,23 +319,22 @@ function ReferentialActionCells({
 function EditableForeignKeyCells(cells: EditableForeignKeyCellsProps) {
   const { foreignKey, position, context } = cells
   const { tabId, updateForeignKey } = context
-  const { index, isSelected } = position
+  const { index } = position
   const update: ForeignKeyUpdate = (field, value) =>
     updateForeignKey(tabId, { index: index, field: field, value: value })
 
   return (
     <>
-      <td className={styles.bodyCell}>
+      <DesignerBodyCell>
         <TextInput
           type="text"
           variant="tableCell"
           value={foreignKey.name}
-          className={cellInputClassName(isSelected)}
           data-testid={`fk-name-${index}`}
           onClick={stopRowSelection}
           onChange={(event) => update('name', event.target.value)}
         />
-      </td>
+      </DesignerBodyCell>
       <ForeignKeyDropdownCell
         position={position}
         tabId={tabId}

@@ -73,6 +73,38 @@ describe('Button', () => {
     expect(btn).toHaveAttribute('data-danger-text', 'true')
   })
 
+  it('flags the invalid state and exposes the cell size', () => {
+    render(
+      <Button size="cell" invalid>
+        Pick
+      </Button>
+    )
+    const btn = screen.getByRole('button', { name: 'Pick' })
+    expect(btn).toHaveAttribute('data-size', 'cell')
+    expect(btn).toHaveAttribute('data-invalid', 'true')
+  })
+
+  it('exposes the toolbar size for labelled and icon-only buttons', () => {
+    render(
+      <>
+        <Button size="toolbar">Add</Button>
+        <Button size="toolbar" iconOnly aria-label="Refresh">
+          x
+        </Button>
+      </>
+    )
+    expect(screen.getByRole('button', { name: 'Add' })).toHaveAttribute('data-size', 'toolbar')
+    expect(screen.getByRole('button', { name: 'Refresh' })).toHaveAttribute(
+      'data-size',
+      'toolbar'
+    )
+  })
+
+  it('does not flag a valid button as invalid', () => {
+    render(<Button>Pick</Button>)
+    expect(screen.getByRole('button', { name: 'Pick' })).not.toHaveAttribute('data-invalid')
+  })
+
   it('forwards ref', () => {
     const ref = createRef<HTMLButtonElement>()
     render(<Button ref={ref}>T</Button>)

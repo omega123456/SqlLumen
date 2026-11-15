@@ -312,6 +312,7 @@
   --spacing-toast: 380px;
   --spacing-elapsed-timer: 9ch;
   --spacing-rail-tooltip: calc(100% + 2px);
+  --spacing-lookup-dialog: 70vh;
   --spacing-connection-rail: 41px;
   --spacing-connection-rail-edged: 42px;
   --spacing-connection-tab-active: 33px;
@@ -334,6 +335,7 @@
   --radius-marker: 1px;
   --radius-badge: 7px;
   --radius-key-badge: 10px;
+  --radius-pill: 999px;
 
   --border-width-check: 1.6px;
   --border-width-spinner: 1.5px;
@@ -353,6 +355,12 @@
   --shadow-light-field-focus: inset 0 -1px 0 var(--color-light-primary);
   --shadow-dark-field-error: inset 0 -1px 0 var(--color-dark-error);
   --shadow-light-field-error: inset 0 -1px 0 var(--color-light-error);
+  --shadow-dark-field-error-focus-ring:
+    inset 0 -1px 0 var(--color-dark-error), 0 0 0 1px var(--color-dark-focus-inner),
+    0 0 0 3px var(--color-dark-focus-outer);
+  --shadow-light-field-error-focus-ring:
+    inset 0 -1px 0 var(--color-light-error), 0 0 0 1px var(--color-light-focus-inner),
+    0 0 0 3px var(--color-light-focus-outer);
   --shadow-dark-divider-bottom: inset 0 -1px 0 var(--color-dark-stroke-divider);
   --shadow-light-divider-bottom: inset 0 -1px 0 var(--color-light-stroke-divider);
   --shadow-dark-divider-right: inset -1px 0 0 var(--color-dark-stroke-divider);
@@ -388,6 +396,11 @@
   --transition-property-shadow: box-shadow;
   --transition-property-transform: transform;
   --transition-property-rotate: rotate;
+  --transition-property-bg-and-color: background-color, color;
+  --transition-property-border-color-and-shadow: border-color, box-shadow;
+  --transition-property-filter-and-shadow: filter, box-shadow;
+  --transition-property-color-border-background: color, border-color, background;
+  --transition-property-color-and-background: color, background;
   --transition-property-fade-slide: opacity, translate;
   --transition-property-color-border-bg-opacity: color, border-color, background-color, opacity;
 

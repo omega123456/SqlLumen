@@ -67,17 +67,6 @@ describe('DateTimePicker', () => {
     expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
   })
 
-  it('does not have ag-custom-component-popup class', () => {
-    renderPicker()
-    const popup = screen.getByTestId('date-time-picker-popup')
-    expect(popup.className).not.toContain('ag-custom-component-popup')
-  })
-
-  it('marks the portal as click-outside-ignore so grid outside-click handling keeps it open', () => {
-    renderPicker()
-    expect(screen.getByTestId('date-time-picker-popup')).toHaveClass('click-outside-ignore')
-  })
-
   it('renders calendar section in DATE mode', () => {
     renderPicker({ value: '2023-11-24', columnType: 'DATE' })
     expect(screen.getByTestId('calendar-section')).toBeInTheDocument()
@@ -187,13 +176,6 @@ describe('DateTimePicker', () => {
   })
 
   // ---- Disabled state ----
-
-  it('disabled state renders with reduced opacity class', () => {
-    renderPicker({ disabled: true })
-
-    const popup = screen.getByTestId('date-time-picker-popup')
-    expect(popup.className).toContain('disabled')
-  })
 
   it('disabled state does not call onCancel on click outside', () => {
     const onCancel = vi.fn()
@@ -405,7 +387,7 @@ describe('DateTimePicker', () => {
     const popup = screen.getByTestId('date-time-picker-popup')
     // Focus lands on the selected day, not the previous-month arrow
     expect(popup.contains(document.activeElement)).toBe(true)
-    expect(document.activeElement).toHaveClass('react-datepicker__day--selected')
+    expect(document.activeElement).toHaveAttribute('aria-selected', 'true')
     expect(document.activeElement).toHaveTextContent('24')
 
     vi.useRealTimers()

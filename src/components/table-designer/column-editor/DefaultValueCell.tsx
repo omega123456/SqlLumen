@@ -1,19 +1,15 @@
 import { CaretDown } from '@phosphor-icons/react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { joinClassNames } from '../../../lib/class-names'
+import { FOCUS_RING } from '../../../lib/focus-ring'
 import { Button } from '../../common/Button'
 import { Dropdown, type DropdownOption } from '../../common/Dropdown'
 import { TextInput } from '../../common/TextInput'
 import { defaultValueForMode, defaultValueText, isTextDefaultMode } from '../column-editor-model'
 import { CellFrame } from './CellFrame'
-import {
-  cellOf,
-  editableInputClass,
-  isCellModified,
-  stopClick,
-  updateField,
-} from './column-cell-helpers'
+import { cellOf, isCellModified, stopClick, updateField } from './column-cell-helpers'
 import type { ColumnCellProps } from './column-row-types'
-import styles from '../ColumnEditor.module.css'
+import { DesignerBodyCell } from '../designer-table/DesignerTableParts'
 
 const DEFAULT_MODE_OPTIONS: DropdownOption[] = [
   { value: 'NO_DEFAULT', label: 'No default' },
@@ -68,7 +64,8 @@ function DefaultModeDropdown(props: ColumnCellProps) {
         'data-cell-key': 'default',
         onClick: stopClick,
       }}
-      triggerClassName={styles.cellDropdown}
+      triggerSize="cell"
+      triggerClassName="transition-bg-and-color"
       onTriggerFocus={activate}
       onTriggerBlur={() => defaultCell.scheduleBlur(columnIndex)}
       onTriggerKeyDown={handleKeyDown}
@@ -106,7 +103,7 @@ function DefaultTextInput(props: ColumnCellProps) {
   }
 
   return (
-    <div className={styles.defaultValueInputContainer}>
+    <div className="flex w-full min-w-0 items-center gap-1">
       <TextInput
         type="text"
         variant="tableCell"
@@ -114,7 +111,7 @@ function DefaultTextInput(props: ColumnCellProps) {
         data-testid={`column-default-input-${columnIndex}`}
         data-row-index={columnIndex}
         data-cell-key="default"
-        className={editableInputClass(row, controller.isActiveCell(cell))}
+        className="min-w-0 flex-1 font-mono"
         onFocus={activate}
         onBlur={() => defaultCell.scheduleBlur(columnIndex)}
         onClick={stopClick}
@@ -122,10 +119,14 @@ function DefaultTextInput(props: ColumnCellProps) {
         onKeyDown={handleKeyDown}
       />
       <Button
+        variant="bare"
         tabIndex={-1}
         aria-label="Change default mode"
         data-testid={`column-default-mode-${columnIndex}`}
-        className={styles.defaultModeIconButton}
+        className={joinClassNames([
+          'inline-flex size-7 shrink-0 cursor-default items-center justify-center gap-2 rounded-control border border-x-light-stroke-control border-t-light-stroke-control border-b-light-stroke-control-bottom bg-transparent p-1 font-body text-body font-regular whitespace-nowrap text-light-on-surface-variant hover:bg-light-surface-container-highest dark:border-x-dark-stroke-control dark:border-t-dark-stroke-control dark:border-b-dark-stroke-control-bottom dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-highest',
+          FOCUS_RING,
+        ])}
         onClick={() => defaultCell.openOverride(columnIndex)}
       >
         <CaretDown size={16} weight="bold" />
@@ -143,12 +144,12 @@ function showsDefaultModeDropdown(props: ColumnCellProps): boolean {
 export function DefaultValueCell(props: ColumnCellProps) {
   const { row } = props
   return (
-    <td className={styles.bodyCell}>
+    <DesignerBodyCell>
       <CellFrame
         modified={isCellModified(props, 'defaultValue')}
         testId={`cell-${row.columnIndex}-defaultValue`}
       >
-        <div className={styles.defaultValueCell} onClick={stopClick}>
+        <div className="relative flex w-42.5 items-center gap-2" onClick={stopClick}>
           {showsDefaultModeDropdown(props) ? (
             <DefaultModeDropdown {...props} />
           ) : (
@@ -156,6 +157,6 @@ export function DefaultValueCell(props: ColumnCellProps) {
           )}
         </div>
       </CellFrame>
-    </td>
+    </DesignerBodyCell>
   )
 }

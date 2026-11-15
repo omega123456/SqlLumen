@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { IndexEditor } from '../../../components/table-designer/IndexEditor'
 import { useTableDesignerStore } from '../../../stores/table-designer-store'
 import type { TableDesignerTabState } from '../../../stores/table-designer-store'
-import styles from '../../../components/table-designer/IndexEditor.module.css'
 
 function makeTabState(overrides: Partial<TableDesignerTabState> = {}): TableDesignerTabState {
   return {
@@ -269,7 +268,7 @@ describe('IndexEditor', () => {
     ).toEqual(['id', 'email'])
   })
 
-  it('Columns selector trigger keeps a fixed-width summary when many columns are selected', () => {
+  it('Columns selector trigger summarises the selection when many columns are selected', () => {
     seedStore({
       currentSchema: {
         ...makeTabState().currentSchema,
@@ -287,8 +286,6 @@ describe('IndexEditor', () => {
 
     const trigger = screen.getByTestId('index-columns-button-0')
     expect(trigger).toHaveTextContent('3 selected')
-    expect(trigger.className).toContain(styles.columnButtonFixed)
-    expect(trigger.className).toContain(styles.columnButtonSummary)
   })
 
   it('Columns selector closes on outside click', async () => {

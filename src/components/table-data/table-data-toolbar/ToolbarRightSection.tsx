@@ -13,7 +13,7 @@ import type {
   useToolbarPaging,
   useToolbarViewActions,
 } from './use-toolbar-navigation'
-import styles from '../TableDataToolbar.module.css'
+import { ToolbarDivider } from './ToolbarParts'
 
 interface ToolbarRightSectionProps {
   view: ToolbarTabView
@@ -28,7 +28,7 @@ export function ToolbarRightSection(props: ToolbarRightSectionProps) {
   const { view, isBusy, filter, viewActions, paging } = props
   const isTableDataActionDisabled = isBusy || view.columns.length === 0
   return (
-    <div className={styles.rightSection}>
+    <div className="flex shrink-0 items-center gap-1">
       <FilterToolbarButton
         isActive={view.filterModel.length > 0}
         activeCount={view.filterModel.length}
@@ -36,7 +36,7 @@ export function ToolbarRightSection(props: ToolbarRightSectionProps) {
         onClearClick={filter.handleClearFilter}
         isDisabled={isTableDataActionDisabled}
       />
-      <div className={styles.divider} />
+      <ToolbarDivider />
       <ViewModeGroup
         currentMode={view.viewMode}
         availableModes={['grid', 'form']}

@@ -3,14 +3,16 @@ import { joinClassNames } from '../../lib/class-names'
 import {
   fieldChromeClassName,
   NEUTRAL_FIELD_VALUE_STATE,
+  type FieldFill,
+  type FieldTextEmphasis,
   type FieldValueState,
 } from '../../lib/class-names-field'
 import { dataFlag } from '../../lib/data-attributes'
 
 export type TextInputVariant =
-  'default' | 'mono' | 'formField' | 'tableCell' | 'search' | 'gridCell' | 'bare'
+  'default' | 'mono' | 'formField' | 'tableCell' | 'search' | 'accentName' | 'gridCell' | 'bare'
 
-type ChromeVariant = 'default' | 'mono' | 'formField' | 'tableCell' | 'search'
+type ChromeVariant = 'default' | 'mono' | 'formField' | 'tableCell' | 'search' | 'accentName'
 type UnchromedVariant = 'gridCell' | 'bare'
 type PaddingKey = 'standard' | 'passwordToggleGutter' | 'searchIconGutters'
 
@@ -20,6 +22,7 @@ const CHROME_VARIANT_CLASSES: Record<ChromeVariant, string> = {
   formField: 'h-control w-full flex-1 font-mono text-size-mono',
   tableCell: 'h-7.5 w-full text-size-row',
   search: 'h-control w-full font-body text-body',
+  accentName: 'h-control w-full max-w-105 my-1 font-body text-body font-semibold',
 }
 
 const UNCHROMED_VARIANT_CLASSES: Record<UnchromedVariant, string> = {
@@ -45,6 +48,16 @@ function isUnchromed(variant: TextInputVariant): variant is UnchromedVariant {
   return variant === 'gridCell' || variant === 'bare'
 }
 
+function fieldEmphasis(variant: TextInputVariant): FieldTextEmphasis {
+  if (variant === 'accentName') return 'accent'
+  return 'standard'
+}
+
+function fieldFill(variant: TextInputVariant): FieldFill {
+  if (variant === 'tableCell') return 'steady'
+  return 'responsive'
+}
+
 function paddingKey(variant: TextInputVariant, passwordToggleGutter: boolean): PaddingKey {
   if (variant === 'search') return 'searchIconGutters'
   if (passwordToggleGutter) return 'passwordToggleGutter'
@@ -66,7 +79,12 @@ function variantClassName({
 }: VariantClassOptions): string {
   if (isUnchromed(variant)) return UNCHROMED_VARIANT_CLASSES[variant]
   return joinClassNames([
-    fieldChromeClassName(invalid, fieldState),
+    fieldChromeClassName({
+      invalid: invalid,
+      fieldState: fieldState,
+      emphasis: fieldEmphasis(variant),
+      fill: fieldFill(variant),
+    }),
     PADDING_X_CLASSES[paddingKey(variant, passwordToggleGutter)],
     CHROME_VARIANT_CLASSES[variant],
   ])

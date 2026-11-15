@@ -6,7 +6,7 @@ import { applyTableDdl } from '../../lib/table-designer-commands'
 import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
 import { Button } from '../common/Button'
 import { DialogShell } from '../dialogs/DialogShell'
-import styles from './ApplySchemaChangesDialog.module.css'
+import { SCROLLBAR, joinClassNames } from '../../lib/class-names'
 
 import { logFrontendError } from '../../lib/app-log-commands'
 import { toErrorMessage } from '../../lib/error-message'
@@ -67,14 +67,19 @@ function useApplySchemaChanges(request: ApplyRequest) {
 function SchemaWarnings({ warnings }: { warnings: string[] }) {
   if (warnings.length === 0) return null
   return (
-    <div className={styles.warningSection} data-testid="apply-schema-warnings">
-      <div className={styles.warningHeader}>
+    <div
+      className="flex flex-col gap-2 rounded-card border border-light-warning-a20 bg-light-warning-container-a28 p-3 dark:border-dark-warning-a20 dark:bg-dark-warning-container-a28"
+      data-testid="apply-schema-warnings"
+    >
+      <div className="flex items-center gap-2 font-semibold text-light-warning dark:text-dark-warning">
         <WarningCircle size={18} weight="fill" />
         <span>Warnings</span>
       </div>
-      <ul className={styles.warningList}>
+      <ul className="list-disc pl-5 text-light-on-surface dark:text-dark-on-surface">
         {warnings.map((warning) => (
-          <li key={warning}>{warning}</li>
+          <li key={warning} className="not-first:mt-1">
+            {warning}
+          </li>
         ))}
       </ul>
     </div>
@@ -89,10 +94,10 @@ interface ApplyActionsProps {
 
 function ApplyActions({ isExecuting, onExecute, onCancel }: ApplyActionsProps) {
   return (
-    <div className={styles.actions}>
+    <div className="flex justify-end gap-2">
       <Button
         variant="accent"
-        className={styles.executeButton}
+        className="min-w-42"
         onClick={onExecute}
         disabled={isExecuting}
         data-testid="apply-schema-confirm"
@@ -100,7 +105,7 @@ function ApplyActions({ isExecuting, onExecute, onCancel }: ApplyActionsProps) {
         {isExecuting ? 'Executing...' : 'Execute changes'}
       </Button>
       <Button
-        className={styles.cancelButton}
+        className="min-w-30"
         onClick={onCancel}
         disabled={isExecuting}
         data-testid="apply-schema-cancel"
@@ -129,20 +134,33 @@ export function ApplySchemaChangesDialog(props: ApplySchemaChangesDialogProps) {
       disableFocusManagement={isPlaywrightBuild()}
       nonDismissible={isExecuting}
     >
-      <div className={styles.root}>
-        <div className={styles.header}>
-          <h2 className={styles.title}>Apply schema changes</h2>
-          <p className={styles.description}>The following SQL will be executed:</p>
+      <div className="flex flex-col gap-4 p-6 text-light-on-surface dark:text-dark-on-surface">
+        <div className="flex flex-col gap-1">
+          <h2 className="font-headline text-subtitle font-semibold text-light-on-surface dark:text-dark-on-surface">
+            Apply schema changes
+          </h2>
+          <p className="text-light-on-surface-variant dark:text-dark-on-surface-variant">
+            The following SQL will be executed:
+          </p>
         </div>
 
-        <pre className={styles.codeBlock} data-testid="apply-schema-ddl">
+        <pre
+          className={joinClassNames([
+            'max-h-75 overflow-y-auto rounded-card border border-light-stroke-card bg-light-surface-container-lowest px-4 py-3.5 font-mono text-mono-relaxed whitespace-pre-wrap wrap-anywhere text-light-token-text dark:border-dark-stroke-card dark:bg-dark-surface-container-lowest dark:text-dark-token-text',
+            SCROLLBAR,
+          ])}
+          data-testid="apply-schema-ddl"
+        >
           <code>{highlightedDdl}</code>
         </pre>
 
         <SchemaWarnings warnings={warnings} />
 
         {error && (
-          <div className={styles.error} data-testid="apply-schema-error">
+          <div
+            className="text-size-caption text-light-error dark:text-dark-error"
+            data-testid="apply-schema-error"
+          >
             {error}
           </div>
         )}

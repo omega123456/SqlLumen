@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import type { TableDesignerColumnDef } from '../../types/schema'
 import { useTableDesignerStore, type DesignerFieldEdit } from '../../stores/table-designer-store'
-import styles from './ColumnEditor.module.css'
 import {
   clampSelection,
   getSelectionAfterDelete,
@@ -11,13 +10,14 @@ import {
   type TraversalDirection,
 } from './column-editor-model'
 import { ColumnRow, type ColumnRowController } from './ColumnEditorRow'
+import { DesignerGridCard, DesignerPanel } from './designer-table/DesignerTableParts'
 import { useColumnRowDrag, type RowMove } from './useColumnRowDrag'
 import {
   ColumnEditorHead,
   ColumnEditorToolbar,
   GhostAddRow,
 } from './column-editor/ColumnEditorChrome'
-import { dragRowHeightStyle, rowKeyFor } from './column-editor/column-editor-dom'
+import { rowKeyFor } from './column-editor/column-editor-dom'
 import { editableKeyDownHandler } from './column-editor/editable-key-handlers'
 import { useColumnCellFocus } from './column-editor/use-column-cell-focus'
 import { useDefaultCellControls } from './column-editor/use-default-cell-controls'
@@ -40,7 +40,6 @@ function useColumnEditorStore(tabId: string) {
 function useColumnEditor(tabId: string) {
   const store = useColumnEditorStore(tabId)
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
-  const [activeCell, setActiveCell] = useState<ActiveCell | null>(null)
   const columns = store.tabState?.currentSchema.columns ?? []
   const columnCount = columns.length
   const effectiveSelectedIndex = clampSelection(selectedIndex, columnCount)
@@ -61,8 +60,6 @@ function useColumnEditor(tabId: string) {
     columnCount,
     effectiveSelectedIndex,
     setSelectedIndex,
-    activeCell,
-    setActiveCell,
     editStart,
     cellFocus,
     defaults,
@@ -73,16 +70,13 @@ function useColumnEditor(tabId: string) {
 type ColumnEditorState = ReturnType<typeof useColumnEditor>
 
 function useRowController(tabId: string, editor: ColumnEditorState): ColumnRowController {
-  const { store, activeCell, editStart, cellFocus, defaults, setSelectedIndex } = editor
+  const { store, editStart, cellFocus, defaults, setSelectedIndex } = editor
   return {
     tabId: tabId,
     tabState: store.tabState,
     updateColumn: (edit: DesignerFieldEdit<TableDesignerColumnDef>) =>
       store.updateColumn(tabId, edit),
-    activateCell: (cell: ActiveCell) => {
-      setSelectedIndex(cell.rowIndex)
-      editor.setActiveCell(cell)
-    },
+    activateCell: (cell: ActiveCell) => setSelectedIndex(cell.rowIndex),
     focusCellLater: cellFocus.setPendingFocusCell,
     rememberEditStart: editStart.rememberEditStart,
     forgetEditStart: editStart.forgetEditStart,
@@ -93,8 +87,6 @@ function useRowController(tabId: string, editor: ColumnEditorState): ColumnRowCo
       editStart: editStart,
       cellFocus: cellFocus,
     }),
-    isActiveCell: (cell: ActiveCell) =>
-      activeCell?.rowIndex === cell.rowIndex && activeCell?.cellKey === cell.cellKey,
     deleteColumn: (columnIndex: number) => {
       defaults.clearDefaultCellBlurTimers()
       store.deleteColumn(tabId, columnIndex)
@@ -159,7 +151,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
   }
 
   return (
-    <div className={styles.container} data-testid="column-editor" ref={containerRef}>
+    <DesignerPanel testId="column-editor" ref={containerRef}>
       <ColumnEditorToolbar
         moves={moves}
         onAdd={handleAddColumn}
@@ -167,31 +159,24 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
         onDeleteSelected={handleDeleteSelected}
       />
 
-      <div className={styles.gridCard}>
-        <div className={styles.tableScroller} data-testid="column-editor-scroller">
-          <table className={styles.table}>
-            <ColumnEditorHead />
-            <tbody
-              className={`${styles.tableBody} ${rowDrag.drag ? styles.dragging : ''}`}
-              style={dragRowHeightStyle(rowDrag.drag)}
-            >
-              {columns.map((column, columnIndex) => (
-                <ColumnRow
-                  key={rowKeyFor(column, columnIndex)}
-                  row={{
-                    column: column,
-                    columnIndex: columnIndex,
-                    isSelected: effectiveSelectedIndex === columnIndex,
-                  }}
-                  controller={controller}
-                  rowDrag={rowDrag}
-                />
-              ))}
-              <GhostAddRow onAdd={handleAddColumn} />
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+      <DesignerGridCard layout="columns" scrollerTestId="column-editor-scroller">
+        <ColumnEditorHead />
+        <tbody className="font-body text-size-row">
+          {columns.map((column, columnIndex) => (
+            <ColumnRow
+              key={rowKeyFor(column, columnIndex)}
+              row={{
+                column: column,
+                columnIndex: columnIndex,
+                isSelected: effectiveSelectedIndex === columnIndex,
+              }}
+              controller={controller}
+              rowDrag={rowDrag}
+            />
+          ))}
+          <GhostAddRow onAdd={handleAddColumn} />
+        </tbody>
+      </DesignerGridCard>
+    </DesignerPanel>
   )
 }

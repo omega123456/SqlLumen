@@ -1,7 +1,5 @@
 import type { TableDesignerTabState } from '../../../stores/table-designer-store'
 import type { TableDesignerColumnDef, TableDesignerForeignKeyDef } from '../../../types/schema'
-import { isEven } from '../../../lib/units'
-import styles from '../ForeignKeyEditor.module.css'
 
 export const REFERENCED_TARGET_SEPARATOR = '\u0000'
 
@@ -71,19 +69,6 @@ export function selectionAfterDelete(current: number | null, deletedIndex: numbe
   }
 
   return current
-}
-
-export function rowStripeClassName(isSelected: boolean, index: number): string {
-  if (isSelected) return styles.selectedRow
-  return isEven(index) ? styles.evenRow : styles.oddRow
-}
-
-export function cellInputClassName(isSelected: boolean): string {
-  return isSelected ? styles.activeInput : styles.inactiveInput
-}
-
-export function cellSelectClassName(): string {
-  return styles.cellSelect
 }
 
 export function referencedTargetKeyFor(
