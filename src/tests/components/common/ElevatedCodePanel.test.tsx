@@ -76,4 +76,27 @@ describe('ElevatedCodePanel', () => {
       'snug'
     )
   })
+
+  it('offers the listing pre spacing for taller code lines', () => {
+    render(
+      <ElevatedCodePanel data-testid="code-panel" preSpacing="listing">
+        <span>SELECT 1</span>
+      </ElevatedCodePanel>
+    )
+
+    expect(screen.getByTestId('code-panel').querySelector('pre')).toHaveAttribute(
+      'data-spacing',
+      'listing'
+    )
+  })
+
+  it('draws the surface in the requested variant', () => {
+    render(
+      <ElevatedCodePanel data-testid="code-panel" surfaceVariant="recessed">
+        <span>SELECT 1</span>
+      </ElevatedCodePanel>
+    )
+
+    expect(screen.getByTestId('code-panel')).toHaveAttribute('data-variant', 'recessed')
+  })
 })

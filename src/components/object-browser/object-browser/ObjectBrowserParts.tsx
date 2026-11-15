@@ -10,7 +10,6 @@ import type {
   SqlDumpDialogState,
 } from './object-browser-model'
 import type { ObjectBrowserMenus } from './use-object-browser-menus'
-import styles from '../ObjectBrowser.module.css'
 
 const SqlDumpDialog = lazy(() => import('../../dialogs/SqlDumpDialog'))
 const CopyToHostDialog = lazy(() => import('../../dialogs/CopyToHostDialog'))
@@ -21,9 +20,17 @@ interface ObjectTreeBodyProps {
   children: React.ReactNode
 }
 
+function EmptyTreeMessage({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="px-4 py-6 text-center text-size-body text-light-on-surface-variant dark:text-dark-on-surface-variant">
+      {children}
+    </div>
+  )
+}
+
 export function ObjectTreeBody({ isConnected, topLevelIds, children }: ObjectTreeBodyProps) {
-  if (!isConnected) return <div className={styles.emptyState}>Not connected</div>
-  if (topLevelIds.length === 0) return <div className={styles.emptyState}>No databases loaded</div>
+  if (!isConnected) return <EmptyTreeMessage>Not connected</EmptyTreeMessage>
+  if (topLevelIds.length === 0) return <EmptyTreeMessage>No databases loaded</EmptyTreeMessage>
   return (
     <div role="tree" aria-label="Database objects">
       {children}
@@ -76,14 +83,14 @@ export function ObjectFilterBar({
   onClearFilter,
 }: ObjectFilterBarProps) {
   return (
-    <div className={styles.searchWrapper}>
-      <span className={styles.searchIcon}>
+    <div className="relative flex shrink-0 items-center px-2.5 py-2">
+      <span className="pointer-events-none absolute left-5 flex items-center text-light-outline dark:text-dark-outline">
         <MagnifyingGlass size={16} weight="regular" />
       </span>
       <TextInput
         ref={filterInputRef}
         type="text"
-        className={styles.searchInput}
+        variant="search"
         placeholder="Filter objects"
         value={filterText}
         onChange={onFilterChange}
@@ -93,7 +100,7 @@ export function ObjectFilterBar({
       {filterText && (
         <IconButton
           size="sm"
-          className={styles.clearButton}
+          className="absolute right-3.5"
           onClick={onClearFilter}
           tabIndex={-1}
           aria-label="Clear filter"

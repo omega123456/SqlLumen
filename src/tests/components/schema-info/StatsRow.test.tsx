@@ -20,7 +20,7 @@ describe('StatsRow', () => {
   it('renders three elevated stat cards', () => {
     const { container } = render(<StatsRow metadata={makeMetadata()} />)
 
-    expect(container.querySelectorAll('[data-variant="ring"]')).toHaveLength(3)
+    expect(container.querySelectorAll('[data-variant="bordered"]')).toHaveLength(3)
   })
 
   it('shows formatted row count', () => {
@@ -79,6 +79,6 @@ describe('StatsRow', () => {
     expect(screen.getByTestId('stats-columns-card')).toBeInTheDocument()
     expect(screen.getByText('Columns')).toBeInTheDocument()
     expect(screen.getByText(Number(12).toLocaleString())).toBeInTheDocument()
-    expect(container.querySelectorAll('[data-variant="ring"]')).toHaveLength(4)
+    expect(container.querySelectorAll('[data-variant="bordered"]')).toHaveLength(4)
   })
 })

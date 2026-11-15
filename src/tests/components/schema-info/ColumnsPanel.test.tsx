@@ -47,9 +47,7 @@ describe('ColumnsPanel', () => {
 
     const badge = screen.getByText('PRI')
     expect(badge).toBeInTheDocument()
-    // Check it has a class (CSS module hashing means we can't check exact class name)
-    expect(badge.className).toContain('keyBadge')
-    expect(badge.className).toContain('keyPri')
+    expect(badge).toHaveAttribute('data-tone', 'primary')
   })
 
   it('shows MUL with the neutral key pill', () => {
@@ -59,8 +57,7 @@ describe('ColumnsPanel', () => {
 
     const badge = screen.getByText('MUL')
     expect(badge).toBeInTheDocument()
-    expect(badge.className).toContain('keyBadge')
-    expect(badge.className).toContain('keyOther')
+    expect(badge).toHaveAttribute('data-tone', 'other')
   })
 
   it('shows UNI with the neutral key pill', () => {
@@ -70,8 +67,7 @@ describe('ColumnsPanel', () => {
 
     const badge = screen.getByText('UNI')
     expect(badge).toBeInTheDocument()
-    expect(badge.className).toContain('keyBadge')
-    expect(badge.className).toContain('keyOther')
+    expect(badge).toHaveAttribute('data-tone', 'other')
   })
 
   it('shows null indicator correctly', () => {
@@ -94,15 +90,14 @@ describe('ColumnsPanel', () => {
     expect(screen.getByText('active')).toBeInTheDocument()
   })
 
-  it('shows unknown key without specific badge class', () => {
+  it('shows an unknown key with the neutral key pill', () => {
     const columns = [makeColumn({ name: 'x', columnKey: 'OTHER' })]
 
     render(<ColumnsPanel columns={columns} />)
 
     const badge = screen.getByText('OTHER')
     expect(badge).toBeInTheDocument()
-    expect(badge.className).toContain('keyBadge')
-    expect(badge.className).not.toContain('keyPri')
+    expect(badge).toHaveAttribute('data-tone', 'other')
   })
 
   it('shows NULL when default value is null', () => {

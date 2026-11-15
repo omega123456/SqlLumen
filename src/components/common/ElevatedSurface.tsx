@@ -1,12 +1,14 @@
 import type { HTMLAttributes } from 'react'
 import { ELEVATED_SURFACE, joinClassNames } from '../../lib/class-names'
 
-export type ElevatedSurfaceVariant = 'ring' | 'bordered'
+export type ElevatedSurfaceVariant = 'ring' | 'bordered' | 'recessed'
 
 const VARIANT_CLASSES: Record<ElevatedSurfaceVariant, string> = {
   ring: ELEVATED_SURFACE,
   bordered:
     'rounded-card border border-light-stroke-card dark:border-dark-stroke-card bg-light-surface-container-high dark:bg-dark-surface-container-high',
+  recessed:
+    'rounded-card border border-light-stroke-card dark:border-dark-stroke-card bg-light-surface-container-lowest dark:bg-dark-surface-container-lowest',
 }
 
 export type ElevatedSurfaceProps = HTMLAttributes<HTMLDivElement> & {

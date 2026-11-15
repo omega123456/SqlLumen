@@ -1,5 +1,11 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { activeWorkspaceTabMembers, APP_READY_MS, connectToSample, waitForApp } from './helpers'
+import {
+  activeWorkspaceTabMembers,
+  APP_READY_MS,
+  connectToSample,
+  visibleBoxShadow,
+  waitForApp,
+} from './helpers'
 
 const SAMPLE_SESSION_ID = 'session-playwright-1'
 const MANY_TABLES = Array.from({ length: 60 }, (_, i) => `table_${String(i + 1).padStart(3, '0')}`)
@@ -127,12 +133,12 @@ test.describe('object browser pinned database row and reveal', () => {
     await expect(row).toBeFocused({ timeout: APP_READY_MS })
     await expect(row).toBeInViewport()
     // Revealing shows the selection, not the keyboard focus ring
-    await expect(row).toHaveCSS('box-shadow', 'none')
+    await expect.poll(() => visibleBoxShadow(row)).toBe('none')
 
     // The ring comes back as soon as the user navigates with the keyboard
     await page.keyboard.press('ArrowDown')
     const nextRow = treeRow(page, 'table_046')
     await expect(nextRow).toBeFocused()
-    await expect(nextRow).not.toHaveCSS('box-shadow', 'none')
+    await expect.poll(() => visibleBoxShadow(nextRow)).not.toBe('none')
   })
 })

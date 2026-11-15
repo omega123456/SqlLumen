@@ -1,15 +1,15 @@
 import { useRef, type ReactNode, type RefObject } from 'react'
+import { joinClassNames } from '../../lib/class-names'
 import type { TreeNode as TreeNodeData } from '../../types/schema'
-import styles from './TreeNode.module.css'
 import { getNodeIcon } from './tree-node/tree-node-icons'
 import {
   databaseLabelTitle,
   isFilterExpanded,
-  selectableClassName,
   shouldRenderNodeInFilter,
   shouldShowChildren,
   treeItemTabIndex,
 } from './tree-node/tree-node-model'
+import { treeRowClassName } from './tree-node/tree-node-classes'
 import { ColumnTypeAnnotation, TreeNodeChevron } from './tree-node/TreeNodeParts'
 import { useTreeNodeHandlers } from './tree-node/use-tree-node-handlers'
 import { useScrollIntoViewWhenSelected, useTreeNodeState } from './tree-node/use-tree-node-state'
@@ -40,8 +40,11 @@ interface TreeNodeChildrenProps {
 
 function TreeNodeChildren({ props, childIds, indentPx }: TreeNodeChildrenProps) {
   return (
-    <div className={styles.childrenContainer} role="group">
-      <div className={styles.guideLine} style={{ left: `${indentPx + GUIDE_LINE_OFFSET_PX}px` }} />
+    <div className="relative" role="group">
+      <div
+        className="absolute top-0 bottom-0 w-px bg-light-outline-variant opacity-20 dark:bg-dark-outline-variant"
+        style={{ left: `${indentPx + GUIDE_LINE_OFFSET_PX}px` }}
+      />
       {childIds.map((childId) => (
         <TreeNode
           key={childId}
@@ -69,10 +72,11 @@ interface DatabaseSectionProps {
 
 function DatabaseSection({ nodeId, isPinned, row, childNodes }: DatabaseSectionProps) {
   return (
-    <div role="none" className={styles.databaseSection} data-database-section={nodeId}>
+    <div role="none" className="relative" data-database-section={nodeId}>
       <div
         role="none"
-        className={styles.stickyRow}
+        className="sticky top-0 z-1 bg-light-surface-container-low data-pinned:shadow-light-divider-bottom dark:bg-dark-surface-container-low dark:data-pinned:shadow-dark-divider-bottom"
+
         data-pinned={isPinned ? 'true' : undefined}
         data-testid={`tree-node-sticky-${nodeId}`}
       >
@@ -104,6 +108,7 @@ type TreeNodeHandlers = ReturnType<typeof useTreeNodeHandlers>
 
 interface TreeNodeRowState {
   isSelected: boolean
+  isPinned: boolean
   tabIndex: 0 | -1
   showChildren: boolean
   isLoading: boolean
@@ -127,7 +132,7 @@ function TreeNodeRow(rowProps: TreeNodeRowProps) {
   return (
     <div
       ref={rowRef}
-      className={selectableClassName(styles.nodeRow, styles.nodeRowSelected, isSelected)}
+      className={treeRowClassName({ isSelected: isSelected, isPinned: rowState.isPinned })}
       role="treeitem"
       aria-expanded={node.hasChildren ? rowState.showChildren : undefined}
       aria-level={level + 1}
@@ -146,9 +151,16 @@ function TreeNodeRow(rowProps: TreeNodeRowProps) {
         showExpandedChrome={showExpandedChrome}
         onClick={handlers.handleChevronClick}
       />
-      <span className={`${styles.icon} ${iconClassName}`}>{icon}</span>
       <span
-        className={selectableClassName(styles.label, styles.labelSelected, isSelected)}
+        className={joinClassNames([
+          'flex size-4 shrink-0 items-center justify-center',
+          iconClassName,
+        ])}
+      >
+        {icon}
+      </span>
+      <span
+        className="min-w-0 flex-1 truncate text-size-row leading-7 text-light-on-surface dark:text-dark-on-surface"
         title={databaseLabelTitle(node)}
       >
         {node.label}
@@ -193,6 +205,7 @@ function TreeNodeContent({ props, state, node, rowRef }: TreeNodeContentProps) {
       indentPx={indentPx}
       rowState={{
         isSelected: isSelected,
+        isPinned: isPinned,
         tabIndex: treeItemTabIndex(isSelected, props.isFirstVisible, state.selectedNodeIsVisible),
         showChildren: showChildren,
         isLoading: state.isLoading,

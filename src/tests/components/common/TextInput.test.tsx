@@ -17,6 +17,14 @@ describe('TextInput', () => {
     expect(screen.getByRole('textbox', { name: 'Host' })).toHaveAttribute('data-variant', 'mono')
   })
 
+  it('exposes the search variant as its lookup key', () => {
+    render(<TextInput variant="search" aria-label="Filter" />)
+    expect(screen.getByRole('textbox', { name: 'Filter' })).toHaveAttribute(
+      'data-variant',
+      'search'
+    )
+  })
+
   it('forwards ref', () => {
     const ref = createRef<HTMLInputElement>()
     render(<TextInput ref={ref} defaultValue="a" />)

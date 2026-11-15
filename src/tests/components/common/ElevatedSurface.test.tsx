@@ -25,6 +25,16 @@ describe('ElevatedSurface', () => {
     expect(screen.getByTestId('elevated')).toHaveAttribute('data-variant', 'bordered')
   })
 
+  it('exposes the recessed variant', () => {
+    render(
+      <ElevatedSurface data-testid="elevated" variant="recessed">
+        x
+      </ElevatedSurface>
+    )
+
+    expect(screen.getByTestId('elevated')).toHaveAttribute('data-variant', 'recessed')
+  })
+
   it('forwards native attributes to the surface element', () => {
     render(
       <ElevatedSurface data-testid="elevated" aria-label="Panel">

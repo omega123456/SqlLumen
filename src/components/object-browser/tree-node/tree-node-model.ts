@@ -155,14 +155,6 @@ export function focusSiblingTreeItem(event: React.KeyboardEvent, delta: 1 | -1):
   allItems[currentIndex + delta]?.focus()
 }
 
-export function selectableClassName(
-  baseClassName: string,
-  selectedClassName: string,
-  isSelected: boolean
-) {
-  return [baseClassName, isSelected ? selectedClassName : ''].filter(Boolean).join(' ')
-}
-
 interface ChildVisibility {
   hasChildren: boolean
   isExpanded: boolean

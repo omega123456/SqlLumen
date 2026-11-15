@@ -1,14 +1,15 @@
 import type { HTMLAttributes, ReactNode } from 'react'
 import { joinClassNames, SCROLLBAR } from '../../lib/class-names'
-import { ElevatedSurface } from './ElevatedSurface'
+import { ElevatedSurface, type ElevatedSurfaceVariant } from './ElevatedSurface'
 
 export type ElevatedCodePanelHeaderVariant = 'table' | 'strip'
 
-export type ElevatedCodePanelPreSpacing = 'standard' | 'snug'
+export type ElevatedCodePanelPreSpacing = 'standard' | 'snug' | 'listing'
 
 const PRE_SPACING_CLASSES: Record<ElevatedCodePanelPreSpacing, string> = {
-  standard: 'p-4',
-  snug: 'px-4 py-3.5',
+  standard: 'p-4 text-mono',
+  snug: 'px-4 py-3.5 text-mono',
+  listing: 'px-4 py-3.5 text-mono-relaxed',
 }
 
 const HEADER_VARIANT_CLASSES: Record<ElevatedCodePanelHeaderVariant, string> = {
@@ -20,6 +21,7 @@ export interface ElevatedCodePanelProps extends HTMLAttributes<HTMLDivElement> {
   label?: ReactNode
   headerActions?: ReactNode
   headerVariant?: ElevatedCodePanelHeaderVariant
+  surfaceVariant?: ElevatedSurfaceVariant
   preSpacing?: ElevatedCodePanelPreSpacing
   hideHeader?: boolean
   bodyClassName?: string
@@ -32,6 +34,7 @@ export function ElevatedCodePanel({
   label,
   headerActions,
   headerVariant = 'table',
+  surfaceVariant = 'ring',
   preSpacing = 'standard',
   hideHeader = false,
   bodyClassName,
@@ -45,6 +48,7 @@ export function ElevatedCodePanel({
 
   return (
     <ElevatedSurface
+      variant={surfaceVariant}
       className={joinClassNames(['flex min-w-0 flex-col overflow-hidden', className])}
       {...rest}
     >
@@ -69,7 +73,7 @@ export function ElevatedCodePanel({
           data-spacing={preSpacing}
           className={joinClassNames([
             PRE_SPACING_CLASSES[preSpacing],
-            'font-mono text-mono whitespace-pre-wrap wrap-anywhere text-light-token-text dark:text-dark-token-text',
+            'font-mono whitespace-pre-wrap wrap-anywhere text-light-token-text dark:text-dark-token-text',
             preClassName,
           ])}
         >

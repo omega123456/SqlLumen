@@ -1,7 +1,6 @@
 import { formatShortDate } from '../../lib/format-utils'
 import type { TableMetadata } from '../../types/schema'
 import { ElevatedSurface } from '../common/ElevatedSurface'
-import styles from './MetadataCard.module.css'
 
 export interface MetadataCardProps {
   metadata: TableMetadata
@@ -19,31 +18,39 @@ function formatDate(dateText: string | null): string {
   return formatShortDate(dateText)
 }
 
+function autoIncrementLabel(autoIncrement: number | null): string {
+  if (autoIncrement == null) return MISSING_VALUE_LABEL
+  return autoIncrement.toLocaleString()
+}
+
+function MetadataItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col">
+      <dt className="text-size-caption leading-5 text-light-on-surface-variant dark:text-dark-on-surface-variant">
+        {label}
+      </dt>
+      <dd className="m-0 font-mono text-size-cell-mono leading-5 text-light-on-surface dark:text-dark-on-surface">
+        {value}
+      </dd>
+    </div>
+  )
+}
+
 export function MetadataCard({ metadata }: MetadataCardProps) {
   return (
-    <ElevatedSurface className={styles.card} data-testid="metadata-card">
-      <h4 className={styles.title}>Metadata</h4>
-      <dl className={styles.list}>
-        <div className={styles.item}>
-          <dt className={styles.label}>Engine</dt>
-          <dd className={styles.value}>{metadata.engine}</dd>
-        </div>
-        <div className={styles.item}>
-          <dt className={styles.label}>Collation</dt>
-          <dd className={styles.value}>{metadata.collation}</dd>
-        </div>
-        <div className={styles.item}>
-          <dt className={styles.label}>Auto increment</dt>
-          <dd className={styles.value}>
-            {metadata.autoIncrement != null
-              ? metadata.autoIncrement.toLocaleString()
-              : MISSING_VALUE_LABEL}
-          </dd>
-        </div>
-        <div className={styles.item}>
-          <dt className={styles.label}>Created</dt>
-          <dd className={styles.value}>{formatDate(metadata.createTime)}</dd>
-        </div>
+    <ElevatedSurface
+      variant="bordered"
+      className="px-3.5 py-3 select-text"
+      data-testid="metadata-card"
+    >
+      <h4 className="mb-2 font-body text-size-caption leading-5 font-semibold text-light-on-surface-variant dark:text-dark-on-surface-variant">
+        Metadata
+      </h4>
+      <dl className="flex flex-col gap-2">
+        <MetadataItem label="Engine" value={metadata.engine} />
+        <MetadataItem label="Collation" value={metadata.collation} />
+        <MetadataItem label="Auto increment" value={autoIncrementLabel(metadata.autoIncrement)} />
+        <MetadataItem label="Created" value={formatDate(metadata.createTime)} />
       </dl>
     </ElevatedSurface>
   )

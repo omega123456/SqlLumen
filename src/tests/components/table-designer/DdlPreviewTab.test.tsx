@@ -93,19 +93,19 @@ describe('DdlPreviewTab', () => {
     })
   })
 
-  it('applies syntax highlighting — keywords have .keyword class', () => {
+  it('applies syntax highlighting — keywords are tagged as keyword tokens', () => {
     seedStore()
     render(<DdlPreviewTab tabId="tab-1" />)
 
     const createKeyword = screen.getByText('CREATE')
-    expect(createKeyword).toHaveClass('keyword')
+    expect(createKeyword).toHaveAttribute('data-token', 'keyword')
   })
 
-  it('applies syntax highlighting — identifiers have .identifier class', () => {
+  it('applies syntax highlighting — identifiers are tagged as identifier tokens', () => {
     seedStore()
     render(<DdlPreviewTab tabId="tab-1" />)
 
     const identifier = screen.getAllByText('`users`')[0]
-    expect(identifier).toHaveClass('identifier')
+    expect(identifier).toHaveAttribute('data-token', 'identifier')
   })
 })

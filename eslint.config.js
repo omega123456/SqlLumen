@@ -72,6 +72,14 @@ const TAILWIND_CLASS_RULE_FILES = [
   'src/components/query-editor/*.tsx',
   'src/components/query-editor/**/*.ts',
   'src/components/query-editor/**/*.tsx',
+  'src/lib/class-names-tile.ts',
+  'src/lib/sql-highlight-class-names.ts',
+  'src/lib/sql-syntax-highlighter.tsx',
+  'src/components/object-browser/*.tsx',
+  'src/components/object-browser/**/*.ts',
+  'src/components/object-browser/**/*.tsx',
+  'src/components/object-editor/*.tsx',
+  'src/components/schema-info/*.tsx',
 ]
 const localRulesPlugin = {
   rules: { ...namedConditionsPlugin.rules, ...tailwindRulesPlugin.rules },

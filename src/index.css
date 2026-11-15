@@ -265,6 +265,8 @@
   --text-caption--line-height: 16px;
   --text-mono: 13px;
   --text-mono--line-height: 20px;
+  --text-mono-relaxed: 13px;
+  --text-mono-relaxed--line-height: 21px;
   --text-key-hint: 11px;
   --text-key-hint--line-height: 18px;
   --text-size-key-hint: 11px;
@@ -274,6 +276,8 @@
   --text-size-row: 13px;
   --text-size-caption: 12px;
   --text-size-mono: 13px;
+  --text-size-mono-relaxed: 13px;
+  --text-size-cell-mono: 12.5px;
   --text-size-glyph: 10px;
 
   --leading-*: initial;
@@ -316,6 +320,7 @@
   --grid-template-columns-workspace: auto minmax(0, 1fr);
   --grid-template-rows-workspace: auto minmax(0, 1fr);
   --grid-template-columns-form-rows: 160px minmax(0, 420px) auto;
+  --grid-template-columns-ddl-split: minmax(0, 13fr) minmax(0, 7fr);
 
   --radius-*: initial;
   --radius-control: 4px;
@@ -328,6 +333,7 @@
   --radius-tile: 12px;
   --radius-marker: 1px;
   --radius-badge: 7px;
+  --radius-key-badge: 10px;
 
   --border-width-check: 1.6px;
   --border-width-spinner: 1.5px;
@@ -381,6 +387,7 @@
   --transition-property-opacity: opacity;
   --transition-property-shadow: box-shadow;
   --transition-property-transform: transform;
+  --transition-property-rotate: rotate;
   --transition-property-fade-slide: opacity, translate;
   --transition-property-color-border-bg-opacity: color, border-color, background-color, opacity;
 

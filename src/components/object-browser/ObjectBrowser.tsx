@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { parseNodeId } from '../../stores/schema-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useSchemaStore } from '../../stores/schema-store'
+import { SCROLLBAR, joinClassNames } from '../../lib/class-names'
 import { openObjectDefaultTab } from '../../lib/object-activation'
 import { useObjectBrowserActions } from '../../hooks/useObjectBrowserActions'
 import { usePinnedDatabase } from '../../hooks/usePinnedDatabase'
@@ -9,7 +10,6 @@ import { ConnectionHeader } from './ConnectionHeader'
 import { TreeNode } from './TreeNode'
 import type { ObjectType, TreeNode as SchemaTreeNode } from '../../types/schema'
 import { FavouritesView } from '../favourites/FavouritesView'
-import styles from './ObjectBrowser.module.css'
 import {
   isReadOnlyConnection,
   isSchemaObjectType,
@@ -103,7 +103,10 @@ function ObjectTree(props: ObjectTreeProps) {
   return (
     <div
       ref={treeContainerRef}
-      className={styles.treeContainer}
+      className={joinClassNames([
+        'flex-1 overflow-x-hidden overflow-y-auto px-1 pb-2 scroll-pt-tree-row',
+        SCROLLBAR,
+      ])}
       data-testid="object-browser-scroll"
       onKeyDownCapture={filter.handleTreeKeyDownCapture}
     >
@@ -154,6 +157,17 @@ function ExportDialogHosts({ connectionId, activeConnection, menus }: ExportDial
   )
 }
 
+function ObjectBrowserFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="flex h-full flex-col overflow-hidden bg-light-surface-container-low dark:bg-dark-surface-container-low"
+      data-testid="object-browser"
+    >
+      {children}
+    </div>
+  )
+}
+
 export function ObjectBrowser({
   connectionId,
   favouritesOpen,
@@ -172,7 +186,7 @@ export function ObjectBrowser({
   useLoadDatabasesWhenConnected(connectionId, isConnected)
 
   return (
-    <div className={styles.container} data-testid="object-browser">
+    <ObjectBrowserFrame>
       <ConnectionHeader
         connectionId={connectionId}
         favouritesOpen={favouritesOpen}
@@ -211,6 +225,6 @@ export function ObjectBrowser({
         activeConnection={activeConnection}
         menus={menus}
       />
-    </div>
+    </ObjectBrowserFrame>
   )
 }

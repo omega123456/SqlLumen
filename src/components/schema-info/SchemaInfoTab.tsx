@@ -15,6 +15,8 @@ import type {
   SchemaInfoResponse,
   ObjectType,
 } from '../../types/schema'
+import { SCROLLBAR, joinClassNames } from '../../lib/class-names'
+import { ACCENT_TILE } from '../../lib/class-names-tile'
 import { openObjectDefaultTab } from '../../lib/object-activation'
 import { getSchemaInfo } from '../../lib/schema-commands'
 import { useWorkspaceStore } from '../../stores/workspace-store'
@@ -25,7 +27,6 @@ import { DdlPanel } from './DdlPanel'
 import { StatsRow } from './StatsRow'
 import { Button } from '../common/Button'
 import { UnderlineTabBar, UnderlineTab } from '../common/UnderlineTabs'
-import styles from './SchemaInfoTab.module.css'
 import { toErrorMessage } from '../../lib/error-message'
 
 export interface SchemaInfoTabProps {
@@ -88,21 +89,39 @@ const SUB_TAB_PANELS: Record<
 
 const DATA_VIEWABLE_TYPES: ReadonlySet<ObjectType> = new Set<ObjectType>(['table', 'view'])
 
+type SchemaInfoStatusTone = 'loading' | 'error'
+
+const STATUS_TEXT_CLASSES: Record<SchemaInfoStatusTone, string> = {
+  loading: 'text-light-on-surface-variant dark:text-dark-on-surface-variant',
+  error: 'text-light-error dark:text-dark-error',
+}
+
+function SchemaInfoFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="flex h-full w-full flex-col self-stretch overflow-hidden"
+      data-testid="schema-info-tab"
+    >
+      {children}
+    </div>
+  )
+}
+
 function SchemaInfoStatusView({
-  stateClassName,
-  textClassName,
+  tone,
   children,
 }: {
-  stateClassName: string
-  textClassName: string
+  tone: SchemaInfoStatusTone
   children: React.ReactNode
 }) {
   return (
-    <div className={styles.container} data-testid="schema-info-tab">
-      <div className={stateClassName}>
-        <span className={textClassName}>{children}</span>
+    <SchemaInfoFrame>
+      <div className="flex h-full items-center justify-center p-12">
+        <span className={joinClassNames(['text-size-body', STATUS_TEXT_CLASSES[tone]])}>
+          {children}
+        </span>
       </div>
-    </div>
+    </SchemaInfoFrame>
   )
 }
 
@@ -226,13 +245,18 @@ function SchemaInfoHeader({ tab }: { tab: SchemaInfoTabType }) {
   const actions = useSchemaInfoActions(tab)
   const TileIcon = TILE_ICONS[tab.objectType]
   return (
-    <div className={styles.header} data-testid="schema-info-header">
-      <span className={styles.tile} aria-hidden>
+    <div
+      className="flex flex-none items-center gap-3 px-5 pt-4 pb-1.5"
+      data-testid="schema-info-header"
+    >
+      <span className={ACCENT_TILE} aria-hidden>
         <TileIcon size={16} weight="regular" />
       </span>
-      <div className={styles.titleBlock}>
-        <h1 className={styles.objectName}>{tab.objectName}</h1>
-        <span className={styles.caption}>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <h1 className="truncate font-headline text-subtitle font-semibold text-light-on-surface dark:text-dark-on-surface">
+          {tab.objectName}
+        </h1>
+        <span className="text-size-caption leading-5 text-light-on-surface-variant dark:text-dark-on-surface-variant">
           {OBJECT_TYPE_LABELS[tab.objectType]} · {tab.databaseName}
         </span>
       </div>
@@ -253,7 +277,7 @@ interface SchemaInfoSubTabBarProps {
 function SchemaInfoSubTabBar({ tab, activeSubTab }: SchemaInfoSubTabBarProps) {
   const setSubTab = useWorkspaceStore((state) => state.setSubTab)
   return (
-    <UnderlineTabBar rowHeight="tall" className={styles.subTabBar}>
+    <UnderlineTabBar rowHeight="tall" className="flex-none px-3">
       {SUB_TAB_VISIBILITY[tab.objectType].map((subTab) => (
         <UnderlineTab
           key={subTab}
@@ -272,25 +296,19 @@ export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
   const activeSubTab = tab.subTabId ?? getDefaultSubTab(tab.objectType)
 
   if (loading) {
-    return (
-      <SchemaInfoStatusView stateClassName={styles.loadingState} textClassName={styles.loadingText}>
-        Loading schema info...
-      </SchemaInfoStatusView>
-    )
+    return <SchemaInfoStatusView tone="loading">Loading schema info...</SchemaInfoStatusView>
   }
 
   if (error) {
     return (
-      <SchemaInfoStatusView stateClassName={styles.errorState} textClassName={styles.errorText}>
-        Failed to load schema info: {error}
-      </SchemaInfoStatusView>
+      <SchemaInfoStatusView tone="error">Failed to load schema info: {error}</SchemaInfoStatusView>
     )
   }
 
   if (!data) return null
 
   return (
-    <div className={styles.container} data-testid="schema-info-tab">
+    <SchemaInfoFrame>
       <SchemaInfoHeader tab={tab} />
 
       {tab.objectType === 'table' && data.metadata && (
@@ -299,9 +317,9 @@ export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
 
       <SchemaInfoSubTabBar tab={tab} activeSubTab={activeSubTab} />
 
-      <div className={styles.subTabContent}>
+      <div className={joinClassNames(['flex-1 overflow-auto', SCROLLBAR])}>
         {SUB_TAB_PANELS[activeSubTab](data, tab.objectType)}
       </div>
-    </div>
+    </SchemaInfoFrame>
   )
 }

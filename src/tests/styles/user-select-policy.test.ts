@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-const globalCss = readFileSync(resolve(process.cwd(), 'src/styles/global.css'), 'utf8')
 const indexHtml = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8')
 const BODY_OPENING_TAG = /<body\b[^>]*>/s
+const SELECT_TEXT_CLASS = /["' ]select-text[" ']/
+const SCHEMA_INFO_DIRECTORY = 'src/components/schema-info'
+const SCHEMA_INFO_SELECTABLE_SOURCES = ['SchemaTableParts.tsx', 'MetadataCard.tsx', 'StatsRow.tsx']
 
 describe('user-select policy', () => {
   it('should set select-none on the body element to prevent text selection globally', () => {
@@ -13,39 +15,12 @@ describe('user-select policy', () => {
     expect(bodyTag.split(/\s+/)).toContain('select-none')
   })
 
-  it('should re-enable user-select: text on schema-info table elements', () => {
-    // Schema info panels (ColumnsPanel, IndexesPanel, ForeignKeysPanel, DdlPanel, etc.)
-    // contain data tables and DDL that users need to select/copy.
-    // The global allowlist must include selectors that cover these elements,
-    // or the schema-info module CSS must set user-select: text.
-    const schemaInfoModules = [
-      'ColumnsPanel.module.css',
-      'IndexesPanel.module.css',
-      'ForeignKeysPanel.module.css',
-      'DdlPanel.module.css',
-      'MetadataCard.module.css',
-      'StatsRow.module.css',
-    ]
+  it.each(SCHEMA_INFO_SELECTABLE_SOURCES)(
+    'should re-enable text selection through select-text in %s',
+    (sourceFile) => {
+      const source = readFileSync(resolve(process.cwd(), SCHEMA_INFO_DIRECTORY, sourceFile), 'utf8')
 
-    // Check if global.css allowlist covers generic table elements (td, th, table)
-    const globalAllowsTableElements = /(?:^|,)\s*(?:td|th|table|\.schema-info)\s*(?:,|\{)/m.test(
-      globalCss
-    )
-
-    // Check if any schema-info module CSS sets user-select: text
-    const anyModuleSetsUserSelect = schemaInfoModules.some((file) => {
-      try {
-        const css = readFileSync(resolve(process.cwd(), 'src/components/schema-info', file), 'utf8')
-        return /user-select:\s*text/.test(css)
-      } catch {
-        return false
-      }
-    })
-
-    expect(
-      globalAllowsTableElements || anyModuleSetsUserSelect,
-      'Schema info table/DDL content must be selectable: either global.css allowlist ' +
-        'should include table elements or schema-info module CSS should set user-select: text'
-    ).toBe(true)
-  })
+      expect(source).toMatch(SELECT_TEXT_CLASS)
+    }
+  )
 })

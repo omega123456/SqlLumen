@@ -142,10 +142,6 @@ export class SqlSyntaxHighlighter {
     return token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   }
 
-  private static joinClasses(...parts: Array<string | undefined>): string {
-    return parts.filter(Boolean).join(' ')
-  }
-
   private static renderToken(
     token: string,
     key: string,
@@ -153,10 +149,7 @@ export class SqlSyntaxHighlighter {
   ): ReactNode {
     if (token.startsWith('`')) {
       return (
-        <span
-          key={key}
-          className={SqlSyntaxHighlighter.joinClasses(classNames.identifier, 'identifier')}
-        >
+        <span key={key} className={classNames.identifier} data-token="identifier">
           {token}
         </span>
       )
@@ -164,7 +157,7 @@ export class SqlSyntaxHighlighter {
 
     if (token.startsWith("'")) {
       return (
-        <span key={key} className={SqlSyntaxHighlighter.joinClasses(classNames.string, 'string')}>
+        <span key={key} className={classNames.string} data-token="string">
           {token}
         </span>
       )
@@ -172,7 +165,7 @@ export class SqlSyntaxHighlighter {
 
     if (/^\d/.test(token)) {
       return (
-        <span key={key} className={SqlSyntaxHighlighter.joinClasses(classNames.number, 'number')}>
+        <span key={key} className={classNames.number} data-token="number">
           {token}
         </span>
       )
@@ -182,7 +175,7 @@ export class SqlSyntaxHighlighter {
 
     if (SqlSyntaxHighlighter.KEYWORDS.has(normalizedToken)) {
       return (
-        <span key={key} className={SqlSyntaxHighlighter.joinClasses(classNames.keyword, 'keyword')}>
+        <span key={key} className={classNames.keyword} data-token="keyword">
           {token}
         </span>
       )
@@ -190,7 +183,7 @@ export class SqlSyntaxHighlighter {
 
     if (SqlSyntaxHighlighter.TYPES.has(normalizedToken)) {
       return (
-        <span key={key} className={SqlSyntaxHighlighter.joinClasses(classNames.type, 'type')}>
+        <span key={key} className={classNames.type} data-token="type">
           {token}
         </span>
       )

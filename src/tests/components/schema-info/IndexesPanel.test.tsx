@@ -68,9 +68,6 @@ describe('IndexesPanel', () => {
 
     expect(screen.getByText('user_id')).toBeInTheDocument()
     expect(screen.getByText('created_at')).toBeInTheDocument()
-    // Check they have pill styling
-    const pill = screen.getByText('user_id')
-    expect(pill.className).toContain('columnPill')
   })
 
   it('shows dash for null cardinality', () => {

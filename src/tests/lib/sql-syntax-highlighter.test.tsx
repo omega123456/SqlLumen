@@ -5,6 +5,7 @@ import { SqlSyntaxHighlighter } from '../../lib/sql-syntax-highlighter'
 
 type HighlightNodeProps = {
   className?: string
+  'data-token'?: string
   children?: string
 }
 
@@ -24,7 +25,7 @@ describe('SqlSyntaxHighlighter', () => {
           return node
         }
         if (isValidElement(node)) {
-          return getHighlightProps(node).className ?? ''
+          return getHighlightProps(node)['data-token'] ?? ''
         }
         return ''
       })
@@ -36,7 +37,7 @@ describe('SqlSyntaxHighlighter', () => {
     expect(html).toContain('string')
   })
 
-  it('applies provided css module class names together with global token classes', () => {
+  it('applies the provided class names and tags each token with its kind', () => {
     const nodes = SqlSyntaxHighlighter.highlightSql(
       "ALTER TABLE `users` ADD COLUMN age INT DEFAULT '1'",
       {
@@ -47,15 +48,15 @@ describe('SqlSyntaxHighlighter', () => {
       }
     )
 
-    const classNames = nodes
+    const tokens = nodes
       .filter((node) => isValidElement(node))
-      .map((node) => getHighlightProps(node).className ?? '')
-      .join(' ')
+      .map((node) => getHighlightProps(node))
+      .map((props) => `${props.className}:${props['data-token']}`)
 
-    expect(classNames).toContain('kwLocal keyword')
-    expect(classNames).toContain('idLocal identifier')
-    expect(classNames).toContain('typeLocal type')
-    expect(classNames).toContain('strLocal string')
+    expect(tokens).toContain('kwLocal:keyword')
+    expect(tokens).toContain('idLocal:identifier')
+    expect(tokens).toContain('typeLocal:type')
+    expect(tokens).toContain('strLocal:string')
   })
 
   it('highlights numbers but not digits inside words', () => {
@@ -65,12 +66,12 @@ describe('SqlSyntaxHighlighter', () => {
     const numbers = nodes
       .filter((node) => isValidElement(node))
       .map((node) => getHighlightProps(node as ReactElement<unknown>))
-      .filter((props) => props.className?.includes('number'))
+      .filter((props) => props['data-token'] === 'number')
       .map((props) => [props.className, props.children])
 
     expect(numbers).toEqual([
-      ['numLocal number', '255'],
-      ['numLocal number', '10.5'],
+      ['numLocal', '255'],
+      ['numLocal', '10.5'],
     ])
   })
 
@@ -96,7 +97,7 @@ describe('SqlSyntaxHighlighter', () => {
         }
         if (isValidElement(node)) {
           const props = getHighlightProps(node)
-          return `${props.children ?? ''}:${props.className ?? ''}`
+          return `${props.children ?? ''}:${props['data-token'] ?? ''}`
         }
         return ''
       })

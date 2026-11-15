@@ -7,17 +7,19 @@ import {
 } from '../../lib/class-names-field'
 import { dataFlag } from '../../lib/data-attributes'
 
-export type TextInputVariant = 'default' | 'mono' | 'formField' | 'tableCell' | 'gridCell' | 'bare'
+export type TextInputVariant =
+  'default' | 'mono' | 'formField' | 'tableCell' | 'search' | 'gridCell' | 'bare'
 
-type ChromeVariant = 'default' | 'mono' | 'formField' | 'tableCell'
+type ChromeVariant = 'default' | 'mono' | 'formField' | 'tableCell' | 'search'
 type UnchromedVariant = 'gridCell' | 'bare'
-type PaddingKey = 'standard' | 'passwordToggleGutter'
+type PaddingKey = 'standard' | 'passwordToggleGutter' | 'searchIconGutters'
 
 const CHROME_VARIANT_CLASSES: Record<ChromeVariant, string> = {
   default: 'w-full py-1.25 font-body text-body',
   mono: 'w-full py-1.25 font-mono text-mono',
   formField: 'h-control w-full flex-1 font-mono text-size-mono',
   tableCell: 'h-7.5 w-full text-size-row',
+  search: 'h-control w-full font-body text-body',
 }
 
 const UNCHROMED_VARIANT_CLASSES: Record<UnchromedVariant, string> = {
@@ -29,6 +31,7 @@ const UNCHROMED_VARIANT_CLASSES: Record<UnchromedVariant, string> = {
 const PADDING_X_CLASSES: Record<PaddingKey, string> = {
   standard: 'px-2.5',
   passwordToggleGutter: 'pl-2.5 pr-9',
+  searchIconGutters: 'pl-8.5 pr-8',
 }
 
 export type TextInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> & {
@@ -42,7 +45,8 @@ function isUnchromed(variant: TextInputVariant): variant is UnchromedVariant {
   return variant === 'gridCell' || variant === 'bare'
 }
 
-function paddingKey(passwordToggleGutter: boolean): PaddingKey {
+function paddingKey(variant: TextInputVariant, passwordToggleGutter: boolean): PaddingKey {
+  if (variant === 'search') return 'searchIconGutters'
   if (passwordToggleGutter) return 'passwordToggleGutter'
   return 'standard'
 }
@@ -63,7 +67,7 @@ function variantClassName({
   if (isUnchromed(variant)) return UNCHROMED_VARIANT_CLASSES[variant]
   return joinClassNames([
     fieldChromeClassName(invalid, fieldState),
-    PADDING_X_CLASSES[paddingKey(passwordToggleGutter)],
+    PADDING_X_CLASSES[paddingKey(variant, passwordToggleGutter)],
     CHROME_VARIANT_CLASSES[variant],
   ])
 }

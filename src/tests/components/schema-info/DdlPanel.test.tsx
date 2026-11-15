@@ -113,23 +113,23 @@ describe('DdlPanel', () => {
     expect(allElements).toHaveLength(0)
   })
 
-  it('keywords are wrapped in .keyword spans', () => {
+  it('keywords are wrapped in keyword token spans', () => {
     const { container } = render(<DdlPanel ddl="CREATE TABLE" objectType="view" />)
 
     const keywordSpans = container.querySelectorAll('span')
     const keywordTexts = Array.from(keywordSpans)
-      .filter((s) => s.className.includes('keyword'))
+      .filter((span) => span.dataset.token === 'keyword')
       .map((s) => s.textContent)
 
     expect(keywordTexts).toContain('CREATE')
     expect(keywordTexts).toContain('TABLE')
   })
 
-  it('backtick identifiers are wrapped in .identifier spans', () => {
+  it('backtick identifiers are wrapped in identifier token spans', () => {
     const { container } = render(<DdlPanel ddl="CREATE TABLE `users`" objectType="view" />)
 
-    const identSpans = Array.from(container.querySelectorAll('span')).filter((s) =>
-      s.className.includes('identifier')
+    const identSpans = Array.from(container.querySelectorAll('span')).filter(
+      (span) => span.dataset.token === 'identifier'
     )
     expect(identSpans.some((s) => s.textContent === '`users`')).toBe(true)
   })
@@ -142,10 +142,10 @@ describe('DdlPanel', () => {
 
     const spans = Array.from(container.querySelectorAll('span'))
     const keywordTexts = spans
-      .filter((span) => span.className.includes('keyword'))
+      .filter((span) => span.dataset.token === 'keyword')
       .map((span) => span.textContent)
     const typeTexts = spans
-      .filter((span) => span.className.includes('type'))
+      .filter((span) => span.dataset.token === 'type')
       .map((span) => span.textContent)
 
     expect(keywordTexts).toEqual(

@@ -8,7 +8,7 @@ import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
 import { Button } from '../common/Button'
 import { ElevatedCodePanel } from '../common/ElevatedCodePanel'
 import { MetadataCard } from './MetadataCard'
-import styles from './DdlPanel.module.css'
+import { SchemaPanel } from './SchemaTableParts'
 import { toErrorMessage } from '../../lib/error-message'
 
 export interface DdlPanelProps {
@@ -36,8 +36,8 @@ export function DdlPanel({ ddl, metadata, objectType }: DdlPanelProps) {
 
   const codePanel = (
     <ElevatedCodePanel
-      className={styles.codePanel}
-      preClassName={styles.ddl}
+      surfaceVariant="recessed"
+      preSpacing="listing"
       headerVariant="strip"
       label={isTable ? 'SHOW CREATE TABLE' : 'DDL'}
       headerActions={
@@ -51,20 +51,22 @@ export function DdlPanel({ ddl, metadata, objectType }: DdlPanelProps) {
     </ElevatedCodePanel>
   )
 
-  return (
-    <div className={styles.container} data-testid="ddl-panel">
-      {isTable && metadata ? (
-        <>
-          <div className={styles.topSection}>
-            <div className={styles.ddlColumn}>{codePanel}</div>
-            <div className={styles.metadataColumn}>
-              <MetadataCard metadata={metadata} />
-            </div>
+  if (isTable && metadata) {
+    return (
+      <SchemaPanel data-testid="ddl-panel">
+        <div className="grid grid-cols-ddl-split items-start gap-4">
+          <div className="min-w-0">{codePanel}</div>
+          <div className="min-w-0">
+            <MetadataCard metadata={metadata} />
           </div>
-        </>
-      ) : (
-        <div className={styles.ddlOnly}>{codePanel}</div>
-      )}
-    </div>
+        </div>
+      </SchemaPanel>
+    )
+  }
+
+  return (
+    <SchemaPanel data-testid="ddl-panel">
+      <div className="w-full">{codePanel}</div>
+    </SchemaPanel>
   )
 }

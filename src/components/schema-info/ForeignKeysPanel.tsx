@@ -1,62 +1,77 @@
+import type { ReactNode } from 'react'
 import type { ForeignKeyInfo } from '../../types/schema'
-import { DataTableContainer } from '../common/DataTableContainer'
-import styles from './ForeignKeysPanel.module.css'
+import { SchemaCell, SchemaPanel, SchemaRow, SchemaTable } from './SchemaTableParts'
 
 export interface ForeignKeysPanelProps {
   foreignKeys: ForeignKeyInfo[]
 }
 
+const FOREIGN_KEY_LABELS = [
+  'Name',
+  'Column',
+  'Referenced table',
+  'Referenced column',
+  'On delete',
+  'On update',
+]
+
+function MonoText({ children }: { children: ReactNode }) {
+  return (
+    <span className="font-mono text-light-on-surface dark:text-dark-on-surface">{children}</span>
+  )
+}
+
+function ReferentialAction({ children }: { children: ReactNode }) {
+  return (
+    <span className="text-size-caption font-semibold text-light-on-surface-variant dark:text-dark-on-surface-variant">
+      {children}
+    </span>
+  )
+}
+
 export function ForeignKeysPanel({ foreignKeys }: ForeignKeysPanelProps) {
   if (foreignKeys.length === 0) {
     return (
-      <div className={styles.container} data-testid="foreign-keys-panel">
-        <div className={styles.emptyState}>
-          <p className={styles.emptyText}>No foreign keys defined on this table</p>
+      <SchemaPanel data-testid="foreign-keys-panel">
+        <div className="flex items-center justify-center px-4 py-12">
+          <p className="text-size-body text-light-on-surface-variant opacity-60 dark:text-dark-on-surface-variant">
+            No foreign keys defined on this table
+          </p>
         </div>
-      </div>
+      </SchemaPanel>
     )
   }
 
   return (
-    <div className={styles.container} data-testid="foreign-keys-panel">
-      <DataTableContainer>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th className={styles.th}>Name</th>
-              <th className={styles.th}>Column</th>
-              <th className={styles.th}>Referenced table</th>
-              <th className={styles.th}>Referenced column</th>
-              <th className={styles.th}>On delete</th>
-              <th className={styles.th}>On update</th>
-            </tr>
-          </thead>
-          <tbody>
-            {foreignKeys.map((foreignKey) => (
-              <tr key={`${foreignKey.name}:${foreignKey.columnName}`} className={styles.row}>
-                <td className={styles.td}>
-                  <span className={styles.fkName}>{foreignKey.name}</span>
-                </td>
-                <td className={styles.td}>
-                  <span className={styles.columnRef}>{foreignKey.columnName}</span>
-                </td>
-                <td className={styles.td}>
-                  <span className={styles.refTable}>{foreignKey.referencedTable}</span>
-                </td>
-                <td className={styles.td}>
-                  <span className={styles.columnRef}>{foreignKey.referencedColumn}</span>
-                </td>
-                <td className={styles.td}>
-                  <span className={styles.action}>{foreignKey.onDelete}</span>
-                </td>
-                <td className={styles.td}>
-                  <span className={styles.action}>{foreignKey.onUpdate}</span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </DataTableContainer>
-    </div>
+    <SchemaPanel data-testid="foreign-keys-panel">
+      <SchemaTable columnLabels={FOREIGN_KEY_LABELS}>
+        {foreignKeys.map((foreignKey) => (
+          <SchemaRow key={`${foreignKey.name}:${foreignKey.columnName}`}>
+            <SchemaCell>
+              <span className="font-mono font-semibold text-light-on-surface dark:text-dark-on-surface">
+                {foreignKey.name}
+              </span>
+            </SchemaCell>
+            <SchemaCell>
+              <MonoText>{foreignKey.columnName}</MonoText>
+            </SchemaCell>
+            <SchemaCell>
+              <span className="font-mono font-semibold text-light-primary dark:text-dark-primary">
+                {foreignKey.referencedTable}
+              </span>
+            </SchemaCell>
+            <SchemaCell>
+              <MonoText>{foreignKey.referencedColumn}</MonoText>
+            </SchemaCell>
+            <SchemaCell>
+              <ReferentialAction>{foreignKey.onDelete}</ReferentialAction>
+            </SchemaCell>
+            <SchemaCell>
+              <ReferentialAction>{foreignKey.onUpdate}</ReferentialAction>
+            </SchemaCell>
+          </SchemaRow>
+        ))}
+      </SchemaTable>
+    </SchemaPanel>
   )
 }

@@ -10,6 +10,18 @@ import {
 
 export const APP_READY_MS = 5_000
 
+const NO_BOX_SHADOW = 'none'
+const TRANSPARENT_EMPTY_SHADOW_LAYER = /rgba\(0, 0, 0, 0\) 0px 0px 0px 0px/g
+const SHADOW_LAYER_SEPARATOR = /^[, ]+|[, ]+$/g
+
+export async function visibleBoxShadow(locator: Locator): Promise<string> {
+  const boxShadow = await locator.evaluate((element) => getComputedStyle(element).boxShadow)
+  const visibleLayers = boxShadow
+    .replace(TRANSPARENT_EMPTY_SHADOW_LAYER, '')
+    .replace(SHADOW_LAYER_SEPARATOR, '')
+  return visibleLayers.trim() || NO_BOX_SHADOW
+}
+
 interface GridPointHandle {
   click: () => Promise<void>
   dblClick: () => Promise<void>

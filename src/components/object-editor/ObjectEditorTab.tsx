@@ -2,11 +2,11 @@ import { useCallback, useEffect, type ReactNode } from 'react'
 import { useObjectEditorStore, type ObjectEditorTabState } from '../../stores/object-editor-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import type { ObjectEditorTab as ObjectEditorTabType } from '../../types/schema'
+import { joinClassNames } from '../../lib/class-names'
 import { MonacoEditorWrapper } from '../query-editor/MonacoEditorWrapper'
 import { UnsavedChangesDialog } from '../shared/UnsavedChangesDialog'
 import { ObjectEditorToolbar } from './ObjectEditorToolbar'
 import { OBJECT_TYPE_LABELS } from './object-editor-constants'
-import styles from './ObjectEditorTab.module.css'
 
 interface ObjectEditorTabProps {
   tab: ObjectEditorTabType
@@ -49,19 +49,40 @@ function deriveObjectEditorView(
   }
 }
 
+type ObjectEditorStatusTone = 'loading' | 'error'
+
+const STATUS_TONE_CLASSES: Record<ObjectEditorStatusTone, string> = {
+  loading: 'flex-col gap-2 text-light-on-surface-variant dark:text-dark-on-surface-variant',
+  error: 'p-6 text-light-error dark:text-dark-error',
+}
+
 interface ObjectEditorStatusViewProps {
-  stateClassName: string
+  tone: ObjectEditorStatusTone
   testId: string
   children: ReactNode
 }
 
-function ObjectEditorStatusView({ stateClassName, testId, children }: ObjectEditorStatusViewProps) {
+function ObjectEditorFrame({ children }: { children: ReactNode }) {
   return (
-    <div className={styles.container} data-testid="object-editor-tab">
-      <div className={stateClassName} data-testid={testId}>
+    <div className="flex h-full w-full flex-col overflow-hidden" data-testid="object-editor-tab">
+      {children}
+    </div>
+  )
+}
+
+function ObjectEditorStatusView({ tone, testId, children }: ObjectEditorStatusViewProps) {
+  return (
+    <ObjectEditorFrame>
+      <div
+        className={joinClassNames([
+          'flex min-h-60 flex-1 items-center justify-center',
+          STATUS_TONE_CLASSES[tone],
+        ])}
+        data-testid={testId}
+      >
         {children}
       </div>
-    </div>
+    </ObjectEditorFrame>
   )
 }
 
@@ -196,8 +217,11 @@ export function ObjectEditorTab({ tab, isActive = true }: ObjectEditorTabProps) 
   const isInitialLoad = isLoading && !error
   if (isInitialLoad) {
     return (
-      <ObjectEditorStatusView stateClassName={styles.loadingState} testId="object-editor-loading">
-        <div className={styles.spinner} aria-hidden />
+      <ObjectEditorStatusView tone="loading" testId="object-editor-loading">
+        <div
+          className="size-6 animate-spin-850ms rounded-round border-2 border-light-stroke-card border-t-light-primary window-blurred:animate-spin-850ms-paused dark:border-dark-stroke-card dark:border-t-dark-primary"
+          aria-hidden
+        />
         <span>Loading...</span>
       </ObjectEditorStatusView>
     )
@@ -206,14 +230,14 @@ export function ObjectEditorTab({ tab, isActive = true }: ObjectEditorTabProps) 
   const isLoadFailure = Boolean(error) && !content
   if (isLoadFailure) {
     return (
-      <ObjectEditorStatusView stateClassName={styles.errorState} testId="object-editor-error">
+      <ObjectEditorStatusView tone="error" testId="object-editor-error">
         {error}
       </ObjectEditorStatusView>
     )
   }
 
   return (
-    <div className={styles.container} data-testid="object-editor-tab">
+    <ObjectEditorFrame>
       <ObjectEditorToolbar
         objectType={objectType}
         objectName={objectName}
@@ -223,7 +247,7 @@ export function ObjectEditorTab({ tab, isActive = true }: ObjectEditorTabProps) 
         isDirty={isDirty}
         onSave={() => void performSave()}
       />
-      <div className={styles.editorArea}>
+      <div className="min-h-0 flex-1 overflow-hidden">
         <MonacoEditorWrapper
           tabId={tabId}
           connectionId={connectionId}
@@ -237,7 +261,7 @@ export function ObjectEditorTab({ tab, isActive = true }: ObjectEditorTabProps) 
       {pendingNavigationAction !== null && (
         <PendingNavigationDialog tabId={tabId} performSave={performSave} />
       )}
-    </div>
+    </ObjectEditorFrame>
   )
 }
 
