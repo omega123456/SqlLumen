@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test'
 import { APP_READY_MS, connectToSample, waitForApp } from './helpers'
 
 const EDITOR_CLICK_POSITION = { x: 160, y: 40 } as const
+const EXPECTED_SUGGESTION_ROW_DISPLAY = 'block'
 
 function activePanel(page: Page) {
   return page.locator('[data-testid="workspace-panel"][data-active="true"]')
@@ -231,6 +232,18 @@ test.describe('Monaco SQL autocomplete', () => {
       .locator('.suggest-widget.visible')
       .waitFor({ state: 'visible', timeout: APP_READY_MS })
       .catch(() => {})
+  })
+
+  test('suggestion row contents render as a box so their padding applies', async ({ page }) => {
+    await waitForApp(page)
+    await openQueryEditorTab(page)
+    await typeQuery(page, 'SELECT * FROM users t WHERE t.')
+
+    const suggestWidget = await openAutocomplete(page, 'email')
+    expectAutocomplete(suggestWidget)
+
+    const rowContents = suggestWidget.locator('.monaco-list-row > .contents').first()
+    await expect(rowContents).toHaveCSS('display', EXPECTED_SUGGESTION_ROW_DISPLAY)
   })
 
   // The alias-completion test runs first intentionally: the malformed-schema-metadata

@@ -27,6 +27,7 @@
 }
 
 .monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents {
+  display: block !important;
   padding-left: 10px !important;
   padding-right: 10px !important;
 }
