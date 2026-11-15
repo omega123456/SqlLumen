@@ -94,6 +94,10 @@ const TAILWIND_CLASS_RULE_FILES = [
   'src/components/connection-dialog/**/*.tsx',
   'src/lib/class-names-dialog.ts',
   'src/lib/class-names-connection-form.ts',
+  'src/components/settings/*.tsx',
+  'src/components/settings/**/*.ts',
+  'src/components/settings/**/*.tsx',
+  'src/lib/class-names-settings.ts',
 ]
 const localRulesPlugin = {
   rules: { ...namedConditionsPlugin.rules, ...tailwindRulesPlugin.rules },

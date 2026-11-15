@@ -3,9 +3,24 @@ import { KeyCapBadge } from '../KeyCapBadge'
 import type { ShortcutActionDescriptor, ShortcutBinding } from '../../../types/schema'
 import { defaultBindingLabel, isModifiedShortcut } from './shortcut-model'
 import type { ShortcutRecording } from './use-shortcut-recording'
-import styles from '../ShortcutsSettings.module.css'
+import { joinClassNames } from '../../../lib/class-names'
+import { FOCUS_RING } from '../../../lib/focus-ring'
 
-const CONFLICT_BUTTON_STYLE = { fontSize: 'var(--type-size-xs)', padding: '2px 6px' }
+type RecordButtonState = 'idle' | 'recording'
+
+const RECORD_BUTTON_STATE_CLASSES: Record<RecordButtonState, string> = {
+  idle: 'border-light-outline-variant text-light-on-surface-variant hover:border-light-primary hover:text-light-primary dark:border-dark-outline-variant dark:text-dark-on-surface-variant dark:hover:border-dark-primary dark:hover:text-dark-primary',
+  recording:
+    'animate-pulse border-light-primary text-light-primary window-blurred:animate-pulse-paused dark:border-dark-primary dark:text-dark-primary',
+}
+
+function recordButtonClassName(state: RecordButtonState): string {
+  return joinClassNames([
+    'cursor-pointer rounded-control border border-dashed bg-transparent px-2.5 py-1 text-size-caption whitespace-nowrap transition-border-color-and-color duration-120',
+    FOCUS_RING,
+    RECORD_BUTTON_STATE_CLASSES[state],
+  ])
+}
 
 interface ShortcutBindingButtonProps {
   actionId: string
@@ -26,7 +41,7 @@ function ShortcutBindingButton({
     return (
       <Button
         variant="bare"
-        className={`${styles.recordButton} ${styles.recording}`}
+        className={recordButtonClassName('recording')}
         data-testid={`shortcut-recording-${actionId}`}
         onClick={() => onCancelRecording()}
       >
@@ -37,7 +52,7 @@ function ShortcutBindingButton({
   return (
     <Button
       variant="bare"
-      className={styles.recordButton}
+      className={recordButtonClassName('idle')}
       data-testid={`shortcut-record-${actionId}`}
       onClick={onStartRecording}
     >
@@ -48,14 +63,13 @@ function ShortcutBindingButton({
 
 function ConflictNotice({ actionId, onResolve }: { actionId: string; onResolve: () => void }) {
   return (
-    <span className={styles.conflict}>
+    <span className="font-body text-size-caption text-light-error dark:text-dark-error">
       Conflict!{' '}
       <Button
         variant="subtle"
-        size="sm"
+        size="chip"
         onClick={() => onResolve()}
         data-testid={`shortcut-resolve-${actionId}`}
-        style={CONFLICT_BUTTON_STYLE}
       >
         Reassign
       </Button>
@@ -73,13 +87,18 @@ export function ShortcutRow({ action, shortcuts }: ShortcutRowProps) {
   const { recording, workingShortcuts } = shortcuts
   const hasConflict = recording.conflict?.conflictActionId === id
   return (
-    <tr data-testid={`shortcut-row-${id}`}>
+    <tr
+      className="*:border-b *:border-light-stroke-divider *:px-3 *:py-2.5 *:align-middle *:text-size-caption *:text-light-on-surface dark:*:border-dark-stroke-divider dark:*:text-dark-on-surface"
+      data-testid={`shortcut-row-${id}`}
+    >
       <td>
         <div>{label}</div>
-        <div className={styles.actionDescription}>{description}</div>
+        <div className="text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant">
+          {description}
+        </div>
       </td>
       <td>
-        <div className={styles.shortcutCell}>
+        <div className="flex items-center gap-2">
           <ShortcutBindingButton
             actionId={id}
             binding={workingShortcuts[id]}
@@ -94,7 +113,10 @@ export function ShortcutRow({ action, shortcuts }: ShortcutRowProps) {
         {isModifiedShortcut(workingShortcuts, id) && (
           <Button
             variant="bare"
-            className={styles.resetButton}
+            className={joinClassNames([
+              'cursor-pointer rounded-control bg-transparent px-2 py-1 text-size-caption whitespace-nowrap text-light-on-surface-variant hover:bg-light-fill-subtle-hover hover:text-light-primary dark:text-dark-on-surface-variant dark:hover:bg-dark-fill-subtle-hover dark:hover:text-dark-primary',
+              FOCUS_RING,
+            ])}
             data-testid={`shortcut-reset-${id}`}
             onClick={() => shortcuts.resetShortcut(id)}
             title={`Reset to default (${defaultBindingLabel(id)})`}

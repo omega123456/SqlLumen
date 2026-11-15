@@ -5,7 +5,7 @@ import { SettingsSection } from './SettingsSection'
 import { UPDATE_INTERVAL_OPTIONS } from '../../lib/update-intervals'
 import { useSettingsStore, useSettingValue } from '../../stores/settings-store'
 import { useUpdateStore } from '../../stores/update-store'
-import styles from './UpdatesSettings.module.css'
+import { SETTINGS_MUTED_FIELD_LABEL } from '../../lib/class-names-settings'
 import { SoftwareUpdateView } from './updates-settings/SoftwareUpdateViews'
 import { UpdateConfirmDialog } from './updates-settings/UpdateConfirmDialog'
 import { useAppVersion } from './updates-settings/use-app-version'
@@ -25,7 +25,7 @@ function AutomaticUpdatesSection() {
       description="Control how often SqlLumen checks for updates."
     >
       <div>
-        <label id="updates-check-interval-label" className={styles.fieldLabel}>
+        <label id="updates-check-interval-label" className={SETTINGS_MUTED_FIELD_LABEL}>
           Check frequency:
         </label>
         <Dropdown
@@ -93,7 +93,10 @@ export function UpdatesSettings() {
   return (
     <div data-testid="settings-updates">
       <SettingsSection title="App version" description="Currently installed version of SqlLumen.">
-        <div className={styles.versionValue} data-testid="updates-app-version">
+        <div
+          className="font-mono text-size-caption text-light-on-surface dark:text-dark-on-surface"
+          data-testid="updates-app-version"
+        >
           {appVersion}
         </div>
       </SettingsSection>

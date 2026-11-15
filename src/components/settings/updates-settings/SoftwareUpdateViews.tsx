@@ -1,11 +1,74 @@
 import type { ReactNode } from 'react'
 import { ArrowsClockwise, CheckCircle, DownloadSimple, WarningCircle } from '@phosphor-icons/react'
 import { Button } from '../../common/Button'
-import { ELEVATED_SURFACE } from '../../../lib/class-names'
+import { ELEVATED_SURFACE, joinClassNames } from '../../../lib/class-names'
 import type { ReadyToFinishAction, UpdateStatus } from '../../../stores/update-store'
-import styles from '../UpdatesSettings.module.css'
 
 const PERCENT_MAX = 100
+
+type StatusTone = 'neutral' | 'success' | 'error'
+
+const STATUS_TONE_CLASSES: Record<StatusTone, string> = {
+  neutral: 'text-light-on-surface-variant dark:text-dark-on-surface-variant',
+  success: 'text-light-tertiary dark:text-dark-tertiary',
+  error: 'text-light-error dark:text-dark-error',
+}
+
+function StatusMessage({
+  tone,
+  testId,
+  children,
+}: {
+  tone: StatusTone
+  testId?: string
+  children: ReactNode
+}) {
+  return (
+    <span
+      className={joinClassNames([
+        'inline-flex items-center gap-1 text-size-caption',
+        STATUS_TONE_CLASSES[tone],
+      ])}
+      data-testid={testId}
+    >
+      {children}
+    </span>
+  )
+}
+
+function StatusRow({ testId, children }: { testId: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2" data-testid={testId}>
+      {children}
+    </div>
+  )
+}
+
+function UpdateCard({
+  testId,
+  live,
+  children,
+}: {
+  testId: string
+  live?: 'polite'
+  children: ReactNode
+}) {
+  return (
+    <div
+      className={joinClassNames(['flex flex-col gap-2 p-3', ELEVATED_SURFACE])}
+      data-testid={testId}
+      aria-live={live}
+    >
+      {children}
+    </div>
+  )
+}
+
+function CardTitle({ children }: { children: ReactNode }) {
+  return (
+    <div className="text-size-row text-light-on-surface dark:text-dark-on-surface">{children}</div>
+  )
+}
 
 export interface SoftwareUpdateViewProps {
   appVersion: string
@@ -24,23 +87,20 @@ export interface SoftwareUpdateViewProps {
 
 function UpToDateView({ appVersion, checkForUpdatesButton }: SoftwareUpdateViewProps) {
   return (
-    <div className={styles.statusRow} data-testid="updates-up-to-date">
-      <span className={`${styles.statusMessage} ${styles.upToDate}`}>
+    <StatusRow testId="updates-up-to-date">
+      <StatusMessage tone="success">
         <CheckCircle size={16} weight="fill" />
         You're up to date (v{appVersion})
-      </span>
+      </StatusMessage>
       {checkForUpdatesButton}
-    </div>
+    </StatusRow>
   )
 }
 
 function UpdateAvailableView({ availableVersion, handlers }: SoftwareUpdateViewProps) {
   return (
-    <div
-      className={`${styles.updateCard} ${ELEVATED_SURFACE}`}
-      data-testid="updates-available-card"
-    >
-      <div className={styles.cardTitle}>Version {availableVersion ?? 'new'} is available</div>
+    <UpdateCard testId="updates-available-card">
+      <CardTitle>Version {availableVersion ?? 'new'} is available</CardTitle>
       <div>
         <Button
           variant="accent"
@@ -50,19 +110,16 @@ function UpdateAvailableView({ availableVersion, handlers }: SoftwareUpdateViewP
           <DownloadSimple size={16} weight="regular" /> Download update
         </Button>
       </div>
-    </div>
+    </UpdateCard>
   )
 }
 
 function InstallingView({ availableVersion, downloadProgress }: SoftwareUpdateViewProps) {
   return (
-    <div
-      className={`${styles.updateCard} ${ELEVATED_SURFACE}`}
-      data-testid="updates-installing-card"
-    >
-      <div className={styles.cardTitle}>Downloading version {availableVersion ?? 'update'}...</div>
+    <UpdateCard testId="updates-installing-card">
+      <CardTitle>Downloading version {availableVersion ?? 'update'}...</CardTitle>
       <div
-        className={styles.progressTrack}
+        className="h-1 w-full overflow-hidden rounded-pill bg-light-surface-container-highest dark:bg-dark-surface-container-highest"
         data-testid="updates-progress-track"
         role="progressbar"
         aria-valuenow={downloadProgress}
@@ -70,42 +127,36 @@ function InstallingView({ availableVersion, downloadProgress }: SoftwareUpdateVi
         aria-valuemax={PERCENT_MAX}
       >
         <div
-          className={styles.progressFill}
+          className="h-full rounded-pill bg-light-primary transition-width duration-160 dark:bg-dark-primary"
           data-testid="updates-progress-fill"
           style={{ width: `${downloadProgress}%` }}
         />
       </div>
-      <div className={styles.progressMeta}>
+      <div className="flex items-center justify-between gap-2 text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant">
         <span>Downloading update</span>
         <span data-testid="updates-progress-text">{downloadProgress}%</span>
       </div>
-    </div>
+    </UpdateCard>
   )
 }
 
 function ReadyToFinishView({ readyToFinish, errorMessage, handlers }: SoftwareUpdateViewProps) {
   const isManualQuit = readyToFinish.action === 'manual-quit'
   return (
-    <div
-      className={`${styles.updateCard} ${ELEVATED_SURFACE}`}
-      data-testid="updates-ready-card"
-      aria-live="polite"
-    >
-      <div className={styles.cardTitle}>
-        {isManualQuit ? 'Restart required' : 'Update downloaded'}
-      </div>
-      <div className={styles.cardBody} data-testid="updates-ready-message">
+    <UpdateCard testId="updates-ready-card" live="polite">
+      <CardTitle>{isManualQuit ? 'Restart required' : 'Update downloaded'}</CardTitle>
+      <div
+        className="text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant"
+        data-testid="updates-ready-message"
+      >
         {readyToFinish.message}
       </div>
       {errorMessage ? (
-        <div
-          className={`${styles.statusMessage} ${styles.errorMessage}`}
-          data-testid="updates-ready-error"
-        >
+        <StatusMessage tone="error" testId="updates-ready-error">
           <WarningCircle size={16} weight="fill" /> Restart failed: {errorMessage}
-        </div>
+        </StatusMessage>
       ) : null}
-      <div className={styles.cardActions}>
+      <div className="flex flex-wrap gap-2">
         <Button
           variant="accent"
           onClick={handlers.onRestartAction}
@@ -122,28 +173,32 @@ function ReadyToFinishView({ readyToFinish, errorMessage, handlers }: SoftwareUp
           Later
         </Button>
       </div>
-    </div>
+    </UpdateCard>
   )
 }
 
 function UpdateErrorView({ errorMessage, handlers }: SoftwareUpdateViewProps) {
   return (
-    <div className={styles.statusRow} data-testid="updates-error-state">
-      <span className={`${styles.statusMessage} ${styles.errorMessage}`}>
+    <StatusRow testId="updates-error-state">
+      <StatusMessage tone="error">
         <WarningCircle size={16} weight="fill" />
         {errorMessage ?? 'Update check failed'}
-      </span>
+      </StatusMessage>
       <Button onClick={handlers.onManualCheck} data-testid="updates-try-again-button">
         Try again
       </Button>
-    </div>
+    </StatusRow>
   )
 }
 
 function CheckingView() {
   return (
     <Button disabled data-testid="updates-checking-button">
-      <ArrowsClockwise size={16} weight="regular" className={styles.spinningIcon} />
+      <ArrowsClockwise
+        size={16}
+        weight="regular"
+        className="animate-spin-1000ms window-blurred:animate-spin-1000ms-paused"
+      />
       Checking…
     </Button>
   )

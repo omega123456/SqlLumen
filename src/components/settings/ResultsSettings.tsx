@@ -1,7 +1,7 @@
 import { Dropdown } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
 import { SettingsSection } from './SettingsSection'
-import { SettingsFieldLabel } from './SettingsField'
+import { SettingsCaption, SettingsFieldLabel } from './SettingsField'
 import { SettingsToggle } from './SettingsToggle'
 import {
   RESULTS_MAX_ROWS_MAX,
@@ -27,15 +27,6 @@ const MAX_TABS_PER_GROUP_OPTIONS = [
   { label: '15', value: '15' },
   { label: '20', value: '20' },
 ]
-
-const CAPTION_STYLE = {
-  margin: '6px 0 0',
-  fontSize: 'var(--type-caption-size)',
-  lineHeight: 'var(--type-caption-line)',
-  color: 'var(--on-surface-variant)',
-} as const
-
-const ERROR_CAPTION_STYLE = { ...CAPTION_STYLE, color: 'var(--error)' } as const
 
 function parseMaxRows(value: string): number | null {
   if (!/^\d+$/.test(value.trim())) return null
@@ -64,15 +55,15 @@ function RowLimitField() {
         onChange={(event) => setPendingChange('results.pageSize', event.target.value)}
         aria-describedby="settings-page-size-help"
         data-testid="settings-page-size"
-        style={{ width: 120 }}
+        fieldWidth="narrow"
       />
-      <p id="settings-page-size-help" style={CAPTION_STYLE}>
+      <SettingsCaption id="settings-page-size-help">
         Adds a LIMIT to SELECT queries that don't have one. Capped by the maximum below.
-      </p>
+      </SettingsCaption>
       {rowLimitExceedsCeiling && (
-        <p style={CAPTION_STYLE} data-testid="settings-page-size-capped">
+        <SettingsCaption data-testid="settings-page-size-capped">
           Limited to the maximum rows kept per result ({formatCount(ceiling)}).
-        </p>
+        </SettingsCaption>
       )}
     </div>
   )
@@ -107,20 +98,20 @@ function MaxRowsField() {
         onChange={(event) => setPendingChange('results.maxRows', event.target.value)}
         onBlur={() => validateSetting('results.maxRows')}
         data-testid="settings-max-rows"
-        style={{ width: 120 }}
+        fieldWidth="narrow"
       />
-      <p id="settings-max-rows-help" style={CAPTION_STYLE}>
+      <SettingsCaption id="settings-max-rows-help">
         Upper bound for any result, including queries with their own LIMIT or CALL. Results that
         reach it are marked truncated. Applies to queries run after you save.
-      </p>
+      </SettingsCaption>
       {maxRowsError !== null && (
-        <p
+        <SettingsCaption
           id="settings-max-rows-error"
-          style={ERROR_CAPTION_STYLE}
+          tone="error"
           data-testid="settings-max-rows-error"
         >
           {maxRowsError}
-        </p>
+        </SettingsCaption>
       )}
     </div>
   )
@@ -141,7 +132,7 @@ function DataGridSection() {
           value={nullDisplay}
           onChange={(event) => setPendingChange('results.nullDisplay', event.target.value)}
           data-testid="settings-null-display"
-          style={{ width: 200 }}
+          fieldWidth="medium"
         />
       </div>
     </SettingsSection>
@@ -159,7 +150,7 @@ function ResultCacheSection() {
     >
       <div>
         <SettingsFieldLabel id="cache-ttl-label">Cache duration</SettingsFieldLabel>
-        <div style={{ width: 200 }}>
+        <div className="w-50">
           <Dropdown
             id="settings-cache-ttl"
             labelledBy="cache-ttl-label"
@@ -197,7 +188,7 @@ function WorkspaceLayoutSection() {
         <SettingsFieldLabel id="max-tabs-per-group-label">
           Max open tabs per group
         </SettingsFieldLabel>
-        <div style={{ width: 200 }}>
+        <div className="w-50">
           <Dropdown
             id="settings-max-tabs-per-group"
             labelledBy="max-tabs-per-group-label"
@@ -207,10 +198,10 @@ function WorkspaceLayoutSection() {
             data-testid="settings-max-tabs-per-group"
           />
         </div>
-        <p style={CAPTION_STYLE}>
+        <SettingsCaption>
           Opening a tab past the limit closes the least recently used tab in its group. Query tabs
           and tabs with unsaved changes are never closed automatically.
-        </p>
+        </SettingsCaption>
       </div>
     </SettingsSection>
   )

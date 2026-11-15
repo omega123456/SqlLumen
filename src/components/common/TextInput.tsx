@@ -26,13 +26,22 @@ type UnchromedVariant = 'gridCell' | 'bare'
 type PaddingKey = 'standard' | 'passwordToggleGutter' | 'searchIconGutters' | 'listSearchGutters'
 
 const CHROME_VARIANT_CLASSES: Record<ChromeVariant, string> = {
-  default: 'w-full py-1.25 font-body text-body',
-  mono: 'w-full py-1.25 font-mono text-mono',
-  formField: 'h-control w-full flex-1 font-mono text-size-mono',
-  tableCell: 'h-7.5 w-full text-size-row',
-  search: 'h-control w-full font-body text-body',
-  listSearch: 'h-control w-full py-0 font-body text-body',
-  accentName: 'h-control w-full max-w-105 my-1 font-body text-body font-semibold',
+  default: 'py-1.25 font-body text-body',
+  mono: 'py-1.25 font-mono text-mono',
+  formField: 'h-control flex-1 font-mono text-size-mono',
+  tableCell: 'h-7.5 text-size-row',
+  search: 'h-control font-body text-body',
+  listSearch: 'h-control py-0 font-body text-body',
+  accentName: 'h-control max-w-105 my-1 font-body text-body font-semibold',
+}
+
+export type TextInputWidth = 'fill' | 'narrow' | 'medium' | 'wide'
+
+const WIDTH_CLASSES: Record<TextInputWidth, string> = {
+  fill: 'w-full',
+  narrow: 'w-30',
+  medium: 'w-50',
+  wide: 'w-90',
 }
 
 const UNCHROMED_VARIANT_CLASSES: Record<UnchromedVariant, string> = {
@@ -50,6 +59,7 @@ const PADDING_X_CLASSES: Record<PaddingKey, string> = {
 
 export type TextInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> & {
   variant?: TextInputVariant
+  fieldWidth?: TextInputWidth
   invalid?: boolean
   fieldState?: FieldValueState
   passwordToggleGutter?: boolean
@@ -78,6 +88,7 @@ function paddingKey(variant: TextInputVariant, passwordToggleGutter: boolean): P
 
 interface VariantClassOptions {
   variant: TextInputVariant
+  fieldWidth: TextInputWidth
   invalid: boolean
   fieldState: FieldValueState
   passwordToggleGutter: boolean
@@ -85,6 +96,7 @@ interface VariantClassOptions {
 
 function variantClassName({
   variant,
+  fieldWidth,
   invalid,
   fieldState,
   passwordToggleGutter,
@@ -98,6 +110,7 @@ function variantClassName({
       fill: fieldFill(variant),
     }),
     PADDING_X_CLASSES[paddingKey(variant, passwordToggleGutter)],
+    WIDTH_CLASSES[fieldWidth],
     CHROME_VARIANT_CLASSES[variant],
   ])
 }
@@ -105,6 +118,7 @@ function variantClassName({
 export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(function TextInput(
   {
     variant = 'default',
+    fieldWidth = 'fill',
     invalid = false,
     fieldState = NEUTRAL_FIELD_VALUE_STATE,
     passwordToggleGutter = false,
@@ -124,7 +138,7 @@ export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(function T
       data-modified={dataFlag(fieldState.modified)}
       data-null={dataFlag(fieldState.isNull)}
       className={joinClassNames([
-        variantClassName({ variant, invalid, fieldState, passwordToggleGutter }),
+        variantClassName({ variant, fieldWidth, invalid, fieldState, passwordToggleGutter }),
         className,
       ])}
       autoCapitalize={autoCapitalize}

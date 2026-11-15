@@ -39,7 +39,7 @@ export function LoggingSettings() {
   return (
     <div data-testid="settings-logging">
       <SettingsSection title="Application" description="Application version and diagnostics.">
-        <div style={{ fontSize: 'var(--type-size-sm)', color: 'var(--on-surface-variant)' }}>
+        <div className="text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant">
           <strong>Version:</strong> {appInfo?.appVersion ?? '...'}
         </div>
       </SettingsSection>
@@ -52,11 +52,7 @@ export function LoggingSettings() {
               Log level
               {appInfo?.rustLogOverride && (
                 <span
-                  style={{
-                    marginLeft: 8,
-                    fontSize: 'var(--type-size-xs)',
-                    color: 'var(--warning)',
-                  }}
+                  className="ml-2 text-size-caption text-light-warning dark:text-dark-warning"
                   data-testid="settings-rust-log-override"
                 >
                   (overridden by RUST_LOG)

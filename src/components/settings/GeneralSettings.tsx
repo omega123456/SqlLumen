@@ -132,7 +132,7 @@ function ConnectionDefaultsSection() {
           value={connectionTimeout}
           onChange={(event) => setPendingChange('connection.defaultTimeout', event.target.value)}
           data-testid="settings-connection-timeout"
-          style={{ width: 120 }}
+          fieldWidth="narrow"
         />
       </div>
       <div>
@@ -147,7 +147,7 @@ function ConnectionDefaultsSection() {
           value={keepalive}
           onChange={(event) => setPendingChange('connection.defaultKeepalive', event.target.value)}
           data-testid="settings-keepalive"
-          style={{ width: 120 }}
+          fieldWidth="narrow"
         />
       </div>
     </SettingsSection>

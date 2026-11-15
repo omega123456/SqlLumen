@@ -1,6 +1,7 @@
 import { Button } from '../common/Button'
 import { DialogShell } from '../dialogs/DialogShell'
-import styles from './LogExportDialog.module.css'
+import { DIALOG_FOOTER_SURFACE, DIALOG_HEADER_TITLE } from '../../lib/class-names-dialog'
+import { joinClassNames } from '../../lib/class-names'
 import 'react-datepicker/dist/react-datepicker.css'
 import { LogDateField } from './log-export-dialog/LogDateField'
 import { useLogExport } from './log-export-dialog/use-log-export'
@@ -8,6 +9,50 @@ import { useLogExport } from './log-export-dialog/use-log-export'
 export interface LogExportDialogProps {
   isOpen: boolean
   onClose: () => void
+}
+
+type ValidationTone = 'helper' | 'invalid'
+
+const VALIDATION_TONE_CLASSES: Record<ValidationTone, string> = {
+  helper: 'text-light-on-surface-variant dark:text-dark-on-surface-variant',
+  invalid: 'text-light-error dark:text-dark-error',
+}
+
+function validationToneOf(validationMessage: string | null): ValidationTone {
+  if (validationMessage === null) return 'helper'
+  return 'invalid'
+}
+
+interface LogExportFooterProps {
+  logExport: ReturnType<typeof useLogExport>
+  onClose: () => void
+}
+
+function LogExportFooter({ logExport, onClose }: LogExportFooterProps) {
+  const { busy } = logExport
+  return (
+    <div className={joinClassNames([DIALOG_FOOTER_SURFACE, 'flex justify-end gap-2'])}>
+      <Button
+        variant="accent"
+        type="submit"
+        disabled={!logExport.canExport}
+        data-testid="log-export-submit-button"
+      >
+        <span className="inline-flex items-center gap-2">
+          {busy && (
+            <span
+              className="size-3.5 animate-spin-700ms rounded-round border-2 border-current border-r-transparent opacity-90 window-blurred:animate-spin-700ms-paused"
+              aria-hidden="true"
+            />
+          )}
+          {busy ? 'Exporting...' : 'Export'}
+        </span>
+      </Button>
+      <Button onClick={onClose} disabled={busy} data-testid="log-export-cancel-button">
+        Cancel
+      </Button>
+    </div>
+  )
 }
 
 export function LogExportDialog({ isOpen, onClose }: LogExportDialogProps) {
@@ -32,40 +77,30 @@ export function LogExportDialog({ isOpen, onClose }: LogExportDialogProps) {
       panelPadding={false}
       formProps={{ onSubmit: logExport.handleSubmit }}
     >
-      <div className={styles.root}>
-        <div className={styles.header}>
-          <h2 className={styles.title}>Export logs</h2>
-          <p className={styles.subtitle}>Choose a date range of up to 7 days and save it as CSV.</p>
+      <div className="flex flex-col overflow-hidden rounded-overlay">
+        <div className="px-6 pt-6">
+          <h2 className={DIALOG_HEADER_TITLE}>Export logs</h2>
+          <p className="mt-2 text-size-caption leading-body text-light-on-surface-variant dark:text-dark-on-surface-variant">
+            Choose a date range of up to 7 days and save it as CSV.
+          </p>
         </div>
 
-        <div className={styles.body}>
+        <div className="flex flex-col gap-4.5 px-6 pt-3 pb-6">
           <LogDateField edge="from" {...fieldProps} />
           <LogDateField edge="to" {...fieldProps} />
 
           <p
-            className={validationMessage === null ? styles.helperText : styles.validationMessage}
+            className={joinClassNames([
+              'text-size-caption leading-compact',
+              VALIDATION_TONE_CLASSES[validationToneOf(validationMessage)],
+            ])}
             data-testid="log-export-validation"
           >
             {validationMessage ?? 'Up to 7 days inclusive.'}
           </p>
         </div>
 
-        <div className={styles.footer}>
-          <Button
-            variant="accent"
-            type="submit"
-            disabled={!logExport.canExport}
-            data-testid="log-export-submit-button"
-          >
-            <span className={styles.actionContent}>
-              {busy && <span className={styles.spinner} aria-hidden="true" />}
-              {busy ? 'Exporting...' : 'Export'}
-            </span>
-          </Button>
-          <Button onClick={onClose} disabled={busy} data-testid="log-export-cancel-button">
-            Cancel
-          </Button>
-        </div>
+        <LogExportFooter logExport={logExport} onClose={onClose} />
       </div>
     </DialogShell>
   )

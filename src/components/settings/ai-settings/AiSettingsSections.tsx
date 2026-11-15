@@ -23,7 +23,7 @@ import {
 } from './use-ai-model-fetch'
 import { FetchStatus, ModelCategoryGrids } from './ModelCategoryGrids'
 import { EndpointField, NumericSettingGrid, ReindexRow, SettingSwitch } from './AiSettingControls'
-import styles from '../AiSettings.module.css'
+import { SETTINGS_MUTED_FIELD_LABEL } from '../../../lib/class-names-settings'
 
 interface ModelListSectionProps {
   chatFetch: ModelFetch
@@ -43,8 +43,11 @@ function ModelListSection({
   const buildingConnections = useBuildingConnections()
   const modelCategories = resolveModelCategories(chatFetch, embeddingFetch, hasEmbeddingUrl)
   return (
-    <div className={styles.modelListSection} data-testid="ai-model-list-section">
-      <p className={styles.helperText} data-testid="ai-helper-text">
+    <div className="mt-3" data-testid="ai-model-list-section">
+      <p
+        className="mb-3 text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant"
+        data-testid="ai-helper-text"
+      >
         Models will be grouped by type: chat for conversation, embedding for schema search
       </p>
 
@@ -110,7 +113,10 @@ export function AiConnectionSection({ aiEnabled, onRequestReindex }: AiConnectio
         placeholder={chatUrl || DEFAULT_ENDPOINT_PLACEHOLDER}
         disabled={!aiEnabled}
       >
-        <p className={styles.helperText} data-testid="ai-embedding-helper-text">
+        <p
+          className="mb-3 text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant"
+          data-testid="ai-embedding-helper-text"
+        >
           When blank, the chat URL is used for embeddings. Fill this in only if your embedding
           provider is hosted at a different address.
         </p>
@@ -185,7 +191,7 @@ export function AiMemorySection({ aiEnabled }: { aiEnabled: boolean }) {
   return (
     <SettingsSection title="Memory" description="Choose which scope /remember saves to by default.">
       <div>
-        <span id="settings-ai-remember-scope-label" className={styles.fieldLabel}>
+        <span id="settings-ai-remember-scope-label" className={SETTINGS_MUTED_FIELD_LABEL}>
           Default /remember scope
         </span>
         <Dropdown

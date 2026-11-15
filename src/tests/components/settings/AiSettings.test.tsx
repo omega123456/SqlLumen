@@ -302,14 +302,14 @@ describe('AiSettings', () => {
     expect(useSettingsStore.getState().pendingChanges['ai.preferResponsesApi']).toBe('true')
   })
 
-  it('applies disabled visual class when AI is off', async () => {
+  it('marks the AI settings group disabled when AI is off', async () => {
     await renderAiSettings()
     const aiContainer = screen.getByTestId('settings-ai')
     const disabledWrapper = aiContainer.children[1] as HTMLElement
-    expect(disabledWrapper.className).toContain('disabledGroup')
+    expect(disabledWrapper).toHaveAttribute('data-state', 'disabled')
   })
 
-  it('removes disabled visual class when AI is on', async () => {
+  it('marks the AI settings group enabled when AI is on', async () => {
     useSettingsStore.setState({
       settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true' },
       pendingChanges: {},
@@ -319,7 +319,7 @@ describe('AiSettings', () => {
     await renderAiSettings()
     const aiContainer = screen.getByTestId('settings-ai')
     const wrapper = aiContainer.children[1] as HTMLElement
-    expect(wrapper.className).not.toContain('disabledGroup')
+    expect(wrapper).toHaveAttribute('data-state', 'enabled')
   })
 
   it('shows pending values over saved values', async () => {
@@ -855,7 +855,7 @@ describe('AiSettings - Model Categories', () => {
     expect(screen.queryByTestId('ai-model-check-mistral')).not.toBeInTheDocument()
   })
 
-  it('model cards use ElevatedSurface wrapper with correct attributes', async () => {
+  it('model cards expose radio semantics and are keyboard focusable', async () => {
     ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
 
     useSettingsStore.setState({
@@ -875,7 +875,6 @@ describe('AiSettings - Model Categories', () => {
     })
 
     const card = screen.getByTestId('ai-model-card-llama3')
-    expect(card).toHaveAttribute('data-variant', 'ring')
     expect(card).toHaveAttribute('role', 'radio')
     expect(card).toHaveAttribute('tabindex', '0')
   })
@@ -932,7 +931,7 @@ describe('AiSettings - Model Categories', () => {
     )
   })
 
-  it('selected chat card is highlighted with modelCardSelected class', async () => {
+  it('selected chat card is the only checked radio', async () => {
     ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
 
     useSettingsStore.setState({
@@ -953,10 +952,10 @@ describe('AiSettings - Model Categories', () => {
     })
 
     const selectedCard = screen.getByTestId('ai-model-card-llama3')
-    expect(selectedCard.className).toContain('modelCardSelected')
+    expect(selectedCard).toHaveAttribute('aria-checked', 'true')
 
     const unselectedCard = screen.getByTestId('ai-model-card-mistral')
-    expect(unselectedCard.className).not.toContain('modelCardSelected')
+    expect(unselectedCard).toHaveAttribute('aria-checked', 'false')
   })
 })
 

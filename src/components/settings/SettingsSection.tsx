@@ -1,5 +1,3 @@
-import styles from './SettingsSection.module.css'
-
 export interface SettingsSectionProps {
   title: string
   description: string
@@ -8,10 +6,14 @@ export interface SettingsSectionProps {
 
 export function SettingsSection({ title, description, children }: SettingsSectionProps) {
   return (
-    <div className={styles.section} data-testid={`settings-section-${title.toLowerCase()}`}>
-      <h3 className={styles.heading}>{title}</h3>
-      <p className={styles.description}>{description}</p>
-      <div className={styles.content}>{children}</div>
+    <div className="flex flex-col" data-testid={`settings-section-${title.toLowerCase()}`}>
+      <h3 className="mt-3.5 font-body text-body font-semibold text-light-on-surface dark:text-dark-on-surface">
+        {title}
+      </h3>
+      <p className="mb-1.5 text-caption text-light-on-surface-variant dark:text-dark-on-surface-variant">
+        {description}
+      </p>
+      <div className="flex flex-col gap-1">{children}</div>
     </div>
   )
 }

@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { SettingsSection } from './SettingsSection'
 import { useSettingValue } from '../../stores/settings-store'
 import { AiMemoriesSettings } from './AiMemoriesSettings'
-import styles from './AiSettings.module.css'
 import { isTrueSetting } from './ai-settings/ai-settings-model'
 import { ForceReindexDialog, SettingSwitch } from './ai-settings/AiSettingControls'
 import {
@@ -12,8 +11,21 @@ import {
   AiRetrievalSection,
 } from './ai-settings/AiSettingsSections'
 
+type AiGroupState = 'enabled' | 'disabled'
+
+const AI_GROUP_STATE_CLASSES: Record<AiGroupState, string> = {
+  enabled: '',
+  disabled: 'pointer-events-none opacity-50',
+}
+
+function aiGroupStateOf(aiEnabled: boolean): AiGroupState {
+  if (aiEnabled) return 'enabled'
+  return 'disabled'
+}
+
 export function AiSettings() {
   const aiEnabled = useSettingValue('ai.enabled') === 'true'
+  const groupState = aiGroupStateOf(aiEnabled)
   const [reindexConfirmOpen, setReindexConfirmOpen] = useState(false)
 
   return (
@@ -28,7 +40,7 @@ export function AiSettings() {
         />
       </SettingsSection>
 
-      <div className={!aiEnabled ? styles.disabledGroup : undefined}>
+      <div className={AI_GROUP_STATE_CLASSES[groupState]} data-state={groupState}>
         <AiConnectionSection
           aiEnabled={aiEnabled}
           onRequestReindex={() => setReindexConfirmOpen(true)}

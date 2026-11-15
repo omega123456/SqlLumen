@@ -347,7 +347,7 @@ describe('AiMemoriesSettings', () => {
     })
 
     // No highlight before any dragover.
-    expect(target.className).not.toContain('dropTarget')
+    expect(target).toHaveAttribute('data-drop-state', 'idle')
 
     const dragOver = Object.assign(new Event('dragover', { bubbles: true, cancelable: true }), {
       dataTransfer,
@@ -360,7 +360,7 @@ describe('AiMemoriesSettings', () => {
     // and surface the skeleton placeholder row in the destination section.
     expect(dragOver.defaultPrevented).toBe(true)
     expect(dataTransfer.dropEffect).toBe('move')
-    expect(target.className).toContain('dropTarget')
+    expect(target).toHaveAttribute('data-drop-state', 'dropTarget')
     expect(screen.getByTestId('ai-memory-drop-skeleton-connection-conn-1')).toBeInTheDocument()
     await settle()
   })
@@ -390,7 +390,7 @@ describe('AiMemoriesSettings', () => {
         Object.assign(new Event('dragover', { bubbles: true, cancelable: true }), { dataTransfer })
       )
     })
-    expect(group.className).toContain('dropTarget')
+    expect(group).toHaveAttribute('data-drop-state', 'dropTarget')
 
     // Dragging into the nested connection moves the highlight there and clears
     // the group — the skeleton must not stay stuck in every section passed through.
@@ -399,8 +399,8 @@ describe('AiMemoriesSettings', () => {
         Object.assign(new Event('dragover', { bubbles: true, cancelable: true }), { dataTransfer })
       )
     })
-    expect(conn.className).toContain('dropTarget')
-    expect(group.className).not.toContain('dropTarget')
+    expect(conn).toHaveAttribute('data-drop-state', 'dropTarget')
+    expect(group).toHaveAttribute('data-drop-state', 'idle')
     expect(screen.queryByTestId('ai-memory-drop-skeleton-group-grp-1')).not.toBeInTheDocument()
     await settle()
   })
@@ -537,7 +537,7 @@ describe('AiMemoriesSettings', () => {
 
     expect(dragOver.defaultPrevented).toBe(true)
     expect(dataTransfer.dropEffect).toBe('move')
-    expect(target.className).toContain('dropTarget')
+    expect(target).toHaveAttribute('data-drop-state', 'dropTarget')
 
     act(() => {
       target.dispatchEvent(
@@ -577,7 +577,7 @@ describe('AiMemoriesSettings', () => {
     })
 
     expect(dataTransfer.dropEffect).toBe('none')
-    expect(ownSection.className).not.toContain('dropTarget')
+    expect(ownSection).toHaveAttribute('data-drop-state', 'idle')
     await settle()
   })
 

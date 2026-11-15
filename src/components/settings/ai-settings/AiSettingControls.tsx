@@ -12,9 +12,7 @@ import {
   type NumericSettingFieldConfig,
 } from './ai-settings-model'
 import { useBuildingConnections } from './use-ai-model-fetch'
-import styles from '../AiSettings.module.css'
-
-const ENDPOINT_INPUT_WIDTH_PX = 360
+import { SETTINGS_MUTED_FIELD_LABEL } from '../../../lib/class-names-settings'
 
 interface ReindexRowProps {
   buildingConnections: ConnectionIndexState[]
@@ -24,13 +22,16 @@ interface ReindexRowProps {
 export function ReindexRow({ buildingConnections, onRequestReindex }: ReindexRowProps) {
   const isBuilding = buildingConnections.length > 0
   return (
-    <div className={styles.reindexRow} data-testid="ai-reindex-row">
+    <div
+      className="mt-4 flex flex-wrap items-center gap-2 border-t border-light-stroke-divider pt-4 dark:border-dark-stroke-divider"
+      data-testid="ai-reindex-row"
+    >
       <Button onClick={onRequestReindex} disabled={isBuilding} data-testid="ai-force-reindex-btn">
         {isBuilding ? 'Reindexing...' : 'Force reindex'}
       </Button>
       {isBuilding && (
         <span
-          className={styles.reindexStatus}
+          className="text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant"
           data-testid="ai-reindex-status"
           role="status"
           aria-live="polite"
@@ -50,8 +51,8 @@ interface NumericSettingFieldProps {
 function NumericSettingField({ field, disabled }: NumericSettingFieldProps) {
   const value = useSettingValue(field.settingKey)
   return (
-    <div className={styles.compactField}>
-      <label htmlFor={field.id} className={styles.fieldLabel}>
+    <div className="flex min-w-0 grow shrink basis-40 flex-col max-medium:basis-full">
+      <label htmlFor={field.id} className={SETTINGS_MUTED_FIELD_LABEL}>
         {field.label}
       </label>
       <TextInput
@@ -64,7 +65,7 @@ function NumericSettingField({ field, disabled }: NumericSettingFieldProps) {
         onChange={(event) => setPendingSetting(field.settingKey, event.target.value)}
         disabled={disabled}
         data-testid={field.testId}
-        className={styles.compactFieldInput}
+        className="max-w-45 max-medium:max-w-full"
       />
     </div>
   )
@@ -77,7 +78,7 @@ interface NumericSettingGridProps {
 
 export function NumericSettingGrid({ fields, disabled }: NumericSettingGridProps) {
   return (
-    <div className={styles.compactFieldGrid}>
+    <div className="flex flex-wrap gap-3">
       {fields.map((field) => (
         <NumericSettingField key={field.settingKey} field={field} disabled={disabled} />
       ))}
@@ -135,7 +136,7 @@ export function EndpointField({
   const value = useSettingValue(settingKey)
   return (
     <div>
-      <label htmlFor={id} className={styles.fieldLabel}>
+      <label htmlFor={id} className={SETTINGS_MUTED_FIELD_LABEL}>
         {label}
       </label>
       <TextInput
@@ -145,7 +146,7 @@ export function EndpointField({
         placeholder={placeholder}
         disabled={disabled}
         data-testid={id}
-        style={{ width: ENDPOINT_INPUT_WIDTH_PX }}
+        fieldWidth="wide"
       />
       {children}
     </div>

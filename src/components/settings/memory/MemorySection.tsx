@@ -1,8 +1,8 @@
 import { useId, useState, type ReactNode } from 'react'
 import type { MemoryDragPayload } from './MemoryRow'
 import type { AiMemory, MemoryScope } from '../../../lib/ai-memory-commands'
-import styles from './MemorySection.module.css'
 import { joinClassNames } from '../../../lib/class-names'
+import { SETTINGS_MEMORY_NEST } from '../../../lib/class-names-settings'
 import type { MemoryOwner } from './memory-section-model'
 import {
   MemoryAddArea,
@@ -14,6 +14,29 @@ import { useMemoryAddForm } from './use-memory-add-form'
 import { useMemoryDropTarget } from './use-memory-drop-target'
 
 const AUTO_COLLAPSE_MEMORY_COUNT = 5
+
+type SectionNesting = 'root' | 'nested'
+type SectionDropState = 'idle' | 'dropTarget'
+
+const NESTING_CLASSES: Record<SectionNesting, string> = {
+  root: '',
+  nested: SETTINGS_MEMORY_NEST,
+}
+
+const DROP_STATE_CLASSES: Record<SectionDropState, string> = {
+  idle: '',
+  dropTarget: 'rounded-control',
+}
+
+function nestingOf(nested: boolean | undefined): SectionNesting {
+  if (nested) return 'nested'
+  return 'root'
+}
+
+function dropStateOf(isDragOver: boolean): SectionDropState {
+  if (isDragOver) return 'dropTarget'
+  return 'idle'
+}
 
 export interface MemorySectionProps {
   sectionKey: string
@@ -52,7 +75,7 @@ function MemorySectionBody({ props, owner, isDragOver }: MemorySectionBodyProps)
   const formId = useId()
   const { form, textareaRef, addTriggerRef } = useMemoryAddForm(props.onAdd)
   return (
-    <div className={styles.body}>
+    <div className="py-0.5 pr-0 pl-1">
       {isDragOver && <MemoryDropSkeleton sectionKey={sectionKey} />}
       <MemoryList
         sectionKey={sectionKey}
@@ -89,10 +112,12 @@ export function MemorySection(props: MemorySectionProps) {
   return (
     <div
       className={joinClassNames([
-        styles.section,
-        props.nested ? styles.nested : '',
-        isDragOver ? styles.dropTarget : '',
+        'relative py-1 after-memory-section:mt-1',
+        NESTING_CLASSES[nestingOf(props.nested)],
+        DROP_STATE_CLASSES[dropStateOf(isDragOver)],
       ])}
+      data-memory-section
+      data-drop-state={dropStateOf(isDragOver)}
       data-testid={`ai-memory-section-${sectionKey}`}
       onDragOver={dropTarget.handleDragOver}
       onDragLeave={dropTarget.handleDragLeave}

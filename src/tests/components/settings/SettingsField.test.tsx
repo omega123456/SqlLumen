@@ -12,7 +12,7 @@ const OPTIONS = [
 ]
 
 describe('SettingsFieldLabel', () => {
-  it('renders a block label for its input', () => {
+  it('renders a label tied to its input', () => {
     render(
       <>
         <SettingsFieldLabel htmlFor="field-input">Field</SettingsFieldLabel>
@@ -21,7 +21,6 @@ describe('SettingsFieldLabel', () => {
     )
 
     expect(screen.getByLabelText('Field')).toHaveAttribute('id', 'field-input')
-    expect(screen.getByText('Field')).toHaveStyle({ display: 'block' })
   })
 })
 

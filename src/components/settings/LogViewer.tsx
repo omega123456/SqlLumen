@@ -1,8 +1,7 @@
 import { useCallback, useState } from 'react'
-import { PaginationGroup } from '../shared/toolbar/PaginationGroup'
 import { LogExportDialog } from './LogExportDialog'
-import styles from './LogViewer.module.css'
 import { LogList } from './log-viewer/LogList'
+import { LogPaginationBar } from './log-viewer/LogPaginationBar'
 import { LogViewerToolbar } from './log-viewer/LogViewerToolbar'
 import { LOG_PAGE_SIZE, useLogPages, type LogPages } from './log-viewer/use-log-pages'
 
@@ -42,15 +41,19 @@ export function LogViewer() {
 
   return (
     <>
-      <section className={styles.container} aria-label="Application logs" data-testid="log-viewer">
+      <section
+        className="mt-3 flex flex-col overflow-hidden rounded-overlay border border-light-stroke-card bg-light-surface-container-low dark:border-dark-stroke-card dark:bg-dark-surface-container-low"
+        aria-label="Application logs"
+        data-testid="log-viewer"
+      >
         <LogViewerToolbar logPages={logPages} onExport={() => setExportOpen(true)} />
 
-        <div className={styles.paginationBar}>
-          <PaginationGroup {...paginationProps} />
-          <span className={styles.summary} data-testid="log-viewer-count-summary">
-            {countSummary}
-          </span>
-        </div>
+        <LogPaginationBar
+          edge="top"
+          paginationProps={paginationProps}
+          countSummary={countSummary}
+          summaryTestId="log-viewer-count-summary"
+        />
 
         <LogList
           errorMessage={logPages.errorMessage}
@@ -58,10 +61,11 @@ export function LogViewer() {
           entries={logPages.entries}
         />
 
-        <div className={styles.paginationBar}>
-          <PaginationGroup {...paginationProps} />
-          <span className={styles.summary}>{countSummary}</span>
-        </div>
+        <LogPaginationBar
+          edge="bottom"
+          paginationProps={paginationProps}
+          countSummary={countSummary}
+        />
       </section>
       <LogExportDialog isOpen={exportOpen} onClose={() => setExportOpen(false)} />
     </>

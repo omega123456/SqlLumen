@@ -18,7 +18,7 @@ export const DIALOG_FIELD_GROUP = 'mb-4'
 export const DIALOG_ERROR_BOX =
   'mt-3 rounded-card border border-light-error-a20 bg-light-error-container px-3 py-2 font-body text-size-caption text-light-error dark:border-dark-error-a20 dark:bg-dark-error-container dark:text-dark-error'
 
-const DIALOG_FOOTER_SURFACE =
+export const DIALOG_FOOTER_SURFACE =
   'border-t border-light-stroke-divider bg-light-surface p-6 dark:border-dark-stroke-divider dark:bg-dark-surface'
 
 export const DIALOG_FOOTER_BLEED = joinClassNames([DIALOG_FOOTER_SURFACE, '-mx-6 -mb-6'])

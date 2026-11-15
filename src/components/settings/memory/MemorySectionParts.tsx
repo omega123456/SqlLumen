@@ -13,10 +13,11 @@ import { MemoryRow, type MemoryDragPayload } from './MemoryRow'
 import type { AiMemory, MemoryScope } from '../../../lib/ai-memory-commands'
 import { joinClassNames } from '../../../lib/class-names'
 import { SHIMMER_BLOCK_CONTROL } from '../../../lib/class-names-skeleton'
+import { SETTINGS_MEMORY_PANEL } from '../../../lib/class-names-settings'
+import { FOCUS_RING } from '../../../lib/focus-ring'
 import type { MemoryOwner } from './memory-section-model'
 import type { RefObject } from 'react'
 import type { MemoryAddForm } from './use-memory-add-form'
-import styles from './MemorySection.module.css'
 
 const HEADER_ICON_SIZE = 16
 
@@ -31,14 +32,56 @@ function scopeIcon(scope: MemoryScope) {
   return <ScopeIcon size={HEADER_ICON_SIZE} aria-hidden />
 }
 
-const SCOPE_TONE_CLASS: Record<MemoryScope, string> = {
-  global: styles.toneGlobal,
-  group: styles.toneGroup,
-  connection: styles.toneConnection,
+interface ScopeTone {
+  header: string
+  hover: string
+  label: string
+  icon: string
+}
+
+const MUTED_ICON = 'text-light-on-surface-variant dark:text-dark-on-surface-variant'
+
+const SCOPE_TONES: Record<MemoryScope, ScopeTone> = {
+  global: {
+    header: 'bg-light-fill-accent-tint dark:bg-dark-fill-accent-tint',
+    hover: 'hover:bg-light-fill-subtle-hover dark:hover:bg-dark-fill-subtle-hover',
+    label: 'font-semibold',
+    icon: 'text-light-primary dark:text-dark-primary',
+  },
+  group: {
+    header: 'bg-light-surface-container-high dark:bg-dark-surface-container-high',
+    hover: 'hover:bg-light-surface-container-high dark:hover:bg-dark-surface-container-high',
+    label: 'font-semibold',
+    icon: MUTED_ICON,
+  },
+  connection: {
+    header: 'bg-light-surface-container dark:bg-dark-surface-container',
+    hover: 'hover:bg-light-surface-container-high dark:hover:bg-dark-surface-container-high',
+    label: 'font-regular',
+    icon: MUTED_ICON,
+  },
+}
+
+type HeaderEmphasis = 'standard' | 'subdued'
+
+const HEADER_EMPHASIS_CLASSES: Record<HeaderEmphasis, string> = {
+  standard: 'text-light-on-surface dark:text-dark-on-surface',
+  subdued: 'text-light-on-surface-variant dark:text-dark-on-surface-variant',
+}
+
+function emphasisOf(subdued: boolean): HeaderEmphasis {
+  if (subdued) return 'subdued'
+  return 'standard'
 }
 
 function memoryCountLabel(count: number): string {
   return `${count} ${count === 1 ? 'memory' : 'memories'}`
+}
+
+interface MemorySectionHeaderContentProps {
+  scope: MemoryScope
+  label: string
+  memoryCount: number
 }
 
 interface MemorySectionHeaderProps {
@@ -50,6 +93,45 @@ interface MemorySectionHeaderProps {
   collapse: { collapsible: boolean; collapsed: boolean; onToggle: () => void }
 }
 
+function headerClassName(scope: MemoryScope, subdued: boolean): string {
+  return joinClassNames([
+    'flex w-full items-center gap-2 rounded-control px-2 py-1.5 text-left text-size-caption',
+    SCOPE_TONES[scope].header,
+    HEADER_EMPHASIS_CLASSES[emphasisOf(subdued)],
+  ])
+}
+
+function collapsibleHeaderClassName(scope: MemoryScope, subdued: boolean): string {
+  return joinClassNames([
+    headerClassName(scope, subdued),
+    'cursor-pointer',
+    FOCUS_RING,
+    SCOPE_TONES[scope].hover,
+  ])
+}
+
+function HeaderContent({ scope, label, memoryCount }: MemorySectionHeaderContentProps) {
+  const tone = SCOPE_TONES[scope]
+  return (
+    <>
+      <span className={joinClassNames(['flex shrink-0 items-center', tone.icon])}>
+        {scopeIcon(scope)}
+      </span>
+      <span
+        className={joinClassNames([
+          'min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap',
+          tone.label,
+        ])}
+      >
+        {label}
+      </span>
+      <span className="shrink-0 rounded-control border border-light-outline-variant bg-light-surface px-1.5 py-px text-size-caption text-light-on-surface-variant dark:border-dark-outline-variant dark:bg-dark-surface dark:text-dark-on-surface-variant">
+        {memoryCountLabel(memoryCount)}
+      </span>
+    </>
+  )
+}
+
 export function MemorySectionHeader({
   sectionKey,
   scope,
@@ -58,30 +140,19 @@ export function MemorySectionHeader({
   subdued,
   collapse,
 }: MemorySectionHeaderProps) {
-  const headerClassNames = [
-    styles.header,
-    SCOPE_TONE_CLASS[scope],
-    subdued ? styles.headerSubdued : '',
-  ]
-  const headerContent = (
-    <>
-      <span className={styles.headerIcon}>{scopeIcon(scope)}</span>
-      <span className={styles.headerLabel}>{label}</span>
-      <span className={styles.countBadge}>{memoryCountLabel(memoryCount)}</span>
-    </>
-  )
+  const headerContent = <HeaderContent scope={scope} label={label} memoryCount={memoryCount} />
   if (!collapse.collapsible) {
-    return <div className={joinClassNames(headerClassNames)}>{headerContent}</div>
+    return <div className={headerClassName(scope, subdued)}>{headerContent}</div>
   }
   return (
     <Button
       variant="bare"
-      className={joinClassNames([...headerClassNames, styles.headerButton])}
+      className={collapsibleHeaderClassName(scope, subdued)}
       aria-expanded={!collapse.collapsed}
       data-testid={`ai-memory-section-toggle-${sectionKey}`}
       onClick={collapse.onToggle}
     >
-      <span className={styles.chevron}>
+      <span className="flex shrink-0 items-center text-light-on-surface-variant dark:text-dark-on-surface-variant">
         {collapse.collapsed ? <CaretRightIcon size={14} /> : <CaretDownIcon size={14} />}
       </span>
       {headerContent}
@@ -91,11 +162,14 @@ export function MemorySectionHeader({
 
 export function MemoryDropSkeleton({ sectionKey }: { sectionKey: string }) {
   return (
-    <div className={styles.skeletonRow} data-testid={`ai-memory-drop-skeleton-${sectionKey}`}>
-      <div className={joinClassNames([SHIMMER_BLOCK_CONTROL, styles.skeletonHandle])} />
-      <div className={styles.skeletonContent}>
-        <div className={joinClassNames([SHIMMER_BLOCK_CONTROL, styles.skeletonLineText])} />
-        <div className={joinClassNames([SHIMMER_BLOCK_CONTROL, styles.skeletonLineDate])} />
+    <div
+      className="pointer-events-none my-0.5 flex items-start gap-2 rounded-control border border-dashed border-light-primary bg-light-fill-accent-tint px-2 py-1.5 dark:border-dark-primary dark:bg-dark-fill-accent-tint"
+      data-testid={`ai-memory-drop-skeleton-${sectionKey}`}
+    >
+      <div className={joinClassNames([SHIMMER_BLOCK_CONTROL, 'mt-px size-4 shrink-0'])} />
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5 pt-0.5">
+        <div className={joinClassNames([SHIMMER_BLOCK_CONTROL, 'h-2.5 w-7/10'])} />
+        <div className={joinClassNames([SHIMMER_BLOCK_CONTROL, 'h-2 w-3/10'])} />
       </div>
     </div>
   )
@@ -132,7 +206,10 @@ export function MemoryList({
 }: MemoryListProps) {
   if (memories.length === 0) {
     return (
-      <div className={styles.emptyState} data-testid={`ai-memory-empty-${sectionKey}`}>
+      <div
+        className="px-2 py-1 text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant"
+        data-testid={`ai-memory-empty-${sectionKey}`}
+      >
         No memories
       </div>
     )
@@ -169,10 +246,10 @@ interface MemoryAddAreaProps {
 
 function MemoryAddFormFields({ sectionKey, formId, addForm, textareaRef }: MemoryAddAreaProps) {
   return (
-    <div className={styles.addForm} id={formId}>
+    <div className={joinClassNames(['m-1 p-3.5', SETTINGS_MEMORY_PANEL])} id={formId}>
       <Textarea
         ref={textareaRef}
-        className={styles.addTextarea}
+        variant="verticalResize"
         rows={2}
         value={addForm.draft}
         placeholder="Write a note for the AI to remember…"
@@ -184,7 +261,7 @@ function MemoryAddFormFields({ sectionKey, formId, addForm, textareaRef }: Memor
           addForm.closeAdd(true)
         }}
       />
-      <div className={styles.addActions}>
+      <div className="mt-2 flex justify-end gap-2">
         <Button
           variant="accent"
           disabled={addForm.isSaveDisabled}
@@ -210,9 +287,11 @@ export function MemoryAddArea(props: MemoryAddAreaProps) {
   return (
     <Button
       ref={addTriggerRef}
-      variant="subtle"
-      size="sm"
-      className={styles.addTrigger}
+      variant="bare"
+      className={joinClassNames([
+        'my-0.5 ml-1 inline-flex h-control-sm cursor-default items-center justify-center gap-1.5 rounded-control border border-transparent bg-transparent px-1.5 py-1 font-body text-size-caption leading-5 font-regular whitespace-nowrap text-light-on-surface-variant italic opacity-85 hover:bg-light-fill-subtle-hover hover:text-light-on-surface hover:opacity-100 active:bg-light-fill-subtle-pressed dark:text-dark-on-surface-variant dark:hover:bg-dark-fill-subtle-hover dark:hover:text-dark-on-surface dark:active:bg-dark-fill-subtle-pressed',
+        FOCUS_RING,
+      ])}
       aria-expanded={false}
       aria-controls={formId}
       data-testid={`ai-memory-add-trigger-${sectionKey}`}

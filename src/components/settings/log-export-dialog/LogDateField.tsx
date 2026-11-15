@@ -3,7 +3,7 @@ import { addDays } from 'date-fns'
 import DatePicker from 'react-datepicker'
 import { TextInput } from '../../common/TextInput'
 import { DATE_FORMAT, MAX_RANGE_DAYS, type LogDateRange } from './log-export-model'
-import styles from '../LogExportDialog.module.css'
+import '../../../styles/vendor/react-datepicker-popover.css'
 
 const LAST_DAY_OFFSET = MAX_RANGE_DAYS - 1
 
@@ -60,8 +60,11 @@ export function LogDateField({
   const inputId = `log-export-${edge}`
   const bounds = boundsForEdge(edge, range)
   return (
-    <div className={styles.fieldGroup}>
-      <label className={styles.label} htmlFor={inputId}>
+    <div className="flex flex-col gap-2" data-sqllumen-popover-calendar>
+      <label
+        className="text-size-caption font-semibold text-light-on-surface-variant dark:text-dark-on-surface-variant"
+        htmlFor={inputId}
+      >
         {EDGE_LABELS[edge]}
       </label>
       <DatePicker
@@ -78,9 +81,6 @@ export function LogDateField({
         placeholderText="YYYY-MM-DD"
         dateFormat={DATE_FORMAT}
         customInput={<DateInput invalid={isInvalid} data-testid={`${inputId}-input`} />}
-        calendarClassName={styles.calendar}
-        wrapperClassName={styles.pickerWrapper}
-        popperClassName={styles.popper}
         disabled={disabled}
       />
     </div>

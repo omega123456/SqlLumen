@@ -1,7 +1,6 @@
 import { ConfirmDialog } from '../../dialogs/ConfirmDialog'
 import { CONFIRM_ACTION_COPY, buildPendingWorkSummary } from './pending-work'
 import type { UpdateActions } from './use-update-actions'
-import styles from '../UpdatesSettings.module.css'
 
 export function UpdateConfirmDialog({ actions }: { actions: UpdateActions }) {
   const pendingWork = buildPendingWorkSummary()
@@ -13,7 +12,7 @@ export function UpdateConfirmDialog({ actions }: { actions: UpdateActions }) {
       message={
         <div>
           {confirmCopy.intro}
-          <ul className={styles.confirmList}>
+          <ul className="mt-2 list-disc pl-4">
             {pendingWork.items.map((item) => (
               <li key={item}>{item}</li>
             ))}

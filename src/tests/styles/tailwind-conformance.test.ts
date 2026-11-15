@@ -19,6 +19,7 @@ const PERMANENT_CSS_FILES = [
   'styles/vendor/monaco-suggest-widget.css',
   'styles/vendor/react-colorful.css',
   'styles/vendor/react-datepicker.css',
+  'styles/vendor/react-datepicker-popover.css',
 ]
 const ALLOWED_INDEX_DIRECTIVES = ['@import', '@plugin', '@custom-variant', '@theme']
 const COLOUR_LITERAL = /#[0-9a-fA-F]{3,8}\b|rgba?\(\s*\d|hsla?\(|oklch\(/
@@ -104,6 +105,7 @@ describe('index.css — directives', () => {
       'webkit-scrollbar-thumb-hover',
       'svg',
       'resize-dragging',
+      'after-memory-section',
     ])
   })
 

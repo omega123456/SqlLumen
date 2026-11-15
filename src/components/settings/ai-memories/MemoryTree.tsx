@@ -3,7 +3,8 @@ import type { AiMemory, MemoryScope } from '../../../lib/ai-memory-commands'
 import type { ConnectionGroup, SavedConnection } from '../../../types/connection'
 import type { MemoryStore } from './memory-store'
 import type { MemoryDragState } from './use-memory-drag-state'
-import styles from '../AiMemoriesSettings.module.css'
+import { joinClassNames } from '../../../lib/class-names'
+import { SETTINGS_MEMORY_NEST, SETTINGS_MEMORY_PANEL } from '../../../lib/class-names-settings'
 
 const NO_MEMORIES: AiMemory[] = []
 
@@ -79,8 +80,11 @@ interface UngroupedMemoryBlockProps {
 function UngroupedMemoryBlock({ connections, memories, handlers }: UngroupedMemoryBlockProps) {
   if (connections.length === 0) return null
   return (
-    <div className={styles.ungroupedBlock}>
-      <div className={styles.ungroupedLabel} data-testid="ai-memory-ungrouped-label">
+    <div className={joinClassNames(['mt-1', SETTINGS_MEMORY_NEST])}>
+      <div
+        className="mb-0.5 rounded-control bg-light-surface-container-high px-2 py-1.5 text-size-caption font-semibold text-light-on-surface-variant dark:bg-dark-surface-container-high dark:text-dark-on-surface-variant"
+        data-testid="ai-memory-ungrouped-label"
+      >
         No group
       </div>
       {connections.map((connection) => (
@@ -110,7 +114,7 @@ export function MemoryTree({
 }: MemoryTreeProps) {
   const ungroupedConnections = savedConnections.filter((connection) => !connection.groupId)
   return (
-    <div className={styles.tree}>
+    <div className={joinClassNames(['flex flex-col p-3', SETTINGS_MEMORY_PANEL])}>
       <MemorySection
         sectionKey="global"
         scope="global"

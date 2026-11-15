@@ -3,6 +3,7 @@ import { DialogShell } from '../dialogs/DialogShell'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { GearSix, X } from '@phosphor-icons/react'
 import { Button } from '../common/Button'
+import { SCROLLBAR, joinClassNames } from '../../lib/class-names'
 import { IconButton } from '../common/IconButton'
 import { SettingsSidebar } from './SettingsSidebar'
 import { SETTINGS_SECTIONS } from './settings-sections'
@@ -19,7 +20,6 @@ import { useThemeStore } from '../../stores/theme-store'
 import { useZoomStore } from '../../stores/zoom-store'
 import { useUpdateStore } from '../../stores/update-store'
 import type { SettingsSection } from '../../types/schema'
-import styles from './SettingsDialog.module.css'
 
 const SETTINGS_SECTION_CONTENT: Record<SettingsSection, ComponentType> = {
   general: GeneralSettings,
@@ -121,7 +121,7 @@ function SettingsFooter({ onSave, onCancel }: SettingsFooterProps) {
   )
   const resetSection = useSettingsStore((state) => state.resetSection)
   return (
-    <div className={styles.footer}>
+    <div className="col-span-full flex items-center justify-between gap-2 border-t border-light-stroke-divider bg-light-surface px-6 py-4 dark:border-dark-stroke-divider dark:bg-dark-surface">
       <Button
         variant="subtle"
         onClick={() => resetSection(activeSection)}
@@ -129,7 +129,7 @@ function SettingsFooter({ onSave, onCancel }: SettingsFooterProps) {
       >
         Reset section
       </Button>
-      <div className={styles.footerRight}>
+      <div className="flex items-center gap-2">
         <Button
           variant="accent"
           onClick={() => void onSave()}
@@ -163,19 +163,25 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
         maxWidth={1400}
         testId="settings-dialog"
         ariaLabel="Settings"
-        panelClassName={styles.panelNoPadding}
+        panelPadding={false}
       >
-        <div className={styles.layout}>
-          <div className={styles.header}>
+        <div className="grid h-settings-dialog-height w-settings-dialog-width max-w-full grid-cols-settings grid-rows-settings overflow-hidden">
+          <div className="col-span-full flex items-center gap-2.5 pr-2 pl-4 text-size-caption text-light-on-surface dark:text-dark-on-surface">
             <GearSix size={16} weight="regular" aria-hidden />
-            <span className={styles.headerTitle}>Settings</span>
+            <span className="flex-1">Settings</span>
             <IconButton aria-label="Close settings" title="Close" onClick={handleCancel}>
               <X size={16} weight="regular" />
             </IconButton>
           </div>
           <SettingsSidebar activeSection={activeSection} onSelect={setActiveSection} />
-          <div className={styles.scrollArea} data-testid="settings-content">
-            <h2 className={styles.pageTitle}>
+          <div
+            className={joinClassNames([
+              'flex min-h-0 flex-col overflow-y-auto pt-1 pr-8 pb-6 pl-5',
+              SCROLLBAR,
+            ])}
+            data-testid="settings-content"
+          >
+            <h2 className="mb-3 font-headline text-title font-semibold text-light-on-surface dark:text-dark-on-surface">
               {SETTINGS_SECTIONS.find((section) => section.id === activeSection)?.label}
             </h2>
             <ActiveSectionContent />

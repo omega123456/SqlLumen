@@ -40,7 +40,7 @@ function FontSettingsSection() {
           value={fontSize}
           onChange={(event) => setPendingChange('editor.fontSize', event.target.value)}
           data-testid="settings-font-size"
-          style={{ width: 120 }}
+          fieldWidth="narrow"
         />
       </div>
       <Slider
