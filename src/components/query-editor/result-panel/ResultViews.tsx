@@ -1,5 +1,6 @@
 import type { SingleResultState } from '../../../stores/query-store'
 import type { TableDataColumnMeta } from '../../../types/schema'
+import type { DataViewLocation } from '../../../types/shared-data-view'
 import { ResultGridView } from '../ResultGridView'
 import { ResultFormView } from '../ResultFormView'
 import { ResultTextView } from '../ResultTextView'
@@ -10,6 +11,7 @@ export interface ResultViewsProps {
   activeResultIndex: number
   result: SingleResultState
   editTableColumns: TableDataColumnMeta[]
+  editLocation: DataViewLocation | null
   handlers: ResultViewHandlers
   isActive: boolean
 }
@@ -19,6 +21,7 @@ function GridResultView({
   activeResultIndex,
   result,
   editTableColumns,
+  editLocation,
   handlers,
   isActive,
 }: ResultViewsProps) {
@@ -50,6 +53,8 @@ function GridResultView({
       onUpdateCellValue={handlers.handleUpdateCellValue}
       onSyncCellValue={handlers.handleSyncCellValue}
       onAutoSave={handlers.handleAutoSave}
+      onDiscardRow={handlers.handleFormDiscard}
+      editLocation={editLocation}
       rowActions={handlers.gridRowActions}
       isActive={isActive}
     />
@@ -61,7 +66,9 @@ function FormResultView({
   activeResultIndex,
   result,
   editTableColumns,
+  editLocation,
   handlers,
+  isActive,
 }: ResultViewsProps) {
   return (
     <ResultFormView
@@ -79,12 +86,17 @@ function FormResultView({
       editColumnBindings={result.editColumnBindings}
       editState={result.editState}
       editingRowIndex={result.editingRowIndex}
+      editingBaseIndex={result.editingBaseIndex}
       editTableColumns={editTableColumns}
       editForeignKeys={result.editForeignKeys}
       onStartEdit={handlers.handleStartEditing}
       onUpdateCell={handlers.handleUpdateCellValue}
+      onSyncCell={handlers.handleSyncCellValue}
       onSaveRow={handlers.handleFormSave}
       onDiscardRow={handlers.handleFormDiscard}
+      onRowSelected={handlers.handleRowSelected}
+      editLocation={editLocation}
+      isActive={isActive}
     />
   )
 }

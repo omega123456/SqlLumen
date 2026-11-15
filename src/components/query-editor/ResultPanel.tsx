@@ -78,7 +78,6 @@ export function ResultPanel({
         activeResultIndex={controllers.activeResultIndex}
         result={activeResult}
         filter={controllers.filter}
-        foreignKeyLookup={controllers.foreignKeyLookup}
       />
     </div>
   )

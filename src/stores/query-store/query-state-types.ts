@@ -112,6 +112,7 @@ export interface SingleResultState {
 
   scrollRow: number
   scrollCol: number
+  columnWidths: Record<string, number>
   isExpired: boolean
   rowResidency: FrontendRowResidencyState
   rowsEvictedAt: number | null
@@ -199,6 +200,8 @@ export interface QueryState {
 
   setResultScrollCell: (tabId: string, scrollRow: number, scrollColumn: number) => void
 
+  setResultColumnWidth: (tabId: string, columnKey: string, width: number) => void
+
   applyQueryFilters: (tabId: string, resultIndex: number, conditions: FilterCondition[]) => void
 
   openExportDialog: (tabId: string, scope?: ExportRowScope) => void
@@ -216,6 +219,8 @@ export interface QueryState {
   startEditingRow: (tabId: string, rowIndex: number, row?: CachedRow) => void
 
   cloneSelectedRow: (tabId: string) => void
+
+  insertDraftRow: (tabId: string) => void
 
   updateCellValue: (tabId: string, resultColumnIndex: number, value: unknown) => void
 

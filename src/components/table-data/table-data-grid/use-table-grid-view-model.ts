@@ -3,25 +3,30 @@ import { useTableDataStore } from '../../../stores/table-data-store'
 import type { CanvasBaseGridView } from '../../shared/glide/CanvasBaseGridView'
 import type { GridHandle } from '../../shared/glide/glide-grid-types'
 import { useSelectionResetKey } from '../../shared/use-selection-reset-key'
-import { useBlobViewerState } from '../use-blob-viewer-state'
+import { editableColumnKeysOf } from '../../shared/data-view/grid-column-descriptor'
+import { useBlobViewer } from '../../shared/data-view/use-blob-viewer'
+import { useForeignKeyLookup } from '../../shared/data-view/use-foreign-key-lookup'
+import {
+  useGridEditHandlers,
+  useReleaseUnmodifiedChangedRows,
+} from '../../shared/data-view/use-grid-edit-handlers'
+import { useTableEditSession } from '../table-data-edit-session'
 import {
   draftScrollRowIndex,
   gridSortProps,
   selectedCellPositionOf,
   toSharedTableEditState,
-  type TableDataRow,
 } from './table-data-grid-model'
 import {
   useTableAutoSize,
   useTableGridLayoutCallbacks,
   useTableGridView,
 } from './use-table-grid-data'
-import { useTableGridCommit } from './use-table-grid-commit'
 import { useColumnJump, useDraftRowAutoselect } from './use-table-grid-effects'
-import { useTableGridEdits } from './use-table-grid-edits'
-import { useTableGridForeignKeys } from './use-table-grid-foreign-keys'
-import { useTableCellClickGuard } from './use-table-grid-guards'
-import { useTableGridRowCallbacks } from './use-table-grid-row-callbacks'
+import {
+  useClearHighlightOnPointerSelection,
+  useTableRowPresentation,
+} from './use-table-grid-row-callbacks'
 
 type CanvasGridProps = ComponentProps<typeof CanvasBaseGridView>
 
@@ -47,28 +52,6 @@ function useSortChange(tabId: string, sortColumn: string | undefined) {
     },
     [sortColumn, tabId, requestNavigationAction, sortByColumn]
   )
-}
-
-function useBlobDoubleClick(grid: ReturnType<typeof useTableGridView>, props: TableDataGridProps) {
-  const { tabId, isReadOnly } = props
-  const { descriptorColumns, hasPrimaryKey, primaryKeyColumns } = grid
-  const blobViewer = useBlobViewerState({
-    tabId: tabId,
-    columns: grid.view.columns,
-    primaryKeyColumns: primaryKeyColumns,
-  })
-  const { openBlobViewer } = blobViewer
-  const handleCellDoubleClick = useCallback(
-    (row: TableDataRow, columnKey: string) => {
-      const descriptor = descriptorColumns.find((column) => column.key === columnKey)
-      if (!descriptor?.blobViewer) return
-      const canEdit = !isReadOnly && hasPrimaryKey && primaryKeyColumns.length > 0
-      if (!canEdit) return
-      openBlobViewer(columnKey, row)
-    },
-    [descriptorColumns, isReadOnly, hasPrimaryKey, primaryKeyColumns, openBlobViewer]
-  )
-  return { blobViewer, handleCellDoubleClick }
 }
 
 function useSelectedCellPosition(grid: ReturnType<typeof useTableGridView>) {
@@ -115,36 +98,28 @@ function buildTableGridProps(parts: TableGridParts): CanvasGridProps {
   }
 }
 
-function useEditableColumnKeys(grid: ReturnType<typeof useTableGridView>) {
-  const { descriptorColumns } = grid
-  return useMemo(
-    () =>
-      new Set(descriptorColumns.filter((column) => column.editable).map((column) => column.key)),
-    [descriptorColumns]
-  )
-}
-
 type TableGridView = ReturnType<typeof useTableGridView>
-type GuardInputs = TableGridView & { tabId: string; commit: ReturnType<typeof useTableGridCommit> }
 
-interface GridHandlerInputs {
-  tabId: string
-  grid: TableGridView
-  guardInputs: GuardInputs
-}
-
-function useGridStoreHandlers({ tabId, grid, guardInputs }: GridHandlerInputs) {
-  const { view } = grid
+function useGridStoreHandlers(tabId: string, grid: TableGridView) {
+  const { view, descriptorColumns } = grid
   const highlightColumnKey = useTableDataStore(
     (state) => state.highlightedColumnByTab[tabId] ?? undefined
   )
+  const editableColumnKeys = useMemo(
+    () => editableColumnKeysOf(descriptorColumns),
+    [descriptorColumns]
+  )
   return {
-    ...useTableGridEdits(guardInputs),
     ...useTableGridLayoutCallbacks(tabId, grid.primaryKeyColumns),
+    ...useTableRowPresentation({
+      primaryKeyColumns: grid.primaryKeyColumns,
+      editState: view.editState,
+      selectedRowKey: view.selectedRowKey,
+    }),
+    onCellSelectionChange: useClearHighlightOnPointerSelection(tabId),
     onSortChange: useSortChange(tabId, view.sort?.column),
-    onCellClickGuard: useTableCellClickGuard(guardInputs),
     autoSizeConfig: useTableAutoSize(view),
-    editableColumnKeys: useEditableColumnKeys(grid),
+    editableColumnKeys: editableColumnKeys,
     highlightColumnKey: highlightColumnKey,
     resetSelectionKey: useSelectionResetKey(view.checkedRowCount),
   }
@@ -165,48 +140,60 @@ function useTableGridEffects(
   useColumnJump({ ...grid, tabId: tabId, gridRef: gridRef, selectedRowKey: view.selectedRowKey })
 }
 
+function useTableGridRowLookup(grid: TableGridView) {
+  const { rowDataRef } = grid
+  return useCallback((rowIndex: number) => rowDataRef.current[rowIndex], [rowDataRef])
+}
+
 export function useTableGridViewModel(props: TableDataGridProps) {
   const { tabId, isReadOnly } = props
   const gridRef = useRef<GridHandle | null>(null)
   const grid = useTableGridView(tabId, isReadOnly)
-  const { view } = grid
+  const { view, descriptorColumns } = grid
   const canEditRows = !isReadOnly && grid.hasPrimaryKey
   useTableGridEffects(tabId, grid, gridRef)
-  const commit = useTableGridCommit({ tabId: tabId, columns: view.columns })
-  const guardInputs = { ...grid, tabId: tabId, commit: commit }
-  const selectedCellPosition = useSelectedCellPosition(grid)
-  const foreignKeys = useTableGridForeignKeys({
-    ...guardInputs,
-    gridRef: gridRef,
-    selectedCellPosition: selectedCellPosition,
-  })
-  const { editorCallbacksContext, ...rowHandlers } = useTableGridRowCallbacks({
-    ...grid,
+  const session = useTableEditSession({
     tabId: tabId,
-    editState: view.editState,
-    selectedRowKey: view.selectedRowKey,
+    columns: view.columns,
+    primaryKeyColumns: grid.primaryKeyColumns,
+    descriptorColumns: descriptorColumns,
+    canEditRows: canEditRows,
   })
-  const storeHandlers = useGridStoreHandlers({ tabId: tabId, grid: grid, guardInputs: guardInputs })
-  const blob = useBlobDoubleClick(grid, props)
+  const rowAt = useTableGridRowLookup(grid)
+  const { editorCallbacksContext, ...editHandlers } = useGridEditHandlers({
+    session: session,
+    rowAt: rowAt,
+    columns: descriptorColumns,
+  })
+  const onRowsChange = useReleaseUnmodifiedChangedRows(session)
+  const selectedCellPosition = useSelectedCellPosition(grid)
+  const foreignKeyLookup = useForeignKeyLookup({
+    session: session,
+    columns: descriptorColumns,
+    isActive: props.isActive ?? true,
+    gridFocus: { gridRef: gridRef, selectedCellPosition: selectedCellPosition },
+  })
+  const blobViewer = useBlobViewer({ session: session, columns: descriptorColumns })
+  const storeHandlers = useGridStoreHandlers(tabId, grid)
   const gridProps = buildTableGridProps({
     props: props,
     grid: grid,
     canEditRows: canEditRows,
     selectedCellPosition: selectedCellPosition,
     handlers: {
-      ...rowHandlers,
+      ...editHandlers,
       ...storeHandlers,
-      onFkCellAction: foreignKeys.handleForeignKeyCellAction,
-      onCellDoubleClick: blob.handleCellDoubleClick,
+      onRowsChange: onRowsChange,
+      onFkCellAction: foreignKeyLookup.onFkCellAction,
+      onCellDoubleClick: blobViewer.openBlobViewer,
     },
   })
   return {
     gridRef: gridRef,
     gridProps: gridProps,
     editorCallbacksContext: editorCallbacksContext,
-    foreignKeys: foreignKeys,
-    blobViewer: blob.blobViewer,
-    canEditRows: canEditRows,
+    foreignKeyLookup: foreignKeyLookup,
+    blobViewer: blobViewer,
     tabState: grid.tabState,
   }
 }

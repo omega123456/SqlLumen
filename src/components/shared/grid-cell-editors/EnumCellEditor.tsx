@@ -1,5 +1,5 @@
 import { Dropdown } from '../../common/Dropdown'
-import { ENUM_NULL_SENTINEL } from '../../table-data/enum-field-utils'
+import { ENUM_NULL_SENTINEL } from '../enum-field-utils'
 import type { CellEditorBaseProps } from './cell-editor-types'
 import { EditorMarkers } from './EditorMarkers'
 import { useEnumCellEditor } from './use-enum-cell-editor'

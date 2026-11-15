@@ -1,10 +1,7 @@
 import { create } from 'zustand'
 import type { TableDataTabState, FilterCondition, SelectedCellInfo } from '../types/schema'
 import type { TableRequest } from '../lib/ipc/requests'
-import type {
-  StagedBlobEnvelope,
-  TableCellValueSync,
-} from './table-data-store/row-edit-transitions'
+import type { TableCellValueSync } from './table-data-store/row-edit-transitions'
 import { pageActions } from './table-data-store/page-actions'
 import { residencyActions } from './table-data-store/residency-actions'
 import { cellEditActions } from './table-data-store/cell-edit-actions'
@@ -26,10 +23,7 @@ export {
 
 export type { BuildUpdatePayloadResult } from './table-data-store/row-payloads'
 export { applyInsertedRow, applyUpdatedRow } from './table-data-store/row-edit-transitions'
-export type {
-  StagedBlobEnvelope,
-  TableCellValueSync,
-} from './table-data-store/row-edit-transitions'
+export type { TableCellValueSync } from './table-data-store/row-edit-transitions'
 
 export interface TableDataStore {
   tabs: Record<string, TableDataTabState>
@@ -55,7 +49,6 @@ export interface TableDataStore {
     currentValues: Record<string, unknown>
   ) => void
   updateCellValue: (tabId: string, column: string, value: unknown) => void
-  stageBlobEnvelope: (tabId: string, staged: StagedBlobEnvelope) => void
   syncCellValue: (tabId: string, sync: TableCellValueSync) => void
   clearEditStateIfUnmodified: (tabId: string, rowKey: Record<string, unknown>) => void
   saveCurrentRow: (tabId: string) => Promise<boolean>

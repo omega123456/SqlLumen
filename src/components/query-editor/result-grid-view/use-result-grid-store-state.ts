@@ -26,6 +26,20 @@ function useScrollCell(tabId: string) {
   return { initialScrollCell, handleScrollCellChange }
 }
 
+const NO_COLUMN_WIDTHS: Record<string, number> = {}
+
+function useColumnWidths(tabId: string) {
+  const storeSetResultColumnWidth = useQueryStore((state) => state.setResultColumnWidth)
+  const columnWidths = useQueryStore(
+    (state) => activeResultOf(state, tabId)?.columnWidths ?? NO_COLUMN_WIDTHS
+  )
+  const handleColumnResize = useCallback(
+    (columnKey: string, width: number) => storeSetResultColumnWidth(tabId, columnKey, width),
+    [storeSetResultColumnWidth, tabId]
+  )
+  return { columnWidths, handleColumnResize }
+}
+
 function useCheckedRows(tabId: string, viewRowCount: number) {
   const storeSetCheckedRanges = useQueryStore((state) => state.setCheckedRanges)
   const checkedRowCount = useQueryStore((state) =>
@@ -57,6 +71,7 @@ export function useResultGridStoreState(tabId: string, viewRowCount: number) {
   return {
     selectedCell: selectedCell,
     ...useScrollCell(tabId),
+    ...useColumnWidths(tabId),
     ...useCheckedRows(tabId, viewRowCount),
   }
 }

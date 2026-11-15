@@ -1,23 +1,28 @@
 import { useCallback } from 'react'
 import { useTableDataStore } from '../../stores/table-data-store'
 import { useConnectionStore } from '../../stores/connection-store'
-import { StatusArea } from '../shared/toolbar/StatusArea'
+import { hasPendingRowChanges } from '../../lib/row-edit-state'
+import { DataViewToolbar } from '../shared/toolbar/DataViewToolbar'
+import { RowActionButtons } from '../shared/toolbar/row-actions/RowActionButtons'
 import {
-  deleteCopyFor,
+  deleteButtonCopyFor,
   deleteTargetCountFor,
-  isNoKeyBadgeVisible,
-  positiveOrUndefined,
   rowActionAvailability,
+} from '../shared/toolbar/row-actions/row-action-model'
+import {
+  canCloneSelection,
+  canMutateTableRows,
+  hasDeletableSelection,
+  isNoKeyBadgeVisible,
   toolbarTabView,
 } from './table-data-toolbar/toolbar-model'
+import { LoadControlButton, ToolbarBadges } from './table-data-toolbar/ToolbarParts'
 import {
-  LoadControlButton,
-  RestoringStatusHint,
-  RowActionButtons,
-  ToolbarBadges,
-  ToolbarDivider,
-} from './table-data-toolbar/ToolbarParts'
-import { ToolbarDialogs, ToolbarRightSection } from './table-data-toolbar/ToolbarRightSection'
+  TableDataActions,
+  TableDataPaging,
+  TableDataViewMode,
+  ToolbarDialogs,
+} from './table-data-toolbar/ToolbarSlots'
 import {
   useCopyCheckedRows,
   useToolbarFilter,
@@ -46,12 +51,17 @@ function useToolbarState(tabId: string) {
     [tabId, requestNavigationAction]
   )
   const isBusy = view.isLoading || view.isRestoring
-  const deleteTargetCount = deleteTargetCountFor(view.checkedRowKeys.length, view.selectedRowKey)
+  const deleteTargetCount = deleteTargetCountFor(
+    view.checkedRowKeys.length,
+    hasDeletableSelection(view)
+  )
   const availability = rowActionAvailability({
-    view: view,
-    isConnectionReadOnly: isConnectionReadOnly,
-    isBusy: isBusy,
+    canMutate: canMutateTableRows(view, isConnectionReadOnly),
+    canAddRow: view.editState?.isNewRow !== true,
+    canCloneSelection: canCloneSelection(view),
     deleteTargetCount: deleteTargetCount,
+    hasPendingChanges: hasPendingRowChanges(view.editState),
+    isBusy: isBusy,
   })
   return {
     view: view,
@@ -59,14 +69,14 @@ function useToolbarState(tabId: string) {
     withNavigationGuard: withNavigationGuard,
     isBusy: isBusy,
     deleteTargetCount: deleteTargetCount,
-    deleteCopy: deleteCopyFor(deleteTargetCount),
+    deleteButton: deleteButtonCopyFor(deleteTargetCount),
     availability: availability,
   }
 }
 
 export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProps) {
   const toolbar = useToolbarState(tabId)
-  const { view, isConnectionReadOnly, isBusy, deleteTargetCount, deleteCopy } = toolbar
+  const { view, isConnectionReadOnly, isBusy, deleteTargetCount } = toolbar
   const actionInputs = {
     tabId: tabId,
     view: view,
@@ -80,45 +90,44 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
   const handleCopySelectedRows = useCopyCheckedRows(view)
 
   return (
-    <div
-      className="flex h-command-bar shrink-0 items-center gap-1 px-2"
-      data-testid="table-data-toolbar"
-    >
-      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-        <StatusArea
-          status={isBusy ? 'loading' : 'success'}
-          executionTimeMs={positiveOrUndefined(view.executionTimeMs)}
-          customContent={<RestoringStatusHint isRestoring={view.isRestoring} />}
-        />
+    <DataViewToolbar
+      testId="table-data-toolbar"
+      viewMode={<TableDataViewMode view={view} viewActions={viewActions} />}
+      editTarget={
         <ToolbarBadges
           isView={isView}
           isConnectionReadOnly={isConnectionReadOnly}
           showNoKeyBadge={isNoKeyBadgeVisible(isView, view)}
         />
-        <ToolbarDivider />
-        {!isView && (
+      }
+      rowActions={
+        isView ? null : (
           <RowActionButtons
             availability={toolbar.availability}
-            deleteCopy={deleteCopy}
-            handlers={{ ...rowEdits, onDelete: deletion.handleDeleteRow }}
+            deleteButton={toolbar.deleteButton}
+            handlers={{ ...rowEdits, onDelete: deletion.requestDelete }}
           />
-        )}
+        )
+      }
+      reload={
         <LoadControlButton
           view={view}
           isBusy={isBusy}
           onCancelLoad={viewActions.handleCancelLoad}
           onRefresh={viewActions.handleRefresh}
         />
-      </div>
-      <ToolbarRightSection
-        view={view}
-        isBusy={isBusy}
-        filter={filter}
-        viewActions={viewActions}
-        paging={paging}
-        onCopySelectedRows={handleCopySelectedRows}
-      />
-      <ToolbarDialogs view={view} deleteCopy={deleteCopy} deletion={deletion} filter={filter} />
-    </div>
+      }
+      dataActions={
+        <TableDataActions
+          view={view}
+          isBusy={isBusy}
+          filter={filter}
+          viewActions={viewActions}
+          onCopySelectedRows={handleCopySelectedRows}
+        />
+      }
+      paging={<TableDataPaging view={view} isBusy={isBusy} paging={paging} />}
+      dialogs={<ToolbarDialogs view={view} deletion={deletion} filter={filter} />}
+    />
   )
 }

@@ -1,6 +1,4 @@
 import type { ComponentProps, ReactNode } from 'react'
-import type { FkLookupArgs } from '../../shared/fk-lookup-context'
-import { FkLookupProvider } from '../../shared/fk-lookup-context'
 import { InfoBar } from '../../common/InfoBar'
 import { ResultSubTabs } from '../ResultSubTabs'
 import { ResultToolbar } from '../ResultToolbar'
@@ -9,6 +7,7 @@ import { ResultViews, type ResultViewsProps } from './ResultViews'
 import { ResultActivityOverlay, EmptyResultState } from './ResultStatusViews'
 import {
   dmlSuccessMessage,
+  NO_ROW_INSERTION,
   type DisplayStatus,
   type TabPanelAttributes,
 } from './result-panel-model'
@@ -24,7 +23,6 @@ export interface ResultBodyProps {
   toolbar: ResultToolbarProps
   views: ResultViewsProps
   isTabRunning: boolean
-  onForeignKeyLookup: (args: FkLookupArgs) => Promise<void>
 }
 
 function InfoBody({ children }: { children: ReactNode }) {
@@ -40,7 +38,7 @@ function InfoBody({ children }: { children: ReactNode }) {
   )
 }
 
-function ResultContent({ views, isTabRunning, onForeignKeyLookup }: ResultBodyProps) {
+function ResultContent({ views, isTabRunning }: ResultBodyProps) {
   const { result } = views
   const hasNoColumns = result.columns.length === 0
   if (hasNoColumns) {
@@ -58,9 +56,7 @@ function ResultContent({ views, isTabRunning, onForeignKeyLookup }: ResultBodyPr
   return (
     <>
       <ResultBands tabId={views.tabId} result={result} isTabRunning={isTabRunning} />
-      <FkLookupProvider onFkLookup={onForeignKeyLookup}>
-        <ResultViews {...views} />
-      </FkLookupProvider>
+      <ResultViews {...views} />
     </>
   )
 }
@@ -81,7 +77,7 @@ function SuccessResultBody(props: ResultBodyProps) {
 function ErrorResultBody({ tabPanelAttributes, toolbar, views }: ResultBodyProps) {
   return (
     <div {...tabPanelAttributes} className={RESULT_TAB_PANEL}>
-      <ResultToolbar {...toolbar} isCloneDisabled={true} />
+      <ResultToolbar {...toolbar} rowInsertion={NO_ROW_INSERTION} />
       <InfoBody>
         <InfoBar
           severity="error"

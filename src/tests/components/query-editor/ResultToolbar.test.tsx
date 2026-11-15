@@ -4,8 +4,12 @@ import userEvent from '@testing-library/user-event'
 import { ResultToolbar } from '../../../components/query-editor/ResultToolbar'
 import { useQueryStore } from '../../../stores/query-store'
 import { useToastStore } from '../../../stores/toast-store'
+import { useConnectionStore } from '../../../stores/connection-store'
 import { makeTabState, flat } from '../../helpers/query-test-utils'
+import { setupTestConnection } from '../../helpers/table-data-test-utils'
 import { expectToast, ipc } from '../../ipc-mock'
+
+const INSERTABLE_ROWS = { canAddRow: true, canCloneSelection: true }
 
 /** Helper to set up store state for a tab. */
 function setupTabState(tabId: string, overrides: Record<string, unknown> = {}) {
@@ -19,6 +23,7 @@ function setupTabState(tabId: string, overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
   useToastStore.setState({ toasts: [] })
+  useConnectionStore.setState({ activeConnections: {} })
 })
 
 describe('ResultToolbar', () => {
@@ -43,49 +48,11 @@ describe('ResultToolbar', () => {
     expect(screen.getByTestId('result-toolbar')).toBeInTheDocument()
   })
 
-  it('renders success status with correct row count', () => {
+  it('leaves the row count, timing and errors to the status bar', () => {
     setupTabState(tabId, {
       status: 'success',
       totalRows: 42,
-      columns: [
-        { name: 'id', dataType: 'INT' },
-        { name: 'name', dataType: 'VARCHAR' },
-        { name: 'email', dataType: 'VARCHAR' },
-      ],
-    })
-    render(
-      <ResultToolbar
-        tabId={tabId}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-      />
-    )
-    expect(screen.getByText('42 rows')).toBeInTheDocument()
-  })
-
-  it('renders error status with error message', () => {
-    setupTabState(tabId, {
-      status: 'error',
-      errorMessage: "Table 'users' doesn't exist",
-    })
-    render(
-      <ResultToolbar
-        tabId={tabId}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-      />
-    )
-    expect(screen.getByText("Table 'users' doesn't exist")).toBeInTheDocument()
-  })
-
-  it('shows the applied (clamped) auto-limit from the response', () => {
-    setupTabState(tabId, {
-      status: 'success',
-      totalRows: 42,
+      totalTimeMs: 51,
       autoLimitApplied: true,
       appliedRowLimit: 500,
       columns: [{ name: 'id', dataType: 'INT' }],
@@ -99,26 +66,11 @@ describe('ResultToolbar', () => {
         onClearFilterClick={() => {}}
       />
     )
-    expect(screen.getByText('· 500-row limit applied')).toBeInTheDocument()
-  })
-
-  it('does not show auto-limit text when autoLimitApplied is false', () => {
-    setupTabState(tabId, {
-      status: 'success',
-      totalRows: 42,
-      autoLimitApplied: false,
-      columns: [{ name: 'id', dataType: 'INT' }],
-    })
-    render(
-      <ResultToolbar
-        tabId={tabId}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-      />
-    )
-    expect(screen.queryByText('· 1000-row limit applied')).not.toBeInTheDocument()
+    const toolbar = screen.getByTestId('result-toolbar')
+    expect(toolbar).not.toHaveTextContent('42 rows')
+    expect(toolbar).not.toHaveTextContent('51 ms')
+    expect(toolbar).not.toHaveTextContent('row limit applied')
+    expect(screen.queryByTestId('status-area')).not.toBeInTheDocument()
   })
 
   it('does not render pagination controls', () => {
@@ -221,84 +173,6 @@ describe('ResultToolbar', () => {
     await expectToast('error', 'Copy failed')
     await expectToast('error', "Couldn't load all selected rows. Nothing was copied. Try again.")
     writeText.mockRestore()
-  })
-
-  it('shows total time', () => {
-    setupTabState(tabId, {
-      status: 'success',
-      executionTimeMs: 12,
-      totalTimeMs: 42,
-      columns: [{ name: 'id', dataType: 'INT' }],
-    })
-    render(
-      <ResultToolbar
-        tabId={tabId}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-      />
-    )
-    expect(screen.getByText('42 ms')).toBeInTheDocument()
-  })
-
-  it('truncates long error messages to 200 chars', () => {
-    const longError = 'A'.repeat(250)
-    setupTabState(tabId, {
-      status: 'error',
-      errorMessage: longError,
-    })
-    render(
-      <ResultToolbar
-        tabId={tabId}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-      />
-    )
-    const displayed = screen.getByText(/^A+/)
-    expect(displayed.textContent!.length).toBeLessThanOrEqual(201) // 200 + ellipsis char
-  })
-
-  it('shows row count for DML results with affected rows', () => {
-    setupTabState(tabId, {
-      status: 'success',
-      totalRows: 0,
-      affectedRows: 5,
-      columns: [],
-    })
-    render(
-      <ResultToolbar
-        tabId={tabId}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-      />
-    )
-    // Shared StatusArea shows "{N} Rows" when totalRows is provided
-    expect(screen.getByText('5 rows')).toBeInTheDocument()
-  })
-
-  it('shows "Success" for DDL results with no affected rows', () => {
-    setupTabState(tabId, {
-      status: 'success',
-      totalRows: 0,
-      affectedRows: 0,
-      columns: [],
-    })
-    render(
-      <ResultToolbar
-        tabId={tabId}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-      />
-    )
-    // Shared StatusArea shows "Success" when no totalRows
-    expect(screen.getByText('Success')).toBeInTheDocument()
   })
 
   // --- View mode toggle tests ---
@@ -432,7 +306,7 @@ describe('ResultToolbar', () => {
     expect(screen.getByTestId('export-button')).toBeInTheDocument()
   })
 
-  it('shows Clone before Save and Discard when editable result mode is active', () => {
+  it('shows the row actions in table-data order when editable result mode is active', () => {
     setupTabState(tabId, {
       status: 'success',
       columns: [
@@ -478,20 +352,37 @@ describe('ResultToolbar', () => {
         filterModel={[]}
         onFilterClick={() => {}}
         onClearFilterClick={() => {}}
-        isCloneVisible
-        isCloneDisabled={false}
+        rowInsertion={INSERTABLE_ROWS}
       />
     )
 
-    const actionTexts = screen
+    const rowActionNames = new Set([
+      'Add row',
+      'Clone row',
+      'Delete row',
+      'Save changes',
+      'Discard changes',
+    ])
+    const actionNames = screen
       .getAllByRole('button')
-      .map((button) => button.textContent?.trim())
-      .filter((text): text is string => text === 'Clone' || text === 'Save' || text === 'Discard')
+      .map((button) => button.getAttribute('aria-label') ?? '')
+      .filter((name) => rowActionNames.has(name))
 
-    expect(actionTexts).toEqual(['Clone', 'Save', 'Discard'])
+    expect(actionNames).toEqual([
+      'Add row',
+      'Clone row',
+      'Delete row',
+      'Save changes',
+      'Discard changes',
+    ])
+    expect(screen.getByTestId('btn-save')).toBeEnabled()
+    expect(screen.getByTestId('btn-save')).toHaveTextContent('Save')
+    expect(screen.getByTestId('btn-discard')).toBeEnabled()
+    expect(screen.getByTestId('btn-discard')).toHaveTextContent('Discard')
+    expect(screen.getByTestId('btn-add-row').textContent).toBe('')
   })
 
-  it('keeps Clone visible when no unsaved edit exists while Save and Discard stay hidden', () => {
+  it('keeps Clone enabled when no unsaved edit exists while Save and Discard stay disabled', () => {
     setupTabState(tabId, {
       status: 'success',
       columns: [{ name: 'id', dataType: 'INT' }],
@@ -507,21 +398,24 @@ describe('ResultToolbar', () => {
         filterModel={[]}
         onFilterClick={() => {}}
         onClearFilterClick={() => {}}
-        isCloneVisible
-        isCloneDisabled={false}
+        rowInsertion={INSERTABLE_ROWS}
       />
     )
 
-    expect(screen.getByTestId('query-clone-button')).toBeInTheDocument()
-    expect(screen.getByTestId('query-clone-button')).toHaveAttribute(
+    expect(screen.getByTestId('btn-clone-row')).toBeEnabled()
+    expect(screen.getByTestId('btn-clone-row')).toHaveAttribute(
       'title',
       'Clone selected row; primary key fields are left blank.'
     )
-    expect(screen.queryByTestId('query-save-button')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('query-discard-button')).not.toBeInTheDocument()
+    expect(screen.getByTestId('btn-save')).toBeDisabled()
+    expect(screen.getByTestId('btn-save').textContent).toBe('')
+    expect(screen.getByTestId('btn-save')).toHaveAccessibleName('Save changes')
+    expect(screen.getByTestId('btn-discard')).toBeDisabled()
+    expect(screen.getByTestId('btn-discard').textContent).toBe('')
+    expect(screen.getByTestId('btn-discard')).toHaveAccessibleName('Discard changes')
   })
 
-  it('disables Clone when the current view does not support selected-row cloning', () => {
+  it('disables Add and Clone when the current view does not support row insertion', () => {
     setupTabState(tabId, {
       status: 'success',
       columns: [{ name: 'id', dataType: 'INT' }],
@@ -538,15 +432,14 @@ describe('ResultToolbar', () => {
         filterModel={[]}
         onFilterClick={() => {}}
         onClearFilterClick={() => {}}
-        isCloneVisible
-        isCloneDisabled
       />
     )
 
-    expect(screen.getByTestId('query-clone-button')).toBeDisabled()
+    expect(screen.getByTestId('btn-add-row')).toBeDisabled()
+    expect(screen.getByTestId('btn-clone-row')).toBeDisabled()
   })
 
-  it('clicking Clone selects and edits the cloned draft row', () => {
+  function setupInsertableTab(overrides: Record<string, unknown> = {}) {
     setupTabState(tabId, {
       status: 'success',
       columns: [
@@ -605,7 +498,12 @@ describe('ResultToolbar', () => {
           },
         },
       },
+      ...overrides,
     })
+  }
+
+  it('clicking Clone selects and edits the cloned draft row', () => {
+    setupInsertableTab()
 
     render(
       <ResultToolbar
@@ -614,12 +512,11 @@ describe('ResultToolbar', () => {
         filterModel={[]}
         onFilterClick={() => {}}
         onClearFilterClick={() => {}}
-        isCloneVisible
-        isCloneDisabled={false}
+        rowInsertion={INSERTABLE_ROWS}
       />
     )
 
-    fireEvent.click(screen.getByTestId('query-clone-button'))
+    fireEvent.click(screen.getByTestId('btn-clone-row'))
 
     const result = flat(tabId)
     // The clone draft is a virtual row after the last view row.
@@ -628,6 +525,90 @@ describe('ResultToolbar', () => {
     expect(result.selectedRowIndex).toBe(1)
     expect(result.editingRowIndex).toBe(1)
     expect(result.editState?.isNewRow).toBe(true)
+  })
+
+  it('clicking Add opens an empty draft row after the last view row', () => {
+    setupInsertableTab()
+
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+        rowInsertion={INSERTABLE_ROWS}
+      />
+    )
+
+    fireEvent.click(screen.getByTestId('btn-add-row'))
+
+    const result = flat(tabId)
+    expect(result.draftRow).toEqual([null, null])
+    expect(result.selectedRowIndex).toBe(1)
+    expect(result.editingRowIndex).toBe(1)
+    expect(result.editState?.isNewRow).toBe(true)
+  })
+
+  it('blocks Save with the invalid date toast when an edited date is invalid', async () => {
+    const createdAtColumn = {
+      name: 'created_at',
+      dataType: 'date',
+      isBooleanAlias: false,
+      isNullable: true,
+      isPrimaryKey: false,
+      isUniqueKey: false,
+      hasDefault: false,
+      columnDefault: null,
+      isBinary: false,
+      isAutoIncrement: false,
+    }
+    setupInsertableTab({
+      columns: [
+        { name: 'id', dataType: 'INT' },
+        { name: 'created_at', dataType: 'DATE' },
+      ],
+      rows: [[1, '2025-01-01']],
+      selectedRowIndex: null,
+      editingRowIndex: 0,
+      editColumnBindings: new Map([
+        [0, 'id'],
+        [1, 'created_at'],
+      ]),
+      editTableMetadata: {
+        users: {
+          database: 'app',
+          table: 'users',
+          columns: [createdAtColumn],
+          primaryKey: { keyColumns: ['id'], isUniqueKeyFallback: false },
+        },
+      },
+      editState: {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, created_at: '2025-01-01' },
+        currentValues: { id: 1, created_at: 'not-a-date' },
+        modifiedColumns: new Set(['created_at']),
+        isNewRow: false,
+      },
+    })
+    const user = userEvent.setup()
+
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+      />
+    )
+
+    await user.click(screen.getByTestId('btn-save'))
+
+    expectToast('error', 'Invalid date value')
+    expect(ipc.payloads('update_table_row')).toHaveLength(0)
+    expect(flat(tabId).selectedRowIndex).toBe(0)
+    expect(flat(tabId).editState?.currentValues.created_at).toBe('not-a-date')
   })
 
   describe('delete checked rows (edit-mode DB delete)', () => {
@@ -674,22 +655,47 @@ describe('ResultToolbar', () => {
       })
     }
 
-    it('does not render the delete button when no rows are checked', () => {
-      setupDeletableTab({ checkedRowIndices: [] })
+    it('disables the delete button when no rows are checked or selected', () => {
+      setupDeletableTab({ checkedRowIndices: [], selectedRowIndex: null })
       render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
-      expect(screen.queryByTestId('query-delete-rows-button')).not.toBeInTheDocument()
+      expect(screen.getByTestId('btn-delete-row')).toBeDisabled()
     })
 
-    it('does not render the delete button when not in edit mode (no unique key)', () => {
+    it('disables the delete button when not in edit mode (no unique key)', () => {
       setupDeletableTab({ editMode: null })
       render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
-      expect(screen.queryByTestId('query-delete-rows-button')).not.toBeInTheDocument()
+      expect(screen.getByTestId('btn-delete-row')).toBeDisabled()
+    })
+
+    it('disables the delete button on a read-only connection', () => {
+      act(() => setupTestConnection(true))
+      setupDeletableTab()
+      render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
+      expect(screen.getByTestId('btn-delete-row')).toBeDisabled()
+    })
+
+    it('deletes the selected row when no rows are checked', async () => {
+      ipc.override('delete_table_row', () => undefined)
+      ipc.override('remove_result_rows', () => ({ viewVersion: 2, viewRowCount: 2, totalRows: 2 }))
+      setupDeletableTab({ checkedRowIndices: [], selectedRowIndex: 1 })
+      render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
+
+      expect(screen.getByTestId('btn-delete-row')).toHaveAccessibleName('Delete row')
+      expect(screen.queryByTestId('delete-count-badge')).not.toBeInTheDocument()
+      fireEvent.click(screen.getByTestId('btn-delete-row'))
+      expect(screen.getByText('Delete this row from users?')).toBeInTheDocument()
+      fireEvent.click(screen.getByTestId('confirm-confirm-button'))
+
+      await waitFor(() => expect(flat(tabId).totalRows).toBe(2))
+      const calls = ipc.payloads('delete_table_row') as Array<Record<string, unknown>>
+      expect(calls.map((call) => call.primaryKeyValues)).toEqual([{ id: 2 }])
     })
 
     it('renders a delete button with the checked count when rows are checked in edit mode', () => {
       setupDeletableTab()
       render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
-      expect(screen.getByTestId('query-delete-rows-button')).toHaveTextContent('Delete (2)')
+      expect(screen.getByTestId('btn-delete-row')).toHaveAccessibleName('Delete 2 rows')
+      expect(screen.getByTestId('delete-count-badge')).toHaveTextContent('2')
     })
 
     it('confirms then deletes the checked rows and tombstones them (no re-run)', async () => {
@@ -699,7 +705,7 @@ describe('ResultToolbar', () => {
       render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
 
       // First click only opens the confirmation dialog — no delete yet.
-      fireEvent.click(screen.getByTestId('query-delete-rows-button'))
+      fireEvent.click(screen.getByTestId('btn-delete-row'))
       expect(ipc.payloads('delete_table_row')).toHaveLength(0)
       expect(screen.getByRole('heading', { name: 'Delete rows' })).toBeInTheDocument()
       expect(screen.getByText('Delete 2 rows from users?')).toBeInTheDocument()
@@ -719,7 +725,7 @@ describe('ResultToolbar', () => {
     it('uses the single-row copy for one checked row', () => {
       setupDeletableTab({ checkedRowIndices: [1] })
       render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
-      fireEvent.click(screen.getByTestId('query-delete-rows-button'))
+      fireEvent.click(screen.getByTestId('btn-delete-row'))
       expect(screen.getByRole('heading', { name: 'Delete row' })).toBeInTheDocument()
       expect(screen.getByText('Delete this row from users?')).toBeInTheDocument()
       expect(screen.getByTestId('confirm-confirm-button')).toHaveTextContent('Delete row')
@@ -728,8 +734,9 @@ describe('ResultToolbar', () => {
     it('adds the long-running warning between 1,001 and 10,000 rows (wireframe 7)', () => {
       setupDeletableTab({ viewRowCount: 5000, checkedRanges: [[0, 4200]] })
       render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
-      expect(screen.getByTestId('query-delete-rows-button')).toHaveTextContent('Delete (4,200)')
-      fireEvent.click(screen.getByTestId('query-delete-rows-button'))
+      expect(screen.getByTestId('btn-delete-row')).toHaveAccessibleName('Delete 4,200 rows')
+      expect(screen.getByTestId('delete-count-badge')).toHaveTextContent('99+')
+      fireEvent.click(screen.getByTestId('btn-delete-row'))
       expect(screen.getByText('Delete 4,200 rows from users?')).toBeInTheDocument()
       expect(
         screen.getByText(
@@ -744,7 +751,7 @@ describe('ResultToolbar', () => {
       ipc.override('delete_table_row', () => undefined)
       setupDeletableTab({ viewRowCount: 100000, checkedRanges: [[0, 100000]] })
       render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
-      const deleteButton = screen.getByTestId('query-delete-rows-button')
+      const deleteButton = screen.getByTestId('btn-delete-row')
       // Stays enabled so keyboard users can reach the explanation.
       expect(deleteButton).toBeEnabled()
       fireEvent.click(deleteButton)
@@ -773,7 +780,7 @@ describe('ResultToolbar', () => {
       setupDeletableTab()
       render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
 
-      fireEvent.click(screen.getByTestId('query-delete-rows-button'))
+      fireEvent.click(screen.getByTestId('btn-delete-row'))
       fireEvent.click(screen.getByTestId('confirm-cancel-button'))
 
       expect(ipc.payloads('delete_table_row')).toHaveLength(0)
@@ -782,116 +789,14 @@ describe('ResultToolbar', () => {
     })
   })
 
-  describe('windowed status (wireframes 1, 2, 3 and 8)', () => {
+  describe('checked rows over a windowed result', () => {
     const props = {
       filterModel: [],
       onFilterClick: () => {},
       onClearFilterClick: () => {},
     }
 
-    it('shows the filtered count against the live total', () => {
-      setupTabState(tabId, {
-        status: 'success',
-        totalRows: 12340,
-        viewRowCount: 2340,
-        columns: [{ name: 'id', dataType: 'INT' }],
-      })
-      render(
-        <ResultToolbar
-          {...props}
-          tabId={tabId}
-          connectionId={connectionId}
-          filterModel={[{ column: 'id', operator: '>', value: '1' }]}
-        />
-      )
-      expect(screen.getByTestId('result-row-count')).toHaveTextContent('2,340 of 12,340 rows')
-    })
-
-    it('replaces the auto-limit segment with the truncated segment', () => {
-      setupTabState(tabId, {
-        status: 'success',
-        totalRows: 100000,
-        viewRowCount: 100000,
-        truncated: true,
-        autoLimitApplied: true,
-        appliedRowLimit: 500,
-        totalTimeMs: 51,
-        columns: [{ name: 'id', dataType: 'INT' }],
-      })
-      render(<ResultToolbar {...props} tabId={tabId} connectionId={connectionId} />)
-      expect(screen.getByTestId('result-row-count')).toHaveTextContent('100,000+ rows · truncated')
-      expect(screen.queryByText(/row limit applied/)).not.toBeInTheDocument()
-      expect(screen.getByTestId('status-execution-time')).toHaveTextContent('51 ms')
-    })
-
-    it('shows "Filtering…" while a filter request is pending, without hiding the count', () => {
-      setupTabState(tabId, {
-        status: 'success',
-        totalRows: 10,
-        isFiltering: true,
-        columns: [{ name: 'id', dataType: 'INT' }],
-      })
-      render(<ResultToolbar {...props} tabId={tabId} connectionId={connectionId} />)
-      expect(screen.getByTestId('result-filtering-status')).toHaveTextContent('Filtering…')
-      expect(screen.getByTestId('result-row-count')).toHaveTextContent('10 rows')
-    })
-
-    it('shows "Loading rows X–Y…" next to the still-visible count and announces it once', () => {
-      setupTabState(tabId, {
-        status: 'success',
-        totalRows: 100000,
-        viewRowCount: 100000,
-        pendingWindowRange: [12000, 13000],
-        columns: [{ name: 'id', dataType: 'INT' }],
-      })
-      render(<ResultToolbar {...props} tabId={tabId} connectionId={connectionId} />)
-      expect(screen.getByTestId('status-success')).toBeInTheDocument()
-      expect(screen.getByTestId('result-window-loading')).toHaveTextContent(
-        'Loading rows 12,001–13,000…'
-      )
-      expect(screen.getByRole('status')).toHaveTextContent('Loading rows 12,001–13,000…')
-    })
-
-    it('shows the action progress with Cancel after 1 s and hides the count', async () => {
-      const user = userEvent.setup()
-      const onCancel = vi.fn()
-      setupTabState(tabId, {
-        status: 'success',
-        totalRows: 12340,
-        queryId: 'q-1',
-        columns: [{ name: 'id', dataType: 'INT' }],
-      })
-      useQueryStore
-        .getState()
-        .beginRowAction(tabId, { verb: 'Copying', total: 12340, onCancel: onCancel })
-      render(<ResultToolbar {...props} tabId={tabId} connectionId={connectionId} />)
-      // Under 1 s nothing changes, but the toolbar Copy button is disabled.
-      expect(screen.queryByTestId('status-loading')).not.toBeInTheDocument()
-
-      act(() => {
-        const result = useQueryStore.getState().tabs[tabId]!.results[0]
-        useQueryStore.setState((state) => ({
-          tabs: {
-            ...state.tabs,
-            [tabId]: {
-              ...state.tabs[tabId]!,
-              results: [
-                {
-                  ...result,
-                  rowActionProgress: { ...result.rowActionProgress!, done: 4000, visible: true },
-                },
-              ],
-            },
-          },
-        }))
-      })
-      expect(screen.getByTestId('status-loading')).toHaveTextContent('Copying… 4,000 of 12,340')
-      expect(screen.queryByTestId('result-row-count')).not.toBeInTheDocument()
-      await user.click(screen.getByTestId('row-action-cancel'))
-      expect(onCancel).toHaveBeenCalledTimes(1)
-    })
-
-    it('shows the delete progress without Cancel', () => {
+    it('disables copying and row actions while a row action runs', () => {
       setupTabState(tabId, {
         status: 'success',
         totalRows: 4200,
@@ -905,9 +810,9 @@ describe('ResultToolbar', () => {
         },
       })
       render(<ResultToolbar {...props} tabId={tabId} connectionId={connectionId} />)
-      expect(screen.getByTestId('status-loading')).toHaveTextContent('Deleting… 1,200 of 4,200')
-      expect(screen.queryByTestId('row-action-cancel')).not.toBeInTheDocument()
+      expect(screen.getByTestId('result-toolbar')).not.toHaveTextContent('Deleting')
       expect(screen.getByTestId('btn-copy-selected-rows')).toBeDisabled()
+      expect(screen.getByTestId('btn-add-row')).toBeDisabled()
     })
 
     it('copies checked view ranges that span unloaded rows by fetching them first', async () => {

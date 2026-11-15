@@ -10,7 +10,7 @@ import {
   type DropdownCellType,
   type MultiSelectCellType,
 } from '@glideapps/glide-data-grid-cells'
-import { parseSetCellValue } from '../../../table-data/enum-field-utils'
+import { parseSetCellValue } from '../../enum-field-utils'
 import { nullCellThemeOverride } from '../glide-cell-content'
 import type { EnumGridColumn, GlideDropdownOption, SetGridColumn } from './canvas-grid-types'
 

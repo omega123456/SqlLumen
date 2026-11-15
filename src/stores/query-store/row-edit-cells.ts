@@ -1,4 +1,5 @@
-import type { QueryTableEditInfo, RowEditState } from '../../types/schema'
+import type { QueryTableEditInfo, RowEditState, TableDataColumnMeta } from '../../types/schema'
+import { getInitialValueForNewRow, isSeededFromColumnDefault } from '../../lib/new-row-values'
 import { showErrorToast } from '../toast-store'
 import type { SingleResultState } from './query-state-types'
 import { getActiveIndex, patchResultByIndex, resultAt, rowAt } from './query-store-access'
@@ -10,6 +11,7 @@ import {
 } from './row-edit-builders'
 import type { ClonedDraftRow } from './row-edit-builders'
 import { ensureResultEditState } from './row-edit-mode'
+import { hasUnsavedModifications } from './query-tab-selectors'
 
 interface CloneSource {
   tableInfo: QueryTableEditInfo
@@ -113,6 +115,26 @@ function buildClonedDraftRow(
   return { row, modifiedColumns, insertEligibleColumns }
 }
 
+interface DraftRowRequest {
+  result: SingleResultState
+  draft: ClonedDraftRow
+  keyColumns: string[]
+}
+
+function openDraftRow(tabId: string, resultIndex: number, request: DraftRowRequest) {
+  const { result, draft, keyColumns } = request
+  const draftRowIndex = result.viewRowCount
+  patchResultByIndex(tabId, resultIndex, {
+    draftRow: draft.row,
+    selectedRowIndex: draftRowIndex,
+    editingRowIndex: draftRowIndex,
+    editingBaseIndex: null,
+    editState: buildClonedEditState(result, draft, keyColumns),
+    saveError: null,
+    isStale: false,
+  })
+}
+
 export function cloneSelectedRow(tabId: string) {
   const resultIndex = getActiveIndex(tabId)
   const result = resultAt(tabId, resultIndex)
@@ -125,15 +147,73 @@ export function cloneSelectedRow(tabId: string) {
   const hasClonableColumns = draft.modifiedColumns.size > 0 || draft.insertEligibleColumns.size > 0
   if (!hasClonableColumns) return
 
-  const draftRowIndex = result.viewRowCount
-  patchResultByIndex(tabId, resultIndex, {
-    draftRow: draft.row,
-    selectedRowIndex: draftRowIndex,
-    editingRowIndex: draftRowIndex,
-    editingBaseIndex: null,
-    editState: buildClonedEditState(result, draft, source.keyColumns),
-    saveError: null,
-    isStale: false,
+  openDraftRow(tabId, resultIndex, { result: result, draft: draft, keyColumns: source.keyColumns })
+}
+
+interface InsertTable {
+  tableInfo: QueryTableEditInfo
+  keyColumns: string[]
+}
+
+function resolveInsertTable(result: SingleResultState): InsertTable | null {
+  if (!result.editMode) return null
+  if (result.draftRow) return null
+  if (hasUnsavedModifications(result)) {
+    showErrorToast('Unsaved changes', 'Save or discard the current row before adding a row.')
+    return null
+  }
+  const tableInfo = result.editTableMetadata[result.editMode]
+  const primaryKey = tableInfo?.primaryKey
+  if (!primaryKey) return null
+  if (primaryKey.isUniqueKeyFallback) return null
+  return { tableInfo: tableInfo, keyColumns: primaryKey.keyColumns }
+}
+
+function boundTableColumnAt(
+  result: SingleResultState,
+  tableInfo: QueryTableEditInfo,
+  resultColumnIndex: number
+): TableDataColumnMeta | undefined {
+  const boundName = result.editColumnBindings.get(resultColumnIndex)
+  if (!boundName) return undefined
+  const lowerBoundName = boundName.toLowerCase()
+  return tableInfo.columns.find((column) => column.name.toLowerCase() === lowerBoundName)
+}
+
+function initialResultCellValue(tableColumn: TableDataColumnMeta | undefined): unknown {
+  if (!tableColumn) return null
+  return getInitialValueForNewRow(tableColumn)
+}
+
+function buildNewDraftRow(
+  result: SingleResultState,
+  tableInfo: QueryTableEditInfo
+): ClonedDraftRow {
+  const row = result.columns.map((_column, index) =>
+    initialResultCellValue(boundTableColumnAt(result, tableInfo, index))
+  )
+  const modifiedColumns = new Set<string>()
+  for (const tableColumn of tableInfo.columns) {
+    const isBound = result.editBoundColumnIndexMap.has(tableColumn.name.toLowerCase())
+    const isSeededBoundColumn = isBound && isSeededFromColumnDefault(tableColumn)
+    if (isSeededBoundColumn) modifiedColumns.add(tableColumn.name)
+  }
+  return { row: row, modifiedColumns: modifiedColumns, insertEligibleColumns: new Set<string>() }
+}
+
+export function insertDraftRow(tabId: string) {
+  const resultIndex = getActiveIndex(tabId)
+  const result = resultAt(tabId, resultIndex)
+  if (!result) return
+
+  const insertTable = resolveInsertTable(result)
+  if (!insertTable) return
+
+  const draft = buildNewDraftRow(result, insertTable.tableInfo)
+  openDraftRow(tabId, resultIndex, {
+    result: result,
+    draft: draft,
+    keyColumns: insertTable.keyColumns,
   })
 }
 
@@ -161,5 +241,5 @@ export function syncCellValue(tabId: string, resultColumnIndex: number, value: u
 }
 
 export function rowEditCellActions() {
-  return { cloneSelectedRow, updateCellValue, syncCellValue }
+  return { cloneSelectedRow, insertDraftRow, updateCellValue, syncCellValue }
 }

@@ -9,6 +9,7 @@ import {
   parseSupersededVersion,
   readViewRange,
   type CachedRow,
+  type ViewRange,
 } from '../../lib/result-window-cache'
 import { formatCount } from '../../lib/format-row-count'
 import { showErrorToast, showSuccessToast } from '../toast-store'
@@ -24,7 +25,7 @@ import {
   slotFor,
   getQueryState,
 } from './query-store-access'
-import { countRanges } from './query-tab-selectors'
+import { countRanges, isSelectedRowInView } from './query-tab-selectors'
 import { paintView } from './result-view-requests'
 import { getResultViewSpec } from './result-view-spec'
 
@@ -80,6 +81,7 @@ interface RowDeletionContext {
   tabId: string
   resultIndex: number
   result: SingleResultState
+  targetRanges: ViewRange[]
 }
 
 interface RowDeletionOutcome {
@@ -88,11 +90,11 @@ interface RowDeletionOutcome {
   isTabClosed: boolean
 }
 
-async function loadCheckedRowsToDelete(deletion: RowDeletionContext): Promise<CachedRow[]> {
-  const { tabId, resultIndex, result } = deletion
+async function loadRowsToDelete(deletion: RowDeletionContext): Promise<CachedRow[]> {
+  const { tabId, resultIndex, targetRanges } = deletion
   try {
     const targets: CachedRow[] = []
-    for (const range of result.checkedRanges) {
+    for (const range of targetRanges) {
       targets.push(
         ...(await readViewRange({ tabId: tabId, resultIndex: resultIndex, range: range }))
       )
@@ -104,7 +106,7 @@ async function loadCheckedRowsToDelete(deletion: RowDeletionContext): Promise<Ca
       return []
     }
     const message = toErrorMessage(error)
-    logFrontend('warn', `[query-store] could not load the checked rows to delete: ${message}`)
+    logFrontend('warn', `[query-store] could not load the rows to delete: ${message}`)
     showErrorToast('Delete failed', message)
     return []
   }
@@ -273,29 +275,48 @@ async function finishRowDeletion(deletion: RowDeletionContext, outcome: RowDelet
   )
 }
 
+function selectedRowRanges(result: SingleResultState): ViewRange[] {
+  const selectedRowIndex = result.selectedRowIndex
+  if (selectedRowIndex === null) return []
+  if (!isSelectedRowInView(result)) return []
+  return [[selectedRowIndex, selectedRowIndex + 1]]
+}
+
+export function deleteTargetRangesOf(result: SingleResultState): ViewRange[] {
+  const hasCheckedRows = result.checkedRanges.length > 0
+  if (hasCheckedRows) return result.checkedRanges
+  return selectedRowRanges(result)
+}
+
+function hasStaleCheckedRows(result: SingleResultState): boolean {
+  const hasCheckedRows = result.checkedRanges.length > 0
+  return hasCheckedRows && result.checkedViewVersion !== result.viewVersion
+}
+
 export async function deleteResultRows(tabId: string): Promise<number> {
   const resultIndex = getActiveIndex(tabId)
   const result = resultAt(tabId, resultIndex)
   if (!result) return 0
-  const hasCheckedRows = result.checkedRanges.length > 0
-  if (!hasCheckedRows) return 0
+  const targetRanges = deleteTargetRangesOf(result)
+  if (targetRanges.length === 0) return 0
 
   const plan = resolveRowDeletionPlan(result)
   if (!plan) return 0
 
-  if (result.checkedViewVersion !== result.viewVersion) {
+  if (hasStaleCheckedRows(result)) {
     patchResultByIndex(tabId, resultIndex, { checkedRanges: [] })
     return 0
   }
-  const checkedRowCount = countRanges(result.checkedRanges)
-  if (checkedRowCount > MAX_BULK_DELETE_ROWS) return 0
+  const exceedsBulkDeleteLimit = countRanges(targetRanges) > MAX_BULK_DELETE_ROWS
+  if (exceedsBulkDeleteLimit) return 0
 
   const deletion: RowDeletionContext = {
     tabId: tabId,
     resultIndex: resultIndex,
     result: result,
+    targetRanges: targetRanges,
   }
-  const targets = await loadCheckedRowsToDelete(deletion)
+  const targets = await loadRowsToDelete(deletion)
   if (targets.length === 0) return 0
 
   const outcome = await deleteRowsInDatabase(tabId, plan, targets)

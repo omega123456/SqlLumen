@@ -4,7 +4,7 @@ import { Button } from '../../common/Button'
 import { Dropdown } from '../../common/Dropdown'
 import { TextInput } from '../../common/TextInput'
 import { formatCellValue } from '../../../lib/result-cell-utils'
-import { ENUM_NULL_SENTINEL } from '../../table-data/enum-field-utils'
+import { ENUM_NULL_SENTINEL } from '../enum-field-utils'
 import type { BaseFormViewProps, GridColumnDescriptor } from '../../../types/shared-data-view'
 import { JsonFormField } from '../JsonFormField'
 import {

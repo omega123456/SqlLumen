@@ -1,7 +1,8 @@
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
 import { useTableDataStore, isEditingRowKey } from '../../../stores/table-data-store'
 import { useToastStore } from '../../../stores/toast-store'
-import { saveCurrentRowWithFeedback } from '../row-save-feedback'
+import { useRowDeletionConfirm } from '../../shared/toolbar/row-actions/use-row-deletion-confirm'
+import { saveTableEditingRow } from '../table-data-edit-session'
 import {
   isTabSettledWithoutError,
   planCheckedRowDeletion,
@@ -55,32 +56,25 @@ function useDeleteSelectedRow({ tabId, view }: ToolbarActionInputs) {
 }
 
 export function useToolbarDeletion(inputs: ToolbarActionInputs, deleteTargetCount: number) {
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const deleteCheckedRows = useDeleteCheckedRows(inputs)
   const deleteSelectedRow = useDeleteSelectedRow(inputs)
   const hasCheckedRows = inputs.view.checkedRowKeys.length > 0
-
-  const handleDeleteRow = useCallback(() => {
-    if (deleteTargetCount === 0) return
-    setShowDeleteConfirm(true)
-  }, [deleteTargetCount])
-
-  const handleConfirmDelete = useCallback(async () => {
-    setShowDeleteConfirm(false)
+  const deleteRows = useCallback(async () => {
     if (hasCheckedRows) {
       await deleteCheckedRows()
       return
     }
     await deleteSelectedRow()
   }, [hasCheckedRows, deleteCheckedRows, deleteSelectedRow])
-
-  const handleCancelDelete = useCallback(() => setShowDeleteConfirm(false), [])
-
-  return { showDeleteConfirm, handleDeleteRow, handleConfirmDelete, handleCancelDelete }
+  return useRowDeletionConfirm({
+    deleteTargetCount: deleteTargetCount,
+    tableName: inputs.view.table,
+    deleteRows: deleteRows,
+  })
 }
 
 export function useToolbarRowEdits({ tabId, view, withNavigationGuard }: ToolbarActionInputs) {
-  const { editState, columns } = view
+  const { columns } = view
   const insertNewRow = useTableDataStore((state) => state.insertNewRow)
   const cloneSelectedRow = useTableDataStore((state) => state.cloneSelectedRow)
   const discardCurrentRow = useTableDataStore((state) => state.discardCurrentRow)
@@ -93,8 +87,7 @@ export function useToolbarRowEdits({ tabId, view, withNavigationGuard }: Toolbar
       () => withNavigationGuard(() => cloneSelectedRow(tabId)),
       [withNavigationGuard, cloneSelectedRow, tabId]
     ),
-    onSave: () =>
-      void saveCurrentRowWithFeedback({ tabId: tabId, editState: editState, columns: columns }),
+    onSave: useCallback(() => void saveTableEditingRow(tabId, columns), [tabId, columns]),
     onDiscard: useCallback(() => discardCurrentRow(tabId), [discardCurrentRow, tabId]),
   }
 }

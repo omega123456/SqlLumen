@@ -34,6 +34,7 @@ export {
   hasAnyUnsavedEdits,
   getFlatTabState,
   countRanges,
+  isSelectedRowInView,
   isExecutionLocked,
 } from './query-store/query-tab-selectors'
 export type {

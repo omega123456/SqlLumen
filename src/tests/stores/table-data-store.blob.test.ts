@@ -9,8 +9,14 @@ import {
   isBlobEnvelope,
   base64ToBytes,
 } from '../../lib/blob-utils'
+import { getRowKeyFromData, isEditingRowKey } from '../../stores/table-data-store'
 import * as toastStore from '../../stores/toast-store'
-import type { PrimaryKeyInfo, TableDataColumnMeta, TableDataResponse } from '../../types/schema'
+import type {
+  BlobEnvelope,
+  PrimaryKeyInfo,
+  TableDataColumnMeta,
+  TableDataResponse,
+} from '../../types/schema'
 
 // "hi" → base64 "aGk=" (2 bytes)
 const TWO_BYTE_BASE64 = 'aGk='
@@ -78,6 +84,28 @@ function getTab() {
   return tab
 }
 
+interface StagedEnvelope {
+  rowData: Record<string, unknown>
+  column: string
+  envelope: BlobEnvelope
+}
+
+function stageEnvelope({ rowData, column, envelope }: StagedEnvelope): void {
+  const store = useTableDataStore.getState()
+  const tab = store.tabs[TAB_ID]
+  const rowKey = getRowKeyFromData(rowData, tab?.primaryKey?.keyColumns ?? [])
+  if (!isEditingRowKey(tab?.editState ?? null, rowKey)) {
+    store.startEditing(TAB_ID, rowKey, { ...rowData })
+  }
+  store.updateCellValue(TAB_ID, column, envelope)
+  store.syncCellValue(TAB_ID, {
+    rowData: rowData,
+    column: column,
+    value: envelope,
+    rowKeyOverride: rowKey,
+  })
+}
+
 describe('table-data-store blob staging', () => {
   beforeEach(() => {
     useTableDataStore.setState({ tabs: {} })
@@ -88,7 +116,7 @@ describe('table-data-store blob staging', () => {
     const rowData = { id: 1, photo: '[BLOB - 5 bytes]' }
 
     act(() => {
-      useTableDataStore.getState().stageBlobEnvelope(TAB_ID, {
+      stageEnvelope({
         rowData: rowData,
         column: 'photo',
         envelope: bytesEnvelope(TWO_BYTE_BASE64),
@@ -115,9 +143,7 @@ describe('table-data-store blob staging', () => {
     })
 
     act(() => {
-      useTableDataStore
-        .getState()
-        .stageBlobEnvelope(TAB_ID, { rowData: rowData, column: 'photo', envelope: envelope })
+      stageEnvelope({ rowData: rowData, column: 'photo', envelope: envelope })
     })
     await act(async () => {
       await useTableDataStore.getState().saveCurrentRow(TAB_ID)
@@ -155,9 +181,7 @@ describe('table-data-store blob staging', () => {
     }
 
     act(() => {
-      useTableDataStore
-        .getState()
-        .stageBlobEnvelope(TAB_ID, { rowData: draftRowData, column: 'photo', envelope: envelope })
+      stageEnvelope({ rowData: draftRowData, column: 'photo', envelope: envelope })
     })
     await act(async () => {
       await useTableDataStore.getState().saveCurrentRow(TAB_ID)
@@ -173,7 +197,7 @@ describe('table-data-store blob staging', () => {
     ipc.override('update_table_row', () => undefined)
 
     act(() => {
-      useTableDataStore.getState().stageBlobEnvelope(TAB_ID, {
+      stageEnvelope({
         rowData: rowData,
         column: 'photo',
         envelope: bytesEnvelope(TWO_BYTE_BASE64),
@@ -194,9 +218,7 @@ describe('table-data-store blob staging', () => {
     ipc.override('update_table_row', () => undefined)
 
     act(() => {
-      useTableDataStore
-        .getState()
-        .stageBlobEnvelope(TAB_ID, { rowData: rowData, column: 'photo', envelope: emptyEnvelope() })
+      stageEnvelope({ rowData: rowData, column: 'photo', envelope: emptyEnvelope() })
     })
     await act(async () => {
       await useTableDataStore.getState().saveCurrentRow(TAB_ID)
@@ -211,27 +233,13 @@ describe('table-data-store blob staging', () => {
     ipc.override('update_table_row', () => undefined)
 
     act(() => {
-      useTableDataStore
-        .getState()
-        .stageBlobEnvelope(TAB_ID, { rowData: rowData, column: 'photo', envelope: nullEnvelope() })
+      stageEnvelope({ rowData: rowData, column: 'photo', envelope: nullEnvelope() })
     })
     await act(async () => {
       await useTableDataStore.getState().saveCurrentRow(TAB_ID)
     })
 
     expect(getTab().rows[0][1]).toBeNull()
-  })
-
-  it('is a no-op for an unknown column', async () => {
-    await setupTab()
-    act(() => {
-      useTableDataStore.getState().stageBlobEnvelope(TAB_ID, {
-        rowData: { id: 1 },
-        column: 'missing',
-        envelope: nullEnvelope(),
-      })
-    })
-    expect(getTab().editState).toBeNull()
   })
 
   afterEach(() => {

@@ -15,14 +15,14 @@ import {
 } from '@glideapps/glide-data-grid'
 import { isWrappableTextSqlType } from '../../../lib/grid-column-style'
 import type { GridColumn } from './glide-grid-types'
-import DateTimeCellEditor from '../../table-data/DateTimeCellEditor'
+import DateTimeCellEditor from '../DateTimeCellEditor'
 import JsonCellEditor from '../JsonCellEditor'
 import {
   NullableCellEditor,
   NullableMultilineCellEditor,
   type CellEditorBaseProps,
 } from '../grid-cell-editors'
-import type { GridEditorType } from '../grid-column-editor-utils'
+import type { GridEditorType } from '../data-view/grid-column-descriptor'
 import { isNullish } from '../../../lib/value-checks'
 
 const EDITOR_WIDTH_TO_MARKER_RATIO = 3

@@ -1,7 +1,7 @@
 import { getTemporalColumnType, getTodayMysqlString } from '../../../lib/date-utils'
 import { isJsonSqlType } from '../../../lib/grid-column-style'
 import type { DropdownOption } from '../../common/Dropdown'
-import { ENUM_NULL_SENTINEL } from '../../table-data/enum-field-utils'
+import { ENUM_NULL_SENTINEL } from '../enum-field-utils'
 import {
   base64ByteLength,
   blobPlaceholder,

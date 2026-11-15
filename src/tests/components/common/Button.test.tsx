@@ -94,10 +94,7 @@ describe('Button', () => {
       </>
     )
     expect(screen.getByRole('button', { name: 'Add' })).toHaveAttribute('data-size', 'toolbar')
-    expect(screen.getByRole('button', { name: 'Refresh' })).toHaveAttribute(
-      'data-size',
-      'toolbar'
-    )
+    expect(screen.getByRole('button', { name: 'Refresh' })).toHaveAttribute('data-size', 'toolbar')
   })
 
   it('does not flag a valid button as invalid', () => {

@@ -1,7 +1,7 @@
 import { ClipboardText } from '@phosphor-icons/react'
 import { Button } from '../../common/Button'
 
-interface CopySelectedRowsButtonProps {
+export interface CopySelectedRowsButtonProps {
   disabled: boolean
   onClick: () => void
 }

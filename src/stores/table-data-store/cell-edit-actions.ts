@@ -1,25 +1,16 @@
 import type { RowEditState } from '../../types/schema'
-import {
-  resolveStagedRowIndex,
-  rowDataBaseline,
-  withCellWritten,
-  withColumnModified,
-} from './row-edit-transitions'
-import type { DraftRowSeed, StagedBlobEnvelope, TableCellValueSync } from './row-edit-transitions'
+import { resolveStagedRowIndex, withCellWritten, withColumnModified } from './row-edit-transitions'
+import type { DraftRowSeed, TableCellValueSync } from './row-edit-transitions'
 import {
   findRowIndexByKey,
   getRowKeyFromData,
-  isEditingRowKey,
   renameEditStateRowKey,
   renameSelectedRowKey,
   rowKeyAfterCellChange,
 } from './row-keys'
 import type { RowKeyRename } from './row-keys'
-import {
-  buildCurrentValuesFromRow,
-  getInitialValueForNewRow,
-  isSeededFromColumnDefault,
-} from './row-payloads'
+import { buildCurrentValuesFromRow } from './row-payloads'
+import { getInitialValueForNewRow, isSeededFromColumnDefault } from '../../lib/new-row-values'
 import { patchTab } from './table-data-access'
 import { useTableDataStore } from '../table-data-store'
 
@@ -78,35 +69,6 @@ export function updateCellValue(tabId: string, column: string, value: unknown): 
   })
 }
 
-export function stageBlobEnvelope(
-  tabId: string,
-  { rowData, column, envelope }: StagedBlobEnvelope
-): void {
-  const tab = useTableDataStore.getState().tabs[tabId]
-  if (!tab) return
-
-  const columnIndex = tab.columns.findIndex((candidate) => candidate.name === column)
-  if (columnIndex < 0) return
-
-  const rowKey = getRowKeyFromData(rowData, tab.primaryKey?.keyColumns ?? [])
-  if (!isEditingRowKey(tab.editState, rowKey)) {
-    useTableDataStore.getState().startEditing(tabId, rowKey, rowDataBaseline(tab.columns, rowData))
-  }
-  useTableDataStore.getState().updateCellValue(tabId, column, envelope)
-
-  const latestTab = useTableDataStore.getState().tabs[tabId]
-  if (!latestTab) return
-  const rowIndex = resolveStagedRowIndex(latestTab, rowKey, rowData)
-  if (rowIndex < 0) return
-  patchTab(tabId, {
-    rows: withCellWritten(latestTab.rows, {
-      rowIndex: rowIndex,
-      columnIndex: columnIndex,
-      value: envelope,
-    }),
-  })
-}
-
 export function syncCellValue(
   tabId: string,
   { rowData, column, value, rowKeyOverride }: TableCellValueSync
@@ -120,7 +82,7 @@ export function syncCellValue(
 
   const primaryKeyColumns = tab.primaryKey?.keyColumns ?? []
   const rowKey = rowKeyOverride ?? getRowKeyFromData(rowData, primaryKeyColumns)
-  const rowIndex = findRowIndexByKey(tab.rows, tab.columns, rowKey)
+  const rowIndex = resolveStagedRowIndex(tab, rowKey, rowData)
   if (rowIndex < 0) return
 
   const rename: RowKeyRename = {
@@ -182,7 +144,6 @@ export function cellEditActions() {
   return {
     startEditing,
     updateCellValue,
-    stageBlobEnvelope,
     syncCellValue,
     insertNewRow,
     cloneSelectedRow,

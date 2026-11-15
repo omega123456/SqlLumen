@@ -1,6 +1,5 @@
 import { useTableDataStore, isSameRowKey } from '../../../stores/table-data-store'
 import { FALLBACK_ROW_LIMIT } from '../../../stores/query-store'
-import type { GridColumnDescriptor } from '../../../types/shared-data-view'
 import type {
   ForeignKeyColumnInfo,
   PrimaryKeyInfo,
@@ -24,32 +23,6 @@ export function getRowKeyFromArray(
     }
   }
   return key
-}
-
-export function rowToValues(
-  row: unknown[],
-  columns: TableDataColumnMeta[]
-): Record<string, unknown> {
-  const values: Record<string, unknown> = {}
-  for (let columnIndex = 0; columnIndex < columns.length; columnIndex++) {
-    values[columns[columnIndex].name] = row[columnIndex]
-  }
-  return values
-}
-
-function escapeForAttributeSelector(value: string): string {
-  const canUseCssEscape = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
-  if (canUseCssEscape) {
-    return CSS.escape(value)
-  }
-  return value.replace(/(["\\])/g, '\\$1')
-}
-
-export function focusFormInput(columnName: string): void {
-  const input = document.querySelector<HTMLElement>(
-    `[data-testid="form-input-${escapeForAttributeSelector(columnName)}"]`
-  )
-  input?.focus()
 }
 
 export type RowKey = Record<string, unknown>
@@ -210,19 +183,4 @@ export async function navigateToRelativeRow(navigation: RelativeRowNavigation): 
   const newLocalIndex =
     ((newAbsoluteIndex % position.pageSize) + position.pageSize) % position.pageSize
   selectStoreRow(tabId, primaryKeyColumns, (rows) => rows[Math.min(newLocalIndex, rows.length - 1)])
-}
-
-export function toGridColumns(columns: TableDataColumnMeta[]): GridColumnDescriptor[] {
-  return columns.map((column) => ({
-    key: column.name,
-    displayName: column.name,
-    dataType: column.dataType,
-    editable: true,
-    isBinary: column.isBinary,
-    isNullable: column.isNullable,
-    isPrimaryKey: column.isPrimaryKey,
-    isUniqueKey: column.isUniqueKey && !column.isPrimaryKey,
-    enumValues: column.enumValues,
-    tableColumnMeta: column,
-  }))
 }

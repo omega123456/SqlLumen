@@ -69,13 +69,37 @@ describe('TableDataToolbar', () => {
     expect(screen.getByTestId('table-data-toolbar')).toBeInTheDocument()
   })
 
-  it('shows execution time without row count', () => {
+  it('leaves the success status and timing to the status bar', () => {
     setupConnection()
     setupTabState({ executionTimeMs: 15 })
     render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.queryByText('42 rows')).not.toBeInTheDocument()
-    expect(screen.getByText('Success')).toBeInTheDocument()
-    expect(screen.getByText('15 ms')).toBeInTheDocument()
+    const toolbar = screen.getByTestId('table-data-toolbar')
+    expect(toolbar).not.toHaveTextContent('Success')
+    expect(toolbar).not.toHaveTextContent('15 ms')
+    expect(screen.queryByTestId('status-area')).not.toBeInTheDocument()
+  })
+
+  it('places its controls in the shared data-view order', () => {
+    setupConnection()
+    setupTabState({ selectedRowKey: { id: 1 } })
+    render(<TableDataToolbar tabId="tab-1" />)
+    const toolbar = screen.getByTestId('table-data-toolbar')
+    const orderedTestIds = [
+      'view-mode-grid',
+      'btn-add-row',
+      'btn-refresh',
+      'btn-filter',
+      'btn-export',
+      'btn-copy-selected-rows',
+      'pagination-page-input',
+    ]
+    const positions = orderedTestIds.map((testId) =>
+      Array.from(toolbar.querySelectorAll('[data-testid]')).findIndex(
+        (element) => element.getAttribute('data-testid') === testId
+      )
+    )
+    expect(positions.every((position) => position >= 0)).toBe(true)
+    expect([...positions].sort((left, right) => left - right)).toEqual(positions)
   })
 
   it('Add Row button is disabled when no PK', () => {
@@ -358,11 +382,13 @@ describe('TableDataToolbar', () => {
     setupTabState({ selectedRowKey: { id: 1 } })
     render(<TableDataToolbar tabId="tab-1" />)
 
-    const buttons = screen
+    const rowActionNames = ['Add row', 'Clone row', 'Delete row']
+    const buttonNames = screen
       .getAllByRole('button')
-      .filter((button) => ['Add', 'Clone', 'Delete'].includes(button.textContent ?? ''))
+      .map((button) => button.getAttribute('aria-label') ?? '')
+      .filter((name) => rowActionNames.includes(name))
 
-    expect(buttons.map((button) => button.textContent)).toEqual(['Add', 'Clone', 'Delete'])
+    expect(buttonNames).toEqual(['Add row', 'Clone row', 'Delete row'])
     expect(screen.getByTestId('btn-clone-row')).toHaveAttribute(
       'title',
       'Clone selected row; primary key fields are left blank.'
@@ -479,8 +505,9 @@ describe('TableDataToolbar', () => {
     await user.click(deleteBtn)
     // Confirmation dialog should appear
     expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
-    expect(screen.getByText('Delete row')).toBeInTheDocument()
-    expect(screen.getByText('Are you sure you want to delete this row?')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Delete row' })).toBeInTheDocument()
+    expect(screen.getByText('Delete this row from users?')).toBeInTheDocument()
+    expect(screen.getByTestId('confirm-confirm-button')).toHaveTextContent('Delete row')
   })
 
   it('confirming delete dialog calls deleteRow', async () => {
@@ -575,7 +602,8 @@ describe('TableDataToolbar', () => {
     render(<TableDataToolbar tabId="tab-1" />)
     const deleteBtn = screen.getByTestId('btn-delete-row')
     expect(deleteBtn).not.toBeDisabled()
-    expect(deleteBtn).toHaveTextContent('Delete (2)')
+    expect(deleteBtn).toHaveAccessibleName('Delete 2 rows')
+    expect(screen.getByTestId('delete-count-badge')).toHaveTextContent('2')
   })
 
   it('bulk delete confirmation shows the row count and deletes all checked rows', async () => {
@@ -590,7 +618,7 @@ describe('TableDataToolbar', () => {
 
     await user.click(screen.getByTestId('btn-delete-row'))
     expect(screen.getByText('Delete rows')).toBeInTheDocument()
-    expect(screen.getByText('Are you sure you want to delete these 2 rows?')).toBeInTheDocument()
+    expect(screen.getByText('Delete 2 rows from users?')).toBeInTheDocument()
 
     await user.click(screen.getByTestId('confirm-confirm-button'))
 
@@ -778,18 +806,12 @@ describe('TableDataToolbar', () => {
     })
   })
 
-  it('shows loading spinner when loading', () => {
+  it('swaps Refresh for Cancel while loading', () => {
     setupConnection()
     setupTabState({ isLoading: true })
     render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
-  })
-
-  it('hides execution time when executionTimeMs is 0', () => {
-    setupConnection()
-    setupTabState({ executionTimeMs: 0 })
-    render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.queryByText(/\(\d+ms\)/)).not.toBeInTheDocument()
+    expect(screen.getByTestId('btn-cancel-load')).toBeInTheDocument()
+    expect(screen.queryByTestId('btn-refresh')).not.toBeInTheDocument()
   })
 
   it('export button stays enabled when table data is loaded without total rows', () => {

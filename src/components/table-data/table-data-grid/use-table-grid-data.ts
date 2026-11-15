@@ -25,7 +25,8 @@ export function useTableGridView(tabId: string, isReadOnly: boolean) {
         isReadOnly: isReadOnly,
         hasPrimaryKey: hasPrimaryKey,
         foreignKeys: foreignKeys,
-      }).map((column) => ({ ...column, width: columnWidths[column.key] })),
+        columnWidths: columnWidths,
+      }),
     [columns, isReadOnly, hasPrimaryKey, foreignKeys, columnWidths]
   )
   const rowData: TableDataRow[] = useMemo(() => {

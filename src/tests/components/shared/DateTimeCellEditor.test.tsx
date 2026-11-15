@@ -1,0 +1,480 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
+import { useTableDataStore } from '../../../stores/table-data-store'
+import type { TableDataColumnMeta } from '../../../types/schema'
+import type { CellEditorParams } from '../../../components/shared/useCellEditor'
+import type { EditorCallbacksContextType } from '../../../components/shared/editor-callbacks-context'
+
+import DateTimeCellEditor from '../../../components/shared/DateTimeCellEditor'
+
+type DateTimeCellEditorProps = CellEditorParams & EditorCallbacksContextType
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function makeColumnMeta(
+  name: string,
+  dataType: string,
+  overrides: Partial<TableDataColumnMeta> = {}
+): TableDataColumnMeta {
+  return {
+    name,
+    dataType,
+    isNullable: false,
+    isPrimaryKey: false,
+    isUniqueKey: false,
+    hasDefault: false,
+    columnDefault: null,
+    isBinary: false,
+    isBooleanAlias: false,
+    isAutoIncrement: false,
+    ...overrides,
+  }
+}
+
+function makeMockProps(overrides: Record<string, unknown> = {}) {
+  const store = useTableDataStore.getState()
+  return {
+    row: { id: 1, created_at: '2023-11-24' } as Record<string, unknown>,
+    column: { key: 'created_at' },
+    onRowChange: vi.fn(),
+    onClose: vi.fn(),
+    isNullable: true,
+    columnMeta: makeColumnMeta('created_at', 'DATETIME', { isNullable: true }),
+    tabId: 'tab-1',
+    updateCellValue: store.updateCellValue,
+    syncCellValue: store.syncCellValue,
+    ...overrides,
+  } satisfies DateTimeCellEditorProps
+}
+
+function setupStore() {
+  useTableDataStore.setState({
+    tabs: {
+      'tab-1': {
+        columns: [
+          makeColumnMeta('id', 'BIGINT', { isPrimaryKey: true }),
+          makeColumnMeta('created_at', 'DATETIME', { isNullable: true }),
+        ],
+        rows: [[1, '2023-11-24 14:30:00']],
+        currentPage: 1,
+        pageSize: 1000,
+        primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
+        executionTimeMs: 10,
+        rowsEvictedAt: null,
+        connectionId: 'conn-1',
+        database: 'mydb',
+        table: 'users',
+        editState: {
+          rowKey: { id: 1 },
+          originalValues: { id: 1, created_at: '2023-11-24' },
+          currentValues: { id: 1, created_at: '2023-11-24' },
+          modifiedColumns: new Set(),
+          isNewRow: false,
+        },
+        viewMode: 'grid',
+        selectedRowKey: null,
+        selectedCell: null,
+        filterModel: [],
+        sort: null,
+        isLoading: false,
+        error: null,
+        saveError: null,
+        isExportDialogOpen: false,
+        pendingNavigationAction: null,
+        scrollRow: 0,
+        scrollCol: 0,
+      },
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2025-06-15T10:00:00Z'))
+  useTableDataStore.setState({ tabs: {} })
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+})
+
+describe('DateTimeCellEditor', () => {
+  it('renders text input with calendar button', () => {
+    setupStore()
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...props} />)
+
+    expect(screen.getByTestId('datetime-cell-editor')).toBeInTheDocument()
+    expect(screen.getByRole('textbox')).toBeInTheDocument()
+    expect(screen.getByTestId('grid-calendar-btn')).toBeInTheDocument()
+  })
+
+  it('shows the calendar adornment next to the input', () => {
+    setupStore()
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...props} />)
+
+    expect(screen.getByRole('textbox')).toBeInTheDocument()
+    expect(screen.getByTestId('grid-calendar-btn')).toBeInTheDocument()
+  })
+
+  it('displays Clock icon for TIME columns', () => {
+    setupStore()
+    const props = makeMockProps({
+      row: { id: 1, login_time: '14:30:00' },
+      column: { key: 'login_time' },
+      columnMeta: makeColumnMeta('login_time', 'TIME', { isNullable: true }),
+    })
+    render(<DateTimeCellEditor {...props} />)
+
+    expect(screen.getByTestId('grid-calendar-btn')).toBeInTheDocument()
+  })
+
+  it('displays the initial value in the input', () => {
+    setupStore()
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...props} />)
+
+    const input = screen.getByRole('textbox') as HTMLInputElement
+    expect(input.value).toBe('2023-11-24')
+  })
+
+  it('prefers initialInputValue when typing activation opens the editor', () => {
+    setupStore()
+    const props = makeMockProps({ initialInputValue: '2', selectAllOnFocus: false })
+    render(<DateTimeCellEditor {...props} />)
+
+    const input = screen.getByRole('textbox') as HTMLInputElement
+    expect(input.value).toBe('2')
+  })
+
+  it('clicking calendar button shows picker (renders mock DateTimePicker)', () => {
+    setupStore()
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...props} />)
+
+    // Picker should NOT be visible yet
+    expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
+
+    // Click the calendar button
+    fireEvent.click(screen.getByTestId('grid-calendar-btn'))
+
+    // Picker should now be visible
+    expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
+  })
+
+  it('picker onApply updates value and closes picker; calls updateCellValue', () => {
+    setupStore()
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...props} />)
+
+    // Open picker
+    fireEvent.click(screen.getByTestId('grid-calendar-btn'))
+    expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('btn-today'))
+    fireEvent.change(screen.getByTestId('time-input'), { target: { value: '16:45:00' } })
+    fireEvent.click(screen.getByTestId('btn-picker-apply'))
+
+    expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
+
+    const input = screen.getByRole('textbox') as HTMLInputElement
+    expect(input.value).toBe('2025-06-15 16:45:00')
+    expect(props.onRowChange).toHaveBeenCalledWith(
+      expect.objectContaining({ created_at: '2025-06-15 16:45:00' })
+    )
+    const state = useTableDataStore.getState().tabs['tab-1']
+    expect(state?.editState?.currentValues.created_at).toBe('2025-06-15 16:45:00')
+  })
+
+  it('picker onApply commits the active grid editor so the grid persists the selected date', () => {
+    setupStore()
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...props} />)
+
+    fireEvent.click(screen.getByTestId('grid-calendar-btn'))
+    fireEvent.click(screen.getByTestId('btn-today'))
+    fireEvent.click(screen.getByTestId('btn-picker-apply'))
+
+    expect(props.onClose).toHaveBeenCalledWith(true, false)
+  })
+
+  it('picker onCancel closes picker without updating value', () => {
+    setupStore()
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...props} />)
+
+    // Open picker
+    fireEvent.click(screen.getByTestId('grid-calendar-btn'))
+    expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('btn-picker-cancel'))
+
+    // Picker should be closed
+    expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
+
+    // Value should remain unchanged
+    const input = screen.getByRole('textbox') as HTMLInputElement
+    expect(input.value).toBe('2023-11-24')
+  })
+
+  it('toggling NULL on while picker is open closes the picker', () => {
+    setupStore()
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...props} />)
+
+    // Open picker
+    fireEvent.click(screen.getByTestId('grid-calendar-btn'))
+    expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
+
+    // Toggle NULL on — picker should close
+    const nullToggle = screen.getByText('NULL')
+    fireEvent.click(nullToggle)
+
+    expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
+
+    // onRowChange should have been called with null
+    expect(props.onRowChange).toHaveBeenCalledWith(expect.objectContaining({ created_at: null }))
+  })
+
+  it('NULL toggle behavior: toggling null on sets value to null', () => {
+    setupStore()
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...props} />)
+
+    // Should have NULL toggle since isNullable=true
+    const nullToggle = screen.getByText('NULL')
+    expect(nullToggle).toBeInTheDocument()
+
+    // Toggle NULL on
+    fireEvent.click(nullToggle)
+
+    // Input should be empty
+    const input = screen.getByRole('textbox') as HTMLInputElement
+    expect(input.value).toBe('')
+  })
+
+  it('NULL toggle off prefills temporal values from the current clock', () => {
+    setupStore()
+    const props = makeMockProps({ row: { id: 1, created_at: null } })
+    render(<DateTimeCellEditor {...props} />)
+
+    // Should start as null (empty input)
+    const input = screen.getByRole('textbox') as HTMLInputElement
+    expect(input.value).toBe('')
+
+    // Toggle NULL off
+    const nullToggle = screen.getByText('NULL')
+    fireEvent.click(nullToggle)
+
+    expect(input.value).toBe('2025-06-15 11:00:00')
+  })
+
+  it('does NOT show NULL toggle when isNullable is false', () => {
+    setupStore()
+    const props = makeMockProps({
+      isNullable: false,
+      columnMeta: makeColumnMeta('created_at', 'DATETIME', { isNullable: false }),
+    })
+    render(<DateTimeCellEditor {...props} />)
+
+    expect(screen.queryByText('NULL')).not.toBeInTheDocument()
+  })
+
+  it('Escape key calls onClose(false, false) when picker is NOT open', () => {
+    setupStore()
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...props} />)
+
+    const input = screen.getAllByRole('textbox')[0]
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    expect(props.onClose).toHaveBeenCalledWith(false, false)
+  })
+
+  it('first Escape when picker is open closes only the picker (not the cell edit)', () => {
+    setupStore()
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...props} />)
+
+    // Open picker
+    fireEvent.click(screen.getByTestId('grid-calendar-btn'))
+    expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
+
+    // Press Escape on the input
+    const input = screen.getAllByRole('textbox')[0]
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    // Picker should be closed
+    expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
+
+    // But onClose should NOT have been called
+    expect(props.onClose).not.toHaveBeenCalled()
+  })
+
+  it('second Escape (after picker closed) cancels the cell edit', () => {
+    setupStore()
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...props} />)
+
+    // Open picker
+    fireEvent.click(screen.getByTestId('grid-calendar-btn'))
+    expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
+
+    const input = screen.getAllByRole('textbox')[0]
+
+    // First Escape: close picker only
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
+    expect(props.onClose).not.toHaveBeenCalled()
+
+    // Second Escape: cancel cell edit
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(props.onClose).toHaveBeenCalledWith(false, false)
+  })
+
+  it('direct typing in text input works', () => {
+    setupStore()
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...props} />)
+
+    const input = screen.getByRole('textbox') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '2024-01-01 12:00:00' } })
+
+    expect(input.value).toBe('2024-01-01 12:00:00')
+
+    // onRowChange should have been called for preview
+    expect(props.onRowChange).toHaveBeenCalledWith(
+      expect.objectContaining({ created_at: '2024-01-01 12:00:00' })
+    )
+  })
+
+  it('input shows empty string when row value is null', () => {
+    setupStore()
+    const props = makeMockProps({ row: { id: 1, created_at: null } })
+    render(<DateTimeCellEditor {...props} />)
+
+    const input = screen.getByRole('textbox') as HTMLInputElement
+    expect(input.value).toBe('')
+  })
+
+  it('auto-focuses input on mount', () => {
+    setupStore()
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...props} />)
+
+    const input = screen.getByRole('textbox')
+    expect(input).toHaveFocus()
+  })
+
+  it('typing in input when null clears null state', () => {
+    setupStore()
+    const props = makeMockProps({ row: { id: 1, created_at: null } })
+    render(<DateTimeCellEditor {...props} />)
+
+    const input = screen.getByRole('textbox') as HTMLInputElement
+    expect(input.value).toBe('')
+
+    fireEvent.change(input, { target: { value: '2024-01-01' } })
+
+    // Should no longer be null
+    expect(input.value).toBe('2024-01-01')
+  })
+
+  it('calendar button is disabled when isNull is true', () => {
+    setupStore()
+    const props = makeMockProps({ row: { id: 1, created_at: null } })
+    render(<DateTimeCellEditor {...props} />)
+
+    const calBtn = screen.getByTestId('grid-calendar-btn')
+    expect(calBtn).toBeDisabled()
+  })
+
+  it('clicking disabled calendar button does NOT open picker when null', () => {
+    setupStore()
+    const props = makeMockProps({ row: { id: 1, created_at: null } })
+    render(<DateTimeCellEditor {...props} />)
+
+    fireEvent.click(screen.getByTestId('grid-calendar-btn'))
+    expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
+  })
+
+  it('calendar button is enabled when value is not null', () => {
+    setupStore()
+    const props = makeMockProps({ row: { id: 1, created_at: '2023-11-24' } })
+    render(<DateTimeCellEditor {...props} />)
+
+    const calBtn = screen.getByTestId('grid-calendar-btn')
+    expect(calBtn).not.toBeDisabled()
+  })
+
+  it('Escape key restores original value', () => {
+    setupStore()
+    const props = makeMockProps({ row: { id: 1, created_at: '2023-11-24' } })
+    render(<DateTimeCellEditor {...props} />)
+
+    // Type a new value
+    const input = screen.getByRole('textbox')
+    fireEvent.change(input, { target: { value: '2099-12-31' } })
+
+    // Press Escape to revert
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    // onClose should be called to discard
+    expect(props.onClose).toHaveBeenCalledWith(false, false)
+  })
+
+  it('Tab key commits the current value', () => {
+    setupStore()
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...props} />)
+
+    const input = screen.getByRole('textbox')
+    fireEvent.keyDown(input, { key: 'Tab' })
+
+    expect(props.onRowChange).toHaveBeenCalledWith(
+      expect.objectContaining({ created_at: '2023-11-24' }),
+      true
+    )
+  })
+
+  it('Enter key commits the current value', () => {
+    setupStore()
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...props} />)
+
+    const input = screen.getByRole('textbox')
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(props.onRowChange).toHaveBeenCalledWith(
+      expect.objectContaining({ created_at: '2023-11-24' }),
+      true
+    )
+  })
+
+  it('double-update guard: onRowChange receives already-applied picker value', () => {
+    setupStore()
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...props} />)
+
+    // Open picker and apply
+    fireEvent.click(screen.getByTestId('grid-calendar-btn'))
+    fireEvent.click(screen.getByTestId('btn-today'))
+    fireEvent.click(screen.getByTestId('btn-picker-apply'))
+
+    // The input should show the new value
+    const input = screen.getAllByRole('textbox')[0] as HTMLInputElement
+    expect(input.value).toBe('2025-06-15 11:00:00')
+
+    // The store was already updated by the picker's Apply (via editor.handleChange).
+    const state = useTableDataStore.getState().tabs['tab-1']
+    expect(state?.editState?.currentValues.created_at).toBe('2025-06-15 11:00:00')
+  })
+})

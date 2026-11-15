@@ -5,6 +5,11 @@ import { useQueryStore, type SingleResultState } from '../../../stores/query-sto
 import type { ConnectionIndexState } from '../../../stores/schema-index-store'
 import { formatRowCountParts } from '../../../lib/format-row-count'
 import type { TableDataTabState, WorkspaceTab } from '../../../types/schema'
+import {
+  resolveResultPendingWork,
+  resolveTablePendingWork,
+  type PendingWork,
+} from './pending-work-model'
 
 export const READY_FLASH_DURATION_MS = 2000
 export const STATUS_FLASH_DURATION_MS = 3000
@@ -171,10 +176,10 @@ export function resolveIndexingProgress(
   }
 }
 
-export function hasVisibleTableGrid(
+export function hasLoadedTableData(
   tableData: TableDataTabState | null
 ): tableData is TableDataTabState {
-  if (tableData?.viewMode !== 'grid') return false
+  if (!tableData) return false
   return tableData.columns.length > 0 && tableData.error === null
 }
 
@@ -226,11 +231,17 @@ export interface QueryInfoState {
   rowCount: RowCountParts
 }
 
+export interface TableDataInfoState {
+  visibleRows: number
+  executionTimeMs: number | null
+}
+
 export interface StatusActivity {
   buildingIndex: ConnectionIndexState | null
   flash: VisibleFlash | null
   showRunningInfo: boolean
-  tableRows: number | null
+  pendingWork: PendingWork | null
+  tableInfo: TableDataInfoState | null
   queryInfo: QueryInfoState | null
 }
 
@@ -255,9 +266,24 @@ export function resolveVisibleFlash(
   return { flashType: flash.flashType, fadingOut: flash.fadingOut }
 }
 
-export function visibleTableRows(tableData: TableDataTabState | null): number | null {
-  if (!hasVisibleTableGrid(tableData)) return null
-  return tableData.rows.length
+function positiveOrNull(value: number): number | null {
+  if (value > 0) return value
+  return null
+}
+
+export function resolveTableDataInfo(
+  tableData: TableDataTabState | null
+): TableDataInfoState | null {
+  if (!hasLoadedTableData(tableData)) return null
+  return {
+    visibleRows: tableData.rows.length,
+    executionTimeMs: positiveOrNull(tableData.executionTimeMs),
+  }
+}
+
+export function resolvePendingWork(inputs: StatusActivityInputs): PendingWork | null {
+  if (inputs.queryPane.isActive) return resolveResultPendingWork(inputs.queryPane.result)
+  return resolveTablePendingWork(inputs.tableData)
 }
 
 export function resolveQueryInfo(queryPane: QueryPane): QueryInfoState | null {
@@ -273,7 +299,8 @@ export function resolveStatusActivity(inputs: StatusActivityInputs): StatusActiv
     buildingIndex: buildingIndex,
     flash: resolveVisibleFlash(buildingIndex !== null, inputs.flash),
     showRunningInfo: inputs.queryPane.isActive && inputs.queryPane.tabStatus === 'running',
-    tableRows: visibleTableRows(inputs.tableData),
+    pendingWork: resolvePendingWork(inputs),
+    tableInfo: resolveTableDataInfo(inputs.tableData),
     queryInfo: resolveQueryInfo(inputs.queryPane),
   }
 }

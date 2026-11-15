@@ -135,6 +135,7 @@ src-tauri/
 - **State:** Zustand stores in `src/stores/`. Local state via `useState`/`useReducer`. Layout via `react-resizable-panels` v4 — sizes as strings (`"20%"`).
 - **Shared UI primitives over native HTML:** Reuse existing components from `src/components/common/` and `src/components/shared/` (for example `Button`, `TextInput`, `Checkbox`, `Dropdown`, `Textarea`) for fields, actions, and controls. Do **not** drop in raw `<button>`, `<input>`, `<select>`, `<textarea>`, or other native equivalents when the codebase already has a component for that role. Add a new shared primitive only when nothing existing fits or the user explicitly asks for one.
 - **Shared data grid:** Always use the shared `DataGrid` wrapper (`src/components/shared/DataGrid.tsx`). Do not reorder rows client-side when the backend owns sort order.
+- **Dates:** Always use the `date-fns` library (already a dependency) for date arithmetic, parsing, comparison and formatting. Never hand-roll date calculations or format strings manually (for example `getFullYear()` / `padStart` chains or string-built timestamps).
 
 ### Error Handling (TypeScript)
 
@@ -152,6 +153,7 @@ Silent error swallowing is **forbidden** without a log line:
 - `#[serde(rename_all = "camelCase")]` on all structs serialized over IPC.
 - Command handlers are thin wrappers; business logic lives in `*_impl` functions taking `&AppState` (testable without the Tauri runtime).
 - Never embed `#[cfg(test)]` or `#[test]` in `src-tauri/src/` — all tests go in `src-tauri/tests/` only.
+- **Dates:** Always use the `chrono` crate (already a dependency) for date and time arithmetic, parsing, comparison and formatting. Never hand-roll date calculations or format strings manually (for example string-built RFC 3339 timestamps or manual day-count math).
 
 ---
 

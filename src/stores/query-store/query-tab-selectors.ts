@@ -71,6 +71,14 @@ export function countRanges(ranges: readonly ViewRange[]): number {
   return ranges.reduce((sum, [start, end]) => sum + Math.max(0, end - start), 0)
 }
 
+export function isSelectedRowInView(result: SingleResultState): boolean {
+  const selectedRowIndex = result.selectedRowIndex
+  if (selectedRowIndex === null) return false
+  const isAtOrAfterFirstRow = selectedRowIndex >= 0
+  const isBeforeLastRow = selectedRowIndex < result.viewRowCount
+  return isAtOrAfterFirstRow && isBeforeLastRow
+}
+
 export function isExecutionLocked(tab: TabQueryState | undefined): boolean {
   return tab !== undefined && isEditorLockStatus(tab.tabStatus)
 }

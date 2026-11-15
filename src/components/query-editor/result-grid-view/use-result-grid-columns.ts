@@ -1,47 +1,14 @@
 import { useMemo } from 'react'
-import { resolveQueryResultColumns } from '../../../lib/query-result-column-utils'
-import type { ColumnMeta, ForeignKeyColumnInfo, TableDataColumnMeta } from '../../../types/schema'
-import type { AutoSizeConfig, GridColumnDescriptor } from '../../../types/shared-data-view'
-import { computeResultColumnWidth, toResultGridColumn } from './result-grid-model'
+import type { AutoSizeConfig } from '../../../types/shared-data-view'
+import {
+  useResultColumnDescriptors,
+  type ResultColumnDescriptorInputs,
+} from '../result-column-descriptors'
+import { computeResultColumnWidth } from './result-grid-model'
 
-export interface ResultGridColumnInputs {
-  columns: ColumnMeta[]
-  editMode: string | null
-  editableColumnMap: Map<number, boolean>
-  editTableColumns: TableDataColumnMeta[]
-  editForeignKeys: ForeignKeyColumnInfo[]
-  editColumnBindings: Map<number, string>
-}
-
-export function useResultGridColumns(inputs: ResultGridColumnInputs) {
-  const {
-    columns,
-    editMode,
-    editableColumnMap,
-    editTableColumns,
-    editForeignKeys,
-    editColumnBindings,
-  } = inputs
-
-  const resolvedColumns = useMemo(
-    () =>
-      resolveQueryResultColumns({
-        resultColumns: columns,
-        editMode: editMode,
-        editableColumnMap: editableColumnMap,
-        editTableColumns: editTableColumns,
-        editForeignKeys: editForeignKeys,
-        editColumnBindings: editColumnBindings,
-      }),
-    [columns, editMode, editableColumnMap, editTableColumns, editForeignKeys, editColumnBindings]
-  )
-
-  const gridColumns: GridColumnDescriptor[] = useMemo(() => {
-    const context = { isEditing: editMode !== null, editColumnBindings: editColumnBindings }
-    return resolvedColumns.map((column, columnIndex) =>
-      toResultGridColumn(column, columnIndex, context)
-    )
-  }, [editColumnBindings, editMode, resolvedColumns])
+export function useResultGridColumns(inputs: ResultColumnDescriptorInputs) {
+  const { editMode, editableColumnMap, editColumnBindings } = inputs
+  const { resolvedColumns, descriptors } = useResultColumnDescriptors(inputs)
 
   const autoSizeConfig: AutoSizeConfig = useMemo(() => {
     const sizingInputs = {
@@ -56,5 +23,5 @@ export function useResultGridColumns(inputs: ResultGridColumnInputs) {
     }
   }, [editColumnBindings, editMode, editableColumnMap, resolvedColumns])
 
-  return { gridColumns, autoSizeConfig }
+  return { gridColumns: descriptors, autoSizeConfig: autoSizeConfig }
 }

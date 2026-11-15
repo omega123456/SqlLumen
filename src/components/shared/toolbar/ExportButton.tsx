@@ -7,13 +7,15 @@ export function ExportButton({ disabled, onClick, testId }: ExportButtonProps) {
     <Button
       variant="subtle"
       size="sm"
-      className="shrink-0"
+      className="shrink-0 @max-toolbar-compact:w-control-sm @max-toolbar-compact:px-0"
       disabled={disabled}
       onClick={onClick}
+      title="Export"
+      aria-label="Export"
       data-testid={testId || 'btn-export'}
     >
       <Export size={16} weight="regular" />
-      <span>Export</span>
+      <span className="@max-toolbar-compact:hidden">Export</span>
     </Button>
   )
 }

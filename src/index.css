@@ -431,6 +431,8 @@
   --breakpoint-medium: 901px;
   --breakpoint-wide: 921px;
 
+  --container-toolbar-compact: 820px;
+
   --ease-*: initial;
   --ease-out: ease-out;
   --ease-in-out: ease-in-out;

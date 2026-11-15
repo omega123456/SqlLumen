@@ -2,7 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as canvasGridModule from '../../../components/shared/glide/CanvasBaseGridView'
-import * as fkLookupDialogModule from '../../../components/table-data/FkLookupDialog'
+import * as fkLookupDialogModule from '../../../components/shared/FkLookupDialog'
 import * as blobViewerDialogModule from '../../../components/dialogs/BlobViewerDialog'
 import { TableDataGrid } from '../../../components/table-data/TableDataGrid'
 import { getAutoSizedColumnWidth } from '../../../lib/grid-column-style'
@@ -208,26 +208,28 @@ describe('TableDataGrid', () => {
     expect(useTableDataStore.getState().tabs.t1.selectedCell).toBeNull()
   })
 
-  it('passes the highlight to the grid and clears it on a cell click', async () => {
+  it('passes the highlight to the grid and clears it on a pointer cell selection', () => {
     act(() => {
       useTableDataStore.setState({ highlightedColumnByTab: { t1: 'name' } })
     })
     render(<TableDataGrid tabId="t1" isReadOnly={false} />)
     const props = canvasCalls[canvasCalls.length - 1] as {
       highlightColumnKey: string
-      onCellClickGuard: (args: {
+      onCellSelectionChange: (args: {
         rowIdx: number
         columnKey: string
         rowData: Record<string, unknown>
-      }) => Promise<unknown>
+        source: 'grid-pointer'
+      }) => void
     }
 
     expect(props.highlightColumnKey).toBe('name')
-    await act(async () => {
-      await props.onCellClickGuard({
+    act(() => {
+      props.onCellSelectionChange({
         rowIdx: 0,
         columnKey: 'id',
         rowData: { id: 1, name: 'Ada', data: '[BLOB - 24 bytes]' },
+        source: 'grid-pointer',
       })
     })
 
@@ -320,7 +322,7 @@ describe('TableDataGrid', () => {
     expect(props.autoSizeConfig.computeWidth(props.columns[1])).toBe(expectedWidth)
   })
 
-  it('cell editing triggers save synchronization', () => {
+  function seedUnmodifiedEditingRow() {
     act(() => {
       useTableDataStore.setState({
         tabs: {
@@ -336,53 +338,41 @@ describe('TableDataGrid', () => {
         },
       })
     })
+  }
+
+  type CellCommitProps = {
+    onCellValueChange: (rowIndex: number, columnKey: string, value: unknown) => void
+    onRowsChange: (
+      rows: Record<string, unknown>[],
+      data: { indexes: number[]; column: { key: string } }
+    ) => void
+  }
+
+  it('cell editing writes the value into the edit state and the row cache', () => {
+    seedUnmodifiedEditingRow()
     const syncCellValue = vi.spyOn(useTableDataStore.getState(), 'syncCellValue')
     render(<TableDataGrid tabId="t1" isReadOnly={false} />)
-    const props = canvasCalls[canvasCalls.length - 1] as {
-      onRowsChange: (
-        rows: Record<string, unknown>[],
-        data: { indexes: number[]; column: { key: string } }
-      ) => void
-    }
+    const props = canvasCalls[canvasCalls.length - 1] as CellCommitProps
+
     act(() => {
-      props.onRowsChange([{ __rowIndex: 0, id: 1, name: 'Grace' }], {
-        indexes: [0],
-        column: { key: 'name' },
-      })
+      props.onCellValueChange(0, 'name', 'Grace')
     })
+
     expect(syncCellValue).toHaveBeenCalledWith('t1', {
-      rowData: expect.objectContaining({ name: 'Grace' }),
+      rowData: expect.objectContaining({ id: 1 }),
       column: 'name',
       value: 'Grace',
       rowKeyOverride: { id: 1 },
     })
+    const editState = useTableDataStore.getState().tabs.t1.editState
+    expect(editState?.currentValues.name).toBe('Grace')
+    expect(editState?.modifiedColumns.has('name')).toBe(true)
   })
 
-  it('no-op row cleanup does not mark table-data cells dirty', () => {
-    const syncCellValue = vi.spyOn(useTableDataStore.getState(), 'syncCellValue')
-    syncCellValue.mockClear()
-    act(() => {
-      useTableDataStore.setState({
-        tabs: {
-          t1: tab({
-            editState: {
-              rowKey: { id: 1 },
-              originalValues: { id: 1, name: 'Ada' },
-              currentValues: { id: 1, name: 'Ada' },
-              modifiedColumns: new Set(),
-              isNewRow: false,
-            },
-          }),
-        },
-      })
-    })
+  it('no-op row cleanup releases an unmodified editing row', () => {
+    seedUnmodifiedEditingRow()
     render(<TableDataGrid tabId="t1" isReadOnly={false} />)
-    const props = canvasCalls[canvasCalls.length - 1] as {
-      onRowsChange: (
-        rows: Record<string, unknown>[],
-        data: { indexes: number[]; column: { key: string } }
-      ) => void
-    }
+    const props = canvasCalls[canvasCalls.length - 1] as CellCommitProps
 
     act(() =>
       props.onRowsChange([{ __rowIndex: 0, id: 1, name: 'Ada' }], {
@@ -391,41 +381,17 @@ describe('TableDataGrid', () => {
       })
     )
 
-    expect(syncCellValue).toHaveBeenCalledWith('t1', {
-      rowData: expect.objectContaining({ name: 'Ada' }),
-      column: 'name',
-      value: 'Ada',
-      rowKeyOverride: { id: 1 },
-    })
     expect(useTableDataStore.getState().tabs.t1.editState).toBeNull()
   })
 
-  it('genuine row changes still mark table-data cells dirty', () => {
-    const syncCellValue = vi.spyOn(useTableDataStore.getState(), 'syncCellValue')
-    syncCellValue.mockClear()
-    act(() => {
-      useTableDataStore.setState({
-        tabs: {
-          t1: tab({
-            editState: {
-              rowKey: { id: 1 },
-              originalValues: { id: 1, name: 'Ada' },
-              currentValues: { id: 1, name: 'Ada' },
-              modifiedColumns: new Set(),
-              isNewRow: false,
-            },
-          }),
-        },
-      })
-    })
+  it('genuine row changes keep the editing row dirty', () => {
+    seedUnmodifiedEditingRow()
     render(<TableDataGrid tabId="t1" isReadOnly={false} />)
-    const props = canvasCalls[canvasCalls.length - 1] as {
-      onRowsChange: (
-        rows: Record<string, unknown>[],
-        data: { indexes: number[]; column: { key: string } }
-      ) => void
-    }
+    const props = canvasCalls[canvasCalls.length - 1] as CellCommitProps
 
+    act(() => {
+      props.onCellValueChange(0, 'name', 'Grace')
+    })
     act(() =>
       props.onRowsChange([{ __rowIndex: 0, id: 1, name: 'Grace' }], {
         indexes: [0],
@@ -433,12 +399,7 @@ describe('TableDataGrid', () => {
       })
     )
 
-    expect(syncCellValue).toHaveBeenCalledWith('t1', {
-      rowData: expect.objectContaining({ name: 'Grace' }),
-      column: 'name',
-      value: 'Grace',
-      rowKeyOverride: { id: 1 },
-    })
+    expect(useTableDataStore.getState().tabs.t1.editState?.modifiedColumns.has('name')).toBe(true)
   })
 
   it('row selection works through cell click guard', async () => {
@@ -739,7 +700,7 @@ describe('TableDataGrid', () => {
     expect(blobCol.editable).toBe(false)
     expect(blobCol.editorType).toBe('none')
     const textCol = props.columns.find((column) => column.key === 'name')!
-    expect(textCol.blobViewer).toBeUndefined()
+    expect(textCol.blobViewer).toBe(false)
   })
 
   it('opens the BLOB viewer in edit mode when double-clicking a binary cell with a PK', () => {
@@ -784,7 +745,7 @@ describe('TableDataGrid', () => {
     expect(screen.queryByTestId('blob-viewer-dialog')).not.toBeInTheDocument()
   })
 
-  it('does not open the BLOB viewer on a read-only connection', () => {
+  it('opens the BLOB viewer in view mode on a read-only connection', () => {
     render(<TableDataGrid tabId="t1" isReadOnly={true} />)
     const props = canvasCalls[canvasCalls.length - 1] as {
       onCellDoubleClick: (row: Record<string, unknown>, columnKey: string) => void
@@ -795,11 +756,11 @@ describe('TableDataGrid', () => {
         'data'
       )
     })
-    expect(screen.queryByTestId('blob-viewer-dialog')).not.toBeInTheDocument()
+    expect(screen.getByTestId('blob-viewer-dialog')).toBeInTheDocument()
+    expect(capturedBlobDialogProps).toMatchObject({ mode: 'view', onApply: undefined })
   })
 
-  it('stages a blob envelope on apply', () => {
-    const stageBlobEnvelope = vi.spyOn(useTableDataStore.getState(), 'stageBlobEnvelope')
+  it('writes an applied blob envelope into the edit state and row cache', () => {
     render(<TableDataGrid tabId="t1" isReadOnly={false} />)
     const props = canvasCalls[canvasCalls.length - 1] as {
       onCellDoubleClick: (row: Record<string, unknown>, columnKey: string) => void
@@ -812,10 +773,9 @@ describe('TableDataGrid', () => {
     act(() => {
       ;(capturedBlobDialogProps?.onApply as (e: unknown) => void)(envelope)
     })
-    expect(stageBlobEnvelope).toHaveBeenCalledWith('t1', {
-      rowData: row,
-      column: 'data',
-      envelope: envelope,
-    })
+    const tabState = useTableDataStore.getState().tabs.t1
+    expect(tabState.editState?.currentValues.data).toEqual(envelope)
+    expect(tabState.editState?.modifiedColumns.has('data')).toBe(true)
+    expect(tabState.rows[0]).toContainEqual(envelope)
   })
 })

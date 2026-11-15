@@ -6,7 +6,7 @@ import {
 } from '@glideapps/glide-data-grid'
 import type { DropdownCellType, MultiSelectCellType } from '@glideapps/glide-data-grid-cells'
 import type { CellClickGuardResult, RowEditState } from '../../../../types/shared-data-view'
-import { serializeSetCellValue } from '../../../table-data/enum-field-utils'
+import { serializeSetCellValue } from '../../enum-field-utils'
 import type { GridCellPosition, GridColumn } from '../glide-grid-types'
 import type {
   EditorSessionBaseline,

@@ -2735,3 +2735,64 @@ describe('useQueryStore — sortResults sort-clear clears edit state', () => {
     expect(after.editableColumnMap.size).toBeGreaterThan(0)
   })
 })
+
+// ---------------------------------------------------------------------------
+// insertDraftRow
+// ---------------------------------------------------------------------------
+
+describe('useQueryStore — insertDraftRow', () => {
+  it('opens an empty insert draft right after the last view row', async () => {
+    await executeAndAnalyze()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+
+    useQueryStore.getState().insertDraftRow('tab-1')
+
+    const tab = flat('tab-1')
+    expect(tab.rows).toHaveLength(2)
+    expect(tab.draftRow).toEqual([null, null, null])
+    expect(tab.selectedRowIndex).toBe(2)
+    expect(tab.editingRowIndex).toBe(2)
+    expect(tab.editingBaseIndex).toBeNull()
+    expect(tab.editState?.isNewRow).toBe(true)
+    expect(tab.editState?.modifiedColumns.size).toBe(0)
+  })
+
+  it('inserts the values typed into the draft when saved', async () => {
+    ipc.override('insert_table_row', () => [['id', 3]])
+    await executeAndAnalyze()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    useQueryStore.getState().insertDraftRow('tab-1')
+    useQueryStore.getState().updateCellValue('tab-1', 1, 'Carol')
+    useQueryStore.getState().updateCellValue('tab-1', 2, 'carol@test.com')
+
+    await useQueryStore.getState().saveCurrentRow('tab-1')
+
+    expect(ipc.payloads('insert_table_row')[0]).toMatchObject({
+      database: 'testdb',
+      table: 'users',
+      values: { name: 'Carol', email: 'carol@test.com' },
+    })
+  })
+
+  it('refuses with a toast while another row has unsaved changes', async () => {
+    await executeAndAnalyze()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    useQueryStore.getState().startEditingRow('tab-1', 0)
+    useQueryStore.getState().updateCellValue('tab-1', 1, 'Alicia')
+
+    useQueryStore.getState().insertDraftRow('tab-1')
+
+    expect(flat('tab-1').draftRow).toBeNull()
+    const toasts = useToastStore.getState().toasts
+    expect(toasts.some((toast) => toast.title === 'Unsaved changes')).toBe(true)
+  })
+
+  it('does nothing when edit mode is not enabled', async () => {
+    await executeAndAnalyze()
+
+    useQueryStore.getState().insertDraftRow('tab-1')
+
+    expect(flat('tab-1').draftRow).toBeNull()
+    expect(flat('tab-1').editState).toBeNull()
+  })
+})

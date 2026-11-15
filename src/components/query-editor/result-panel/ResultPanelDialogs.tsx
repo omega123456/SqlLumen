@@ -1,12 +1,9 @@
 import { useCallback } from 'react'
 import { useQueryStore, type SingleResultState } from '../../../stores/query-store'
-import { FkLookupDialog } from '../../table-data/FkLookupDialog'
 import { UnsavedChangesDialog } from '../../shared/UnsavedChangesDialog'
 import ExportDialog from '../../dialogs/ExportDialog'
 import { FilterDialog } from '../../dialogs/FilterDialog'
-import { readEditTable, resolveForeignKeyLookupTarget } from './result-panel-model'
 import type { ResultFilter } from './use-result-filter'
-import type { ResultForeignKeyLookup } from './use-result-foreign-key-lookup'
 
 interface ResultPanelDialogsProps {
   tabId: string
@@ -14,7 +11,6 @@ interface ResultPanelDialogsProps {
   activeResultIndex: number
   result: SingleResultState
   filter: ResultFilter
-  foreignKeyLookup: ResultForeignKeyLookup
 }
 
 function PendingNavigationDialog({
@@ -54,47 +50,12 @@ function PendingNavigationDialog({
   )
 }
 
-interface ResultForeignKeyLookupDialogProps {
-  connectionId: string
-  result: SingleResultState
-  foreignKeyLookup: ResultForeignKeyLookup
-}
-
-function ResultForeignKeyLookupDialog({
-  connectionId,
-  result,
-  foreignKeyLookup,
-}: ResultForeignKeyLookupDialogProps) {
-  const target = resolveForeignKeyLookupTarget({
-    context: foreignKeyLookup.context,
-    editMode: result.editMode,
-    editTable: readEditTable(result).editTable,
-  })
-  if (!target) return null
-  return (
-    <FkLookupDialog
-      isOpen={true}
-      onClose={foreignKeyLookup.closeLookup}
-      onApply={foreignKeyLookup.applyLookup}
-      connectionId={connectionId}
-      database={target.database}
-      sourceTable={target.sourceTable}
-      sourceColumn={target.context.sourceColumn}
-      currentValue={target.context.currentValue}
-      referencedTable={target.context.foreignKey.referencedTable}
-      referencedColumn={target.context.foreignKey.referencedColumn}
-      isReadOnly={false}
-    />
-  )
-}
-
 export function ResultPanelDialogs({
   tabId,
   connectionId,
   activeResultIndex,
   result,
   filter,
-  foreignKeyLookup,
 }: ResultPanelDialogsProps) {
   const closeExportDialog = useQueryStore((state) => state.closeExportDialog)
   return (
@@ -117,12 +78,6 @@ export function ResultPanelDialogs({
       />
 
       <PendingNavigationDialog tabId={tabId} saveError={result.saveError} />
-
-      <ResultForeignKeyLookupDialog
-        connectionId={connectionId}
-        result={result}
-        foreignKeyLookup={foreignKeyLookup}
-      />
     </>
   )
 }

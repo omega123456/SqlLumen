@@ -1,9 +1,7 @@
 import { columnKey } from '../../../lib/col-key-utils'
-import type { resolveQueryResultColumns } from '../../../lib/query-result-column-utils'
-import { isBinaryDataType } from '../../../lib/blob-utils'
 import type { CachedRow } from '../../../lib/result-window-cache'
 import type {
-  GridColumnDescriptor,
+  DataViewLocation,
   RowEditState as SharedRowEditState,
 } from '../../../types/shared-data-view'
 import type {
@@ -12,7 +10,6 @@ import type {
   TableDataColumnMeta,
   RowEditState,
 } from '../../../types/schema'
-import type { QueryResultBlobContext } from '../QueryResultBlobDialog'
 
 export interface ResultFormViewProps {
   columns: ColumnMeta[]
@@ -28,21 +25,24 @@ export interface ResultFormViewProps {
   editableColumnMap?: Map<number, boolean>
   editState?: RowEditState | null
   editingRowIndex?: number | null
+  editingBaseIndex?: number | null
   editTableColumns?: TableDataColumnMeta[]
   editForeignKeys?: ForeignKeyColumnInfo[]
   editColumnBindings?: Map<number, string>
   onStartEdit?: (rowIndex: number, row?: CachedRow) => void
   onUpdateCell?: (columnIndex: number, value: unknown) => void
+  onSyncCell?: (columnIndex: number, value: unknown) => void
   onSaveRow?: () => Promise<boolean>
   onDiscardRow?: () => void
+  onRowSelected?: (rowIndex: number) => void
+  editLocation?: DataViewLocation | null
+  isActive?: boolean
 }
 
 const EMPTY_EDITABLE_MAP = new Map<number, boolean>()
 const EMPTY_TABLE_COLUMNS: TableDataColumnMeta[] = []
 const EMPTY_FOREIGN_KEYS: ForeignKeyColumnInfo[] = []
 const EMPTY_BINDINGS = new Map<number, string>()
-
-export type ResolvedColumn = ReturnType<typeof resolveQueryResultColumns>[number]
 
 export interface FormEditProps {
   editMode: string | null
@@ -152,42 +152,6 @@ export function buildFormRowData(inputs: FormRowDataInputs): Record<string, unkn
   return rowData
 }
 
-function columnKeyFlags(meta: TableDataColumnMeta | undefined) {
-  return {
-    isNullable: meta?.isNullable ?? false,
-    isPrimaryKey: meta?.isPrimaryKey ?? false,
-    isUniqueKey: meta?.isUniqueKey ?? false,
-  }
-}
-
-interface DescriptorContext {
-  isEditing: boolean
-  editColumnBindings: Map<number, string>
-}
-
-export function toGridColumnDescriptor(
-  column: ResolvedColumn,
-  columnIndex: number,
-  context: DescriptorContext
-): GridColumnDescriptor {
-  const meta = column.tableColumnMeta
-  const isBinary = meta?.isBinary ?? isBinaryDataType(column.dataType)
-  const isBoundForEdit = context.isEditing && context.editColumnBindings.has(columnIndex)
-  return {
-    key: column.key,
-    displayName: column.displayName,
-    dataType: meta?.dataType ?? column.dataType,
-    editable: column.editable,
-    isBinary: isBinary,
-    blobViewer: isBinary,
-    blobViewerEditable: isBinary && isBoundForEdit,
-    ...columnKeyFlags(meta),
-    enumValues: meta?.enumValues,
-    tableColumnMeta: meta,
-    foreignKey: column.foreignKey,
-  }
-}
-
 export function toSharedEditState(
   editState: RowEditState,
   columnCount: number,
@@ -213,8 +177,4 @@ export function toSharedEditState(
     currentValues: currentValues,
     originalValues: originalValues,
   }
-}
-
-export interface BlobContext extends QueryResultBlobContext {
-  columnIndex: number
 }

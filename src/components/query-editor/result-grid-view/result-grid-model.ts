@@ -1,11 +1,9 @@
-import { isBinaryDataType } from '../../../lib/blob-utils'
 import { columnKey, columnIndexFromKey } from '../../../lib/col-key-utils'
 import {
   AUTO_SIZE_SAMPLE_LIMIT,
   getAutoSizedColumnWidth,
   DEFAULT_COLUMN_WIDTH_PX,
   HEADER_ICON_WIDTH_PX,
-  isJsonSqlType,
 } from '../../../lib/grid-column-style'
 import type { resolveQueryResultColumns } from '../../../lib/query-result-column-utils'
 import type { CachedRow } from '../../../lib/result-window-cache'
@@ -16,12 +14,13 @@ import type {
   TableDataColumnMeta,
 } from '../../../types/schema'
 import type {
+  DataViewLocation,
   GridColumnDescriptor,
   RowEditState as SharedRowEditState,
 } from '../../../types/shared-data-view'
 import type { GridRowActions } from '../../shared/glide/CanvasBaseGridView'
+import { rowClassNameOf } from '../../shared/data-view/row-class-names'
 import type { GridCellPosition } from '../../shared/glide/glide-grid-types'
-import type { QueryResultBlobContext } from '../QueryResultBlobDialog'
 
 export interface ResultGridViewProps {
   columns: ColumnMeta[]
@@ -48,20 +47,14 @@ export interface ResultGridViewProps {
   onUpdateCellValue: (columnIndex: number, value: unknown) => void
   onSyncCellValue: (columnIndex: number, value: unknown) => void
   onAutoSave: () => Promise<boolean>
+  onDiscardRow?: () => void
+  editLocation?: DataViewLocation | null
   rowActions?: GridRowActions
   isActive?: boolean
 }
 
 export type ResolvedResultColumn = ReturnType<typeof resolveQueryResultColumns>[number]
 
-export interface GridBlobContext extends QueryResultBlobContext {
-  rowIndex: number
-  row: CachedRow
-  columnIndex: number
-}
-
-export const READ_ONLY_SELECTED_ROW_CLASS = 'grid-row-precision-selected'
-const EDITING_ROW_CLASS = 'grid-editing-row'
 const MISSING_INDEX = -1
 
 export function rowPositionOf(row: Record<string, unknown>): number {
@@ -77,54 +70,6 @@ export function isEditingRowData(
   const baseIndex = typeof row.__baseIdx === 'number' ? row.__baseIdx : MISSING_INDEX
   if (baseIndex >= 0) return editingBaseIndex !== null && baseIndex === editingBaseIndex
   return row.__rowIdx === editingRowIndex
-}
-
-function resolveEditorType(
-  meta: TableDataColumnMeta | undefined
-): GridColumnDescriptor['editorType'] {
-  if (!meta) return 'none'
-  if (meta.enumValues?.length) return 'enum'
-  if (isJsonSqlType(meta.dataType)) return 'json'
-  if (meta.setValues?.length) return 'set'
-  return 'text'
-}
-
-function resultColumnKeyFlags(meta: TableDataColumnMeta | undefined) {
-  return {
-    isNullable: meta?.isNullable ?? true,
-    isPrimaryKey: meta?.isPrimaryKey ?? false,
-    isUniqueKey: meta?.isUniqueKey ?? false,
-  }
-}
-
-export interface ResultColumnContext {
-  isEditing: boolean
-  editColumnBindings: Map<number, string>
-}
-
-export function toResultGridColumn(
-  column: ResolvedResultColumn,
-  columnIndex: number,
-  context: ResultColumnContext
-): GridColumnDescriptor {
-  const meta = column.tableColumnMeta
-  const isBlob = column.effectiveTableMeta.isBinary
-  const isBoundForEdit = context.isEditing && context.editColumnBindings.has(columnIndex)
-  return {
-    key: column.key,
-    displayName: column.displayName,
-    dataType: column.dataType,
-    editable: column.editable,
-    isBinary: isBinaryDataType(column.dataType),
-    blobViewer: isBlob,
-    blobViewerEditable: isBlob && isBoundForEdit,
-    ...resultColumnKeyFlags(meta),
-    enumValues: meta?.enumValues,
-    setValues: meta?.setValues,
-    tableColumnMeta: column.editable ? meta : undefined,
-    foreignKey: column.foreignKey,
-    editorType: resolveEditorType(meta),
-  }
 }
 
 export function invertColumnBindings(editColumnBindings: Map<number, string>): Map<string, number> {
@@ -165,14 +110,6 @@ export function toSharedEditState(
   }
 }
 
-export function editableColumnKeysOf(editableColumnMap: Map<number, boolean>): Set<string> {
-  const keys = new Set<string>()
-  for (const [index, editable] of editableColumnMap) {
-    if (editable) keys.add(columnKey(index))
-  }
-  return keys
-}
-
 interface SelectedCellInputs {
   columns: ColumnMeta[]
   selectedCell: { columnKey: string } | null
@@ -194,21 +131,19 @@ interface RowClassInputs {
   selectedRowIndex: number | null
   editingRowIndex: number | null
   editingBaseIndex: number | null
+  isEditingNewRow: boolean
 }
 
 export function resultRowClass(
   row: Record<string, unknown>,
-  { selectedRowIndex, editingRowIndex, editingBaseIndex }: RowClassInputs
+  inputs: RowClassInputs
 ): string | undefined {
-  const classes: string[] = []
-  if (isEditingRowData(row, editingRowIndex, editingBaseIndex)) {
-    classes.push(EDITING_ROW_CLASS)
-  }
-  const isSelectedRow = selectedRowIndex != null && row.__rowIdx === selectedRowIndex
-  if (isSelectedRow) {
-    classes.push(READ_ONLY_SELECTED_ROW_CLASS)
-  }
-  return classes.length > 0 ? classes.join(' ') : undefined
+  const { selectedRowIndex, editingRowIndex, editingBaseIndex } = inputs
+  return rowClassNameOf({
+    isEditing: isEditingRowData(row, editingRowIndex, editingBaseIndex),
+    isNewRow: inputs.isEditingNewRow,
+    isSelected: selectedRowIndex != null && row.__rowIdx === selectedRowIndex,
+  })
 }
 
 export interface AutoSizeInputs {

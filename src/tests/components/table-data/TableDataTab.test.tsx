@@ -272,10 +272,6 @@ describe('TableDataTab', () => {
 
     render(<TableDataTab tab={makeTab()} />)
 
-    expect(screen.getByTestId('status-loading')).toBeInTheDocument()
-    expect(screen.getByTestId('table-data-restoring-status')).toHaveTextContent(
-      'Restoring cached rows...'
-    )
     expect(screen.getByTestId('btn-add-row')).toBeDisabled()
     expect(screen.getByTestId('btn-clone-row')).toBeDisabled()
     expect(screen.getByTestId('btn-delete-row')).toBeDisabled()

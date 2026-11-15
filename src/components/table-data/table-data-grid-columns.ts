@@ -1,27 +1,14 @@
 import type { GridColumnDescriptor } from '../../types/shared-data-view'
 import type { ForeignKeyColumnInfo, TableDataColumnMeta } from '../../types/schema'
-import { getTemporalColumnType } from '../../lib/date-utils'
-import { isJsonSqlType } from '../../lib/grid-column-style'
-import { isEnumColumn, isSetColumn } from './enum-field-utils'
-
-function resolveEditorType(
-  column: TableDataColumnMeta,
-  foreignKey: ForeignKeyColumnInfo | undefined
-): GridColumnDescriptor['editorType'] {
-  if (column.isBinary) return 'none'
-  if (isJsonSqlType(column.dataType)) return 'json'
-  if (getTemporalColumnType(column.dataType)) return 'datetime'
-  if (isEnumColumn(column)) return 'enum'
-  if (isSetColumn(column)) return 'set'
-  if (foreignKey) return 'fk'
-  return 'text'
-}
+import { buildForeignKeyLookup } from '../../lib/foreign-key-utils'
+import { buildGridColumnDescriptor } from '../shared/data-view/grid-column-descriptor'
 
 export interface ColumnDescriptorInputs {
   columns: TableDataColumnMeta[]
   isReadOnly: boolean
   hasPrimaryKey: boolean
   foreignKeys?: ForeignKeyColumnInfo[]
+  columnWidths?: Record<string, number>
 }
 
 export function buildColumnDescriptors({
@@ -29,28 +16,20 @@ export function buildColumnDescriptors({
   isReadOnly,
   hasPrimaryKey,
   foreignKeys = [],
+  columnWidths = {},
 }: ColumnDescriptorInputs): GridColumnDescriptor[] {
-  return columns.map((column) => {
-    const foreignKey = foreignKeys.find((candidate) => candidate.columnName === column.name)
-    const editorType = resolveEditorType(column, foreignKey)
-    return {
+  const canEditRows = !isReadOnly && hasPrimaryKey
+  const foreignKeyLookup = buildForeignKeyLookup(foreignKeys)
+  return columns.map((column) =>
+    buildGridColumnDescriptor({
       key: column.name,
       displayName: column.name,
       dataType: column.dataType,
-      editable: !isReadOnly && hasPrimaryKey && !column.isBinary,
-      isBinary: column.isBinary,
-      isNullable: column.isNullable,
-      isPrimaryKey: column.isPrimaryKey,
-      isUniqueKey: column.isUniqueKey,
-      enumValues: column.enumValues,
-      setValues: column.setValues,
-      tableColumnMeta: column,
-      editorType: editorType,
-      ...(column.isBinary && {
-        blobViewer: true,
-        blobViewerEditable: !isReadOnly && hasPrimaryKey,
-      }),
-      ...(foreignKey && { foreignKey: foreignKey }),
-    }
-  })
+      tableColumn: column,
+      foreignKey: foreignKeyLookup.get(column.name.toLowerCase()),
+      editable: canEditRows && !column.isBinary,
+      blobViewerEditable: canEditRows,
+      width: columnWidths[column.name],
+    })
+  )
 }

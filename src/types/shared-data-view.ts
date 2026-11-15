@@ -25,6 +25,12 @@ export interface GridColumnDescriptor {
   width?: number
 }
 
+export interface DataViewLocation {
+  connectionId: string
+  database: string
+  table: string
+}
+
 export interface RowEditState {
   rowKey: string
   currentValues: Record<string, unknown>

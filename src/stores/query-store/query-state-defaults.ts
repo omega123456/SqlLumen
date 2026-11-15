@@ -30,6 +30,7 @@ const EMPTY_MAP = Object.freeze(new Map()) as Map<never, never>
 const EMPTY_ARRAY = Object.freeze([]) as never[]
 
 export const EMPTY_OBJECT = Object.freeze({}) as Record<string, QueryTableEditInfo>
+const EMPTY_COLUMN_WIDTHS: Record<string, number> = Object.freeze({})
 
 export const DEFAULT_RESULT_STATE: SingleResultState = {
   resultStatus: 'idle',
@@ -85,6 +86,7 @@ export const DEFAULT_RESULT_STATE: SingleResultState = {
   draftRow: null,
   scrollRow: 0,
   scrollCol: 0,
+  columnWidths: EMPTY_COLUMN_WIDTHS,
   isExpired: false,
   rowResidency: {
     status: 'resident',

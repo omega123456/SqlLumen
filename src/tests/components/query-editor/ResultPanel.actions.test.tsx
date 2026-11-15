@@ -3,7 +3,7 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ipc } from '../../ipc-mock'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { FilterCondition, ForeignKeyColumnInfo } from '../../../types/schema'
+import type { FilterCondition } from '../../../types/schema'
 import { ResultPanel } from '../../../components/query-editor/ResultPanel'
 import { DEFAULT_RESULT_STATE, useQueryStore } from '../../../stores/query-store'
 import { makeTabState, withRows } from '../../helpers/query-test-utils'
@@ -14,8 +14,6 @@ import * as ResultFormViewModule from '../../../components/query-editor/ResultFo
 import * as ResultTextViewModule from '../../../components/query-editor/ResultTextView'
 import * as ExportDialogModule from '../../../components/dialogs/ExportDialog'
 import * as FilterDialogModule from '../../../components/dialogs/FilterDialog'
-import * as FkLookupDialogModule from '../../../components/table-data/FkLookupDialog'
-import { useFkLookup } from '../../../components/shared/fk-lookup-context'
 
 // Use vi.spyOn to install per-test mock implementations without vi.mock().
 // IPC commands are handled via ipc.override().
@@ -72,54 +70,13 @@ beforeEach(() => {
         <button data-testid="toolbar-clear-filter" onClick={p.onClearFilterClick as () => void}>
           Clear
         </button>
-        <span data-testid="toolbar-clone-disabled">{String(p.isCloneDisabled)}</span>
       </div>
     ) as unknown as React.ReactElement
   })
 
   vi.spyOn(ResultGridViewModule, 'ResultGridView').mockImplementation((props) => {
     capturedGridProps = props as unknown as Record<string, unknown>
-    const fkLookup = useFkLookup()
-    const defaultForeignKey: ForeignKeyColumnInfo = {
-      columnName: 'role_id',
-      referencedDatabase: 'appdb',
-      referencedTable: 'roles',
-      referencedColumn: 'id',
-      constraintName: 'fk_users_role',
-    }
-
-    return React.createElement(
-      'div',
-      { 'data-testid': 'result-grid-view' },
-      React.createElement(
-        'button',
-        {
-          'data-testid': 'grid-trigger-fk',
-          onClick: () =>
-            fkLookup?.onFkLookup({
-              columnKey: 'col_1',
-              currentValue: 5,
-              foreignKey: defaultForeignKey,
-              rowData: { __rowIdx: 0, col_0: 1, col_1: 5 },
-            }),
-        },
-        'FK'
-      ),
-      React.createElement(
-        'button',
-        {
-          'data-testid': 'grid-trigger-unresolved-fk',
-          onClick: () =>
-            fkLookup?.onFkLookup({
-              columnKey: 'col_99',
-              currentValue: 5,
-              foreignKey: defaultForeignKey,
-              rowData: { __rowIdx: 0, col_99: 5 },
-            }),
-        },
-        'Unresolved FK'
-      )
-    ) as unknown as React.ReactElement
+    return (<div data-testid="result-grid-view" />) as unknown as React.ReactElement
   })
 
   vi.spyOn(ResultFormViewModule, 'ResultFormView').mockImplementation((props) => {
@@ -158,33 +115,6 @@ beforeEach(() => {
         </button>
         <button data-testid="filter-dialog-cancel" onClick={p.onCancel as () => void}>
           Cancel
-        </button>
-      </div>
-    ) as unknown as React.ReactElement
-  })
-
-  vi.spyOn(FkLookupDialogModule, 'FkLookupDialog').mockImplementation((props) => {
-    const p = props as unknown as Record<string, unknown>
-    if (!p.isOpen) return null as unknown as React.ReactElement
-
-    return (
-      <div data-testid="fk-lookup-dialog-mock">
-        <div data-testid="fk-lookup-database">{String(p.database)}</div>
-        <div data-testid="fk-lookup-source-column">{String(p.sourceColumn)}</div>
-        <button
-          data-testid="fk-lookup-apply-same"
-          onClick={() => (p.onApply as ((v: unknown) => void) | undefined)?.(p.currentValue)}
-        >
-          Apply Same
-        </button>
-        <button
-          data-testid="fk-lookup-apply-new"
-          onClick={() => (p.onApply as ((v: unknown) => void) | undefined)?.(9)}
-        >
-          Apply New
-        </button>
-        <button data-testid="fk-lookup-close" onClick={p.onClose as () => void}>
-          Close
         </button>
       </div>
     ) as unknown as React.ReactElement
@@ -453,24 +383,9 @@ describe('ResultPanel actions and states', () => {
     expect(closeExportDialogSpy).toHaveBeenCalledWith('tab-1')
   })
 
-  it('opens fk lookup, starts editing, and applies a new value', async () => {
-    const user = userEvent.setup()
-    const startEditingRowSpy = vi.spyOn(useQueryStore.getState(), 'startEditingRow')
-    const setSelectedRowSpy = vi.spyOn(useQueryStore.getState(), 'setSelectedRow')
-    const syncCellValueSpy = vi.spyOn(useQueryStore.getState(), 'syncCellValue')
-
+  it('passes the edit table location and row discard handler to the grid', () => {
     renderPanel({
       editMode: 'appdb.users',
-      editColumnBindings: new Map([[1, 'role_id']]),
-      editForeignKeys: [
-        {
-          columnName: 'role_id',
-          referencedDatabase: 'appdb',
-          referencedTable: 'roles',
-          referencedColumn: 'id',
-          constraintName: 'fk_users_role',
-        },
-      ],
       editTableMetadata: {
         'appdb.users': {
           database: 'appdb',
@@ -480,140 +395,13 @@ describe('ResultPanel actions and states', () => {
           foreignKeys: [],
         },
       },
-      editingRowIndex: null,
-      editState: null,
     })
 
-    await user.click(screen.getByTestId('grid-trigger-fk'))
-
-    expect(screen.getByTestId('fk-lookup-dialog-mock')).toBeInTheDocument()
-    expect(screen.getByTestId('fk-lookup-database')).toHaveTextContent('appdb')
-    expect(screen.getByTestId('fk-lookup-source-column')).toHaveTextContent('role_id')
-    // The lookup row carries no base index here, so it is resolved by view position.
-    expect(startEditingRowSpy).toHaveBeenCalledWith('tab-1', 0, {
-      row: [1, 5, 'Alice'],
-      baseIndex: 0,
+    expect(capturedGridProps.editLocation).toEqual({
+      connectionId: 'conn-1',
+      database: 'appdb',
+      table: 'users',
     })
-    expect(setSelectedRowSpy).toHaveBeenCalledWith('tab-1', 0)
-
-    await user.click(screen.getByTestId('fk-lookup-apply-new'))
-
-    expect(syncCellValueSpy).toHaveBeenCalledWith('tab-1', 1, 9)
-    await waitFor(() => {
-      expect(screen.queryByTestId('fk-lookup-dialog-mock')).not.toBeInTheDocument()
-    })
-  })
-
-  it('does not open fk lookup when the target column cannot be resolved', async () => {
-    const user = userEvent.setup()
-
-    renderPanel({
-      editMode: 'appdb.users',
-      editColumnBindings: new Map([[1, 'role_id']]),
-      editForeignKeys: [
-        {
-          columnName: 'role_id',
-          referencedDatabase: 'appdb',
-          referencedTable: 'roles',
-          referencedColumn: 'id',
-          constraintName: 'fk_users_role',
-        },
-      ],
-    })
-
-    await user.click(screen.getByTestId('grid-trigger-unresolved-fk'))
-
-    expect(screen.queryByTestId('fk-lookup-dialog-mock')).not.toBeInTheDocument()
-  })
-
-  it('aborts fk lookup row switching when auto-save fails on a dirty row', async () => {
-    const user = userEvent.setup()
-    const saveCurrentRowSpy = vi
-      .spyOn(useQueryStore.getState(), 'saveCurrentRow')
-      .mockResolvedValue(false)
-    const startEditingRowSpy = vi.spyOn(useQueryStore.getState(), 'startEditingRow')
-
-    renderPanel({
-      editMode: 'appdb.users',
-      editColumnBindings: new Map([[1, 'role_id']]),
-      editForeignKeys: [
-        {
-          columnName: 'role_id',
-          referencedDatabase: 'appdb',
-          referencedTable: 'roles',
-          referencedColumn: 'id',
-          constraintName: 'fk_users_role',
-        },
-      ],
-      editTableMetadata: {
-        'appdb.users': {
-          database: 'appdb',
-          table: 'users',
-          columns: [],
-          primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
-          foreignKeys: [],
-        },
-      },
-      editingRowIndex: 1,
-      editState: {
-        rowKey: { id: 2 },
-        originalValues: { id: 2, role_id: 6 },
-        currentValues: { id: 2, role_id: 8 },
-        modifiedColumns: new Set(['role_id']),
-        isNewRow: false,
-      },
-    })
-
-    await user.click(screen.getByTestId('grid-trigger-fk'))
-
-    expect(saveCurrentRowSpy).toHaveBeenCalledWith('tab-1')
-    expect(startEditingRowSpy).not.toHaveBeenCalledWith('tab-1', 0)
-    expect(screen.queryByTestId('fk-lookup-dialog-mock')).not.toBeInTheDocument()
-  })
-
-  it('reselects the current row and closes fk lookup when applying the same value', async () => {
-    const user = userEvent.setup()
-    const setSelectedRowSpy = vi.spyOn(useQueryStore.getState(), 'setSelectedRow')
-    const syncCellValueSpy = vi.spyOn(useQueryStore.getState(), 'syncCellValue')
-
-    renderPanel({
-      editMode: 'appdb.users',
-      editColumnBindings: new Map([[1, 'role_id']]),
-      editForeignKeys: [
-        {
-          columnName: 'role_id',
-          referencedDatabase: 'appdb',
-          referencedTable: 'roles',
-          referencedColumn: 'id',
-          constraintName: 'fk_users_role',
-        },
-      ],
-      editTableMetadata: {
-        'appdb.users': {
-          database: 'appdb',
-          table: 'users',
-          columns: [],
-          primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
-          foreignKeys: [],
-        },
-      },
-      editingRowIndex: 0,
-      editState: {
-        rowKey: { id: 1 },
-        originalValues: { id: 1, role_id: 5 },
-        currentValues: { id: 1, role_id: 5 },
-        modifiedColumns: new Set<string>(),
-        isNewRow: false,
-      },
-    })
-
-    await user.click(screen.getByTestId('grid-trigger-fk'))
-    await user.click(screen.getByTestId('fk-lookup-apply-same'))
-
-    expect(setSelectedRowSpy).toHaveBeenCalledWith('tab-1', 0)
-    expect(syncCellValueSpy).not.toHaveBeenCalled()
-    await waitFor(() => {
-      expect(screen.queryByTestId('fk-lookup-dialog-mock')).not.toBeInTheDocument()
-    })
+    expect(typeof capturedGridProps.onDiscardRow).toBe('function')
   })
 })

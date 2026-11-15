@@ -1,6 +1,5 @@
 import {
   useTableDataStore,
-  isEditingRowKey,
   isSameRowKey,
   findRowIndexByKey as findStoreRowIndexByKey,
   getRowKeyFromData,
@@ -20,9 +19,6 @@ import type {
 import type { TableDataColumnMeta } from '../../../types/schema'
 import { isObjectRecord } from '../../../lib/value-checks'
 
-const EDITING_ROW_CLASS = 'grid-editing-row'
-const NEW_ROW_CLASS = 'grid-new-row'
-export const SELECTED_ROW_CLASS = 'grid-row-precision-selected'
 const NOT_FOUND = -1
 
 export type TableDataRow = Record<string, unknown>
@@ -100,12 +96,6 @@ export function draftTempIdOf(rowKey: RowKey | null): unknown {
   if (!rowKey) return null
   if (!('__tempId' in rowKey)) return null
   return rowKey.__tempId
-}
-
-export function editingRowClasses(editState: TableEditState, rowKey: RowKey): string[] {
-  if (!isEditingRowKey(editState, rowKey)) return []
-  if (editState.isNewRow) return [EDITING_ROW_CLASS, NEW_ROW_CLASS]
-  return [EDITING_ROW_CLASS]
 }
 
 function isDraftRowIndex(editState: TableEditState, rowIndex: number, rowCount: number): boolean {

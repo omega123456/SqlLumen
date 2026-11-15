@@ -1,8 +1,9 @@
 import type { ResultBodyProps } from './ResultBodies'
 import {
   gridTabPanelClassNameFor,
-  isCloneDisabled,
   readEditTable,
+  resultEditLocation,
+  resultRowInsertion,
   resultTabPanelAttributes,
   subTabLabelledBy,
   type DisplayStatus,
@@ -45,8 +46,7 @@ function resolveToolbarProps(inputs: ResultBodyInputs): ResultBodyProps['toolbar
     onFilterClick: filter.openFilterDialog,
     onClearFilterClick: filter.clearFilter,
     isEditingActive: result.editState !== null,
-    isCloneVisible: result.editMode !== null,
-    isCloneDisabled: isCloneDisabled({
+    rowInsertion: resultRowInsertion({
       result: result,
       displayStatus: displayStatus,
       editTableColumns: editTableColumns,
@@ -71,10 +71,10 @@ export function buildResultBodyProps(
       activeResultIndex: activeResultIndex,
       result: result,
       editTableColumns: readEditTable(result).editTableColumns,
+      editLocation: resultEditLocation(location.connectionId, result),
       handlers: controllers.viewHandlers,
       isActive: location.isActive,
     },
     isTabRunning: inputs.isTabRunning,
-    onForeignKeyLookup: controllers.foreignKeyLookup.openLookup,
   }
 }

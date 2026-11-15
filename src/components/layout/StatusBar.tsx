@@ -27,6 +27,7 @@ import {
   IdleStatusBar,
   IndexBuildingIndicator,
   IndexFlashIndicator,
+  PendingWorkInfo,
   QueryInfo,
   QueryRunningInfo,
   TableDataInfo,
@@ -49,7 +50,6 @@ function ActivityRegion({ activity }: { activity: StatusActivity }) {
         />
       )}
       {activity.showRunningInfo && <QueryRunningInfo />}
-      {activity.tableRows !== null && <TableDataInfo visibleRows={activity.tableRows} />}
     </div>
   )
 }
@@ -58,12 +58,18 @@ interface StatusBarTrailingProps {
   activity: StatusActivity
   updateIndicator: ReactNode
   serverVersion: string
+  onCancelPendingWork: () => void
 }
 
-function StatusBarTrailing({ activity, updateIndicator, serverVersion }: StatusBarTrailingProps) {
+function StatusBarTrailing(props: StatusBarTrailingProps) {
+  const { activity, updateIndicator, serverVersion } = props
   return (
     <div className={STATUS_BAR_RIGHT}>
       <ActivityRegion activity={activity} />
+      {activity.pendingWork && (
+        <PendingWorkInfo work={activity.pendingWork} onCancel={props.onCancelPendingWork} />
+      )}
+      {activity.tableInfo && <TableDataInfo info={activity.tableInfo} />}
       {activity.queryInfo && (
         <QueryInfo result={activity.queryInfo.result} rowCount={activity.queryInfo.rowCount} />
       )}
@@ -71,6 +77,11 @@ function StatusBarTrailing({ activity, updateIndicator, serverVersion }: StatusB
       <span className={STATUS_TEXT}>{serverVersion}</span>
     </div>
   )
+}
+
+function cancelPendingRowAction(tabId: string | null, cancelRowAction: (tabId: string) => void) {
+  if (!tabId) return
+  cancelRowAction(tabId)
 }
 
 function updateIndicatorFor(updateStatus: string, onOpenUpdates: () => void): ReactNode {
@@ -83,6 +94,7 @@ export function StatusBar() {
   const connectionTabId = useConnectionStore((state) => state.activeTabId)
   const updateStatus = useUpdateStore((state) => state.status)
   const openSettingsDialog = useSettingsStore((state) => state.openDialog)
+  const cancelRowAction = useQueryStore((state) => state.cancelRowAction)
 
   const { activeWorkspaceTabId, isQueryEditorTab, activeTableDataTabId } =
     useActiveWorkspaceTab(connectionTabId)
@@ -141,6 +153,7 @@ export function StatusBar() {
         activity={activity}
         updateIndicator={updateIndicator}
         serverVersion={activeConnection.serverVersion}
+        onCancelPendingWork={() => cancelPendingRowAction(activeWorkspaceTabId, cancelRowAction)}
       />
     </div>
   )

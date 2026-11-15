@@ -53,7 +53,7 @@ test.describe('windowed query results', () => {
     await waitForApp(page)
     await runQuery(page, 'SELECT * FROM large_result;')
     const grid = await waitForResultGrid(page)
-    await expect(activePanel(page).getByTestId('result-row-count')).toHaveText('12,340 rows')
+    await expect(page.getByTestId('query-rows')).toHaveText(/^12,340 rows/)
     // The first window came with the result: no page fetch yet.
     expect(await windowRequestOffsets(page)).toEqual([])
 
@@ -119,11 +119,9 @@ test.describe('windowed query results', () => {
     await page.getByTestId('filter-apply-button').click()
 
     // Every third row is inactive: 4,114 of 12,340.
-    await expect(activePanel(page).getByTestId('result-row-count')).toHaveText(
-      '4,114 of 12,340 rows',
-      { timeout: APP_READY_MS }
-    )
-    await expect(page.getByTestId('query-rows')).toHaveText('4,114 of 12,340 rows')
+    await expect(page.getByTestId('query-rows')).toHaveText('4,114 of 12,340 rows', {
+      timeout: APP_READY_MS,
+    })
   })
 
   test('a truncated re-runnable result shows the notice and "Export all rows…"', async ({
@@ -139,9 +137,6 @@ test.describe('windowed query results', () => {
     await expect(band).toContainText('Showing the first 100,000 rows')
     await expect(band).toContainText(
       'Result truncated. This query returned more rows than the maximum rows kept per result.'
-    )
-    await expect(activePanel(page).getByTestId('result-row-count')).toHaveText(
-      '100,000+ rows · truncated'
     )
     await expect(page.getByTestId('query-rows')).toHaveText('100,000+ rows · truncated')
 
@@ -168,7 +163,7 @@ test.describe('windowed query results', () => {
     await waitForApp(page)
     await runQuery(page, 'SELECT * FROM users;')
     await waitForResultGrid(page)
-    await expect(activePanel(page).getByTestId('result-row-count')).toHaveText('5 rows')
+    await expect(page.getByTestId('query-rows')).toHaveText(/^5 rows/)
 
     const editModeDropdown = activePanel(page).getByTestId('edit-mode-dropdown')
     await editModeDropdown.click()
@@ -190,11 +185,11 @@ test.describe('windowed query results', () => {
       queryStore.getState().setCheckedRanges(tabId, [[0, 2]])
     })
 
-    await activePanel(page).getByTestId('query-delete-rows-button').click()
+    await activePanel(page).getByTestId('btn-delete-row').click()
     await expect(page.getByText('Delete 2 rows from users?')).toBeVisible()
     await page.getByTestId('confirm-confirm-button').click()
 
-    await expect(activePanel(page).getByTestId('result-row-count')).toHaveText('3 rows', {
+    await expect(page.getByTestId('query-rows')).toHaveText(/^3 rows/, {
       timeout: APP_READY_MS,
     })
   })

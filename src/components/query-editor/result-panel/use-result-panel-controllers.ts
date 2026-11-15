@@ -1,10 +1,6 @@
 import { useCallback, useEffect } from 'react'
 import { useQueryStore, getActiveResult, type SingleResultState } from '../../../stores/query-store'
 import { useResultFilter, type ResultFilter } from './use-result-filter'
-import {
-  useResultForeignKeyLookup,
-  type ResultForeignKeyLookup,
-} from './use-result-foreign-key-lookup'
 import { useResultViewHandlers, type ResultViewHandlers } from './use-result-view-handlers'
 
 export interface ResultPanelControllers {
@@ -12,7 +8,6 @@ export interface ResultPanelControllers {
   activeResultIndex: number
   viewHandlers: ResultViewHandlers
   filter: ResultFilter
-  foreignKeyLookup: ResultForeignKeyLookup
 }
 
 interface InactiveOverlayCloser {
@@ -20,20 +15,18 @@ interface InactiveOverlayCloser {
   isActive: boolean
   exportDialogOpen: boolean
   closeFilterDialog: () => void
-  closeLookup: () => void
 }
 
 function useCloseOverlaysWhenInactive(inputs: InactiveOverlayCloser) {
-  const { tabId, isActive, exportDialogOpen, closeFilterDialog, closeLookup } = inputs
+  const { tabId, isActive, exportDialogOpen, closeFilterDialog } = inputs
   const closeExportDialog = useQueryStore((state) => state.closeExportDialog)
   useEffect(() => {
     if (isActive) return
     queueMicrotask(() => {
       if (exportDialogOpen) closeExportDialog(tabId)
       closeFilterDialog()
-      closeLookup()
     })
-  }, [closeExportDialog, exportDialogOpen, isActive, tabId, closeFilterDialog, closeLookup])
+  }, [closeExportDialog, exportDialogOpen, isActive, tabId, closeFilterDialog])
 }
 
 export function useResultPanelControllers(
@@ -48,20 +41,13 @@ export function useResultPanelControllers(
     activeResultIndex: activeResultIndex,
     result: activeResult,
   })
-  const foreignKeyLookup = useResultForeignKeyLookup({
-    tabId: tabId,
-    activeResultIndex: activeResultIndex,
-    result: activeResult,
-    onRowSelected: viewHandlers.handleRowSelected,
-  })
   useCloseOverlaysWhenInactive({
     tabId: tabId,
     isActive: isActive,
     exportDialogOpen: activeResult.exportDialogOpen,
     closeFilterDialog: filter.closeFilterDialog,
-    closeLookup: foreignKeyLookup.closeLookup,
   })
-  return { activeResult, activeResultIndex, viewHandlers, filter, foreignKeyLookup }
+  return { activeResult, activeResultIndex, viewHandlers, filter }
 }
 
 export function useRetryExpiredResult(tabId: string): () => void {

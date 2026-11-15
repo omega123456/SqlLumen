@@ -1,5 +1,6 @@
 import { Funnel, FunnelX } from '@phosphor-icons/react'
 import { Button, type ButtonVariant } from '../common/Button'
+import { CountBadgeAnchor } from './toolbar/CountBadgeAnchor'
 
 export interface FilterToolbarButtonProps {
   isActive: boolean
@@ -17,6 +18,11 @@ function filterButtonVariant(isActive: boolean): ButtonVariant {
   return 'subtle'
 }
 
+function filterBadgeText(isActive: boolean, activeCount: number): string | null {
+  if (!isActive) return null
+  return String(activeCount)
+}
+
 export function FilterToolbarButton({
   isActive,
   activeCount,
@@ -29,7 +35,10 @@ export function FilterToolbarButton({
 }: FilterToolbarButtonProps) {
   return (
     <>
-      <div className="relative -mt-1 flex items-center overflow-visible pt-1">
+      <CountBadgeAnchor
+        badge={filterBadgeText(isActive, activeCount)}
+        badgeTestId={filterBadgeTestId}
+      >
         <Button
           variant={filterButtonVariant(isActive)}
           size="sm"
@@ -42,15 +51,7 @@ export function FilterToolbarButton({
           <Funnel size={16} weight={isActive ? 'fill' : 'regular'} />
           <span>Filter</span>
         </Button>
-        {isActive && (
-          <span
-            className="pointer-events-none absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-badge bg-light-primary px-0.5 font-mono text-size-caption font-semibold text-light-on-primary dark:bg-dark-primary dark:text-dark-on-primary"
-            data-testid={filterBadgeTestId}
-          >
-            {activeCount}
-          </span>
-        )}
-      </div>
+      </CountBadgeAnchor>
 
       {isActive && (
         <Button

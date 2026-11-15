@@ -11,7 +11,6 @@ import type {
   TableDataColumnMeta,
   TableDataTabState,
 } from '../../../types/schema'
-import { hasPendingRowChanges } from '../../../lib/row-edit-state'
 
 export type RowKey = Record<string, unknown>
 
@@ -22,6 +21,7 @@ const EMPTY_FILTERS: FilterCondition[] = []
 
 export interface ToolbarTabView {
   connectionId: string
+  table: string
   executionTimeMs: number
   isLoading: boolean
   isCancelling: boolean
@@ -41,6 +41,7 @@ export interface ToolbarTabView {
 
 const EMPTY_TOOLBAR_TAB_VIEW: ToolbarTabView = {
   connectionId: '',
+  table: '',
   executionTimeMs: 0,
   isLoading: false,
   isCancelling: false,
@@ -62,6 +63,7 @@ export function toolbarTabView(tabState: TableDataTabState | undefined): Toolbar
   if (!tabState) return EMPTY_TOOLBAR_TAB_VIEW
   return {
     connectionId: tabState.connectionId,
+    table: tabState.table,
     executionTimeMs: tabState.executionTimeMs,
     isLoading: tabState.isLoading,
     isCancelling: tabState.isCancelling ?? false,
@@ -84,10 +86,19 @@ function isNewRowKey(rowKey: RowKey | null): boolean {
   return rowKey !== null && '__tempId' in rowKey
 }
 
-export function deleteTargetCountFor(checkedCount: number, selectedRowKey: RowKey | null): number {
-  if (checkedCount > 0) return checkedCount
-  if (selectedRowKey) return 1
-  return 0
+export function hasDeletableSelection(view: ToolbarTabView): boolean {
+  if (view.selectedRowKey === null) return false
+  return !isNewRowKey(view.selectedRowKey)
+}
+
+export function canCloneSelection(view: ToolbarTabView): boolean {
+  if (!hasDeletableSelection(view)) return false
+  return view.editState?.isNewRow !== true
+}
+
+export function canMutateTableRows(view: ToolbarTabView, isConnectionReadOnly: boolean): boolean {
+  if (isConnectionReadOnly) return false
+  return view.primaryKey !== null
 }
 
 export interface RowIndexLookup {
@@ -112,83 +123,10 @@ export function isTabSettledWithoutError(tabId: string): boolean {
   return Boolean(tabState) && !tabState.error
 }
 
-export interface DeleteCopy {
-  title: string
-  message: string
-  buttonTitle: string
-  buttonLabel: string
-}
-
-export function deleteCopyFor(deleteTargetCount: number): DeleteCopy {
-  if (deleteTargetCount > 1) {
-    return {
-      title: 'Delete rows',
-      message: `Are you sure you want to delete these ${deleteTargetCount} rows?`,
-      buttonTitle: `Delete ${deleteTargetCount} rows`,
-      buttonLabel: `Delete (${deleteTargetCount})`,
-    }
-  }
-  return {
-    title: 'Delete row',
-    message: 'Are you sure you want to delete this row?',
-    buttonTitle: 'Delete row',
-    buttonLabel: 'Delete',
-  }
-}
-
-interface ActionAvailabilityInputs {
-  view: ToolbarTabView
-  isConnectionReadOnly: boolean
-  isBusy: boolean
-  deleteTargetCount: number
-}
-
-function canDeleteTargets(view: ToolbarTabView, deleteTargetCount: number): boolean {
-  if (deleteTargetCount === 0) return false
-  return view.checkedRowKeys.length > 0 || !isNewRowKey(view.selectedRowKey)
-}
-
-function canCloneSelection(view: ToolbarTabView): boolean {
-  if (view.selectedRowKey === null) return false
-  return !isNewRowKey(view.selectedRowKey) && view.editState?.isNewRow !== true
-}
-
-export function rowActionAvailability(inputs: ActionAvailabilityInputs): RowActionAvailability {
-  const { view, isBusy } = inputs
-  const isMutationDisabled = inputs.isConnectionReadOnly || view.primaryKey === null
-  const canMutate = !isMutationDisabled && !isBusy
-  return {
-    canAdd: canMutate && view.editState?.isNewRow !== true,
-    canClone: canMutate && canCloneSelection(view),
-    canDelete: canMutate && canDeleteTargets(view, inputs.deleteTargetCount),
-    canSaveOrDiscard: hasPendingRowChanges(view.editState) && !isBusy,
-  }
-}
-
 export function isNoKeyBadgeVisible(isView: boolean, view: ToolbarTabView): boolean {
   if (isView) return false
   if (view.primaryKey !== null) return false
   return !view.isLoading && view.columns.length > 0
-}
-
-export function positiveOrUndefined(value: number): number | undefined {
-  if (value > 0) return value
-  return undefined
-}
-
-export interface RowActionAvailability {
-  canAdd: boolean
-  canClone: boolean
-  canDelete: boolean
-  canSaveOrDiscard: boolean
-}
-
-export interface RowActionHandlers {
-  onAdd: () => void
-  onClone: () => void
-  onDelete: () => void
-  onSave: () => void
-  onDiscard: () => void
 }
 
 export interface CheckedRowDeletion {

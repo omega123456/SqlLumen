@@ -1,6 +1,4 @@
 import type { TableDataColumnMeta, RowEditState } from '../../types/schema'
-import { getTemporalColumnType, getTodayMysqlString } from '../../lib/date-utils'
-import type { TemporalColumnType } from '../../lib/date-utils'
 import {
   blobPlaceholder,
   convertBinaryPrimaryKeyValuesToEnvelopes,
@@ -14,15 +12,6 @@ const BASE64_CHARS_PER_GROUP = 4
 const BASE64_DOUBLE_PADDING = '=='
 
 const BASE64_SINGLE_PADDING = '='
-
-const CURRENT_TIMESTAMP_DEFAULT = /^current_timestamp(?:\(\d+\))?$/i
-
-const CURRENT_VALUE_DEFAULT_BY_TEMPORAL_TYPE: Partial<
-  Record<NonNullable<TemporalColumnType>, RegExp>
-> = {
-  DATE: /^current_date(?:\(\))?$/i,
-  TIME: /^current_time(?:\(\))?$/i,
-}
 
 function base64PaddingLength(base64: string): number {
   if (base64.endsWith(BASE64_DOUBLE_PADDING)) return BASE64_DOUBLE_PADDING.length
@@ -72,47 +61,6 @@ export function buildInsertPayload(
     values[column.name] = coerceValueForColumn(currentValue, column.dataType)
   }
   return values
-}
-
-function normalizeColumnDefaultValue(columnDefault: string): unknown {
-  const trimmedDefault = columnDefault.trim()
-
-  if (/^null$/i.test(trimmedDefault)) {
-    return null
-  }
-
-  const quotedMatch = trimmedDefault.match(/^'(.*)'$/s)
-  if (quotedMatch) {
-    return quotedMatch[1].replace(/''/g, "'")
-  }
-
-  return trimmedDefault
-}
-
-export function getInitialValueForNewRow(column: TableDataColumnMeta): unknown {
-  if (column.isAutoIncrement) {
-    return null
-  }
-
-  if (column.columnDefault == null) {
-    return null
-  }
-
-  const temporalType = getTemporalColumnType(column.dataType)
-  if (!temporalType) return normalizeColumnDefaultValue(column.columnDefault)
-  if (isCurrentTemporalDefault(column.columnDefault, temporalType)) {
-    return getTodayMysqlString(temporalType)
-  }
-  return normalizeColumnDefaultValue(column.columnDefault)
-}
-
-function isCurrentTemporalDefault(
-  columnDefault: string,
-  temporalType: NonNullable<TemporalColumnType>
-): boolean {
-  if (CURRENT_TIMESTAMP_DEFAULT.test(columnDefault)) return true
-  const currentValueDefault = CURRENT_VALUE_DEFAULT_BY_TEMPORAL_TYPE[temporalType]
-  return currentValueDefault?.test(columnDefault) === true
 }
 
 export type BuildUpdatePayloadResult =
@@ -171,8 +119,4 @@ export function reconcileSavedBlobValue(value: unknown): unknown {
     byteLength = Math.max(0, decodedLength - padding)
   }
   return blobPlaceholder(byteLength)
-}
-
-export function isSeededFromColumnDefault(column: TableDataColumnMeta): boolean {
-  return column.columnDefault != null && !column.isAutoIncrement
 }

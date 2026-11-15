@@ -6,7 +6,7 @@ import { useQueryStore, DEFAULT_RESULT_STATE } from '../../../stores/query-store
 import { useToastStore } from '../../../stores/toast-store'
 import type { SingleResultState, TabQueryState } from '../../../stores/query-store'
 import * as ResultGridViewModule from '../../../components/query-editor/ResultGridView'
-import * as FkLookupDialogModule from '../../../components/table-data/FkLookupDialog'
+import * as FkLookupDialogModule from '../../../components/shared/FkLookupDialog'
 
 // Use vi.spyOn to install per-test mock implementations without vi.mock().
 // ResultGridView is stubbed to avoid rendering the real grid canvas.

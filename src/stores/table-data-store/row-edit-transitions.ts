@@ -1,9 +1,4 @@
-import type {
-  TableDataColumnMeta,
-  TableDataTabState,
-  RowEditState,
-  BlobEnvelope,
-} from '../../types/schema'
+import type { TableDataColumnMeta, TableDataTabState, RowEditState } from '../../types/schema'
 import { normalizeTinyIntRows } from '../../lib/table-data-commands'
 import type { CellValueSync } from '../../components/shared/editor-callbacks-context'
 import { findRowIndexByKey, isDraftRowKey } from './row-keys'
@@ -44,12 +39,6 @@ export function applyUpdatedRow(
   return newRows
 }
 
-export interface StagedBlobEnvelope {
-  rowData: Record<string, unknown>
-  column: string
-  envelope: BlobEnvelope
-}
-
 export interface TableCellValueSync extends CellValueSync {
   rowKeyOverride?: Record<string, unknown>
 }
@@ -72,17 +61,6 @@ export function withColumnModified(
   }
   nextModifiedColumns.add(column)
   return nextModifiedColumns
-}
-
-export function rowDataBaseline(
-  columns: TableDataColumnMeta[],
-  rowData: Record<string, unknown>
-): Record<string, unknown> {
-  const baseline: Record<string, unknown> = {}
-  for (const column of columns) {
-    baseline[column.name] = rowData[column.name]
-  }
-  return baseline
 }
 
 function isRowIndexWithin(rowIndexHint: unknown, rowCount: number): rowIndexHint is number {

@@ -59,6 +59,27 @@ function setupActiveConnection() {
   })
 }
 
+function setupStandaloneTableTab() {
+  setupActiveConnection()
+  useWorkspaceStore.setState({
+    tabsByConnection: {
+      'conn-1': [
+        {
+          id: 'table-1',
+          type: 'table-data',
+          label: 'users',
+          connectionId: 'conn-1',
+          databaseName: 'mydb',
+          objectName: 'users',
+          objectType: 'table',
+        } as WorkspaceTab,
+      ],
+    },
+    activeTabByConnection: { 'conn-1': 'table-1' },
+  })
+  seedVisibleConnection('conn-1')
+}
+
 function makeStatusBarTableState(overrides: Partial<TableDataTabState> = {}): TableDataTabState {
   return makeTableDataTabState({
     columns: [
@@ -605,34 +626,165 @@ describe('StatusBar', () => {
       expect(screen.queryByTestId('query-info')).not.toBeInTheDocument()
     })
 
-    it('does not show table-data row count when the active table-data tab is in form view', () => {
-      setupActiveConnection()
-      useWorkspaceStore.setState({
-        tabsByConnection: {
-          'conn-1': [
-            {
-              id: 'table-1',
-              type: 'table-data',
-              label: 'users',
-              connectionId: 'conn-1',
-              databaseName: 'mydb',
-              objectName: 'users',
-              objectType: 'table',
-            } as WorkspaceTab,
-          ],
-        },
-        activeTabByConnection: { 'conn-1': 'table-1' },
-      })
-      seedVisibleConnection('conn-1')
+    it('shows the row count and exec time in form view too', () => {
+      setupStandaloneTableTab()
       useTableDataStore.setState({
         tabs: {
-          'table-1': makeStatusBarTableState({ viewMode: 'form' }),
+          'table-1': makeStatusBarTableState({ viewMode: 'form', executionTimeMs: 42 }),
         },
       })
 
       render(<StatusBar />)
 
-      expect(screen.queryByTestId('table-data-info')).not.toBeInTheDocument()
+      expect(screen.getByTestId('table-data-rows')).toHaveTextContent('Rows 3')
+      expect(screen.getByTestId('table-data-time')).toHaveTextContent('Exec 42 ms')
+    })
+
+    it('omits the exec time when the table load reported none', () => {
+      setupStandaloneTableTab()
+      useTableDataStore.setState({
+        tabs: { 'table-1': makeStatusBarTableState({ executionTimeMs: 0 }) },
+      })
+
+      render(<StatusBar />)
+
+      expect(screen.getByTestId('table-data-rows')).toHaveTextContent('Rows 3')
+      expect(screen.queryByTestId('table-data-time')).not.toBeInTheDocument()
+    })
+
+    it('shows the loading and restoring states as pending work', () => {
+      setupStandaloneTableTab()
+      useTableDataStore.setState({
+        tabs: { 'table-1': makeStatusBarTableState({ isLoading: true }) },
+      })
+      const { unmount } = render(<StatusBar />)
+      expect(screen.getByTestId('status-pending-work-label')).toHaveTextContent('Loading...')
+      expect(screen.queryByTestId('row-action-cancel')).not.toBeInTheDocument()
+      unmount()
+
+      act(() => {
+        useTableDataStore.setState({
+          tabs: {
+            'table-1': makeStatusBarTableState({
+              isLoading: true,
+              rowResidency: { status: 'restoring', isActive: true, inactiveSince: null },
+            }),
+          },
+        })
+      })
+      render(<StatusBar />)
+      expect(screen.getByTestId('status-pending-work-label')).toHaveTextContent(
+        'Restoring cached rows...'
+      )
+    })
+  })
+
+  describe('query result pending work', () => {
+    function setupQueryTab(overrides: Record<string, unknown>) {
+      setupActiveConnection()
+      useWorkspaceStore.setState({
+        tabsByConnection: {
+          'conn-1': [
+            {
+              id: 'tab-1',
+              type: 'query-editor',
+              label: 'Query 1',
+              connectionId: 'conn-1',
+            } as WorkspaceTab,
+          ],
+        },
+        activeTabByConnection: { 'conn-1': 'tab-1' },
+      })
+      seedVisibleConnection('conn-1')
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': makeTabState({
+            status: 'success',
+            totalRows: 100000,
+            viewRowCount: 100000,
+            queryId: 'q1',
+            columns: [{ name: 'id', dataType: 'INT' }],
+            ...overrides,
+          }),
+        },
+      })
+    }
+
+    it('shows nothing pending for a settled result', () => {
+      setupQueryTab({})
+      render(<StatusBar />)
+      expect(screen.queryByTestId('status-pending-work')).not.toBeInTheDocument()
+      expect(screen.getByTestId('query-rows')).toHaveTextContent('100,000 rows')
+    })
+
+    it('shows "Filtering…" next to the still-visible count', () => {
+      setupQueryTab({ isFiltering: true })
+      render(<StatusBar />)
+      expect(screen.getByTestId('status-pending-work-label')).toHaveTextContent('Filtering…')
+      expect(screen.getByTestId('query-rows')).toHaveTextContent('100,000 rows')
+    })
+
+    it('shows and announces "Loading rows X–Y…" for a pending window', () => {
+      setupQueryTab({ pendingWindowRange: [12000, 13000] })
+      render(<StatusBar />)
+      expect(screen.getByTestId('status-pending-work-label')).toHaveTextContent(
+        'Loading rows 12,001–13,000…'
+      )
+      expect(screen.getByRole('status')).toHaveTextContent('Loading rows 12,001–13,000…')
+    })
+
+    it('shows the row-action progress with a Cancel that cancels the action', async () => {
+      const user = userEvent.setup()
+      const onCancel = vi.fn()
+      setupQueryTab({})
+      act(() => {
+        useQueryStore
+          .getState()
+          .beginRowAction('tab-1', { verb: 'Copying', total: 12340, onCancel: onCancel })
+      })
+      render(<StatusBar />)
+      expect(screen.queryByTestId('status-pending-work')).not.toBeInTheDocument()
+
+      act(() => {
+        const result = useQueryStore.getState().tabs['tab-1']!.results[0]
+        useQueryStore.setState((state) => ({
+          tabs: {
+            ...state.tabs,
+            'tab-1': {
+              ...state.tabs['tab-1']!,
+              results: [
+                {
+                  ...result,
+                  rowActionProgress: { ...result.rowActionProgress!, done: 4000, visible: true },
+                },
+              ],
+            },
+          },
+        }))
+      })
+      expect(screen.getByTestId('status-pending-work-label')).toHaveTextContent(
+        'Copying… 4,000 of 12,340'
+      )
+      expect(screen.getByRole('status')).toHaveTextContent('Copying… 12,340 rows')
+      await user.click(screen.getByTestId('row-action-cancel'))
+      expect(onCancel).toHaveBeenCalledTimes(1)
+    })
+
+    it('shows the delete progress without Cancel', () => {
+      setupQueryTab({
+        rowActionProgress: {
+          verb: 'Deleting',
+          done: 1200,
+          total: 4200,
+          cancellable: false,
+          visible: true,
+        },
+      })
+      render(<StatusBar />)
+      expect(screen.getByTestId('status-pending-work-label')).toHaveTextContent(
+        'Deleting… 1,200 of 4,200'
+      )
+      expect(screen.queryByTestId('row-action-cancel')).not.toBeInTheDocument()
     })
   })
 

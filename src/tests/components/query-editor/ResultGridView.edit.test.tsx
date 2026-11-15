@@ -9,6 +9,8 @@ import type { ColumnMeta, RowEditState, TableDataColumnMeta } from '../../../typ
 import { DEFAULT_RESULT_STATE, useQueryStore } from '../../../stores/query-store'
 import * as CanvasBaseGridViewModule from '../../../components/shared/glide/CanvasBaseGridView'
 import { AUTO_SIZE_SAMPLE_LIMIT, getAutoSizedColumnWidth } from '../../../lib/grid-column-style'
+import { useToastStore } from '../../../stores/toast-store'
+import { expectToast } from '../../ipc-mock'
 
 // CanvasBaseGridView is a forwardRef object — vi.spyOn can't intercept it.
 // Use Object.defineProperty to replace it per-test (same pattern as TableDataFormView.test.tsx).
@@ -113,6 +115,7 @@ function getGridProps() {
 beforeEach(() => {
   vi.clearAllMocks()
   useQueryStore.setState({ tabs: {} })
+  useToastStore.setState({ toasts: [] })
 
   mockCanvasBaseGridView = vi.fn(
     (gridProps: Record<string, unknown>) =>
@@ -272,6 +275,43 @@ describe('ResultGridView editing', () => {
     )
 
     expect(getGridProps().columns[0].editorType).toBe('json')
+  })
+
+  it('marks editable temporal result columns for the datetime editor type', () => {
+    const temporalColumns: ColumnMeta[] = [{ name: 'created_at', dataType: 'DATETIME' }]
+    const temporalTableColumns: TableDataColumnMeta[] = [
+      {
+        name: 'created_at',
+        dataType: 'datetime',
+        isBooleanAlias: false,
+        isNullable: true,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: false,
+      },
+    ]
+
+    render(
+      <ResultGridView
+        {...props}
+        columns={temporalColumns}
+        rows={[['2026-01-15 10:30:00']]}
+        editState={{
+          rowKey: { created_at: '2026-01-15 10:30:00' },
+          originalValues: { created_at: '2026-01-15 10:30:00' },
+          currentValues: { created_at: '2026-01-15 10:30:00' },
+          modifiedColumns: new Set(),
+          isNewRow: false,
+        }}
+        editTableColumns={temporalTableColumns}
+        editColumnBindings={new Map([[0, 'created_at']])}
+      />
+    )
+
+    expect(getGridProps().columns[0].editorType).toBe('datetime')
   })
 
   it('overlays current edit values onto the editing row data', () => {
@@ -720,6 +760,50 @@ describe('ResultGridView editing', () => {
 
     expect(onAutoSave).toHaveBeenCalledTimes(1)
     expect(onSyncCellValue).not.toHaveBeenCalled()
+  })
+
+  it('blocks the row switch with the invalid date toast when an edited date is invalid', async () => {
+    const onAutoSave = vi.fn(async () => true)
+    const createdAtColumn: TableDataColumnMeta = {
+      ...tableColumns[0],
+      name: 'created_at',
+      dataType: 'date',
+      isPrimaryKey: false,
+      isNullable: true,
+    }
+
+    render(
+      <ResultGridView
+        {...props}
+        columns={[{ name: 'created_at', dataType: 'DATE' }]}
+        rows={[['2025-01-01'], ['2025-01-02']]}
+        editTableColumns={[createdAtColumn]}
+        editColumnBindings={new Map([[0, 'created_at']])}
+        editState={{
+          rowKey: { created_at: '2025-01-01' },
+          originalValues: { created_at: '2025-01-01' },
+          currentValues: { created_at: 'not-a-date' },
+          modifiedColumns: new Set(['created_at']),
+          isNewRow: false,
+        }}
+        onAutoSave={onAutoSave}
+      />
+    )
+
+    const gridProps = getGridProps()
+    let result: Awaited<ReturnType<typeof gridProps.onCellClickGuard>> | undefined
+    await act(async () => {
+      result = await gridProps.onCellClickGuard({
+        rowIdx: 1,
+        columnKey: 'col_0',
+        rowData: gridProps.rows[1],
+      })
+    })
+
+    expect(onAutoSave).not.toHaveBeenCalled()
+    expect(result?.proceed).toBe(false)
+    expect(result?.targetRowIdx).toBe(0)
+    expectToast('error', 'Invalid date value')
   })
 
   it('auto-saves on row change only when there are modified columns', async () => {

@@ -764,6 +764,26 @@ describe('useQueryStore — setViewMode', () => {
   })
 })
 
+describe('useQueryStore — setResultColumnWidth', () => {
+  it('remembers each resized column width on the active result', async () => {
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-widths', 'SELECT 1')
+
+    useQueryStore.getState().setResultColumnWidth('tab-widths', 'col_0', 180)
+    useQueryStore.getState().setResultColumnWidth('tab-widths', 'col_1', 90)
+
+    expect(flat('tab-widths').columnWidths).toEqual({ col_0: 180, col_1: 90 })
+  })
+
+  it('forgets the widths when the query runs again', async () => {
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-widths-rerun', 'SELECT 1')
+    useQueryStore.getState().setResultColumnWidth('tab-widths-rerun', 'col_0', 180)
+
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-widths-rerun', 'SELECT 1')
+
+    expect(flat('tab-widths-rerun').columnWidths).toEqual({})
+  })
+})
+
 describe('useQueryStore — setSelectedRow', () => {
   it('sets selected row index', () => {
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
@@ -1994,9 +2014,23 @@ describe('useQueryStore — deleteResultRows', () => {
     await expectToast('error', 'access denied')
   })
 
-  it('no-ops when nothing is checked', async () => {
+  it('deletes the selected row when nothing is checked', async () => {
     ipc.override('delete_table_row', () => undefined)
-    setupEditableResult('tab-del-empty', { checkedRanges: [] })
+    removedResponse()
+    setupEditableResult('tab-del-selected', { checkedRanges: [] })
+
+    const count = await useQueryStore.getState().deleteResultRows('tab-del-selected')
+
+    expect(count).toBe(1)
+    const calls = ipc.payloads('delete_table_row') as Array<Record<string, unknown>>
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({ primaryKeyValues: { id: 2 } })
+    expect(ipc.payloads('remove_result_rows')[0]).toMatchObject({ baseIndices: [1] })
+  })
+
+  it('no-ops when nothing is checked and no row is selected', async () => {
+    ipc.override('delete_table_row', () => undefined)
+    setupEditableResult('tab-del-empty', { checkedRanges: [], selectedRowIndex: null })
 
     const count = await useQueryStore.getState().deleteResultRows('tab-del-empty')
     expect(count).toBe(0)

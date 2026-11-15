@@ -112,6 +112,15 @@ export function setResultScrollCell(tabId: string, scrollRow: number, scrollColu
   patchResultByIndex(tabId, resultIndex, { scrollRow: scrollRow, scrollCol: scrollColumn })
 }
 
+export function setResultColumnWidth(tabId: string, columnKey: string, width: number) {
+  const resultIndex = getActiveIndex(tabId)
+  const result = resultAt(tabId, resultIndex)
+  if (!result) return
+  patchResultByIndex(tabId, resultIndex, {
+    columnWidths: { ...result.columnWidths, [columnKey]: width },
+  })
+}
+
 export function applyQueryFilters(
   tabId: string,
   resultIndex: number,
@@ -153,6 +162,7 @@ export function resultViewActions() {
     retryViewChange,
     setSelectedCell,
     setResultScrollCell,
+    setResultColumnWidth,
     applyQueryFilters,
     sortResults,
   }

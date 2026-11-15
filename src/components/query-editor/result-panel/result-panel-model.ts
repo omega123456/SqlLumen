@@ -1,15 +1,11 @@
-import type { SingleResultState } from '../../../stores/query-store'
-import { readViewRange, type CachedRow } from '../../../lib/result-window-cache'
-import { logFrontend } from '../../../lib/app-log-commands'
-import { toCachedRow } from '../../../lib/result-row-materializer'
+import { isSelectedRowInView, type SingleResultState } from '../../../stores/query-store'
+import type { DataViewLocation } from '../../../types/shared-data-view'
 import type {
-  ForeignKeyColumnInfo,
   FullExportBlockedReason,
   PrimaryKeyInfo,
   TableDataColumnMeta,
 } from '../../../types/schema'
 import { RESULT_GRID_TAB_PANEL, RESULT_TAB_PANEL } from './result-panel-classes'
-import { toErrorMessage } from '../../../lib/error-message'
 import { hasPendingRowChanges } from '../../../lib/row-edit-state'
 
 export const EMPTY_TABLE_COLUMNS: TableDataColumnMeta[] = []
@@ -21,13 +17,6 @@ export const TRUNCATION_MESSAGES: Record<FullExportBlockedReason | 'none', strin
     'Result truncated. Exporting all rows would run this locking query again and take its locks again. To export every row, remove the locking clause and run the query again.',
   unknownDatabase:
     "Result truncated. The database this query ran in couldn't be recorded, so all rows can't be exported. Run the query again to enable full export.",
-}
-
-export function cachedRowFromRowData(
-  rowData: Record<string, unknown>,
-  columnCount: number
-): CachedRow | null {
-  return typeof rowData.__baseIdx === 'number' ? toCachedRow(rowData, columnCount) : null
 }
 
 export type DisplayStatus = SingleResultState['resultStatus'] | 'running' | 'restoring' | 'idle'
@@ -43,11 +32,6 @@ export function resolveDisplayStatus(inputs: DisplayStatusInputs): DisplayStatus
   if (inputs.rowResidencyStatus === 'restoring') return 'restoring'
   if (inputs.tabStatus === 'idle') return 'idle'
   return inputs.resultStatus
-}
-
-function isSelectedRowInView(selectedRowIndex: number | null, viewRowCount: number): boolean {
-  if (selectedRowIndex === null) return false
-  return selectedRowIndex >= 0 && selectedRowIndex < viewRowCount
 }
 
 function isInsertEligibleNonPrimaryColumn(
@@ -67,12 +51,19 @@ function hasInsertEligibleNonPrimaryColumns(
   )
 }
 
-interface CloneAvailability {
+interface RowInsertionInputs {
   result: SingleResultState
   displayStatus: DisplayStatus
   editTableColumns: TableDataColumnMeta[]
   primaryKey: PrimaryKeyInfo | null
 }
+
+export interface ResultRowInsertion {
+  canAddRow: boolean
+  canCloneSelection: boolean
+}
+
+export const NO_ROW_INSERTION: ResultRowInsertion = { canAddRow: false, canCloneSelection: false }
 
 function isCloneBlockedByEditing(result: SingleResultState): boolean {
   const selectedRowIsDraft =
@@ -80,20 +71,34 @@ function isCloneBlockedByEditing(result: SingleResultState): boolean {
   return hasPendingRowChanges(result.editState) || selectedRowIsDraft
 }
 
-export function isCloneDisabled(availability: CloneAvailability): boolean {
-  const { result, primaryKey } = availability
+function isRowInsertionBlocked(inputs: RowInsertionInputs): boolean {
+  const { result, primaryKey } = inputs
   if (result.editMode === null) return true
-  if (availability.displayStatus !== 'success') return true
+  if (inputs.displayStatus !== 'success') return true
   if (result.isAnalyzingQuery) return true
   if (result.viewMode === 'text') return true
-  if (isCloneBlockedByEditing(result)) return true
-  if (!isSelectedRowInView(result.selectedRowIndex, result.viewRowCount)) return true
   if (!primaryKey) return true
-  if (primaryKey.isUniqueKeyFallback) return true
-  return !hasInsertEligibleNonPrimaryColumns(
-    availability.editTableColumns,
-    result.editBoundColumnIndexMap
-  )
+  return primaryKey.isUniqueKeyFallback
+}
+
+function canAddResultRow(inputs: RowInsertionInputs): boolean {
+  if (isRowInsertionBlocked(inputs)) return false
+  return inputs.result.draftRow === null
+}
+
+function canCloneResultRow(inputs: RowInsertionInputs): boolean {
+  const { result } = inputs
+  if (isRowInsertionBlocked(inputs)) return false
+  if (isCloneBlockedByEditing(result)) return false
+  if (!isSelectedRowInView(result)) return false
+  return hasInsertEligibleNonPrimaryColumns(inputs.editTableColumns, result.editBoundColumnIndexMap)
+}
+
+export function resultRowInsertion(inputs: RowInsertionInputs): ResultRowInsertion {
+  return {
+    canAddRow: canAddResultRow(inputs),
+    canCloneSelection: canCloneResultRow(inputs),
+  }
 }
 
 export function gridTabPanelClassNameFor(viewMode: string, columnCount: number): string {
@@ -122,41 +127,6 @@ export function dmlSuccessMessage(affectedRows: number): string {
   return `${affectedRows} ${affectedRows === 1 ? 'row' : 'rows'} affected`
 }
 
-export function rowIndexFromRowData(rowData: Record<string, unknown>): number {
-  const rowIndexRaw = rowData.__rowIdx
-  return typeof rowIndexRaw === 'number' ? rowIndexRaw : 0
-}
-
-interface LookupRowRequest {
-  tabId: string
-  resultIndex: number
-  rowIndex: number
-}
-
-export async function resolveLookupRow(
-  rowData: Record<string, unknown>,
-  columnCount: number,
-  request: LookupRowRequest
-): Promise<CachedRow | undefined> {
-  const fromGrid = cachedRowFromRowData(rowData, columnCount)
-  if (fromGrid) return fromGrid
-  const { tabId, resultIndex, rowIndex } = request
-  try {
-    const fetched = await readViewRange({
-      tabId: tabId,
-      resultIndex: resultIndex,
-      range: [rowIndex, rowIndex + 1],
-    })
-    return fetched[0]
-  } catch (error) {
-    logFrontend(
-      'warn',
-      `[result-panel] FK lookup could not load row ${rowIndex + 1}: ${toErrorMessage(error)}`
-    )
-    return undefined
-  }
-}
-
 export function readEditTable(result: SingleResultState) {
   const editTable = result.editMode ? result.editTableMetadata[result.editMode] : undefined
   return {
@@ -182,27 +152,15 @@ export function shouldShowExpiredState(isExpired: boolean, displayStatus: Displa
   return isExpired && displayStatus !== 'running'
 }
 
-export interface ForeignKeyLookupContext {
-  columnKey: string
-  sourceColumn: string
-  currentValue: unknown
-  foreignKey: ForeignKeyColumnInfo
-  rowData: Record<string, unknown>
-}
-
-interface ForeignKeyLookupTargetInputs {
-  context: ForeignKeyLookupContext | null
-  editMode: string | null
-  editTable: ReturnType<typeof readEditTable>['editTable']
-}
-
-export function resolveForeignKeyLookupTarget(inputs: ForeignKeyLookupTargetInputs) {
-  const { context, editMode, editTable } = inputs
-  if (!context) return null
-  if (!editMode) return null
+export function resultEditLocation(
+  connectionId: string,
+  result: SingleResultState
+): DataViewLocation | null {
+  if (!result.editMode) return null
+  const { editTable } = readEditTable(result)
   return {
-    context: context,
-    database: context.foreignKey.referencedDatabase || editTable?.database || '',
-    sourceTable: editTable?.table ?? editMode,
+    connectionId: connectionId,
+    database: editTable?.database ?? '',
+    table: editTable?.table ?? result.editMode,
   }
 }

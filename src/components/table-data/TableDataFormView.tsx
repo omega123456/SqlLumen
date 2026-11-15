@@ -1,19 +1,23 @@
-import { useCallback } from 'react'
 import { useTableDataStore } from '../../stores/table-data-store'
 import { useIsConnectionReadOnly } from '../../stores/connection-store'
 import { BaseFormView } from '../shared/BaseFormView'
 import { FkLookupProvider } from '../shared/fk-lookup-context'
-import { BlobViewerTargetDialog, ForeignKeyLookupTargetDialog } from './TableDataCellDialogs'
-import { useBlobViewerState } from './use-blob-viewer-state'
-import type { GridColumnDescriptor } from '../../types/shared-data-view'
+import { BlobViewerTargetDialog } from '../shared/data-view/BlobViewerTargetDialog'
+import { ForeignKeyLookupTargetDialog } from '../shared/data-view/ForeignKeyLookupTargetDialog'
+import { useBlobViewer } from '../shared/data-view/use-blob-viewer'
+import { useForeignKeyLookup } from '../shared/data-view/use-foreign-key-lookup'
+import {
+  useFormEditHandlers,
+  useFormRecordNavigation,
+} from '../shared/data-view/use-form-edit-handlers'
+import { useTableEditSession } from './table-data-edit-session'
 import {
   canEditFormRows,
   formTabView,
   isAtFirstRecord,
 } from './table-data-form-view/form-view-model'
 import { useFormCurrentRecord } from './table-data-form-view/use-form-current-record'
-import { useFormForeignKeys } from './table-data-form-view/use-form-foreign-keys'
-import { useFormEditing, useFormNavigation } from './table-data-form-view/use-form-record-actions'
+import { useTableFormNavigate } from './table-data-form-view/use-form-record-actions'
 
 export interface TableDataFormViewProps {
   tabId: string
@@ -22,29 +26,6 @@ export interface TableDataFormViewProps {
 }
 
 const BLOB_VIEW_DISABLED_REASON = 'Cannot view BLOB — table has no primary key'
-
-function useFormBlobViewer(
-  tabId: string,
-  view: ReturnType<typeof formTabView>,
-  isEditable: boolean
-) {
-  const blobViewer = useBlobViewerState({
-    tabId: tabId,
-    columns: view.columns,
-    primaryKeyColumns: view.primaryKeyColumns,
-  })
-  const canResolveBlobPrimaryKey = isEditable && view.primaryKeyColumns.length > 0
-  const { openBlobViewer } = blobViewer
-  const onBlobView = useCallback(
-    (column: GridColumnDescriptor, rowData: Record<string, unknown> | null) => {
-      if (!rowData) return
-      if (!canResolveBlobPrimaryKey) return
-      openBlobViewer(column.key, rowData)
-    },
-    [canResolveBlobPrimaryKey, openBlobViewer]
-  )
-  return { blobViewer, canResolveBlobPrimaryKey, onBlobView }
-}
 
 function useTableFormModel({ tabId, isView, isActive = true }: TableDataFormViewProps) {
   const tabState = useTableDataStore((state) => state.tabs[tabId])
@@ -55,40 +36,53 @@ function useTableFormModel({ tabId, isView, isActive = true }: TableDataFormView
     hasPrimaryKey: view.primaryKey !== null,
     isView: isView,
   })
-  const record = useFormCurrentRecord(view)
-  const recordInputs = {
+  const record = useFormCurrentRecord(view, isEditable)
+  const session = useTableEditSession({
+    tabId: tabId,
+    columns: view.columns,
+    primaryKeyColumns: view.primaryKeyColumns,
+    descriptorColumns: record.gridColumns,
+    canEditRows: isEditable,
+  })
+  const editHandlers = useFormEditHandlers({
+    session: session,
+    currentRowData: record.currentRowData,
+    columns: record.gridColumns,
+  })
+  const foreignKeyLookup = useForeignKeyLookup({
+    session: session,
+    columns: record.gridColumns,
+    isActive: isActive,
+    gridFocus: null,
+  })
+  const blobViewer = useBlobViewer({ session: session, columns: record.gridColumns })
+  const navigate = useTableFormNavigate({
     tabId: tabId,
     view: view,
     record: record,
-    isEditable: isEditable,
     hasTabState: tabState !== undefined,
-  }
-  const editing = useFormEditing(recordInputs)
-  const foreignKeys = useFormForeignKeys({
-    ...recordInputs,
-    isActive: isActive,
-    ensureEditingCurrentRow: editing.ensureEditingCurrentRow,
   })
+  const navigation = useFormRecordNavigation(session, navigate)
   return {
     tabState: tabState,
     view: view,
     isEditable: isEditable,
     record: record,
-    editing: editing,
-    navigation: useFormNavigation(recordInputs),
-    foreignKeys: foreignKeys,
-    blob: useFormBlobViewer(tabId, view, isEditable),
+    editHandlers: editHandlers,
+    navigation: navigation,
+    foreignKeyLookup: foreignKeyLookup,
+    blobViewer: blobViewer,
   }
 }
 
 export function TableDataFormView(props: TableDataFormViewProps) {
   const { tabId } = props
-  const { tabState, view, isEditable, record, editing, navigation, foreignKeys, blob } =
-    useTableFormModel(props)
+  const model = useTableFormModel(props)
+  const { tabState, view, isEditable, record, editHandlers, navigation } = model
   const { currentPage, pageSize, isLoading } = view
-  const { foreignKeyLookupTarget } = foreignKeys
+  const hasPrimaryKeyColumns = view.primaryKeyColumns.length > 0
   return (
-    <FkLookupProvider onFkLookup={foreignKeys.onForeignKeyLookup}>
+    <FkLookupProvider onFkLookup={model.foreignKeyLookup.openLookup}>
       <BaseFormView
         columns={record.gridColumns}
         currentRow={record.currentRow}
@@ -100,27 +94,19 @@ export function TableDataFormView(props: TableDataFormViewProps) {
         onNavigateNext={navigation.onNavigateNext}
         isLoading={isLoading}
         editState={record.sharedEditState}
-        onEnsureEditing={editing.onEnsureEditing}
-        onUpdateCell={editing.onUpdateCell}
-        onSave={isEditable ? editing.onSave : undefined}
-        onDiscard={isEditable ? editing.onDiscard : undefined}
+        onEnsureEditing={editHandlers.onEnsureEditing}
+        onUpdateCell={editHandlers.onUpdateCell}
+        onSave={isEditable ? editHandlers.onSave : undefined}
+        onDiscard={isEditable ? editHandlers.onDiscard : undefined}
         readOnly={!isEditable}
         testId="table-data-form-view"
         workspaceTabId={tabId}
-        onBlobView={blob.onBlobView}
-        blobViewDisabled={!blob.canResolveBlobPrimaryKey}
+        onBlobView={model.blobViewer.openFormFieldBlob}
+        blobViewDisabled={!hasPrimaryKeyColumns}
         blobViewDisabledReason={BLOB_VIEW_DISABLED_REASON}
       />
-      {foreignKeyLookupTarget && tabState && (
-        <ForeignKeyLookupTargetDialog
-          target={foreignKeyLookupTarget}
-          tableLocation={tabState}
-          isReadOnly={!isEditable}
-          onClose={foreignKeys.closeForeignKeyLookup}
-          onApply={foreignKeys.onForeignKeyApply}
-        />
-      )}
-      <BlobViewerTargetDialog viewer={blob.blobViewer} />
+      <ForeignKeyLookupTargetDialog lookup={model.foreignKeyLookup} location={tabState ?? null} />
+      <BlobViewerTargetDialog viewer={model.blobViewer} />
     </FkLookupProvider>
   )
 }

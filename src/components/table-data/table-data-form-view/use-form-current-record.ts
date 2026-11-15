@@ -1,25 +1,26 @@
 import { useMemo } from 'react'
 import { isEditingRowKey } from '../../../stores/table-data-store'
-import { buildForeignKeyLookup } from '../../../lib/foreign-key-utils'
 import type { RowEditState as SharedRowEditState } from '../../../types/shared-data-view'
 import {
   buildCurrentRowData,
   findSelectedLocalIndex,
   getRowKeyFromArray,
-  toGridColumns,
   type FormTabView,
 } from './form-view-model'
+import { buildColumnDescriptors } from '../table-data-grid-columns'
 
-function useFormGridColumns(view: FormTabView) {
-  const { columns, foreignKeys } = view
-  const foreignKeyLookup = useMemo(() => buildForeignKeyLookup(foreignKeys), [foreignKeys])
+function useFormGridColumns(view: FormTabView, isEditable: boolean) {
+  const { columns, foreignKeys, primaryKey } = view
+  const hasPrimaryKey = primaryKey !== null
   return useMemo(
     () =>
-      toGridColumns(columns).map((column) => ({
-        ...column,
-        foreignKey: foreignKeyLookup.get(column.key.toLowerCase()),
-      })),
-    [columns, foreignKeyLookup]
+      buildColumnDescriptors({
+        columns: columns,
+        isReadOnly: !isEditable,
+        hasPrimaryKey: hasPrimaryKey,
+        foreignKeys: foreignKeys,
+      }),
+    [columns, foreignKeys, hasPrimaryKey, isEditable]
   )
 }
 
@@ -33,7 +34,7 @@ function useCurrentRowKey(view: FormTabView, currentRow: unknown[] | null) {
   }, [editState, currentRow, columns, primaryKeyColumns])
 }
 
-export function useFormCurrentRecord(view: FormTabView) {
+export function useFormCurrentRecord(view: FormTabView, isEditable: boolean) {
   const { selectedRowKey, rows, columns, primaryKeyColumns, editState } = view
   const localIndex = useMemo(
     () =>
@@ -68,7 +69,7 @@ export function useFormCurrentRecord(view: FormTabView) {
     currentRowKey: currentRowKey,
     currentRowData: currentRowData,
     sharedEditState: sharedEditState,
-    gridColumns: useFormGridColumns(view),
+    gridColumns: useFormGridColumns(view, isEditable),
   }
 }
 

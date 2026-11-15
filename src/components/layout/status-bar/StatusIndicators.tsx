@@ -20,7 +20,9 @@ import {
   type FlashType,
   type IndexingProgress,
   type RowCountParts,
+  type TableDataInfoState,
 } from './status-bar-model'
+import type { PendingWork } from './pending-work-model'
 
 const INDEXING_INDICATOR = 'flex shrink-0 items-center gap-1 transition-fade-slide duration-500'
 const INDEXING_ICON = 'size-3 shrink-0'
@@ -96,22 +98,69 @@ export function IndexFlashIndicator({
   )
 }
 
+function StatusSpinner() {
+  return (
+    <span
+      className="inline-block size-2.5 animate-spin-700ms rounded-round border-spinner border-light-primary-a30 border-t-light-primary window-blurred:animate-spin-700ms-paused dark:border-dark-primary-a30 dark:border-t-dark-primary"
+      aria-hidden="true"
+    />
+  )
+}
+
 export function QueryRunningInfo() {
   return (
     <div className="flex shrink-0 items-center gap-1" data-testid="query-running-info">
-      <span className="inline-block size-2.5 animate-spin-700ms rounded-round border-spinner border-light-primary-a30 border-t-light-primary window-blurred:animate-spin-700ms-paused dark:border-dark-primary-a30 dark:border-t-dark-primary" />
+      <StatusSpinner />
       <span className={STATUS_TEXT}>Running...</span>
     </div>
   )
 }
 
-export function TableDataInfo({ visibleRows }: { visibleRows: number }) {
+interface PendingWorkInfoProps {
+  work: PendingWork
+  onCancel: () => void
+}
+
+export function PendingWorkInfo({ work, onCancel }: PendingWorkInfoProps) {
   return (
-    <div className={QUERY_INFO} data-testid="table-data-info">
+    <div className="flex shrink-0 items-center gap-1" data-testid="status-pending-work">
+      <StatusSpinner />
+      <span className={STATUS_TEXT} data-testid="status-pending-work-label">
+        {work.label}
+      </span>
+      {work.isCancellable && (
+        <Button
+          variant="bare"
+          className={joinClassNames([
+            'ml-1 cursor-pointer p-0 text-size-caption whitespace-nowrap text-light-primary hover:underline focus-visible:underline dark:text-dark-primary',
+            FOCUS_RING,
+          ])}
+          onClick={onCancel}
+          data-testid="row-action-cancel"
+        >
+          Cancel
+        </Button>
+      )}
+      <span className="sr-only" role="status" aria-live="polite">
+        {work.announcement}
+      </span>
+    </div>
+  )
+}
+
+export function TableDataInfo({ info }: { info: TableDataInfoState }) {
+  return (
+    <div className={QUERY_INFO} data-testid="table-data-info" aria-live="polite">
       <span className={STATUS_TEXT} data-testid="table-data-rows">
         <span className={QUERY_INFO_LABEL}>Rows</span>{' '}
-        <b className={QUERY_INFO_VALUE}>{visibleRows}</b>
+        <b className={QUERY_INFO_VALUE}>{info.visibleRows}</b>
       </span>
+      {info.executionTimeMs !== null && (
+        <span className={STATUS_TEXT} data-testid="table-data-time">
+          <span className={QUERY_INFO_LABEL}>Exec</span>{' '}
+          <b className={QUERY_INFO_VALUE}>{info.executionTimeMs} ms</b>
+        </span>
+      )}
     </div>
   )
 }
