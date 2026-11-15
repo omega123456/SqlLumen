@@ -21,20 +21,20 @@ export function KillSummaryDialog({ results, onClose }: KillSummaryDialogProps) 
       testId="kill-summary-dialog"
       ariaLabel="Kill results"
     >
-      <h2 style={{ margin: '0 0 12px' }}>Kill results</h2>
-      <p style={{ margin: '0 0 8px' }}>
+      <h2 className="mb-3 text-size-heading-2 font-bold">Kill results</h2>
+      <p className="mb-2 wrap-break-word">
         {successes.length} {successes.length === 1 ? 'process' : 'processes'} killed successfully
       </p>
       {failures.length > 0 && (
-        <ul style={{ margin: '0 0 12px', paddingLeft: 20 }}>
+        <ul className="mb-3 list-disc pl-5">
           {failures.map((failure) => (
-            <li key={failure.id} style={{ color: 'var(--error)' }}>
+            <li key={failure.id} className="text-light-error dark:text-dark-error">
               ID {failure.id}: {failure.error ?? 'Unknown error'}
             </li>
           ))}
         </ul>
       )}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div className="flex justify-end">
         <Button variant="accent" onClick={onClose} data-testid="kill-summary-done-button">
           Done
         </Button>

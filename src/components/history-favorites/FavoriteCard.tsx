@@ -6,7 +6,12 @@ import { useQueryStore } from '../../stores/query-store'
 import { formatShortDate } from '../../lib/format-utils'
 import type { FavoriteEntry } from '../../types/schema'
 import { Button } from '../common/Button'
-import styles from './FavoriteCard.module.css'
+import { joinClassNames } from '../../lib/class-names'
+import {
+  LIST_ROW,
+  LIST_ROW_ACTIONS,
+  listRowActionButtonClassName,
+} from '../../lib/class-names-list-row'
 
 export interface FavoriteCardProps {
   entry: FavoriteEntry
@@ -39,10 +44,10 @@ function FavoriteCardActions({ entry, onCopyToEditor }: FavoriteCardActionsProps
   )
 
   return (
-    <div className={styles.actions}>
+    <div className={LIST_ROW_ACTIONS}>
       <Button
         variant="bare"
-        className={styles.actionButton}
+        className={listRowActionButtonClassName('neutral')}
         title="Copy to editor"
         onClick={(event) => {
           event.stopPropagation()
@@ -54,7 +59,7 @@ function FavoriteCardActions({ entry, onCopyToEditor }: FavoriteCardActionsProps
       </Button>
       <Button
         variant="bare"
-        className={styles.actionButton}
+        className={listRowActionButtonClassName('neutral')}
         title="Edit"
         onClick={handleEdit}
         data-testid="favorite-card-edit"
@@ -63,7 +68,7 @@ function FavoriteCardActions({ entry, onCopyToEditor }: FavoriteCardActionsProps
       </Button>
       <Button
         variant="bare"
-        className={`${styles.actionButton} ${styles.actionButtonDanger}`}
+        className={listRowActionButtonClassName('danger')}
         title="Delete"
         onClick={handleDelete}
         data-testid="favorite-card-delete"
@@ -86,22 +91,31 @@ export function FavoriteCard({ entry, connectionId }: FavoriteCardProps) {
 
   return (
     <div
-      className={styles.card}
+      className={joinClassNames([LIST_ROW, 'flex-col gap-1 px-3 py-2'])}
       onClick={handleCopyToEditor}
       data-testid={`favorite-card-${entry.id}`}
     >
-      <div className={styles.header}>
-        <span className={styles.name} title={entry.name}>
+      <div className="flex items-center gap-2">
+        <span
+          className="min-w-0 flex-1 truncate text-size-body font-semibold text-light-on-surface dark:text-dark-on-surface"
+          title={entry.name}
+        >
           {entry.name}
         </span>
         <FavoriteCardActions entry={entry} onCopyToEditor={handleCopyToEditor} />
       </div>
-      <div className={styles.sqlPreview} title={entry.sqlText}>
+      <div
+        className="truncate font-mono text-size-caption leading-body text-light-on-surface-variant dark:text-dark-on-surface-variant"
+        title={entry.sqlText}
+      >
         {entry.sqlText}
       </div>
-      <div className={styles.meta}>
+      <div className="flex items-center gap-2 text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant">
         {entry.connectionId === null && (
-          <span className={styles.globalBadge} title="Global (all connections)">
+          <span
+            className="inline-flex items-center gap-0.5 text-size-caption font-semibold text-light-primary dark:text-dark-primary"
+            title="Global (all connections)"
+          >
             <GlobeSimple size={12} weight="bold" />
             Global
           </span>
@@ -110,7 +124,10 @@ export function FavoriteCard({ entry, connectionId }: FavoriteCardProps) {
         <span>{formatShortDate(entry.updatedAt)}</span>
       </div>
       {entry.description && (
-        <div className={styles.notes} title={entry.description}>
+        <div
+          className="truncate text-size-caption text-light-on-surface-variant italic dark:text-dark-on-surface-variant"
+          title={entry.description}
+        >
           {entry.description}
         </div>
       )}

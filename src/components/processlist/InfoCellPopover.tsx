@@ -5,7 +5,6 @@ import { ElevatedCodePanel } from '../common/ElevatedCodePanel'
 import { writeClipboardText } from '../../lib/context-menu-utils'
 import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
 import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
-import styles from './InfoCellPopover.module.css'
 import { toErrorMessage } from '../../lib/error-message'
 
 const ANCHOR_GAP_PX = 4
@@ -63,7 +62,7 @@ export function InfoCellPopover({ sql, anchorEl, anchorRect, onClose }: InfoCell
   return (
     <div
       ref={popoverRef}
-      className={styles.popover}
+      className="fixed z-1001 flex max-h-80 max-w-120 flex-col overflow-hidden rounded-overlay border border-light-stroke-flyout bg-light-surface-container-high shadow-light-flyout dark:border-dark-stroke-flyout dark:bg-dark-surface-container-high dark:shadow-dark-flyout"
       style={{ top: position.top, left: position.left }}
       data-testid="info-cell-popover"
     >

@@ -7,7 +7,6 @@ import { InfoCellPopover } from './InfoCellPopover'
 import type { ProcessRow } from '../../lib/processlist-commands'
 import type { GridColumnDescriptor } from '../../types/shared-data-view'
 import type { GridColumn, GridHandle } from '../shared/glide/glide-grid-types'
-import styles from './ProcessListGridView.module.css'
 import { isPlaywrightBuild } from '../../lib/tauri-env'
 import { readPixelToken } from '../../lib/theme-tokens'
 import { isNonEmptyString, isNullish, isPositiveNumber } from '../../lib/value-checks'
@@ -335,7 +334,7 @@ export function ProcessListGridView({ connectionId, isActive = true }: ProcessLi
   useInfoPopoverTestApi(connectionId, infoPopover.openInfoPopoverForRow)
 
   return (
-    <div className={styles.container}>
+    <div className="h-full w-full overflow-hidden">
       <CanvasBaseGridView
         ref={gridRef}
         rows={gridRows}

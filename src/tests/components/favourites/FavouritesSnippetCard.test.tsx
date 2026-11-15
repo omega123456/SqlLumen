@@ -31,7 +31,10 @@ describe('FavouritesSnippetCard', () => {
       />
     )
 
-    expect(screen.getByTestId('favourites-snippet-card-1')).toHaveAttribute('data-variant', 'ring')
+    expect(screen.getByTestId('favourites-snippet-card-1')).toHaveAttribute(
+      'data-variant',
+      'ringHoverable'
+    )
     expect(screen.getByText('My query')).toBeInTheDocument()
     expect(screen.getByText('Gets all orders')).toBeInTheDocument()
   })
@@ -104,9 +107,9 @@ describe('FavouritesSnippetCard', () => {
     expect(onInsert).toHaveBeenCalledTimes(1)
   })
 
-  it('applies selected state styling', () => {
+  it('exposes the selected state as expanded and as its surface variant', () => {
     const favourite = makeFavourite()
-    const { container } = render(
+    render(
       <FavouritesSnippetCard
         favourite={favourite}
         isSelected={true}
@@ -116,8 +119,9 @@ describe('FavouritesSnippetCard', () => {
       />
     )
 
-    const card = container.querySelector('[data-testid="favourites-snippet-card-1"]')
-    expect(card?.className).toContain('cardSelected')
+    const card = screen.getByTestId('favourites-snippet-card-1')
+    expect(card).toHaveAttribute('aria-expanded', 'true')
+    expect(card).toHaveAttribute('data-variant', 'ringSelected')
   })
 
   it('onClick calls onSelect', async () => {

@@ -62,8 +62,6 @@ const TAILWIND_CLASS_RULE_FILES = [
   'src/components/shared/**/*.ts',
   'src/components/shared/**/*.tsx',
   'src/components/table-data/DateTimeCellEditor.tsx',
-  'src/components/history/HistoryTable.tsx',
-  'src/components/history/HistoryDetailPanel.tsx',
   'src/lib/class-names-grid-editor.ts',
   'src/lib/class-names-status-dot.ts',
   'src/lib/grid-cell-classes.ts',
@@ -103,6 +101,12 @@ const TAILWIND_CLASS_RULE_FILES = [
   'src/components/ai-panel/**/*.tsx',
   'src/components/command-palette/*.tsx',
   'src/lib/class-names-ai.ts',
+  'src/components/history/*.tsx',
+  'src/components/history-favorites/*.tsx',
+  'src/components/favourites/*.tsx',
+  'src/components/processlist/*.tsx',
+  'src/lib/class-names-list-panel.ts',
+  'src/lib/class-names-list-row.ts',
 ]
 const localRulesPlugin = {
   rules: { ...namedConditionsPlugin.rules, ...tailwindRulesPlugin.rules },

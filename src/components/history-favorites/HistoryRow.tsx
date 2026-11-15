@@ -7,7 +7,12 @@ import { useQueryStore } from '../../stores/query-store'
 import { formatTableTimestamp } from '../../lib/format-utils'
 import type { HistoryEntry } from '../../types/schema'
 import { Button } from '../common/Button'
-import styles from './HistoryRow.module.css'
+import { joinClassNames } from '../../lib/class-names'
+import {
+  LIST_ROW,
+  LIST_ROW_ACTIONS,
+  listRowActionButtonClassName,
+} from '../../lib/class-names-list-row'
 import { MILLISECONDS_PER_SECOND } from '../../lib/units'
 
 export interface HistoryRowProps {
@@ -19,6 +24,27 @@ function formatDuration(ms: number | null): string {
   if (ms == null) return '—'
   if (ms < MILLISECONDS_PER_SECOND) return `${ms}ms`
   return `${(ms / MILLISECONDS_PER_SECOND).toFixed(1)}s`
+}
+
+type StatusBadgeOutcome = 'success' | 'error'
+
+const STATUS_BADGE_FRAME =
+  'inline-block rounded-control px-1.5 py-px text-size-caption font-semibold'
+
+const STATUS_BADGE_CLASSES: Record<StatusBadgeOutcome, string> = {
+  success: joinClassNames([
+    STATUS_BADGE_FRAME,
+    'bg-light-tertiary-container text-light-tertiary dark:bg-dark-tertiary-container dark:text-dark-tertiary',
+  ]),
+  error: joinClassNames([
+    STATUS_BADGE_FRAME,
+    'bg-light-error-container text-light-error dark:bg-dark-error-container dark:text-dark-error',
+  ]),
+}
+
+function statusBadgeOutcome(isError: boolean): StatusBadgeOutcome {
+  if (isError) return 'error'
+  return 'success'
 }
 
 interface HistoryRowActionsProps extends HistoryRowProps {
@@ -51,10 +77,10 @@ function HistoryRowActions({ entry, connectionId, onCopyToEditor }: HistoryRowAc
   )
 
   return (
-    <div className={styles.actions}>
+    <div className={LIST_ROW_ACTIONS}>
       <Button
         variant="bare"
-        className={styles.actionButton}
+        className={listRowActionButtonClassName('neutral')}
         title="Copy to editor"
         onClick={(event) => {
           event.stopPropagation()
@@ -66,7 +92,7 @@ function HistoryRowActions({ entry, connectionId, onCopyToEditor }: HistoryRowAc
       </Button>
       <Button
         variant="bare"
-        className={styles.actionButton}
+        className={listRowActionButtonClassName('neutral')}
         title="Save as favorite"
         onClick={(event) => {
           event.stopPropagation()
@@ -78,7 +104,7 @@ function HistoryRowActions({ entry, connectionId, onCopyToEditor }: HistoryRowAc
       </Button>
       <Button
         variant="bare"
-        className={`${styles.actionButton} ${styles.actionButtonDanger}`}
+        className={listRowActionButtonClassName('danger')}
         title="Delete"
         onClick={handleDelete}
         data-testid="history-row-delete"
@@ -103,17 +129,18 @@ export function HistoryRow({ entry, connectionId }: HistoryRowProps) {
 
   return (
     <div
-      className={styles.row}
+      className={joinClassNames([LIST_ROW, 'items-start gap-2 px-3 py-1'])}
       onClick={handleCopyToEditor}
       data-testid={`history-row-${entry.id}`}
     >
-      <div className={styles.sqlPreview} title={entry.sqlText}>
+      <div
+        className="min-w-0 flex-1 truncate font-mono text-size-caption leading-body text-light-on-surface dark:text-dark-on-surface"
+        title={entry.sqlText}
+      >
         {entry.sqlText}
       </div>
-      <div className={styles.meta}>
-        <span
-          className={`${styles.statusBadge} ${isError ? styles.statusError : styles.statusSuccess}`}
-        >
+      <div className="flex shrink-0 items-center gap-2 text-size-caption whitespace-nowrap text-light-on-surface-variant dark:text-dark-on-surface-variant">
+        <span className={STATUS_BADGE_CLASSES[statusBadgeOutcome(isError)]}>
           {entry.success ? 'success' : 'error'}
         </span>
         {!isError && <span>{entry.rowCount ?? 0} rows</span>}

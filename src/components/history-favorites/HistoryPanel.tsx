@@ -4,7 +4,13 @@ import { TextInput } from '../common/TextInput'
 import { Button } from '../common/Button'
 import { useHistoryStore } from '../../stores/history-store'
 import { HistoryRow } from './HistoryRow'
-import styles from './HistoryPanel.module.css'
+import {
+  LIST_PANEL_EMPTY_STATE,
+  LIST_PANEL_ERROR_MESSAGE,
+  LIST_PANEL_ERROR_STATE,
+  LIST_PANEL_LIST,
+  LIST_PANEL_TOOLBAR,
+} from '../../lib/class-names-list-panel'
 import type { HistoryEntry } from '../../types/schema'
 
 const EMPTY_ENTRIES: HistoryEntry[] = []
@@ -14,9 +20,9 @@ export interface HistoryPanelProps {
 }
 
 function EmptyHistoryState({ isLoading, search }: { isLoading: boolean; search: string }) {
-  if (isLoading) return <div className={styles.emptyState}>Loading...</div>
+  if (isLoading) return <div className={LIST_PANEL_EMPTY_STATE}>Loading...</div>
   return (
-    <div className={styles.emptyState} data-testid="history-empty">
+    <div className={LIST_PANEL_EMPTY_STATE} data-testid="history-empty">
       {search ? 'No matching queries found' : 'No query history yet'}
     </div>
   )
@@ -32,8 +38,8 @@ interface HistoryListBodyProps {
 function HistoryListBody({ connectionId, entries, listState, onRetry }: HistoryListBodyProps) {
   if (listState.error) {
     return (
-      <div className={styles.errorState} data-testid="history-error">
-        <span className={styles.errorMessage}>{listState.error}</span>
+      <div className={LIST_PANEL_ERROR_STATE} data-testid="history-error">
+        <span className={LIST_PANEL_ERROR_MESSAGE}>{listState.error}</span>
         <Button variant="subtle" size="sm" onClick={onRetry} data-testid="history-retry">
           <ArrowClockwise size={14} weight="bold" />
           &nbsp;Retry
@@ -74,7 +80,10 @@ function HistoryPagination({ connectionId }: HistoryPanelProps) {
 
   if (total <= pageSize) return null
   return (
-    <div className={styles.pagination} data-testid="history-pagination">
+    <div
+      className="flex shrink-0 items-center justify-center gap-2 border-t border-light-outline-variant px-3 py-2 text-size-caption text-light-on-surface-variant dark:border-dark-outline-variant dark:text-dark-on-surface-variant"
+      data-testid="history-pagination"
+    >
       <Button
         variant="subtle"
         size="sm"
@@ -125,9 +134,9 @@ export function HistoryPanel({ connectionId }: HistoryPanelProps) {
   }, [loadHistory, connectionId, page, search])
 
   return (
-    <div className={styles.container} data-testid="history-panel">
-      <div className={styles.toolbar}>
-        <div className={styles.searchInput}>
+    <div className="flex h-full flex-col overflow-hidden" data-testid="history-panel">
+      <div className={LIST_PANEL_TOOLBAR}>
+        <div className="max-w-90 flex-1">
           <TextInput
             placeholder="Search queries..."
             value={search}
@@ -135,7 +144,7 @@ export function HistoryPanel({ connectionId }: HistoryPanelProps) {
             data-testid="history-search"
           />
         </div>
-        <div className={styles.spacer} />
+        <div className="flex-1" />
         <Button
           variant="subtle"
           size="sm"
@@ -150,7 +159,7 @@ export function HistoryPanel({ connectionId }: HistoryPanelProps) {
         </Button>
       </div>
 
-      <div className={styles.list} data-testid="history-list">
+      <div className={LIST_PANEL_LIST} data-testid="history-list">
         <HistoryListBody
           connectionId={connectionId}
           entries={entries}

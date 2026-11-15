@@ -25,6 +25,26 @@ describe('ElevatedSurface', () => {
     expect(screen.getByTestId('elevated')).toHaveAttribute('data-variant', 'bordered')
   })
 
+  it('exposes the hoverable ring variant', () => {
+    render(
+      <ElevatedSurface data-testid="elevated" variant="ringHoverable">
+        x
+      </ElevatedSurface>
+    )
+
+    expect(screen.getByTestId('elevated')).toHaveAttribute('data-variant', 'ringHoverable')
+  })
+
+  it('exposes the selected ring variant', () => {
+    render(
+      <ElevatedSurface data-testid="elevated" variant="ringSelected">
+        x
+      </ElevatedSurface>
+    )
+
+    expect(screen.getByTestId('elevated')).toHaveAttribute('data-variant', 'ringSelected')
+  })
+
   it('exposes the recessed variant', () => {
     render(
       <ElevatedSurface data-testid="elevated" variant="recessed">

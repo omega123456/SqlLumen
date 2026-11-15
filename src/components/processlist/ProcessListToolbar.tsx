@@ -15,8 +15,9 @@ import { StatusArea } from '../shared/toolbar/StatusArea'
 import { Button } from '../common/Button'
 import { showErrorToast, showSuccessToast, showWarningToast } from '../../stores/toast-store'
 import type { KillResult, ProcessRow } from '../../lib/processlist-commands'
-import styles from './ProcessListToolbar.module.css'
 import { toErrorMessage } from '../../lib/error-message'
+import { joinClassNames } from '../../lib/class-names'
+import { FOCUS_RING } from '../../lib/focus-ring'
 
 const SQL_PREVIEW_MAX_LENGTH = 80
 const TRUNCATION_ELLIPSIS = '...'
@@ -50,6 +51,22 @@ function truncateSql(sql: string | null): string {
 
 const NO_ACTIVE_QUERY_LABEL = '(no active query)'
 
+const REFRESH_BUTTON_CLASS_NAME = joinClassNames([
+  'flex size-7.5 shrink-0 cursor-pointer items-center justify-center rounded-control bg-transparent text-light-on-surface-variant transition-color-and-background duration-150 not-disabled:hover:bg-light-fill-subtle-hover not-disabled:hover:text-light-primary disabled:cursor-not-allowed disabled:opacity-40 dark:text-dark-on-surface-variant dark:not-disabled:hover:bg-dark-fill-subtle-hover dark:not-disabled:hover:text-dark-primary',
+  FOCUS_RING,
+])
+
+const KILL_BUTTON_CLASS_NAME = joinClassNames([
+  'flex h-7.5 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-control border border-light-error-a30 bg-transparent px-2.5 text-size-caption font-regular whitespace-nowrap text-light-error transition-color-border-background duration-150 not-disabled:hover:border-light-error not-disabled:hover:bg-light-fill-subtle-hover disabled:cursor-not-allowed disabled:opacity-40 dark:border-dark-error-a30 dark:text-dark-error dark:not-disabled:hover:border-dark-error dark:not-disabled:hover:bg-dark-fill-subtle-hover',
+  FOCUS_RING,
+])
+
+function ToolbarDivider() {
+  return (
+    <div className="mx-1 h-4 w-px shrink-0 bg-light-stroke-divider dark:bg-dark-stroke-divider" />
+  )
+}
+
 function killButtonLabel(selectedCount: number): string {
   if (selectedCount === 0) return 'Kill query'
   return `Kill ${selectedCount} ${selectedCount === 1 ? 'Query' : 'Queries'}`
@@ -73,7 +90,7 @@ function KillConfirmMessage({ isOpen, selectedIds, rows }: KillConfirmMessagePro
   return (
     <>
       Kill {selectedIds.size} process{selectedIds.size === 1 ? '' : 'es'}?
-      <ul style={{ margin: '8px 0 0', paddingLeft: '20px', textAlign: 'left' }}>
+      <ul className="mt-2 list-disc pl-5 text-left">
         {[...selectedIds].map((id) => (
           <li key={id}>
             ID {id}: {processSql(rows, id)}
@@ -223,20 +240,23 @@ function ProcessListStatusSection({
     (state) => state.activeConnections[connectionId]?.profile.readOnly ?? false
   )
   return (
-    <div className={styles.leftSection}>
+    <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
       <StatusArea status={isFetching ? 'loading' : 'success'} totalRows={rowCount} />
 
       {isReadOnly && (
-        <span className={styles.readonlyBadge} data-testid="processlist-readonly-badge">
+        <span
+          className="flex h-5 shrink-0 items-center gap-0.75 rounded-control bg-light-fill-neutral-selected px-1.5 font-mono text-size-caption font-semibold whitespace-nowrap text-light-on-surface-variant dark:bg-dark-fill-neutral-selected dark:text-dark-on-surface-variant"
+          data-testid="processlist-readonly-badge"
+        >
           &#x1F512; READ-ONLY
         </span>
       )}
 
-      <div className={styles.divider} />
+      <ToolbarDivider />
 
       <Button
         variant="bare"
-        className={styles.iconButton}
+        className={REFRESH_BUTTON_CLASS_NAME}
         onClick={onRefresh}
         title="Refresh"
         data-testid="processlist-refresh-button"
@@ -246,7 +266,10 @@ function ProcessListStatusSection({
       </Button>
 
       {lastRefreshedAt !== null && (
-        <span className={styles.meta} data-testid="processlist-last-updated">
+        <span
+          className="shrink-0 text-size-caption whitespace-nowrap text-light-on-surface-variant dark:text-dark-on-surface-variant"
+          data-testid="processlist-last-updated"
+        >
           Last updated: {formatProcessListRefreshTime(lastRefreshedAt)}
         </span>
       )}
@@ -282,7 +305,6 @@ function ProcessListRefreshControls({
           setExcludeIdleConnections(connectionId, value === EXCLUDE_IDLE_FILTER_VALUE)
         }
         workspaceTabId={workspaceTabId}
-        className={styles.autoWidthDropdown}
         triggerSize="sm"
         triggerWidth="auto"
       />
@@ -295,7 +317,6 @@ function ProcessListRefreshControls({
         value={String(refreshIntervalMs)}
         onChange={(value) => setRefreshInterval(connectionId, Number(value))}
         workspaceTabId={workspaceTabId}
-        className={styles.autoWidthDropdown}
         triggerSize="sm"
         triggerWidth="auto"
       />
@@ -319,6 +340,26 @@ function useProcessListToolbarRows(connectionId: string) {
   return { rows, selectedIds, excludeIdleConnections, isConfirmDialogOpen, rowCount }
 }
 
+interface KillButtonProps {
+  selectedCount: number
+  onClick: () => void
+}
+
+function KillButton({ selectedCount, onClick }: KillButtonProps) {
+  return (
+    <Button
+      variant="bare"
+      className={KILL_BUTTON_CLASS_NAME}
+      data-testid="processlist-kill-button"
+      disabled={selectedCount === 0}
+      onClick={onClick}
+    >
+      <StopCircle size={16} weight="regular" />
+      {killButtonLabel(selectedCount)}
+    </Button>
+  )
+}
+
 export function ProcessListToolbar({
   connectionId,
   sessionId,
@@ -336,32 +377,29 @@ export function ProcessListToolbar({
   })
 
   return (
-    <div className={styles.toolbar} data-testid="processlist-toolbar">
+    <div
+      className="flex h-command-bar shrink-0 items-center gap-1 border-b border-light-stroke-divider bg-light-surface-container px-2 dark:border-dark-stroke-divider dark:bg-dark-surface-container"
+      data-testid="processlist-toolbar"
+    >
       <ProcessListStatusSection
         connectionId={connectionId}
         rowCount={rowCount}
         onRefresh={onRefresh}
       />
 
-      <div className={styles.rightSection}>
+      <div className="flex shrink-0 items-center gap-1">
         <ProcessListRefreshControls
           connectionId={connectionId}
           excludeIdleConnections={excludeIdleConnections}
           workspaceTabId={workspaceTabId}
         />
 
-        <div className={styles.divider} />
+        <ToolbarDivider />
 
-        <Button
-          variant="bare"
-          className={styles.toolbarButtonDanger}
-          data-testid="processlist-kill-button"
-          disabled={selectedIds.size === 0}
+        <KillButton
+          selectedCount={selectedIds.size}
           onClick={() => setConfirmDialogOpen(connectionId, true)}
-        >
-          <StopCircle size={16} weight="regular" />
-          {killButtonLabel(selectedIds.size)}
-        </Button>
+        />
       </div>
 
       <ConfirmDialog

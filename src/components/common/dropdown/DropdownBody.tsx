@@ -2,7 +2,11 @@ import { ListboxButton } from '@headlessui/react'
 import { CaretDown } from '@phosphor-icons/react'
 import { joinClassNames } from '../../../lib/class-names'
 import { dataFlag } from '../../../lib/data-attributes'
-import { dropdownTriggerClassName, triggerAppearanceOf } from './dropdown-classes'
+import {
+  dropdownRootWidthClassName,
+  dropdownTriggerClassName,
+  triggerAppearanceOf,
+} from './dropdown-classes'
 import { DropdownChrome } from './DropdownChrome'
 import { DropdownOptionsPanel } from './DropdownOptionsPanel'
 import type { DropdownController } from './use-dropdown-controller'
@@ -107,7 +111,14 @@ export function DropdownBody<TValue extends string>({
 }: DropdownBodyProps<TValue>) {
   const { rootRef } = elements
   return (
-    <div className={joinClassNames(['relative w-full', dropdownProps.className])} ref={rootRef}>
+    <div
+      className={joinClassNames([
+        'relative',
+        dropdownRootWidthClassName(dropdownProps.triggerWidth),
+        dropdownProps.className,
+      ])}
+      ref={rootRef}
+    >
       <DropdownChrome
         open={open}
         optionCount={dropdownProps.options.length}

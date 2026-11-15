@@ -8,7 +8,7 @@ import { Textarea } from '../common/Textarea'
 import { Dropdown } from '../common/Dropdown'
 import { Button } from '../common/Button'
 import type { DropdownOption } from '../common/Dropdown'
-import styles from './FavoriteDialog.module.css'
+import { DIALOG_FOOTER_ACTIONS, DIALOG_TITLE } from '../../lib/class-names-dialog'
 import { isBlank } from '../../lib/value-checks'
 
 export interface FavoriteDialogProps {
@@ -113,8 +113,11 @@ interface LabelledFieldProps {
 
 function LabelledField({ label, htmlFor, children }: LabelledFieldProps) {
   return (
-    <div className={styles.field}>
-      <label className={styles.label} htmlFor={htmlFor}>
+    <div className="flex flex-col gap-1">
+      <label
+        className="text-size-caption font-regular text-light-on-surface-variant dark:text-dark-on-surface-variant"
+        htmlFor={htmlFor}
+      >
         {label}
       </label>
       {children}
@@ -198,10 +201,10 @@ export function FavoriteDialog({ connectionId }: FavoriteDialogProps) {
       testId="favorite-dialog"
       ariaLabel={title}
     >
-      <h2 className={styles.title}>{title}</h2>
-      <div className={styles.form}>
+      <h2 className={DIALOG_TITLE}>{title}</h2>
+      <div className="flex flex-col gap-3">
         <FavoriteFormFields formValues={form.formValues} setField={form.setField} />
-        <div className={styles.actions}>
+        <div className={DIALOG_FOOTER_ACTIONS}>
           <Button
             variant="accent"
             onClick={form.handleSave}

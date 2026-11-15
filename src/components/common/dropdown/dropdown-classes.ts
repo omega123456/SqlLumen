@@ -45,6 +45,16 @@ const TRIGGER_CURSOR_CLASSES: Record<DropdownTriggerSize, string> = {
   filter: 'cursor-pointer',
 }
 
+const ROOT_WIDTH_CLASSES: Record<DropdownTriggerWidth, string> = {
+  fill: 'w-full',
+  auto: 'w-fit',
+  combo: 'w-full',
+}
+
+export function dropdownRootWidthClassName(width: DropdownTriggerWidth = 'fill'): string {
+  return ROOT_WIDTH_CLASSES[width]
+}
+
 const TRIGGER_WIDTH_CLASSES: Record<DropdownTriggerWidth, string> = {
   fill: 'w-full',
   auto: 'w-auto',

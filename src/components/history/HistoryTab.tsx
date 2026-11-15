@@ -8,13 +8,23 @@ import { HistoryTable } from './HistoryTable'
 import { HistoryDetailPanel } from './HistoryDetailPanel'
 import type { TimeRange } from './HistoryFilterPanel'
 import type { HistoryEntry, HistoryTab as HistoryTabType } from '../../types/schema'
-import styles from './HistoryTab.module.css'
+import { joinClassNames } from '../../lib/class-names'
+import { FOCUS_RING } from '../../lib/focus-ring'
 import { MILLISECONDS_PER_DAY } from '../../lib/units'
 
 const DAYS_PER_WEEK = 7
 const DAYS_PER_MONTH_RANGE = 30
 
 const EMPTY_ENTRIES: HistoryEntry[] = []
+
+const HISTORY_TAB_FRAME = 'flex h-full w-full flex-row overflow-hidden'
+
+const PANEL_FRAME = 'flex flex-col overflow-hidden'
+
+const RESIZE_HANDLE = joinClassNames([
+  'relative w-px shrink-0 cursor-col-resize bg-light-stroke-divider after:absolute after:inset-y-0 after:-inset-x-0.75 hover:bg-light-primary resize-dragging:bg-light-primary dark:bg-dark-stroke-divider dark:hover:bg-dark-primary dark:resize-dragging:bg-dark-primary',
+  FOCUS_RING,
+])
 
 export interface HistoryTabProps {
   tab: HistoryTabType
@@ -106,8 +116,8 @@ export function HistoryTab({ tab, isActive = true }: HistoryTabProps) {
 
   if (!connectionId) {
     return (
-      <div className={styles.container} data-testid="history-tab">
-        <div className={styles.noConnection}>
+      <div className={HISTORY_TAB_FRAME} data-testid="history-tab">
+        <div className="flex h-full items-center justify-center text-size-body text-light-on-surface-variant dark:text-dark-on-surface-variant">
           <p>No active connection</p>
         </div>
       </div>
@@ -115,13 +125,13 @@ export function HistoryTab({ tab, isActive = true }: HistoryTabProps) {
   }
 
   return (
-    <div className={styles.container} data-testid="history-tab">
-      <div className={styles.filterSide}>
+    <div className={HISTORY_TAB_FRAME} data-testid="history-tab">
+      <div className="w-50 shrink-0 overflow-hidden border-r border-light-stroke-divider dark:border-dark-stroke-divider">
         <HistoryFilterPanel value={view.timeRange} onChange={view.handleTimeRangeChange} />
       </div>
 
-      <Group orientation="horizontal" className={styles.panelGroup}>
-        <Panel minSize="30%" className={styles.tablePanel}>
+      <Group orientation="horizontal" className="min-w-0 flex-1">
+        <Panel minSize="30%" className={PANEL_FRAME}>
           <HistoryTable
             entries={view.entries}
             selectedEntryId={view.selectedEntryId}
@@ -133,8 +143,8 @@ export function HistoryTab({ tab, isActive = true }: HistoryTabProps) {
             onRetry={() => view.reload(view.timeRange)}
           />
         </Panel>
-        <Separator className={styles.resizeHandle} />
-        <Panel defaultSize="330px" minSize="240px" className={styles.detailPanel}>
+        <Separator className={RESIZE_HANDLE} />
+        <Panel defaultSize="330px" minSize="240px" className={PANEL_FRAME}>
           <HistoryDetailPanel
             entry={view.selectedEntry}
             onOpenInEditor={view.handleOpenInEditor}

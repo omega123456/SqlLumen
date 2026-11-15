@@ -2,7 +2,6 @@ import { useCallback, useEffect } from 'react'
 import { DEFAULT_REFRESH_INTERVAL_MS, useProcessListStore } from '../../stores/processlist-store'
 import { ProcessListToolbar } from './ProcessListToolbar'
 import { ProcessListGridView } from './ProcessListGridView'
-import styles from './ProcessListTab.module.css'
 
 export interface ProcessListTabProps {
   connectionId: string
@@ -58,7 +57,7 @@ export default function ProcessListTab({
   }, [isActive, refreshIntervalMs, isConfirmDialogOpen, isSummaryDialogOpen, handleRefresh])
 
   return (
-    <div className={styles.container} data-testid="processlist-tab">
+    <div className="flex h-full w-full flex-col overflow-hidden" data-testid="processlist-tab">
       <ProcessListToolbar
         connectionId={connectionId}
         sessionId={sessionId}
@@ -66,7 +65,7 @@ export default function ProcessListTab({
         isActive={isActive}
         workspaceTabId={workspaceTabId ?? connectionId}
       />
-      <div className={styles.gridWrapper} data-testid="processlist-grid">
+      <div className="min-h-0 flex-1 overflow-hidden" data-testid="processlist-grid">
         <ProcessListGridView connectionId={connectionId} isActive={isActive} />
       </div>
     </div>

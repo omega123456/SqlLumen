@@ -25,6 +25,14 @@ describe('TextInput', () => {
     )
   })
 
+  it('exposes the icon leading variant as its lookup key', () => {
+    render(<TextInput variant="iconLeading" aria-label="Search queries" />)
+    expect(screen.getByRole('textbox', { name: 'Search queries' })).toHaveAttribute(
+      'data-variant',
+      'iconLeading'
+    )
+  })
+
   it('exposes the accent name variant as its lookup key', () => {
     render(<TextInput variant="accentName" aria-label="Table name" />)
     expect(screen.getByRole('textbox', { name: 'Table name' })).toHaveAttribute(

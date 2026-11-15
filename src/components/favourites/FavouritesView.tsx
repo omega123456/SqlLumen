@@ -8,7 +8,9 @@ import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { FavouritesSnippetCard } from './FavouritesSnippetCard'
 import { FavouritesDetailPanel } from './FavouritesDetailPanel'
 import type { FavoriteEntry } from '../../types/schema'
-import styles from './FavouritesView.module.css'
+import { joinClassNames, SCROLLBAR } from '../../lib/class-names'
+import { FOCUS_RING } from '../../lib/focus-ring'
+import { LIST_PANEL_EMPTY_STATE, LIST_PANEL_ERROR_MESSAGE } from '../../lib/class-names-list-panel'
 
 export interface FavouritesViewProps {
   connectionId: string
@@ -97,6 +99,25 @@ function FavouriteListItem({
   )
 }
 
+interface FavouritesErrorProps {
+  message: string
+  onRetry: () => void
+}
+
+function FavouritesError({ message, onRetry }: FavouritesErrorProps) {
+  return (
+    <div
+      className="flex flex-col items-center justify-center gap-2 p-3 text-center"
+      data-testid="favourites-error"
+    >
+      <span className={LIST_PANEL_ERROR_MESSAGE}>{message}</span>
+      <Button variant="subtle" size="sm" onClick={onRetry} data-testid="favourites-retry">
+        Retry
+      </Button>
+    </div>
+  )
+}
+
 interface FavouritesListContentProps {
   connectionId: string
   searchQuery: string
@@ -122,34 +143,22 @@ function FavouritesListContent({
   )
 
   if (error) {
-    return (
-      <div className={styles.errorState} data-testid="favourites-error">
-        <span className={styles.errorMessage}>{error}</span>
-        <Button
-          variant="subtle"
-          size="sm"
-          onClick={() => void loadFavorites(connectionId)}
-          data-testid="favourites-retry"
-        >
-          Retry
-        </Button>
-      </div>
-    )
+    return <FavouritesError message={error} onRetry={() => void loadFavorites(connectionId)} />
   }
   const isLoadingFirstEntries = isLoading && entries.length === 0
   if (isLoadingFirstEntries) {
-    return <div className={styles.emptyState}>Loading...</div>
+    return <div className={LIST_PANEL_EMPTY_STATE}>Loading...</div>
   }
   if (entries.length === 0) {
     return (
-      <div className={styles.emptyState} data-testid="favourites-empty">
+      <div className={LIST_PANEL_EMPTY_STATE} data-testid="favourites-empty">
         No favourites yet
       </div>
     )
   }
   if (filteredFavourites.length === 0) {
     return (
-      <div className={styles.emptyState} data-testid="favourites-no-results">
+      <div className={LIST_PANEL_EMPTY_STATE} data-testid="favourites-no-results">
         No matching snippets
       </div>
     )
@@ -173,14 +182,17 @@ interface FavouritesSearchProps {
 
 function FavouritesSearch({ searchQuery, onSearchQueryChange }: FavouritesSearchProps) {
   return (
-    <div className={styles.searchWrapper}>
-      <span className={styles.searchIcon}>
+    <div className="relative shrink-0 px-3 pb-2">
+      <span className="pointer-events-none absolute top-1/2 left-5 flex -translate-y-1/2 items-center text-light-on-surface-variant opacity-40 dark:text-dark-on-surface-variant">
         <MagnifyingGlass size={14} weight="regular" />
       </span>
       <TextInput
         variant="bare"
         type="text"
-        className={styles.searchInput}
+        className={joinClassNames([
+          'w-full rounded-card border border-light-outline-variant bg-light-surface-container-highest py-1.5 pr-2.5 pl-8 font-body text-size-caption text-light-on-surface transition-border-color duration-200 outline-none placeholder:text-light-on-surface-variant placeholder:opacity-50 focus:border-light-primary dark:border-dark-outline-variant dark:bg-dark-surface-container-highest dark:text-dark-on-surface dark:placeholder:text-dark-on-surface-variant dark:focus:border-dark-primary',
+          FOCUS_RING,
+        ])}
         placeholder="Search snippets..."
         value={searchQuery}
         onChange={(event) => onSearchQueryChange(event.target.value)}
@@ -202,9 +214,11 @@ export function FavouritesView({ connectionId }: FavouritesViewProps) {
   }, [connectionId, loadFavorites])
 
   return (
-    <div className={styles.container} data-testid="favourites-view">
-      <div className={styles.headerRow}>
-        <h2 className={styles.title}>Favourites</h2>
+    <div className="flex h-full flex-col overflow-hidden" data-testid="favourites-view">
+      <div className="flex shrink-0 items-center justify-between px-3 py-2">
+        <h2 className="font-headline text-size-body font-semibold wrap-break-word text-light-on-surface dark:text-dark-on-surface">
+          Favourites
+        </h2>
         <Button
           variant="subtle"
           size="sm"
@@ -218,7 +232,13 @@ export function FavouritesView({ connectionId }: FavouritesViewProps) {
 
       <FavouritesSearch searchQuery={searchQuery} onSearchQueryChange={setSearchQuery} />
 
-      <div className={styles.list} data-testid="favourites-list">
+      <div
+        className={joinClassNames([
+          'flex flex-1 flex-col gap-2 overflow-y-auto px-3 py-2',
+          SCROLLBAR,
+        ])}
+        data-testid="favourites-list"
+      >
         <FavouritesListContent
           connectionId={connectionId}
           searchQuery={searchQuery}

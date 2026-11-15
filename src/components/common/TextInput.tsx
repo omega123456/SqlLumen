@@ -16,14 +16,27 @@ export type TextInputVariant =
   | 'tableCell'
   | 'search'
   | 'listSearch'
+  | 'iconLeading'
   | 'accentName'
   | 'gridCell'
   | 'bare'
 
 type ChromeVariant =
-  'default' | 'mono' | 'formField' | 'tableCell' | 'search' | 'listSearch' | 'accentName'
+  | 'default'
+  | 'mono'
+  | 'formField'
+  | 'tableCell'
+  | 'search'
+  | 'listSearch'
+  | 'iconLeading'
+  | 'accentName'
 type UnchromedVariant = 'gridCell' | 'bare'
-type PaddingKey = 'standard' | 'passwordToggleGutter' | 'searchIconGutters' | 'listSearchGutters'
+type PaddingKey =
+  | 'standard'
+  | 'passwordToggleGutter'
+  | 'searchIconGutters'
+  | 'listSearchGutters'
+  | 'leadingIconGutter'
 
 const CHROME_VARIANT_CLASSES: Record<ChromeVariant, string> = {
   default: 'py-1.25 font-body text-body',
@@ -32,6 +45,7 @@ const CHROME_VARIANT_CLASSES: Record<ChromeVariant, string> = {
   tableCell: 'h-7.5 text-size-row',
   search: 'h-control font-body text-body',
   listSearch: 'h-control py-0 font-body text-body',
+  iconLeading: 'h-control py-1.25 font-body text-body',
   accentName: 'h-control max-w-105 my-1 font-body text-body font-semibold',
 }
 
@@ -55,6 +69,7 @@ const PADDING_X_CLASSES: Record<PaddingKey, string> = {
   passwordToggleGutter: 'pl-2.5 pr-9',
   searchIconGutters: 'pl-8.5 pr-8',
   listSearchGutters: 'pl-8.5 pr-2.5 not-placeholder-shown:pr-7.5',
+  leadingIconGutter: 'pl-8.5 pr-2.5',
 }
 
 export type TextInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> & {
@@ -82,6 +97,7 @@ function fieldFill(variant: TextInputVariant): FieldFill {
 function paddingKey(variant: TextInputVariant, passwordToggleGutter: boolean): PaddingKey {
   if (variant === 'search') return 'searchIconGutters'
   if (variant === 'listSearch') return 'listSearchGutters'
+  if (variant === 'iconLeading') return 'leadingIconGutter'
   if (passwordToggleGutter) return 'passwordToggleGutter'
   return 'standard'
 }

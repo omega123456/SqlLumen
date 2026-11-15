@@ -362,6 +362,7 @@
   --grid-template-rows-settings: 44px minmax(0, 1fr) auto;
   --grid-template-columns-welcome-chips: 1fr 1fr;
   --grid-template-columns-palette-row: auto minmax(0, 1fr) auto;
+  --grid-template-columns-kv-facts: 100px minmax(0, 1fr);
 
   --list-style-type-circle: circle;
   --list-style-type-square: square;
@@ -412,6 +413,12 @@
   --shadow-light-strip-tint: inset 0 0 0 999px var(--color-light-surface-strip);
   --shadow-dark-row-selected: inset 0 0 0 1px var(--color-dark-primary-a45);
   --shadow-light-row-selected: inset 0 0 0 1px var(--color-light-primary-a45);
+  --shadow-dark-row-focus:
+    inset 0 2px 0 var(--color-dark-focus-outer), inset 0 -2px 0 var(--color-dark-focus-outer);
+  --shadow-light-row-focus:
+    inset 0 2px 0 var(--color-light-focus-outer), inset 0 -2px 0 var(--color-light-focus-outer);
+  --shadow-dark-row-selected-edge: inset 3px 0 0 var(--color-dark-primary);
+  --shadow-light-row-selected-edge: inset 3px 0 0 var(--color-light-primary);
   --shadow-dark-slider-thumb-hover: 0 0 0 4px var(--color-dark-primary-a15);
   --shadow-light-slider-thumb-hover: 0 0 0 4px var(--color-light-primary-a15);
   --shadow-dark-slider-thumb-focus: 0 0 0 4px var(--color-dark-primary-a25);
@@ -443,6 +450,7 @@
   --transition-property-rotate: rotate;
   --transition-property-bg-and-color: background-color, color;
   --transition-property-color-and-bg: color, background-color;
+  --transition-property-background-and-filter: background, filter;
   --transition-property-border-color-and-shadow: border-color, box-shadow;
   --transition-property-filter-and-shadow: filter, box-shadow;
   --transition-property-color-border-background: color, border-color, background;
