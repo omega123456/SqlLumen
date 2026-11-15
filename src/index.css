@@ -17,6 +17,11 @@
 @custom-variant svg (& svg);
 @custom-variant resize-dragging (&[data-separator='active']);
 @custom-variant after-memory-section (&:where([data-memory-section] + *));
+@custom-variant inside-pre (&:where(pre > *));
+@custom-variant outside-pre (&:where(:not(pre) > *));
+@custom-variant top-level-list (&:where(:not(:is(ul, ol) *)));
+@custom-variant second-level-list (&:where(:is(ul, ol) *):not(:where(:is(ul, ol) :is(ul, ol) *)));
+@custom-variant deep-list (&:where(:is(ul, ol) :is(ul, ol) *));
 
 @theme static {
   --color-*: initial;
@@ -244,6 +249,7 @@
     'Segoe UI Variable Text', 'Segoe UI', 'Selawik', system-ui, -apple-system, 'Helvetica Neue',
     Arial, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Menlo, monospace;
+  --font-generic-mono: monospace;
   --default-font-family: var(--font-body);
   --default-mono-font-family: var(--font-mono);
 
@@ -270,6 +276,8 @@
   --text-mono-relaxed--line-height: 21px;
   --text-key-hint: 11px;
   --text-key-hint--line-height: 18px;
+  --text-palette-input: 16px;
+  --text-palette-input--line-height: 24px;
   --text-size-key-hint: 11px;
   --text-size-title: 28px;
   --text-size-subtitle: 20px;
@@ -280,6 +288,15 @@
   --text-size-mono-relaxed: 13px;
   --text-size-cell-mono: 12.5px;
   --text-size-glyph: 10px;
+  --text-size-palette-input: 16px;
+  --text-size-code-block: 12.5px;
+  --text-size-inline-code: 0.9em;
+  --text-size-heading-1: 2em;
+  --text-size-heading-2: 1.5em;
+  --text-size-heading-3: 1.17em;
+  --text-size-heading-4: 1em;
+  --text-size-heading-5: 0.83em;
+  --text-size-heading-6: 0.67em;
 
   --leading-*: initial;
   --leading-flat: 1;
@@ -287,6 +304,7 @@
   --leading-snug: 1.35;
   --leading-compact: 1.4;
   --leading-cozy: 1.45;
+  --leading-chip: 1.3;
   --leading-body: 1.5;
   --leading-loose: 1.6;
   --leading-normal: normal;
@@ -328,6 +346,10 @@
   --spacing-viewport-inset-height: calc(100vh - 32px);
   --spacing-settings-dialog-width: min(80vw, 1400px);
   --spacing-settings-dialog-height: min(80vh, 900px);
+  --spacing-palette-height: min(80vh, 720px);
+  --spacing-palette-state-message: 34ch;
+  --spacing-em: 1em;
+  --spacing-half-em: 0.5em;
 
   --grid-template-columns-workspace: auto minmax(0, 1fr);
   --grid-template-rows-workspace: auto minmax(0, 1fr);
@@ -338,6 +360,11 @@
   --grid-template-columns-connection-row: minmax(0, 1fr) 140px;
   --grid-template-columns-settings: 240px minmax(0, 1fr);
   --grid-template-rows-settings: 44px minmax(0, 1fr) auto;
+  --grid-template-columns-welcome-chips: 1fr 1fr;
+  --grid-template-columns-palette-row: auto minmax(0, 1fr) auto;
+
+  --list-style-type-circle: circle;
+  --list-style-type-square: square;
 
   --radius-*: initial;
   --radius-control: 4px;
@@ -415,6 +442,7 @@
   --transition-property-transform: transform;
   --transition-property-rotate: rotate;
   --transition-property-bg-and-color: background-color, color;
+  --transition-property-color-and-bg: color, background-color;
   --transition-property-border-color-and-shadow: border-color, box-shadow;
   --transition-property-filter-and-shadow: filter, box-shadow;
   --transition-property-color-border-background: color, border-color, background;

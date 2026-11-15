@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DatabaseIcon, FolderOpenIcon, GlobeIcon } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import type { MemoryScope } from '../../lib/ai-memory-commands'
-import styles from './MemoryScopePicker.module.css'
+import { joinClassNames } from '../../lib/class-names'
+import { AI_COMPOSER_POPUP } from '../../lib/class-names-ai'
+import { LISTBOX_OPTION_STATE_CLASSES, listboxOptionState } from '../../lib/class-names-menu'
 
 export interface MemoryScopePickerProps {
   hasGroup: boolean
@@ -104,6 +106,35 @@ function usePickerKeyboard(handlers: PickerKeyHandlers): void {
   }, [])
 }
 
+interface ScopeOptionClasses {
+  row: string
+  icon: string
+  label: string
+}
+
+const ENABLED_OPTION_CLASSES: Omit<ScopeOptionClasses, 'row'> = {
+  icon: 'shrink-0 text-light-on-surface-variant dark:text-dark-on-surface-variant',
+  label: 'flex-1 text-size-row text-light-on-surface dark:text-dark-on-surface',
+}
+
+const DISABLED_OPTION_CLASSES: ScopeOptionClasses = {
+  row: 'cursor-default',
+  icon: 'shrink-0 text-light-on-surface-variant opacity-60 dark:text-dark-on-surface-variant',
+  label:
+    'flex-1 text-size-row text-light-on-surface-variant opacity-60 dark:text-dark-on-surface-variant',
+}
+
+function scopeOptionClasses(isHighlighted: boolean, isDisabled: boolean): ScopeOptionClasses {
+  if (isDisabled) return DISABLED_OPTION_CLASSES
+  return {
+    ...ENABLED_OPTION_CLASSES,
+    row: joinClassNames([
+      'cursor-pointer',
+      LISTBOX_OPTION_STATE_CLASSES[listboxOptionState(isHighlighted)],
+    ]),
+  }
+}
+
 interface MemoryScopeOptionProps {
   option: PickerOption
   isHighlighted: boolean
@@ -119,19 +150,14 @@ function MemoryScopeOption({
 }: MemoryScopeOptionProps) {
   const IconComponent = option.icon
   const isSelectableHighlight = isHighlighted && !option.disabled
+  const optionClasses = scopeOptionClasses(isSelectableHighlight, option.disabled)
   return (
     <div
       role="option"
       id={`memory-scope-${option.scope}`}
       aria-selected={isSelectableHighlight}
       aria-disabled={option.disabled || undefined}
-      className={[
-        styles.option,
-        isSelectableHighlight ? styles.optionHighlighted : '',
-        option.disabled ? styles.optionDisabled : '',
-      ]
-        .filter(Boolean)
-        .join(' ')}
+      className={joinClassNames(['flex items-center gap-2 px-3 py-2', optionClasses.row])}
       data-testid={`memory-scope-option-${option.scope}`}
       onClick={onSelect}
       onMouseEnter={() => {
@@ -140,10 +166,13 @@ function MemoryScopeOption({
         }
       }}
     >
-      <IconComponent size={16} className={styles.optionIcon} aria-hidden />
-      <span className={styles.optionLabel}>{option.label}</span>
+      <IconComponent size={16} className={optionClasses.icon} aria-hidden />
+      <span className={optionClasses.label}>{option.label}</span>
       {option.disabled && (
-        <span className={styles.optionCaption} data-testid="memory-scope-no-group-caption">
+        <span
+          className="shrink-0 text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant"
+          data-testid="memory-scope-no-group-caption"
+        >
           no group
         </span>
       )}
@@ -208,10 +237,13 @@ export function MemoryScopePicker({
       role="listbox"
       id="memory-scope-listbox"
       aria-label="Save memory to"
-      className={styles.picker}
+      className={joinClassNames([AI_COMPOSER_POPUP, 'min-w-55'])}
       data-testid="memory-scope-picker"
     >
-      <div className={styles.header} aria-hidden>
+      <div
+        className="px-3 pt-1 pb-2 text-size-caption font-semibold text-light-on-surface-variant dark:text-dark-on-surface-variant"
+        aria-hidden
+      >
         Save memory to:
       </div>
       {options.map((option, index) => (

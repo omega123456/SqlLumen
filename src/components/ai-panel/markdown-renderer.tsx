@@ -2,7 +2,9 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import type { Components } from 'react-markdown'
+import { joinClassNames } from '../../lib/class-names'
 import { AiCodeBlock } from './AiCodeBlock'
+import { INLINE_CODE_CLASSES, MARKDOWN_ELEMENTS } from './markdown-elements'
 
 export interface MarkdownRendererProps {
   content: string
@@ -18,13 +20,14 @@ export function MarkdownRenderer({
   onSqlAccepted,
 }: MarkdownRendererProps) {
   const components: Components = {
+    ...MARKDOWN_ELEMENTS,
     code({ className, children, ...rest }) {
       const match = /language-(\w+)/.exec(className ?? '')
       const isInline = !match && !className
 
       if (isInline) {
         return (
-          <code className={className} {...rest}>
+          <code className={joinClassNames([INLINE_CODE_CLASSES, className])} {...rest}>
             {children}
           </code>
         )
@@ -46,7 +49,7 @@ export function MarkdownRenderer({
   }
 
   return (
-    <div data-testid="markdown-renderer">
+    <div className="*:first:mt-0 *:last:mb-0" data-testid="markdown-renderer">
       <Markdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}

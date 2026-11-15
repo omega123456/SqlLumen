@@ -9,7 +9,6 @@ import { AiChatMessages } from './AiChatMessages'
 import { AiChatInput } from './AiChatInput'
 import { AiSetupRequired } from './AiSetupRequired'
 import { InfoBar } from '../common/InfoBar'
-import styles from './AiPanel.module.css'
 
 export interface AiPanelProps {
   tabId: string
@@ -54,7 +53,7 @@ function AiPanelStatusBars({ tabId, connectionId }: AiPanelStatusBarsProps) {
       {isWaitingForIndex && (
         <InfoBar
           severity="info"
-          className={styles.indexWaiting}
+          className="mx-3.5 mt-2 shrink-0"
           message="Waiting for schema index..."
           data-testid="ai-index-waiting"
         />
@@ -62,7 +61,7 @@ function AiPanelStatusBars({ tabId, connectionId }: AiPanelStatusBarsProps) {
       {isReembedding && reembedStatus && reembedStatus.total > 0 && (
         <InfoBar
           severity="info"
-          className={styles.indexWaiting}
+          className="mx-3.5 mt-2 shrink-0"
           message={`Re-embedding memories... ${reembedStatus.done}/${reembedStatus.total}`}
           data-testid="ai-memory-reembed-banner"
         />
@@ -108,7 +107,10 @@ export function AiPanel({ tabId, connectionId, onTriggerDiff }: AiPanelProps) {
 
   if (isMissingEmbeddingModel) {
     return (
-      <div className={styles.panel} data-testid="ai-panel">
+      <div
+        className="flex h-full flex-col overflow-hidden border-l border-light-stroke-divider bg-light-surface-container dark:border-dark-stroke-divider dark:bg-dark-surface-container"
+        data-testid="ai-panel"
+      >
         <AiPanelHeader tabId={tabId} />
         <AiSetupRequired />
         <AiChatInput
@@ -123,7 +125,10 @@ export function AiPanel({ tabId, connectionId, onTriggerDiff }: AiPanelProps) {
   }
 
   return (
-    <div className={styles.panel} data-testid="ai-panel">
+    <div
+      className="flex h-full flex-col overflow-hidden border-l border-light-stroke-divider bg-light-surface-container dark:border-dark-stroke-divider dark:bg-dark-surface-container"
+      data-testid="ai-panel"
+    >
       <AiPanelHeader tabId={tabId} />
       <AiPanelStatusBars tabId={tabId} connectionId={connectionId} />
       <AiChatMessages

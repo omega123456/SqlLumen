@@ -1,5 +1,7 @@
 import type { SlashCommand } from '../../lib/slash-commands'
-import styles from './SlashCommandDropdown.module.css'
+import { joinClassNames } from '../../lib/class-names'
+import { AI_COMPOSER_POPUP } from '../../lib/class-names-ai'
+import { LISTBOX_OPTION_STATE_CLASSES, listboxOptionState } from '../../lib/class-names-menu'
 
 export interface SlashCommandDropdownProps {
   commands: SlashCommand[]
@@ -20,7 +22,7 @@ export function SlashCommandDropdown({
     <div
       role="listbox"
       id="slash-command-listbox"
-      className={styles.dropdown}
+      className={joinClassNames([AI_COMPOSER_POPUP, 'min-w-50'])}
       data-testid="slash-command-dropdown"
     >
       {commands.map((command, index) => (
@@ -29,13 +31,20 @@ export function SlashCommandDropdown({
           role="option"
           id={`slash-cmd-${command.name}`}
           aria-selected={index === highlightedIndex}
-          className={`${styles.item} ${index === highlightedIndex ? styles.itemHighlighted : ''}`}
+          className={joinClassNames([
+            'flex cursor-pointer flex-col gap-0.5 px-3 py-2',
+            LISTBOX_OPTION_STATE_CLASSES[listboxOptionState(index === highlightedIndex)],
+          ])}
           data-testid={`slash-command-item-${command.name}`}
           onClick={() => onSelect(command)}
           onMouseEnter={() => onHighlightChange(index)}
         >
-          <span className={styles.commandName}>/{command.name}</span>
-          <span className={styles.commandDescription}>{command.description}</span>
+          <span className="text-size-row font-semibold text-light-on-surface dark:text-dark-on-surface">
+            /{command.name}
+          </span>
+          <span className="text-light-on-surface-variant dark:text-dark-on-surface-variant">
+            {command.description}
+          </span>
         </div>
       ))}
     </div>

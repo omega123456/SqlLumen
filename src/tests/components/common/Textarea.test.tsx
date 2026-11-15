@@ -34,6 +34,14 @@ describe('Textarea', () => {
     )
   })
 
+  it('exposes the fixedSize variant as its lookup key', () => {
+    render(<Textarea variant="fixedSize" aria-label="Fixed" />)
+    expect(screen.getByRole('textbox', { name: 'Fixed' })).toHaveAttribute(
+      'data-variant',
+      'fixedSize'
+    )
+  })
+
   it('flags the invalid state with a data attribute', () => {
     render(<Textarea invalid aria-label="Bad" />)
     expect(screen.getByRole('textbox', { name: 'Bad' })).toHaveAttribute('data-invalid', 'true')

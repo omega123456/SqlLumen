@@ -106,6 +106,11 @@ describe('index.css — directives', () => {
       'svg',
       'resize-dragging',
       'after-memory-section',
+      'inside-pre',
+      'outside-pre',
+      'top-level-list',
+      'second-level-list',
+      'deep-list',
     ])
   })
 

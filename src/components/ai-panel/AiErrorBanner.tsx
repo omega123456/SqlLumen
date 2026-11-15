@@ -1,6 +1,5 @@
 import { Button } from '../common/Button'
 import { InfoBar } from '../common/InfoBar'
-import styles from './AiErrorBanner.module.css'
 
 export interface AiErrorBannerProps {
   error: string
@@ -11,7 +10,7 @@ export function AiErrorBanner({ error, onRetry }: AiErrorBannerProps) {
   return (
     <InfoBar
       severity="error"
-      className={styles.banner}
+      className="mx-3.5 my-2 shrink-0"
       message={error}
       data-testid="ai-error-banner"
       actions={

@@ -2,9 +2,8 @@ import { useState, useCallback, useMemo, type ReactNode } from 'react'
 import { Copy, GitDiff } from '@phosphor-icons/react'
 import { Button } from '../common/Button'
 import { splitStatements } from '../query-editor/sql-parser-utils'
-import styles from './AiCodeBlock.module.css'
-
 import { logFrontendError } from '../../lib/app-log-commands'
+import { joinClassNames, SCROLLBAR } from '../../lib/class-names'
 
 const COPIED_FEEDBACK_DURATION_MS = 2000
 const SQL_LANGUAGE_LABEL = 'SQL'
@@ -84,6 +83,42 @@ function DiffButton({ onDiff }: { onDiff: () => void }) {
   )
 }
 
+interface CodeBlockHeaderProps {
+  label: string
+  children: ReactNode
+}
+
+function CodeBlockHeader({ label, children }: CodeBlockHeaderProps) {
+  return (
+    <div className="flex h-8.5 items-center gap-0.5 border-b border-light-stroke-divider bg-light-surface-container-high pr-1 pl-3 dark:border-dark-stroke-divider dark:bg-dark-surface-container-high">
+      <span className="flex-1 font-body text-size-caption leading-5 text-light-on-surface-variant dark:text-dark-on-surface-variant">
+        {label}
+      </span>
+      <div className="flex items-center gap-0.5">{children}</div>
+    </div>
+  )
+}
+
+interface CodeBlockBodyProps {
+  language: string | undefined
+  children: ReactNode
+}
+
+function CodeBlockBody({ language, children }: CodeBlockBodyProps) {
+  return (
+    <pre
+      className={joinClassNames([
+        'overflow-x-auto px-3 py-2.5 font-mono text-size-code-block leading-4.75 whitespace-pre-wrap text-light-token-text dark:text-dark-token-text',
+        SCROLLBAR,
+      ])}
+    >
+      <code className={joinClassNames(['font-mono', codeLanguageClassName(language)])}>
+        {children}
+      </code>
+    </pre>
+  )
+}
+
 export function AiCodeBlock({
   language,
   children,
@@ -132,17 +167,15 @@ export function AiCodeBlock({
   const canShowDiff = Boolean(showDiffButton && isSql && isSingleStatement && onTriggerDiff)
 
   return (
-    <div className={styles.codeBlock} data-testid="ai-code-block">
-      <div className={styles.header}>
-        <span className={styles.language}>{codeLanguageLabel(language, isSql)}</span>
-        <div className={styles.actions}>
-          {canShowDiff && <DiffButton onDiff={handleDiff} />}
-          <CopyCodeButton copied={copied} onCopy={handleCopy} />
-        </div>
-      </div>
-      <pre className={styles.pre}>
-        <code className={codeLanguageClassName(language)}>{children}</code>
-      </pre>
+    <div
+      className="overflow-hidden rounded-card border border-light-stroke-card bg-light-surface-container-lowest font-body whitespace-normal dark:border-dark-stroke-card dark:bg-dark-surface-container-lowest"
+      data-testid="ai-code-block"
+    >
+      <CodeBlockHeader label={codeLanguageLabel(language, isSql)}>
+        {canShowDiff && <DiffButton onDiff={handleDiff} />}
+        <CopyCodeButton copied={copied} onCopy={handleCopy} />
+      </CodeBlockHeader>
+      <CodeBlockBody language={language}>{children}</CodeBlockBody>
     </div>
   )
 }

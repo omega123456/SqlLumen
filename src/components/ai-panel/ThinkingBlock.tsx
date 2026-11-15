@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { Brain, CaretRight, CaretDown } from '@phosphor-icons/react'
 import { Button } from '../common/Button'
-import styles from './ThinkingBlock.module.css'
+import { FOCUS_RING } from '../../lib/focus-ring'
+import { joinClassNames, SCROLLBAR } from '../../lib/class-names'
+import { StreamingCursor } from './StreamingCursor'
 
 export interface ThinkingBlockProps {
   content: string
@@ -29,24 +31,37 @@ export function ThinkingBlock({ content, isStreaming }: ThinkingBlockProps) {
   const isExpanded = isStreaming || isOpen
 
   return (
-    <div className={styles.container} data-testid="thinking-block">
+    <div
+      className="mb-2 overflow-hidden rounded-card border border-light-stroke-divider dark:border-dark-stroke-divider"
+      data-testid="thinking-block"
+    >
       <Button
         variant="bare"
-        className={styles.header}
+        className={joinClassNames([
+          'flex w-full cursor-pointer items-center gap-1 px-2 py-1 text-left text-size-caption leading-compact text-light-on-surface-variant select-none hover:bg-light-fill-subtle-hover dark:text-dark-on-surface-variant dark:hover:bg-dark-fill-subtle-hover',
+          FOCUS_RING,
+        ])}
         onClick={handleToggle}
         data-testid="thinking-block-header"
       >
-        <span className={styles.headerLabel}>
+        <span className="flex flex-1 items-center gap-1">
           <Brain size={14} />
           {isStreaming ? 'Thinking…' : 'Reasoning'}
         </span>
         {!isStreaming && (isOpen ? <CaretDown size={12} /> : <CaretRight size={12} />)}
       </Button>
       {isExpanded && (
-        <div ref={contentRef} className={styles.content} data-testid="thinking-block-content">
-          <pre className={styles.pre}>
+        <div
+          ref={contentRef}
+          className={joinClassNames([
+            'max-h-75 overflow-y-auto bg-light-surface-container-lowest px-3 py-2 dark:bg-dark-surface-container-lowest',
+            SCROLLBAR,
+          ])}
+          data-testid="thinking-block-content"
+        >
+          <pre className="font-mono text-size-caption leading-body wrap-anywhere whitespace-pre-wrap text-light-on-surface-variant dark:text-dark-on-surface-variant">
             {content}
-            {isStreaming && <span className={styles.streamingCursor} aria-hidden="true" />}
+            {isStreaming && <StreamingCursor />}
           </pre>
         </div>
       )}

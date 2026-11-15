@@ -7,7 +7,8 @@ import { useConnectionStore } from '../../stores/connection-store'
 import { subscribeToTabDeactivated } from '../../lib/workspace-tab-activity-events'
 import { Textarea } from '../common/Textarea'
 import { Button } from '../common/Button'
-import { IconButton } from '../common/IconButton'
+import { joinClassNames, SCROLLBAR } from '../../lib/class-names'
+import { FOCUS_RING } from '../../lib/focus-ring'
 import { SlashCommandDropdown } from './SlashCommandDropdown'
 import { MemoryScopePicker } from './MemoryScopePicker'
 import type { SlashCommand } from '../../lib/slash-commands'
@@ -16,7 +17,6 @@ import { isPlainEnterKey } from '../../lib/input-events'
 import { useChatSend, useRememberScopePrompt } from './ai-chat-input/use-chat-send'
 import { useSlashCommandDropdown } from './ai-chat-input/use-slash-command-dropdown'
 import { useTextareaAutoHeight } from './ai-chat-input/use-textarea-auto-height'
-import styles from './AiChatInput.module.css'
 
 const CONTEXT_CHIP_MAX_LENGTH = 60
 const TRUNCATION_ELLIPSIS = '...'
@@ -78,20 +78,29 @@ interface AttachedContextChipProps {
 
 function AttachedContextChip({ sql, onRemove }: AttachedContextChipProps) {
   return (
-    <div className={styles.contextChip} data-testid="ai-context-chip">
-      <span className={styles.contextChipText} title={sql}>
+    <div
+      className="inline-flex h-6.5 max-w-full items-center gap-1.5 self-start rounded-control border border-light-stroke-card bg-light-fill-control pr-0.5 pl-2 dark:border-dark-stroke-card dark:bg-dark-fill-control"
+      data-testid="ai-context-chip"
+    >
+      <span
+        className="min-w-0 truncate font-mono text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant"
+        title={sql}
+      >
         {truncateContextSql(sql)}
       </span>
-      <IconButton
-        size="sm"
-        className={styles.contextChipRemove}
+      <Button
+        variant="bare"
+        className={joinClassNames([
+          'inline-flex size-4 shrink-0 cursor-pointer items-center justify-center rounded-track bg-transparent p-0 text-light-on-surface-variant transition-color-and-bg duration-150 hover:bg-light-fill-subtle-hover hover:text-light-on-surface dark:text-dark-on-surface-variant dark:hover:bg-dark-fill-subtle-hover dark:hover:text-dark-on-surface',
+          FOCUS_RING,
+        ])}
         onClick={onRemove}
         title="Remove context"
         aria-label="Remove attached SQL context"
         data-testid="ai-context-chip-remove"
       >
         <XIcon size={12} />
-      </IconButton>
+      </Button>
     </div>
   )
 }
@@ -337,12 +346,16 @@ export function AiChatInput(props: AiChatInputProps) {
   )
 
   return (
-    <div className={styles.container} data-testid="ai-chat-input">
-      <div className={styles.textareaWrapper}>
+    <div
+      className="flex shrink-0 flex-row items-end gap-1.5 border-t border-light-stroke-divider bg-light-surface-container p-2.5 dark:border-dark-stroke-divider dark:bg-dark-surface-container"
+      data-testid="ai-chat-input"
+    >
+      <div className="relative flex min-w-0 flex-1 flex-col gap-2">
         <ChatInputPopups tabId={tabId} connectionId={connectionId} controller={controller} />
         <Textarea
           ref={textareaRef}
-          className={styles.textarea}
+          variant="fixedSize"
+          className={joinClassNames(['max-h-35 min-h-control overflow-y-auto', SCROLLBAR])}
           value={draft.value}
           onChange={handleChange}
           onFocus={handleFocus}

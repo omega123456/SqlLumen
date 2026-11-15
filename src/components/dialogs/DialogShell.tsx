@@ -24,7 +24,7 @@ export interface DialogShellProps {
   nonDismissible?: boolean
   panelPadding?: boolean
   panelClassName?: string
-  backdropClassName?: string
+  backdropTone?: DialogBackdropTone
   initialFocusRef?: RefObject<HTMLElement | null>
   formProps?: Omit<FormHTMLAttributes<HTMLFormElement>, 'children' | 'className' | 'style'>
   children: React.ReactNode
@@ -37,6 +37,8 @@ interface DialogSizing {
   fillMaxWidth: boolean
   panelPadding: boolean
 }
+
+export type DialogBackdropTone = 'scrim' | 'palette'
 
 type DialogWidthMode = 'fit' | 'fixed'
 type DialogHeightMode = 'content' | 'fixed'
@@ -55,6 +57,11 @@ const HEIGHT_CLASSES: Record<DialogHeightMode, string> = {
 const PADDING_CLASSES: Record<DialogPaddingMode, string> = {
   padded: 'p-6',
   flush: 'p-0',
+}
+
+const BACKDROP_TONE_CLASSES: Record<DialogBackdropTone, string> = {
+  scrim: 'bg-light-smoke dark:bg-dark-smoke',
+  palette: 'bg-smoke-palette',
 }
 
 const VIEWPORT_WIDTH_CAP = '90vw'
@@ -213,20 +220,21 @@ function closeOnBackdropClick(event: React.MouseEvent, dismiss: Omit<DismissInpu
 }
 
 interface DialogBackdropProps {
-  className: string | undefined
+  tone: DialogBackdropTone
   testId: string | undefined
   ariaLabel: string | undefined
   dismiss: Omit<DismissInputs, 'isOpen'>
   children: React.ReactNode
 }
 
-function DialogBackdrop({ className, testId, ariaLabel, dismiss, children }: DialogBackdropProps) {
+function DialogBackdrop({ tone, testId, ariaLabel, dismiss, children }: DialogBackdropProps) {
   return (
     <div
       className={joinClassNames([
-        'fixed inset-0 z-1000 flex items-center justify-center bg-light-smoke dark:bg-dark-smoke',
-        className,
+        'fixed inset-0 z-1000 flex items-center justify-center',
+        BACKDROP_TONE_CLASSES[tone],
       ])}
+      data-tone={tone}
       data-testid={testId}
       onClick={(event) => closeOnBackdropClick(event, dismiss)}
       role="dialog"
@@ -252,7 +260,7 @@ export function DialogShell({
   nonDismissible = false,
   panelPadding = true,
   panelClassName,
-  backdropClassName,
+  backdropTone = 'scrim',
   initialFocusRef,
   formProps,
   children,
@@ -276,7 +284,7 @@ export function DialogShell({
 
   return createPortal(
     <DialogBackdrop
-      className={backdropClassName}
+      tone={backdropTone}
       testId={testId}
       ariaLabel={ariaLabel}
       dismiss={{ nonDismissible: nonDismissible, onClose: onClose }}

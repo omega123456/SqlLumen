@@ -3,7 +3,6 @@ import { useAiStore } from '../../stores/ai-store'
 import { useQueryStore } from '../../stores/query-store'
 import { IconButton } from '../common/IconButton'
 import type { QueryEditorTab as QueryEditorTabType } from '../../types/schema'
-import styles from './QueryWorkspaceAiRail.module.css'
 import { isEditorLockStatus } from '../../lib/query-tab-status'
 
 export interface QueryWorkspaceAiRailProps {
@@ -16,8 +15,14 @@ export function QueryWorkspaceAiRail({ tab }: QueryWorkspaceAiRailProps) {
   const isDisabled = isEditorLockStatus(status)
 
   return (
-    <div className={styles.railHost} data-testid="ai-workspace-sidebar">
-      <div className={styles.rail} data-testid="ai-workspace-rail">
+    <div
+      className="flex min-h-0 w-11 shrink-0 flex-col border-l border-light-stroke-divider bg-light-surface-container dark:border-dark-stroke-divider dark:bg-dark-surface-container"
+      data-testid="ai-workspace-sidebar"
+    >
+      <div
+        className="flex w-full flex-1 flex-col items-center pt-1.5"
+        data-testid="ai-workspace-rail"
+      >
         <IconButton
           size="lg"
           title="Open AI assistant"

@@ -98,6 +98,11 @@ const TAILWIND_CLASS_RULE_FILES = [
   'src/components/settings/**/*.ts',
   'src/components/settings/**/*.tsx',
   'src/lib/class-names-settings.ts',
+  'src/components/ai-panel/*.tsx',
+  'src/components/ai-panel/**/*.ts',
+  'src/components/ai-panel/**/*.tsx',
+  'src/components/command-palette/*.tsx',
+  'src/lib/class-names-ai.ts',
 ]
 const localRulesPlugin = {
   rules: { ...namedConditionsPlugin.rules, ...tailwindRulesPlugin.rules },

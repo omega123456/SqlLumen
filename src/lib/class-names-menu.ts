@@ -22,3 +22,15 @@ export function contextMenuItemClassName(isDestructive: boolean | undefined): st
   if (isDestructive) return ITEM_TONE_CLASSES.destructive
   return ITEM_TONE_CLASSES.default
 }
+
+export type ListboxOptionState = 'idle' | 'highlighted'
+
+export const LISTBOX_OPTION_STATE_CLASSES: Record<ListboxOptionState, string> = {
+  idle: 'hover:bg-light-fill-subtle-hover dark:hover:bg-dark-fill-subtle-hover',
+  highlighted: 'bg-light-fill-subtle-hover dark:bg-dark-fill-subtle-hover',
+}
+
+export function listboxOptionState(isHighlighted: boolean): ListboxOptionState {
+  if (isHighlighted) return 'highlighted'
+  return 'idle'
+}

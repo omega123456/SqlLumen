@@ -5,7 +5,7 @@ import { AiMessageBubble } from './AiMessageBubble'
 import { AiWelcomeState } from './AiWelcomeState'
 import { AiErrorBanner } from './AiErrorBanner'
 import type { AiMessage, TabAiState } from '../../stores/ai-store'
-import styles from './AiChatMessages.module.css'
+import { joinClassNames, SCROLLBAR } from '../../lib/class-names'
 
 export interface AiChatMessagesProps {
   tabId: string
@@ -106,7 +106,10 @@ export function AiChatMessages({
 
   return (
     <div
-      className={styles.container}
+      className={joinClassNames([
+        'flex flex-1 flex-col gap-3.5 overflow-y-auto p-3.5 select-text',
+        SCROLLBAR,
+      ])}
       role="log"
       aria-live="polite"
       aria-busy={isGenerating}
@@ -121,7 +124,7 @@ export function AiChatMessages({
         const isStreamingMessage = isLastAssistant && isGenerating
 
         return (
-          <div key={message.id} className={styles.message}>
+          <div key={message.id} className="flex flex-col">
             <AiMessageBubble
               message={message}
               isStreaming={isStreamingMessage}
@@ -132,10 +135,10 @@ export function AiChatMessages({
         )
       })}
 
-      <div ref={scrollAnchorRef} className={styles.scrollAnchor} />
+      <div ref={scrollAnchorRef} className="-mt-3.5 h-0 shrink-0" />
 
       {internalSuggestion && (
-        <span data-testid="ai-internal-suggestion" className={styles.hidden}>
+        <span data-testid="ai-internal-suggestion" className="hidden">
           {internalSuggestion}
         </span>
       )}

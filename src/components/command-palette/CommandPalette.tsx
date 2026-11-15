@@ -12,7 +12,6 @@ import { clampedSlashIndex, usePaletteKeyboard } from './use-palette-keyboard'
 import { usePaletteResults } from './use-palette-results'
 import { usePaletteSchemaObjects } from './use-palette-schema-objects'
 import { usePaletteSelect } from './use-palette-select'
-import styles from './CommandPalette.module.css'
 
 export type {
   CommandPaletteFilterPillValue,
@@ -52,8 +51,8 @@ export function CommandPalette() {
       onClose={handleClose}
       panelPadding={false}
       panelWidth="min(800px, 80vw)"
-      panelClassName={styles.panel}
-      backdropClassName={styles.backdrop}
+      panelClassName="mt-14 self-start overflow-hidden"
+      backdropTone="palette"
       testId="command-palette"
       ariaLabel="Command palette"
       disableFocusManagement
@@ -120,8 +119,8 @@ function CommandPaletteSession(props: CommandPaletteSessionProps) {
   const { slashQuery, isSlashDropdownOpen, activeIndex } = paletteInput
 
   return (
-    <div className={styles.surface}>
-      <div className={styles.inputSection}>
+    <div className="flex max-h-palette-height flex-col">
+      <div className="border-b border-light-stroke-divider p-3 dark:border-dark-stroke-divider">
         <CommandPaletteInput
           query={paletteInput.query}
           pills={paletteInput.pills}
@@ -133,7 +132,7 @@ function CommandPaletteSession(props: CommandPaletteSessionProps) {
           activeDescendantId={paletteResults.activeDescendantId}
         />
       </div>
-      <div className={styles.resultsSection}>
+      <div className="flex min-h-0 flex-1 flex-col">
         {isSlashDropdownOpen ? (
           <SlashCommandDropdown
             slashQuery={slashQuery}
