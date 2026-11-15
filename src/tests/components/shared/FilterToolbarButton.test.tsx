@@ -102,4 +102,26 @@ describe('FilterToolbarButton', () => {
     expect(screen.getByTestId('btn-filter')).not.toBeDisabled()
     expect(screen.getByTestId('btn-clear-filter')).not.toBeDisabled()
   })
+
+  it('marks the filter button as accented only while a filter is active', () => {
+    const { rerender } = render(
+      <FilterToolbarButton
+        isActive={false}
+        activeCount={0}
+        onFilterClick={() => {}}
+        onClearClick={() => {}}
+      />
+    )
+    expect(screen.getByTestId('btn-filter')).toHaveAttribute('data-variant', 'subtle')
+
+    rerender(
+      <FilterToolbarButton
+        isActive={true}
+        activeCount={2}
+        onFilterClick={() => {}}
+        onClearClick={() => {}}
+      />
+    )
+    expect(screen.getByTestId('btn-filter')).toHaveAttribute('data-variant', 'subtleAccent')
+  })
 })

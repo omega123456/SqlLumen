@@ -38,10 +38,6 @@ export function openForeignKeyLookupFromKey(
   return true
 }
 
-export function nullToggleClassName(isNull: boolean): string {
-  return `td-null-toggle ${isNull ? 'td-null-active' : ''}`
-}
-
 export function isSingleLineCommitKey(event: ReactKeyboardEvent): boolean {
   return event.key === 'Tab' || event.key === 'Enter'
 }

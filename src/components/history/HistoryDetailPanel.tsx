@@ -9,7 +9,7 @@ import { formatTableTimestamp } from '../../lib/format-utils'
 import { SqlSyntaxHighlighter } from '../../lib/sql-syntax-highlighter'
 import { Button } from '../common/Button'
 import type { HistoryEntry } from '../../types/schema'
-import dotStyles from '../shared/toolbar/toolbar-items.module.css'
+import { statusDotClassName } from '../../lib/class-names-status-dot'
 import styles from './HistoryDetailPanel.module.css'
 import { MILLISECONDS_PER_SECOND } from '../../lib/units'
 
@@ -36,10 +36,9 @@ function formatRows(entry: HistoryEntry): string {
 const MISSING_VALUE_PLACEHOLDER = '—'
 
 function HistoryStatusHeader({ entry }: { entry: HistoryEntry }) {
-  const statusClassName = entry.success ? dotStyles.statusDotOk : dotStyles.statusDotError
   return (
     <div className={styles.header}>
-      <span className={`${dotStyles.statusDot} ${statusClassName}`} aria-hidden="true">
+      <span className={statusDotClassName(entry.success)} aria-hidden="true">
         {entry.success ? '✓' : '✕'}
       </span>
       <b>{entry.success ? 'Succeeded' : 'Failed'}</b>

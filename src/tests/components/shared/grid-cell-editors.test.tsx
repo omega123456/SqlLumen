@@ -59,7 +59,7 @@ describe('NullableCellEditor — store syncing', () => {
     const props = makeEditorProps()
     render(<NullableCellEditor {...props} />)
 
-    const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
+    const input = document.querySelector('input[data-variant="gridCell"]') as HTMLInputElement
     expect(input).toBeTruthy()
 
     fireEvent.change(input, { target: { value: 'Updated' } })
@@ -71,7 +71,7 @@ describe('NullableCellEditor — store syncing', () => {
     const props = makeEditorProps()
     render(<NullableCellEditor {...props} />)
 
-    const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
+    const input = document.querySelector('input[data-variant="gridCell"]') as HTMLInputElement
     fireEvent.change(input, { target: { value: 'Updated' } })
 
     // syncCellValue must be called alongside updateCellValue so the
@@ -87,7 +87,7 @@ describe('NullableCellEditor — store syncing', () => {
     const props = makeEditorProps()
     render(<NullableCellEditor {...props} />)
 
-    const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
+    const input = document.querySelector('input[data-variant="gridCell"]') as HTMLInputElement
     fireEvent.change(input, { target: { value: 'Updated' } })
 
     expect(props.onRowChange).toHaveBeenCalledWith({ col_0: 1, col_1: 'Updated' })
@@ -97,7 +97,7 @@ describe('NullableCellEditor — store syncing', () => {
     const props = makeEditorProps()
     render(<NullableCellEditor {...props} />)
 
-    const nullBtn = document.querySelector('.td-null-toggle') as HTMLButtonElement
+    const nullBtn = document.querySelector('[data-null-toggle]') as HTMLButtonElement
     fireEvent.click(nullBtn)
 
     expect(props.syncCellValue).toHaveBeenCalledWith('tab-1', {
@@ -112,15 +112,15 @@ describe('NullableCellEditor — store syncing', () => {
     const props = makeEditorProps({ row: { col_0: 1, col_1: null } })
     render(<NullableCellEditor {...props} />)
 
-    const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
-    const nullBtn = document.querySelector('.td-null-toggle') as HTMLButtonElement
+    const input = document.querySelector('input[data-variant="gridCell"]') as HTMLInputElement
+    const nullBtn = document.querySelector('[data-null-toggle]') as HTMLButtonElement
 
-    expect(nullBtn).toHaveClass('td-null-active')
+    expect(nullBtn).toHaveAttribute('data-active')
     expect(input).toHaveValue('')
 
     await user.type(input, 'Updated')
 
-    expect(nullBtn).not.toHaveClass('td-null-active')
+    expect(nullBtn).not.toHaveAttribute('data-active')
     expect(input).toHaveValue('Updated')
     expect(props.onRowChange).toHaveBeenLastCalledWith({ col_0: 1, col_1: 'Updated' })
   })
@@ -130,13 +130,13 @@ describe('NullableCellEditor — store syncing', () => {
     const props = makeEditorProps({ row: { col_0: 1, col_1: null } })
     render(<NullableCellEditor {...props} />)
 
-    const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
-    const nullBtn = document.querySelector('.td-null-toggle') as HTMLButtonElement
+    const input = document.querySelector('input[data-variant="gridCell"]') as HTMLInputElement
+    const nullBtn = document.querySelector('[data-null-toggle]') as HTMLButtonElement
 
     await user.type(input, 'Updated')
     await user.click(nullBtn)
 
-    expect(nullBtn).toHaveClass('td-null-active')
+    expect(nullBtn).toHaveAttribute('data-active')
     expect(input).toHaveValue('')
     expect(props.onRowChange).toHaveBeenLastCalledWith({ col_0: 1, col_1: null })
   })
@@ -145,7 +145,7 @@ describe('NullableCellEditor — store syncing', () => {
     const props = makeEditorProps()
     render(<NullableCellEditor {...props} />)
 
-    const nullBtn = document.querySelector('.td-null-toggle') as HTMLButtonElement
+    const nullBtn = document.querySelector('[data-null-toggle]') as HTMLButtonElement
     fireEvent.click(nullBtn)
 
     expect(props.onRowChange).toHaveBeenCalledWith({ col_0: 1, col_1: null })
@@ -155,7 +155,7 @@ describe('NullableCellEditor — store syncing', () => {
     const props = makeEditorProps({ row: { col_0: 1, col_1: null } })
     render(<NullableCellEditor {...props} />)
 
-    const nullBtn = document.querySelector('.td-null-toggle') as HTMLButtonElement
+    const nullBtn = document.querySelector('[data-null-toggle]') as HTMLButtonElement
     fireEvent.click(nullBtn)
 
     // When toggling NULL off, the editor restores with empty string
@@ -170,7 +170,7 @@ describe('NullableCellEditor — store syncing', () => {
     const props = makeEditorProps()
     render(<NullableCellEditor {...props} />)
 
-    const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
+    const input = document.querySelector('input[data-variant="gridCell"]') as HTMLInputElement
     // Type something first
     fireEvent.change(input, { target: { value: 'Changed' } })
     vi.clearAllMocks()
@@ -194,7 +194,7 @@ describe('NullableCellEditor — store syncing', () => {
     })
     render(<NullableCellEditor {...props} />)
 
-    const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
+    const input = document.querySelector('input[data-variant="gridCell"]') as HTMLInputElement
     expect(input).toHaveValue('N')
     fireEvent.change(input, { target: { value: 'New Value' } })
     vi.clearAllMocks()
@@ -218,7 +218,7 @@ describe('NullableCellEditor — store syncing', () => {
     const props = makeEditorProps()
     render(<NullableCellEditor {...props} />)
 
-    const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
+    const input = document.querySelector('input[data-variant="gridCell"]') as HTMLInputElement
     fireEvent.keyDown(input, { key: 'Escape' })
 
     expect(props.onClose).toHaveBeenCalledWith(false, false)
@@ -228,7 +228,7 @@ describe('NullableCellEditor — store syncing', () => {
     const props = makeEditorProps()
     render(<NullableCellEditor {...props} />)
 
-    const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
+    const input = document.querySelector('input[data-variant="gridCell"]') as HTMLInputElement
     fireEvent.keyDown(input, { key: 'Tab' })
 
     expect(props.onRowChange).toHaveBeenCalledWith({ col_0: 1, col_1: 'original' }, true)
@@ -238,7 +238,7 @@ describe('NullableCellEditor — store syncing', () => {
     const props = makeEditorProps()
     render(<NullableCellEditor {...props} />)
 
-    const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
+    const input = document.querySelector('input[data-variant="gridCell"]') as HTMLInputElement
     fireEvent.keyDown(input, { key: 'Enter' })
 
     expect(props.onRowChange).toHaveBeenCalledWith({ col_0: 1, col_1: 'original' }, true)
@@ -249,7 +249,7 @@ describe('NullableCellEditor — store syncing', () => {
     const props = makeEditorProps({ tabId: '' })
     render(<NullableCellEditor {...props} />)
 
-    const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
+    const input = document.querySelector('input[data-variant="gridCell"]') as HTMLInputElement
     fireEvent.change(input, { target: { value: 'Changed' } })
 
     // With empty tabId, the cell editor guards prevent the call
@@ -261,13 +261,13 @@ describe('NullableCellEditor — store syncing', () => {
     const props = makeEditorProps()
     render(<NullableCellEditor {...props} />)
 
-    const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
+    const input = document.querySelector('input[data-variant="gridCell"]') as HTMLInputElement
     fireEvent.blur(input, { relatedTarget: null })
 
     expect(props.onClose).toHaveBeenCalledWith(true, false)
   })
 
-  it('keeps the text input flexed when NULL/FK adornments are present', () => {
+  it('shows the FK trigger next to the text input', () => {
     const props = makeEditorProps({
       foreignKey: {
         columnName: 'col_1',
@@ -283,9 +283,7 @@ describe('NullableCellEditor — store syncing', () => {
       </FkLookupProvider>
     )
 
-    expect(document.querySelector('.td-cell-editor-input')?.className).toContain('editorInput')
-    expect(document.querySelector('[class*=editorFieldPrimary]')).toBeTruthy()
-    expect(document.querySelector('[class*=editorMarkerGroup]')).toBeTruthy()
+    expect(document.querySelector('input[data-variant="gridCell"]')).toBeTruthy()
     expect(screen.getByTestId('fk-lookup-trigger')).toBeInTheDocument()
   })
 
@@ -336,7 +334,7 @@ describe('NullableCellEditor — store syncing', () => {
       </FkLookupProvider>
     )
 
-    const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
+    const input = document.querySelector('input[data-variant="gridCell"]') as HTMLInputElement
     fireEvent.keyDown(input, { key: 'F4' })
 
     expect(props.onClose).toHaveBeenCalledWith(true, false)
@@ -380,7 +378,7 @@ describe('EnumCellEditor — store syncing', () => {
     }
   }
 
-  it('keeps the enum trigger flexed so adornments stay visible', () => {
+  it('shows the FK trigger next to the enum trigger', () => {
     const props = makeEnumProps({
       foreignKey: {
         columnName: 'col_2',
@@ -396,10 +394,7 @@ describe('EnumCellEditor — store syncing', () => {
       </FkLookupProvider>
     )
 
-    const trigger = document.querySelector('.td-cell-editor-select')
-    expect(trigger?.className).toContain('editorSelect')
-    expect(document.querySelector('[class*=editorFieldPrimary]')).toBeTruthy()
-    expect(document.querySelector('[class*=editorMarkerGroup]')).toBeTruthy()
+    expect(document.querySelector('[data-sqllumen-grid-editor="enum-inline"]')).toBeTruthy()
     expect(screen.getByTestId('fk-lookup-trigger')).toBeInTheDocument()
   })
 
@@ -422,7 +417,7 @@ describe('EnumCellEditor — store syncing', () => {
       </FkLookupProvider>
     )
 
-    const trigger = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    const trigger = document.querySelector('[data-sqllumen-grid-editor]') as HTMLButtonElement
     fireEvent.keyDown(trigger, { key: 'F4' })
 
     expect(props.onClose).toHaveBeenCalledWith(true, false)
@@ -433,11 +428,9 @@ describe('EnumCellEditor — store syncing', () => {
     const props = makeEnumProps()
     render(<EnumCellEditor {...props} fullOverlay />)
 
-    const trigger = document.querySelector('[class*=editorDropdownTrigger]')
-    expect(trigger).toBeTruthy()
-    expect(document.querySelector('[class*=dropdownOnlyWrapper]')).toBeTruthy()
-    expect(document.querySelector('[class*=editorMarkerGroup]')).toBeFalsy()
-    expect(document.querySelector('.td-null-toggle')).toBeFalsy()
+    expect(document.querySelector('[data-sqllumen-grid-editor="enum-overlay"]')).toBeTruthy()
+    expect(screen.queryByTestId('fk-lookup-trigger')).not.toBeInTheDocument()
+    expect(document.querySelector('[data-null-toggle]')).toBeFalsy()
   })
 
   it('opens the full-overlay enum dropdown from the trigger', async () => {
@@ -445,7 +438,7 @@ describe('EnumCellEditor — store syncing', () => {
     const props = makeEnumProps()
     render(<EnumCellEditor {...props} fullOverlay />)
 
-    const trigger = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    const trigger = document.querySelector('[data-sqllumen-grid-editor]') as HTMLButtonElement
     await user.click(trigger)
 
     expect(screen.getByRole('listbox', { name: 'col_2' })).toBeInTheDocument()
@@ -456,7 +449,7 @@ describe('EnumCellEditor — store syncing', () => {
     const props = makeEnumProps()
     render(<EnumCellEditor {...props} fullOverlay />)
 
-    const trigger = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    const trigger = document.querySelector('[data-sqllumen-grid-editor]') as HTMLButtonElement
     await user.click(trigger)
 
     const listbox = screen.getByRole('listbox', { name: 'col_2' })
@@ -469,7 +462,7 @@ describe('EnumCellEditor — store syncing', () => {
     const props = makeEnumProps()
     render(<EnumCellEditor {...props} />)
 
-    const combo = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    const combo = document.querySelector('[data-sqllumen-grid-editor]') as HTMLButtonElement
     expect(combo).toBeTruthy()
 
     await user.click(combo)
@@ -487,7 +480,7 @@ describe('EnumCellEditor — store syncing', () => {
     const props = makeEnumProps()
     render(<EnumCellEditor {...props} />)
 
-    const combo = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    const combo = document.querySelector('[data-sqllumen-grid-editor]') as HTMLButtonElement
     await user.click(combo)
     await user.click(screen.getByRole('option', { name: 'inactive' }))
 
@@ -498,7 +491,7 @@ describe('EnumCellEditor — store syncing', () => {
     const props = makeEnumProps()
     render(<EnumCellEditor {...props} />)
 
-    const nullBtn = document.querySelector('.td-null-toggle') as HTMLButtonElement
+    const nullBtn = document.querySelector('[data-null-toggle]') as HTMLButtonElement
     fireEvent.click(nullBtn)
 
     expect(props.syncCellValue).toHaveBeenCalledWith('tab-1', {
@@ -512,7 +505,7 @@ describe('EnumCellEditor — store syncing', () => {
     const props = makeEnumProps()
     render(<EnumCellEditor {...props} />)
 
-    const nullBtn = document.querySelector('.td-null-toggle') as HTMLButtonElement
+    const nullBtn = document.querySelector('[data-null-toggle]') as HTMLButtonElement
     fireEvent.click(nullBtn)
 
     expect(props.onRowChange).toHaveBeenCalledWith({ col_0: 1, col_2: null })
@@ -522,7 +515,7 @@ describe('EnumCellEditor — store syncing', () => {
     const props = makeEnumProps()
     render(<EnumCellEditor {...props} />)
 
-    const combo = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    const combo = document.querySelector('[data-sqllumen-grid-editor]') as HTMLButtonElement
     fireEvent.keyDown(combo, { key: 'Escape' })
 
     expect(props.onClose).toHaveBeenCalledWith(false, false)
@@ -532,7 +525,7 @@ describe('EnumCellEditor — store syncing', () => {
     const props = makeEnumProps()
     render(<EnumCellEditor {...props} />)
 
-    const combo = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    const combo = document.querySelector('[data-sqllumen-grid-editor]') as HTMLButtonElement
     fireEvent.keyDown(combo, { key: 'Tab' })
 
     expect(props.onRowChange).toHaveBeenCalledWith({ col_0: 1, col_2: 'active' }, true)
@@ -543,7 +536,7 @@ describe('EnumCellEditor — store syncing', () => {
     const props = makeEnumProps()
     render(<EnumCellEditor {...props} />)
 
-    const combo = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    const combo = document.querySelector('[data-sqllumen-grid-editor]') as HTMLButtonElement
     await user.click(combo)
 
     expect(screen.getByRole('listbox', { name: 'col_2' })).toBeInTheDocument()
@@ -555,7 +548,7 @@ describe('EnumCellEditor — store syncing', () => {
     const props = makeEnumProps()
     render(<EnumCellEditor {...props} />)
 
-    const combo = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    const combo = document.querySelector('[data-sqllumen-grid-editor]') as HTMLButtonElement
     await user.click(combo)
     await user.keyboard('i')
     await user.keyboard('{Enter}')
@@ -569,7 +562,7 @@ describe('EnumCellEditor — store syncing', () => {
     const props = makeEnumProps()
     render(<EnumCellEditor {...props} />)
 
-    const combo = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    const combo = document.querySelector('[data-sqllumen-grid-editor]') as HTMLButtonElement
     await user.click(combo)
     await user.click(screen.getByRole('option', { name: 'inactive' }))
 
@@ -582,7 +575,7 @@ describe('EnumCellEditor — store syncing', () => {
     const props = makeEnumProps()
     render(<EnumCellEditor {...props} />)
 
-    const combo = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    const combo = document.querySelector('[data-sqllumen-grid-editor]') as HTMLButtonElement
     await user.click(combo)
 
     const listbox = screen.getByRole('listbox', { name: 'col_2' })
@@ -598,7 +591,7 @@ describe('EnumCellEditor — store syncing', () => {
     const props = makeEnumProps()
     render(<EnumCellEditor {...props} />)
 
-    const combo = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    const combo = document.querySelector('[data-sqllumen-grid-editor]') as HTMLButtonElement
     await user.click(combo)
 
     const option = screen.getByRole('option', { name: 'inactive' })
@@ -614,7 +607,7 @@ describe('EnumCellEditor — store syncing', () => {
     const props = makeEnumProps()
     render(<EnumCellEditor {...props} />)
 
-    const combo = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    const combo = document.querySelector('[data-sqllumen-grid-editor]') as HTMLButtonElement
     await user.click(combo)
     await user.keyboard('{Escape}')
 
@@ -626,7 +619,7 @@ describe('EnumCellEditor — store syncing', () => {
     const props = makeEnumProps()
     render(<EnumCellEditor {...props} />)
 
-    const combo = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    const combo = document.querySelector('[data-sqllumen-grid-editor]') as HTMLButtonElement
     await user.click(combo)
     await user.keyboard('I')
     await user.keyboard('{Enter}')
@@ -782,7 +775,7 @@ describe('getCellEditorForColumn', () => {
       })
     )
 
-    expect(document.querySelector('.td-cell-editor-select')).toBeTruthy()
+    expect(document.querySelector('[data-sqllumen-grid-editor]')).toBeTruthy()
   })
 
   it('renders the nullable text editor for text columns', () => {
@@ -798,7 +791,7 @@ describe('getCellEditorForColumn', () => {
       })
     )
 
-    expect(document.querySelector('.td-cell-editor-input')).toBeTruthy()
+    expect(document.querySelector('input[data-variant="gridCell"]')).toBeTruthy()
   })
 
   it('returns the JSON editor config for JSON columns', () => {

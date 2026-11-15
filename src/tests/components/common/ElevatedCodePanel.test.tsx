@@ -54,4 +54,26 @@ describe('ElevatedCodePanel', () => {
     expect(screen.queryByText('Hidden')).not.toBeInTheDocument()
     expect(root.querySelector('pre code')?.textContent).toContain('SELECT 1')
   })
+
+  it('uses standard pre spacing unless asked for snug spacing', () => {
+    const { rerender } = render(
+      <ElevatedCodePanel data-testid="code-panel">
+        <span>SELECT 1</span>
+      </ElevatedCodePanel>
+    )
+    expect(screen.getByTestId('code-panel').querySelector('pre')).toHaveAttribute(
+      'data-spacing',
+      'standard'
+    )
+
+    rerender(
+      <ElevatedCodePanel data-testid="code-panel" preSpacing="snug">
+        <span>SELECT 1</span>
+      </ElevatedCodePanel>
+    )
+    expect(screen.getByTestId('code-panel').querySelector('pre')).toHaveAttribute(
+      'data-spacing',
+      'snug'
+    )
+  })
 })

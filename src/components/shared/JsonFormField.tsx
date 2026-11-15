@@ -6,7 +6,6 @@ import { JsonSyntaxHighlighter } from '../../lib/json-syntax-highlighter'
 import { isEquivalentJson, normalizeJson, prettyPrintJson } from '../../lib/json-text'
 import { getMonacoThemeName, registerMonacoThemes } from '../../lib/monaco-theme'
 import { useThemeStore } from '../../stores/theme-store'
-import styles from './JsonFormField.module.css'
 
 function toStringValue(value: string | null): string {
   return value ?? ''
@@ -25,12 +24,12 @@ interface JsonFormFieldProps {
 }
 
 const JSON_HIGHLIGHT_CLASS_NAMES = {
-  key: styles.key,
-  string: styles.string,
-  number: styles.number,
-  boolean: styles.boolean,
-  null: styles.null,
-  punctuation: styles.punctuation,
+  key: 'text-light-primary dark:text-dark-primary',
+  string: 'text-light-tertiary dark:text-dark-tertiary',
+  number: 'text-light-warning dark:text-dark-warning',
+  boolean: 'text-light-secondary dark:text-dark-secondary',
+  null: 'text-light-error dark:text-dark-error',
+  punctuation: 'text-light-on-surface-variant dark:text-dark-on-surface-variant',
 }
 
 const JSON_FORM_EDITOR_OPTIONS: Monaco.editor.IStandaloneEditorConstructionOptions = {
@@ -49,7 +48,10 @@ function useJsonFormMonacoTheme(): ReturnType<typeof getMonacoThemeName> {
 
 function JsonNullValue({ testId }: { testId: string }) {
   return (
-    <div className={`${styles.field} ${styles.nullValue}`} data-testid={testId}>
+    <div
+      className="min-w-0 flex-1 rounded-control border border-light-stroke-card bg-light-background px-3 py-2 font-mono text-size-mono text-light-on-surface-variant italic opacity-60 dark:border-dark-stroke-card dark:bg-dark-background dark:text-dark-on-surface-variant"
+      data-testid={testId}
+    >
       NULL
     </div>
   )
@@ -57,13 +59,12 @@ function JsonNullValue({ testId }: { testId: string }) {
 
 function JsonReadOnlyValue({ prettyValue, testId }: { prettyValue: string; testId: string }) {
   return (
-    <div className={`${styles.field} ${styles.readOnly}`} data-testid={testId}>
+    <div className="min-w-0 flex-1 opacity-60" data-testid={testId}>
       <ElevatedCodePanel
         hideHeader={true}
-        className={styles.readPanel}
-        bodyClassName={styles.readPanelBody}
-        preClassName={styles.readPanelPre}
-        codeClassName={styles.readPanelCode}
+        preSpacing="snug"
+        bodyClassName="max-h-75 overflow-y-auto"
+        codeClassName="block"
         data-testid={`${testId}-panel`}
       >
         {JsonSyntaxHighlighter.highlightJson(prettyValue, JSON_HIGHLIGHT_CLASS_NAMES)}
@@ -90,7 +91,7 @@ export function JsonFormField({
   if (!isEditable) return <JsonReadOnlyValue prettyValue={prettyValue} testId={testId} />
 
   return (
-    <div className={styles.field} data-testid={testId}>
+    <div className="min-w-0 flex-1" data-testid={testId}>
       <JsonFormFieldEditor
         externalValue={prettyValue}
         originalValue={originalValue}
@@ -169,8 +170,11 @@ function JsonFormFieldEditor({
   useSyncExternalJsonValue({ externalValue, draftValueRef, editorRef })
 
   return (
-    <div className={styles.editorShell} data-testid={testId}>
-      <div className={styles.editorViewport}>
+    <div
+      className="max-h-75 overflow-hidden rounded-control border border-light-stroke-card bg-light-background dark:border-dark-stroke-card dark:bg-dark-background"
+      data-testid={testId}
+    >
+      <div className="h-75">
         <Editor
           height="300px"
           defaultValue={externalValue}

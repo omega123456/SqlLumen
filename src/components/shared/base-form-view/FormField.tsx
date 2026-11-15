@@ -1,6 +1,7 @@
-import { useRef, type CSSProperties } from 'react'
+import { useRef } from 'react'
 import { InfoIcon } from '@phosphor-icons/react'
 import { getTemporalColumnType } from '../../../lib/date-utils'
+import { joinClassNames } from '../../../lib/class-names'
 import { isNullish } from '../../../lib/value-checks'
 import { FormFieldEditor, type FormFieldEditorProps, type FormFieldProps } from './FormFieldEditors'
 import {
@@ -15,7 +16,14 @@ import {
   resolveFormFieldKind,
   shouldShowLock,
 } from './form-field-values'
-import styles from '../BaseFormView.module.css'
+
+const VALUE_CELL_FRAME = 'flex min-w-0 *:min-w-0 *:flex-1'
+
+const VALUE_CELL_CLASSES: Record<number, string> = {
+  0: VALUE_CELL_FRAME,
+  1: joinClassNames([VALUE_CELL_FRAME, 'relative *:first:pr-9']),
+  2: joinClassNames([VALUE_CELL_FRAME, 'relative *:first:pr-16']),
+}
 
 export function FormField(field: FormFieldProps) {
   const { col: column, colIdx: columnIndex, openPickerState } = field
@@ -46,14 +54,10 @@ export function FormField(field: FormFieldProps) {
   }
 
   return (
-    <div className={styles.fieldGroup} data-testid={`form-field-${column.displayName}`}>
+    <div className="contents" data-testid={`form-field-${column.displayName}`}>
       <FormFieldLabel field={field} showLock={shouldShowLock(field)} />
 
-      <div
-        className={`${styles.fieldValueCell} ${hasInFieldButtons ? styles.fieldValueCellWithButtons : ''}`}
-        style={{ '--in-field-buttons': inFieldButtonCount } as CSSProperties}
-        ref={valueCellRef}
-      >
+      <div className={VALUE_CELL_CLASSES[inFieldButtonCount]} ref={valueCellRef}>
         <FormFieldEditor kind={fieldKind} {...editor} />
         {hasInFieldButtons && (
           <FormFieldInlineButtons
@@ -72,7 +76,7 @@ export function FormField(field: FormFieldProps) {
 
       {field.isModified && (
         <div
-          className={styles.fieldModifiedNote}
+          className="col-start-2 -col-end-1 -mt-1 flex items-center gap-1.5 text-caption text-light-primary dark:text-dark-primary"
           data-testid={`modified-note-${column.displayName}`}
         >
           <InfoIcon size={14} weight="fill" />

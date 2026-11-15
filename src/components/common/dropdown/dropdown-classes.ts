@@ -1,14 +1,19 @@
 import { joinClassNames, SCROLLBAR } from '../../../lib/class-names'
 import { FOCUS_RING } from '../../../lib/focus-ring'
+import { NEUTRAL_FIELD_VALUE_STATE } from '../../../lib/class-names-field'
+import {
+  gridCellOverlayTriggerClassName,
+  gridCellTriggerClassName,
+} from './dropdown-grid-cell-classes'
 import type {
   CommonDropdownProps,
   DropdownFieldState,
+  DropdownPlacement,
   DropdownTriggerAppearance,
+  DropdownTriggerChrome,
   DropdownTriggerSize,
   DropdownTriggerWidth,
 } from './dropdown-types'
-
-const NEUTRAL_FIELD_STATE: DropdownFieldState = { modified: false, isNull: false }
 
 type TriggerBorderTone = 'default' | 'modified'
 type TriggerTextTone = 'default' | 'null'
@@ -24,6 +29,7 @@ const TRIGGER_SIZE_CLASSES: Record<DropdownTriggerSize, string> = {
 const TRIGGER_WIDTH_CLASSES: Record<DropdownTriggerWidth, string> = {
   fill: 'w-full',
   auto: 'w-auto',
+  combo: 'w-21',
 }
 
 const TRIGGER_FILL_CLASSES: Record<TriggerFill, string> = {
@@ -92,30 +98,47 @@ export function triggerAppearanceOf<TValue extends string>(
   return {
     size: props.triggerSize ?? 'md',
     width: props.triggerWidth ?? 'fill',
-    fieldState: props.fieldState ?? NEUTRAL_FIELD_STATE,
+    chrome: props.triggerChrome ?? 'field',
+    fieldState: props.fieldState ?? NEUTRAL_FIELD_VALUE_STATE,
   }
 }
 
 export interface DropdownTriggerClassOptions {
   open: boolean
   appearance: DropdownTriggerAppearance
+  placement: DropdownPlacement | undefined
   className: string | undefined
 }
 
-export function dropdownTriggerClassName({
-  open,
-  appearance,
-  className,
-}: DropdownTriggerClassOptions): string {
+const TRIGGER_FRAME =
+  'group flex items-center justify-between gap-2 whitespace-nowrap text-left cursor-default disabled:cursor-not-allowed'
+
+function fieldTriggerClassName({ open, appearance }: DropdownTriggerClassOptions): string {
   return joinClassNames([
-    'group flex items-center justify-between gap-2 pr-2 pl-2.5 rounded-control border font-body font-regular whitespace-nowrap text-left cursor-default disabled:cursor-not-allowed',
+    'pr-2 pl-2.5 rounded-control border font-body font-regular',
     FOCUS_RING,
     TRIGGER_FILL_CLASSES[triggerFill(open)],
     TRIGGER_SIZE_CLASSES[appearance.size],
     TRIGGER_WIDTH_CLASSES[appearance.width],
     TRIGGER_BORDER_CLASSES[triggerBorderTone(appearance.fieldState)],
     TRIGGER_TEXT_CLASSES[triggerTextTone(appearance.fieldState)],
-    className,
+  ])
+}
+
+const TRIGGER_CHROME_CLASS_BUILDERS: Record<
+  DropdownTriggerChrome,
+  (options: DropdownTriggerClassOptions) => string
+> = {
+  field: fieldTriggerClassName,
+  gridCell: () => gridCellTriggerClassName(),
+  gridCellOverlay: ({ open, placement }) => gridCellOverlayTriggerClassName(open, placement),
+}
+
+export function dropdownTriggerClassName(options: DropdownTriggerClassOptions): string {
+  return joinClassNames([
+    TRIGGER_FRAME,
+    TRIGGER_CHROME_CLASS_BUILDERS[options.appearance.chrome](options),
+    options.className,
   ])
 }
 

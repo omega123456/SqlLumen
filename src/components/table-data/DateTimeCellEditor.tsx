@@ -7,9 +7,12 @@ import { useCellEditor } from './useCellEditor'
 import type { CellEditorParams } from './useCellEditor'
 import type { EditorCallbacksContextType } from '../shared/editor-callbacks-context'
 import { Button } from '../common/Button'
-import sharedStyles from '../shared/grid-cell-editors.module.css'
+import { CELL_EDITOR_WRAPPER, EDITOR_FIELD } from '../../lib/class-names-grid-editor'
+import { EditorMarkerGroup } from '../shared/grid-cell-editors/EditorMarkerGroup'
+import { NullToggleButton } from '../shared/grid-cell-editors/NullToggleButton'
+import { FOCUS_RING } from '../../lib/focus-ring'
+import { joinClassNames } from '../../lib/class-names'
 import { DateTimePicker } from './DateTimePicker'
-import styles from '../shared/BaseGridView.module.css'
 import {
   useClosePickerOnGridScroll,
   useKeepEditorFocusInPicker,
@@ -37,21 +40,14 @@ function EditorMarkers({
 }: EditorMarkersProps) {
   const IconComponent = temporalType === 'TIME' ? Clock : CalendarBlank
   return (
-    <div className={sharedStyles.editorMarkerGroup}>
-      {isNullable && (
-        <Button
-          variant="bare"
-          className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
-          onMouseDown={preventFocusSteal}
-          onClick={onToggleNull}
-          tabIndex={-1}
-        >
-          NULL
-        </Button>
-      )}
+    <EditorMarkerGroup kind="singleLine">
+      {isNullable && <NullToggleButton isNull={isNull} onClick={onToggleNull} />}
       <Button
         variant="bare"
-        className={styles.calendarBtn}
+        className={joinClassNames([
+          'flex size-5.5 shrink-0 cursor-pointer items-center justify-center rounded-control border border-light-stroke-divider bg-transparent p-0 text-light-outline transition-background-and-color duration-120 hover:border-light-stroke-control hover:bg-light-fill-subtle-hover hover:text-light-on-surface dark:border-dark-stroke-divider dark:text-dark-outline dark:hover:border-dark-stroke-control dark:hover:bg-dark-fill-subtle-hover dark:hover:text-dark-on-surface',
+          FOCUS_RING,
+        ])}
         onMouseDown={preventFocusSteal}
         onClick={onCalendarClick}
         disabled={isNull}
@@ -61,7 +57,7 @@ function EditorMarkers({
       >
         <IconComponent size={14} />
       </Button>
-    </div>
+    </EditorMarkerGroup>
   )
 }
 
@@ -114,14 +110,13 @@ export default function DateTimeCellEditor(props: CellEditorParams & EditorCallb
   return (
     <div
       ref={handleContainerRef}
-      className={`${sharedStyles.cellEditorWrapper} ${styles.dateTimeEditorWrapper}`}
+      className={CELL_EDITOR_WRAPPER}
       data-testid="datetime-cell-editor"
     >
-      <div className={sharedStyles.editorFieldPrimary}>
+      <div className={EDITOR_FIELD}>
         <TextInput
           ref={inputRef}
           variant="gridCell"
-          className={sharedStyles.editorInput}
           value={isNull ? '' : (value ?? '')}
           onChange={(event) => handleChange(event.target.value)}
           onBlur={(event) => handlers.handleInputBlur(event.relatedTarget)}

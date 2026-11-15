@@ -2,13 +2,27 @@ import { joinClassNames } from '../../../lib/class-names'
 import { FOCUS_RING } from '../../../lib/focus-ring'
 
 export type ButtonVariant =
-  'default' | 'accent' | 'subtle' | 'subtleMuted' | 'subtleToggled' | 'danger' | 'bare'
+  | 'default'
+  | 'accent'
+  | 'subtle'
+  | 'subtleMuted'
+  | 'subtleAccent'
+  | 'subtleToggled'
+  | 'danger'
+  | 'bare'
 
 export type ButtonSize = 'md' | 'sm' | 'xs'
 
 type StyledButtonVariant = Exclude<ButtonVariant, 'bare'>
 type ButtonTextTone =
-  'primary' | 'onAccent' | 'onDanger' | 'muted' | 'accent' | 'error' | 'errorExceptOnHover'
+  | 'primary'
+  | 'onAccent'
+  | 'onDanger'
+  | 'muted'
+  | 'accent'
+  | 'accentSteady'
+  | 'error'
+  | 'errorExceptOnHover'
 type ButtonShape = 'labelled' | 'iconOnly'
 
 export type ButtonContentAlign = 'center' | 'start'
@@ -37,6 +51,7 @@ const SURFACE_CLASSES: Record<StyledButtonVariant, string> = {
   ]),
   subtle: SUBTLE_SURFACE,
   subtleMuted: SUBTLE_SURFACE,
+  subtleAccent: SUBTLE_SURFACE,
   subtleToggled: joinClassNames([
     'bg-light-fill-accent-tint dark:bg-dark-fill-accent-tint border-transparent',
     'not-disabled:hover:bg-light-fill-subtle-hover dark:not-disabled:hover:bg-dark-fill-subtle-hover not-disabled:active:bg-light-fill-subtle-pressed dark:not-disabled:active:bg-dark-fill-subtle-pressed',
@@ -52,6 +67,7 @@ const TEXT_CLASSES: Record<ButtonTextTone, string> = {
   muted: 'text-light-on-surface-variant dark:text-dark-on-surface-variant',
   accent:
     'text-light-primary dark:text-dark-primary not-disabled:active:text-light-on-surface-variant dark:not-disabled:active:text-dark-on-surface-variant',
+  accentSteady: 'text-light-primary dark:text-dark-primary',
   error: 'text-light-error dark:text-dark-error',
   errorExceptOnHover:
     'text-light-error dark:text-dark-error not-disabled:hover:text-on-danger-fill not-disabled:active:text-light-error dark:not-disabled:active:text-dark-error',
@@ -63,6 +79,7 @@ const VARIANT_TEXT_TONE: Record<StyledButtonVariant, ButtonTextTone> = {
   danger: 'onDanger',
   subtle: 'primary',
   subtleMuted: 'muted',
+  subtleAccent: 'accentSteady',
   subtleToggled: 'accent',
 }
 

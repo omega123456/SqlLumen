@@ -57,6 +57,7 @@ function DropdownTrigger<TValue extends string>({
       className={dropdownTriggerClassName({
         open: open,
         appearance: appearance,
+        placement: controller.panelLayout.placement,
         className: triggerClassName,
       })}
       aria-labelledby={labelledBy}
@@ -64,6 +65,7 @@ function DropdownTrigger<TValue extends string>({
       aria-controls={controller.listboxId}
       data-size={appearance.size}
       data-width={appearance.width}
+      data-chrome={appearance.chrome}
       data-modified={dataFlag(appearance.fieldState.modified)}
       data-null={dataFlag(appearance.fieldState.isNull)}
       data-panel-placement={open ? controller.panelLayout.placement : undefined}

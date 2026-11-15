@@ -4,6 +4,7 @@ import type {
   GridColumn as GlideGridColumn,
   GridSelection,
 } from '@glideapps/glide-data-grid'
+import { joinClassNames } from '../../../lib/class-names'
 import { useElementSize } from '../../../hooks/use-element-size'
 import type { GridHandle } from './glide-grid-types'
 import { GlideDataEditor } from './glide-data-grid/GlideDataEditor'
@@ -19,17 +20,13 @@ export type {
 } from './glide-data-grid/glide-data-grid-types'
 
 const DEFAULT_COLUMN_WIDTH = 120
-const GLIDE_HOST_CLASS = 'glide-grid-host'
+const GLIDE_HOST_CLASS =
+  'h-full min-h-0 w-full min-w-0 bg-light-surface-container-lowest text-light-on-surface dark:bg-dark-surface-container-lowest dark:text-dark-on-surface'
 const DEFAULT_GRID_ARIA_LABEL = 'Data grid'
 
 function getColumnWidth(column: GlideGridColumn): number {
   if (!('width' in column)) return DEFAULT_COLUMN_WIDTH
   return typeof column.width === 'number' ? column.width : DEFAULT_COLUMN_WIDTH
-}
-
-function hostClassNameFor(className: string | undefined): string {
-  if (!className) return GLIDE_HOST_CLASS
-  return `${GLIDE_HOST_CLASS} ${className}`
 }
 
 function gridAriaLabel(ariaLabel: string | undefined, testId: string | undefined): string {
@@ -76,7 +73,8 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
   return (
     <div
       ref={hostRef}
-      className={hostClassNameFor(props.className)}
+      className={joinClassNames([GLIDE_HOST_CLASS, props.className])}
+      data-sqllumen-glide-host=""
       data-testid={testId}
       data-glide-column-width={serializedColumnWidths}
       data-row-marker-width={String(markerSettings.width)}

@@ -626,4 +626,48 @@ describe('Dropdown trigger variants', () => {
     expect(screen.getByRole('option', { name: 'Alpha' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('option', { name: 'Beta' })).toHaveAttribute('aria-selected', 'false')
   })
+
+  it('renders the field trigger chrome by default', () => {
+    render(<Dropdown id="d" ariaLabel="Pick" options={options} value="a" onChange={vi.fn()} />)
+
+    expect(screen.getByRole('combobox', { name: 'Pick' })).toHaveAttribute('data-chrome', 'field')
+  })
+
+  it('renders the combo trigger width', () => {
+    render(
+      <Dropdown
+        id="d"
+        ariaLabel="Pick"
+        options={options}
+        value="a"
+        onChange={vi.fn()}
+        triggerWidth="combo"
+      />
+    )
+
+    expect(screen.getByRole('combobox', { name: 'Pick' })).toHaveAttribute('data-width', 'combo')
+  })
+
+  it.each(['gridCell', 'gridCellOverlay'] as const)(
+    'renders the %s trigger chrome and still opens the list',
+    async (chrome) => {
+      const user = userEvent.setup()
+      render(
+        <Dropdown
+          id="d"
+          ariaLabel="Pick"
+          options={options}
+          value="a"
+          onChange={vi.fn()}
+          triggerChrome={chrome}
+        />
+      )
+      const trigger = screen.getByRole('combobox', { name: 'Pick' })
+
+      await user.click(trigger)
+
+      expect(trigger).toHaveAttribute('data-chrome', chrome)
+      expect(screen.getByRole('listbox', { name: 'Pick' })).toBeInTheDocument()
+    }
+  )
 })

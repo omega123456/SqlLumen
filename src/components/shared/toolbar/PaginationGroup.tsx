@@ -7,7 +7,6 @@ import type {
   KnownTotalPaginationGroupProps,
   PaginationGroupProps,
 } from '../../../types/shared-data-view'
-import styles from './toolbar-items.module.css'
 
 const SMALL_PAGE_SIZE = 100
 const MEDIUM_PAGE_SIZE = 500
@@ -50,7 +49,10 @@ function PageIndicator({
   if (!isKnownTotal) return <>{pageInput}</>
   if (!canSubmitPage) {
     return (
-      <span className={styles.pageText} data-testid="page-indicator">
+      <span
+        className="min-w-23 text-center text-size-row whitespace-nowrap text-light-on-surface-variant select-none dark:text-dark-on-surface-variant"
+        data-testid="page-indicator"
+      >
         Page {currentPage} of {totalPages}
       </span>
     )
@@ -58,7 +60,9 @@ function PageIndicator({
   return (
     <>
       {pageInput}
-      <span className={styles.pageOfText}>of {totalPages}</span>
+      <span className="text-size-row whitespace-nowrap text-light-on-surface-variant select-none dark:text-dark-on-surface-variant">
+        of {totalPages}
+      </span>
     </>
   )
 }
@@ -138,7 +142,7 @@ function PageInputField({ currentPage, disabled, onSubmit }: PageInputFieldProps
         onSubmit(parsePageInput(pageInputValue))
       }}
       disabled={disabled}
-      className={styles.pageInput}
+      className="h-control-sm w-11 rounded-control border border-x-light-stroke-control border-t-light-stroke-control border-b-light-stroke-text-field bg-light-fill-control px-1.5 text-center font-body text-size-row text-light-on-surface outline-none focus:border-b-light-primary focus:bg-light-surface-container-high focus:shadow-light-field-focus disabled:cursor-not-allowed disabled:border-b-light-stroke-control disabled:bg-light-fill-subtle-pressed disabled:text-light-text-disabled dark:border-x-dark-stroke-control dark:border-t-dark-stroke-control dark:border-b-dark-stroke-text-field dark:bg-dark-fill-control dark:text-dark-on-surface dark:focus:border-b-dark-primary dark:focus:bg-dark-surface-container-high dark:focus:shadow-dark-field-focus dark:disabled:border-b-dark-stroke-control dark:disabled:bg-dark-fill-subtle-pressed dark:disabled:text-dark-text-disabled"
       data-testid="pagination-page-input"
     />
   )
@@ -166,7 +170,8 @@ function PageSizeSelect({ pageSize, disabled, onPageSizeChange }: PageSizeSelect
       onChange={handlePageSizeChange}
       disabled={disabled}
       data-testid="page-size-select"
-      triggerClassName={styles.pageSizeSelect}
+      triggerSize="sm"
+      triggerWidth="combo"
     />
   )
 }
@@ -190,7 +195,7 @@ export function PaginationGroup(props: PaginationGroupProps) {
   const pageSizeDisabled = disabled || props.pageSizeDisabled
 
   return (
-    <div className={styles.paginationGroup} data-testid="pagination-group">
+    <div className="flex shrink-0 items-center gap-2" data-testid="pagination-group">
       {(props.showPageSize ?? true) ? (
         <PageSizeSelect
           pageSize={props.pageSize}
@@ -199,7 +204,7 @@ export function PaginationGroup(props: PaginationGroupProps) {
         />
       ) : null}
 
-      <div className={styles.pagination}>
+      <div className="flex shrink-0 flex-wrap items-center gap-1">
         <EdgePageButton
           edge="first"
           visible={showEdgeButtons}

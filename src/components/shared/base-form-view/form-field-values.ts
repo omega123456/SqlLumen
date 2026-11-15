@@ -1,7 +1,6 @@
 import { getTemporalColumnType, getTodayMysqlString } from '../../../lib/date-utils'
 import { isJsonSqlType } from '../../../lib/grid-column-style'
 import type { DropdownOption } from '../../common/Dropdown'
-import styles from '../BaseFormView.module.css'
 import { ENUM_NULL_SENTINEL } from '../../table-data/enum-field-utils'
 import {
   base64ByteLength,
@@ -105,12 +104,6 @@ export function buildEnumDropdownOptions(column: GridColumnDescriptor): Dropdown
   }))
   if (!column.isNullable) return valueOptions
   return [{ value: ENUM_NULL_SENTINEL, label: 'NULL' }, ...valueOptions]
-}
-
-export function fieldStateClassName(isModified: boolean, isNull: boolean): string {
-  return [isModified ? styles.fieldModified : '', isNull ? styles.fieldNull : '']
-    .filter(Boolean)
-    .join(' ')
 }
 
 export function jsonFieldValue(rawValue: unknown): string | null {

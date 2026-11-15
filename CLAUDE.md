@@ -104,7 +104,7 @@ src/
     connection-dialog/
     object-browser/
   index.css          # Tailwind entry: @import, @plugin, @custom-variant and the @theme static token block
-  styles/            # Legacy tokens.css, global.css, legacy-base.css, data-grid-precision.css (shrinking) + vendor/ (Monaco, hljs, Glide overlays, fonts)
+  styles/            # Legacy tokens.css, global.css, legacy-base.css (shrinking) + vendor/ (Monaco, hljs, Glide overlays, fonts)
   types/             # Shared TypeScript types (connection.ts, schema.ts, …)
   tests/             # Mirrors src/ layout; setup.ts wires the shared IPC harness plus Monaco/polyfills
 

@@ -339,7 +339,7 @@ async function openResultCellEditorByTyping(
 ) {
   const grid = activePanel(page).getByTestId('result-grid')
   const canvas = grid.locator('canvas').first()
-  const editor = page.locator('.td-cell-editor-input').first()
+  const editor = page.locator('input[data-variant="gridCell"]').first()
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     await clickResultCellByColumnName(page, rowIndex, columnName)
@@ -367,7 +367,7 @@ async function openResultCellEditorByTyping(
 }
 
 async function expectEditorKeepsFocusAcrossTyping(page: Page, text: string, initialValue = '') {
-  const editor = page.locator('.td-cell-editor-input').first()
+  const editor = page.locator('input[data-variant="gridCell"]').first()
   let expected = initialValue
   for (const char of text) {
     expected += char
@@ -411,7 +411,7 @@ test('editing a cell then selecting the next cell requires re-activation to edit
   await expect(canvas).toBeFocused({ timeout: APP_READY_MS })
   await page.keyboard.type('J')
 
-  const nameEditor = page.locator('.td-cell-editor-input').first()
+  const nameEditor = page.locator('input[data-variant="gridCell"]').first()
   await expect(nameEditor).toBeVisible({ timeout: APP_READY_MS })
   await nameEditor.fill('Julian Thorne')
 
@@ -423,7 +423,7 @@ test('editing a cell then selecting the next cell requires re-activation to edit
   await canvas.focus()
   await page.keyboard.type('j')
 
-  const emailEditor = page.locator('.td-cell-editor-input').first()
+  const emailEditor = page.locator('input[data-variant="gridCell"]').first()
   await expect(emailEditor).toBeVisible({ timeout: APP_READY_MS })
   await expect(emailEditor).toBeEnabled()
   await emailEditor.fill('julian@example.com')
@@ -442,7 +442,10 @@ test('table data grid typing on a selected cell opens the editor and keeps focus
   await clickCellByColumnName(grid, 0, 'name')
   await expectEditorKeepsFocusAcrossTyping(page, 'Bob')
   // The overlay edge is the focus indicator; the global focus ring would leak as a bar by NULL
-  await expect(page.locator('.td-cell-editor-input').first()).toHaveCSS('box-shadow', 'none')
+  await expect(page.locator('input[data-variant="gridCell"]').first()).toHaveCSS(
+    'box-shadow',
+    'none'
+  )
 })
 
 test('table data grid Escape after typing activation restores the original cell value', async ({
@@ -459,7 +462,7 @@ test('table data grid Escape after typing activation restores the original cell 
   await clickCellByColumnName(grid, 0, 'name')
   await page.keyboard.type('N')
 
-  const editor = page.locator('.td-cell-editor-input').first()
+  const editor = page.locator('input[data-variant="gridCell"]').first()
   await expect(editor).toBeVisible({ timeout: APP_READY_MS })
   await expect(editor).toBeFocused()
   await expect(editor).toHaveValue('N')
@@ -484,7 +487,7 @@ test('table data grid typing into a NULL text cell uses the normal editor text c
   await clickCellByColumnName(grid, 0, 'name')
   await page.keyboard.type('B')
 
-  const normalEditor = page.locator('.td-cell-editor-input').first()
+  const normalEditor = page.locator('input[data-variant="gridCell"]').first()
   await expect(normalEditor).toBeVisible({ timeout: APP_READY_MS })
   const normalEditorColor = await normalEditor.evaluate(
     (element) => getComputedStyle(element).color
@@ -495,7 +498,7 @@ test('table data grid typing into a NULL text cell uses the normal editor text c
   await clickCellByColumnName(grid, 1, 'email')
   await page.keyboard.type('j')
 
-  const nullEditor = page.locator('.td-cell-editor-input').first()
+  const nullEditor = page.locator('input[data-variant="gridCell"]').first()
   await expect(nullEditor).toBeVisible({ timeout: APP_READY_MS })
   await expect(nullEditor).toBeFocused()
   await expect(nullEditor).toHaveValue('j')
@@ -587,7 +590,7 @@ test('table data datetime editor gives the input enough width for the full field
   const createdAtCell = await getCellByColumnName(grid, 0, 'created_at')
   await createdAtCell.dblClick()
 
-  const editorInput = page.locator('input.td-cell-editor-input').first()
+  const editorInput = page.locator('input[data-variant="gridCell"]').first()
   const calendarButton = page.getByTestId('grid-calendar-btn')
 
   await expect(editorInput).toBeVisible({ timeout: APP_READY_MS })

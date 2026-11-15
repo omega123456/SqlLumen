@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react'
 import { Button } from '../common/Button'
 import { DialogShell } from '../dialogs/DialogShell'
-import styles from './UnsavedChangesDialog.module.css'
 import { toErrorMessage } from '../../lib/error-message'
 import { isPlaywrightBuild } from '../../lib/tauri-env'
 
@@ -54,7 +53,7 @@ function UnsavedChangesActions({
   onCancel,
 }: UnsavedChangesActionsProps) {
   return (
-    <div className={styles.actions}>
+    <div className="flex justify-end gap-2 border-t border-light-stroke-divider px-6 pt-4 pb-5 dark:border-dark-stroke-divider">
       <Button type="button" onClick={onCancel} data-testid="btn-cancel-changes">
         {labels.cancel}
       </Button>
@@ -99,16 +98,23 @@ export function UnsavedChangesDialog({
       ariaLabel="Unsaved changes"
       disableFocusManagement={isPlaywrightBuild()}
     >
-      <div className={styles.root}>
-        <div className={styles.header}>
-          <h2 className={styles.title}>{title}</h2>
+      <div className="-m-6 flex flex-col overflow-hidden rounded-overlay">
+        <div className="px-6 pt-5">
+          <h2 className="font-headline text-size-subtitle font-semibold wrap-break-word text-light-on-surface dark:text-dark-on-surface">
+            {title}
+          </h2>
         </div>
 
-        <div className={styles.body}>
-          <p className={styles.message}>{message}</p>
+        <div className="px-6 py-4">
+          <p className="font-body text-size-caption leading-body wrap-break-word text-light-on-surface-variant dark:text-dark-on-surface-variant">
+            {message}
+          </p>
 
           {error && (
-            <div className={styles.error} data-testid="unsaved-changes-error">
+            <div
+              className="mt-3 rounded-card border border-light-error-a20 bg-light-error-container px-3 py-2 font-body text-size-caption text-light-error dark:border-dark-error-a20 dark:bg-dark-error-container dark:text-dark-error"
+              data-testid="unsaved-changes-error"
+            >
               {error}
             </div>
           )}

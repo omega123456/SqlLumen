@@ -2,7 +2,7 @@ import { useEffect, type RefObject } from 'react'
 import { isTargetWithin } from '../../../lib/input-events'
 
 const FOCUSABLE_SELECTOR = 'input, button, select, textarea, [tabindex]:not([tabindex="-1"])'
-const GRID_HOST_SELECTOR = '.glide-grid-host'
+const GRID_HOST_SELECTOR = '[data-sqllumen-glide-host]'
 
 export function useKeepEditorFocusInPicker(
   pickerOpen: boolean,

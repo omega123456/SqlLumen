@@ -45,4 +45,23 @@ describe('TextInput', () => {
     render(<TextInput autoCapitalize="sentences" data-testid="inp" />)
     expect(screen.getByTestId('inp')).toHaveAttribute('autocapitalize', 'sentences')
   })
+
+  it('flags a modified value with a data attribute', () => {
+    render(<TextInput fieldState={{ modified: true, isNull: false }} data-testid="inp" />)
+    const el = screen.getByTestId('inp')
+    expect(el).toHaveAttribute('data-modified', 'true')
+    expect(el).not.toHaveAttribute('data-null')
+  })
+
+  it('flags a NULL value with a data attribute', () => {
+    render(<TextInput fieldState={{ modified: false, isNull: true }} data-testid="inp" />)
+    const el = screen.getByTestId('inp')
+    expect(el).toHaveAttribute('data-null', 'true')
+    expect(el).not.toHaveAttribute('data-modified')
+  })
+
+  it('renders the grid cell variant as a plain input', () => {
+    render(<TextInput variant="gridCell" data-testid="inp" />)
+    expect(screen.getByTestId('inp')).toHaveAttribute('data-variant', 'gridCell')
+  })
 })

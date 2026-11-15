@@ -1,32 +1,40 @@
 import { CalendarBlankIcon, ClockIcon, CopySimpleIcon, LockIcon } from '@phosphor-icons/react'
 import { Button } from '../../common/Button'
+import { joinClassNames } from '../../../lib/class-names'
+import { FOCUS_RING } from '../../../lib/focus-ring'
 import { getTemporalColumnType } from '../../../lib/date-utils'
 import { isNullish } from '../../../lib/value-checks'
 import { DateTimePicker } from '../../table-data/DateTimePicker'
 import { FkLookupTriggerButton } from '../FkLookupTriggerButton'
 import type { FormFieldEditorProps, FormFieldProps } from './FormFieldEditors'
 import { displayValue, keyLabelSuffix } from './form-field-values'
-import styles from '../BaseFormView.module.css'
 
 export function FormFieldLabel({ field, showLock }: { field: FormFieldProps; showLock: boolean }) {
   const column = field.col
   const labelSuffix = keyLabelSuffix(column)
   return (
-    <div className={styles.fieldLabelCell}>
-      <span className={styles.fieldLabel}>
+    <div className="flex min-w-0 flex-col items-end text-right">
+      <span className="flex max-w-full items-center gap-1.5 text-row wrap-anywhere text-light-on-surface-variant dark:text-dark-on-surface-variant">
         {field.isModified && (
-          <span className={styles.modifiedDot} data-testid={`modified-dot-${column.displayName}`} />
+          <span
+            className="size-1.5 shrink-0 rounded-round bg-light-primary dark:bg-dark-primary"
+            data-testid={`modified-dot-${column.displayName}`}
+          />
         )}
         {showLock && (
           <LockIcon
             size={12}
-            className={styles.lockIcon}
+            className="shrink-0 text-light-outline dark:text-dark-outline"
             data-testid={`lock-icon-${column.displayName}`}
           />
         )}
         {column.displayName}
       </span>
-      {labelSuffix && <span className={styles.fieldLabelSuffix}>{labelSuffix}</span>}
+      {labelSuffix && (
+        <span className="text-caption text-light-outline dark:text-dark-outline">
+          {labelSuffix}
+        </span>
+      )}
     </div>
   )
 }
@@ -46,7 +54,7 @@ export function FormFieldInlineButtons({
   const column = field.col
   const isTimePicker = temporalType === 'TIME'
   return (
-    <div className={styles.fieldInlineButtons}>
+    <div className="absolute top-1/2 right-0.5 flex -translate-y-1/2">
       {editor.isTemporalEditable && (
         <Button
           variant="subtle"
@@ -70,7 +78,10 @@ export function FormFieldInlineButtons({
           columnKey={column.key}
           currentValue={rawValue}
           rowData={field.currentRowData}
-          className={styles.fieldFkButton}
+          className={joinClassNames([
+            'flex size-7 shrink-0 cursor-default items-center justify-center rounded-control bg-transparent text-light-on-surface hover:bg-light-fill-subtle-hover active:bg-light-fill-subtle-pressed dark:text-dark-on-surface dark:hover:bg-dark-fill-subtle-hover dark:active:bg-dark-fill-subtle-pressed',
+            FOCUS_RING,
+          ])}
         />
       )}
     </div>
@@ -82,7 +93,7 @@ export function FormFieldActions({ editor }: { editor: FormFieldEditorProps }) {
   const column = field.col
   const canToggleNull = column.isNullable === true && editor.isEditable
   return (
-    <div className={styles.fieldActions}>
+    <div className="flex min-h-control items-center gap-0.5">
       <Button
         variant="subtle"
         size="sm"

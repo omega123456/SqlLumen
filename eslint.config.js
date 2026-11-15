@@ -57,6 +57,16 @@ const TAILWIND_CLASS_RULE_FILES = [
   'src/components/shared/glide/glide-cell-content.ts',
   'src/components/shared/glide/glide-row-markers.ts',
   'src/components/shared/json-cell-editor/use-json-editor-theme-name.ts',
+  'src/components/shared/*.ts',
+  'src/components/shared/*.tsx',
+  'src/components/shared/**/*.ts',
+  'src/components/shared/**/*.tsx',
+  'src/components/table-data/DateTimeCellEditor.tsx',
+  'src/components/history/HistoryTable.tsx',
+  'src/components/history/HistoryDetailPanel.tsx',
+  'src/lib/class-names-grid-editor.ts',
+  'src/lib/class-names-status-dot.ts',
+  'src/lib/grid-cell-classes.ts',
 ]
 const localRulesPlugin = {
   rules: { ...namedConditionsPlugin.rules, ...tailwindRulesPlugin.rules },

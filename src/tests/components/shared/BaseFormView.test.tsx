@@ -685,7 +685,7 @@ describe('BaseFormView — modified field indicators', () => {
     expect(screen.queryByTestId('modified-dot-name')).not.toBeInTheDocument()
   })
 
-  it('modified input has modified CSS class', () => {
+  it('flags the modified input', () => {
     const editState: RowEditState = {
       rowKey: '1',
       currentValues: { id: 1, name: 'Changed' },
@@ -693,7 +693,7 @@ describe('BaseFormView — modified field indicators', () => {
     }
     renderForm({ onSave: vi.fn(), editState })
     const nameInput = screen.getByTestId('form-input-name')
-    expect(nameInput.className).toContain('Modified')
+    expect(nameInput).toHaveAttribute('data-modified')
   })
 })
 

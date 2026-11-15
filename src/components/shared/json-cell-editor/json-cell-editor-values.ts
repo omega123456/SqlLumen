@@ -4,6 +4,7 @@ import { isEquivalentJson } from '../../../lib/json-text'
 import { isNullish } from '../../../lib/value-checks'
 import type { CellEditorBaseProps } from '../grid-cell-editors'
 
+const NULL_TOGGLE_SELECTOR = '[data-null-toggle]'
 const MONACO_INTERNAL_MOUSE_TARGETS =
   '.monaco-scrollable-element, .scrollbar, .slider, .margin, .glyph-margin, .line-numbers'
 
@@ -63,7 +64,7 @@ export function isNullToggleTarget(
   if (!(target instanceof HTMLElement)) return false
   if (wrapper == null) return false
 
-  const toggle = target.closest('.td-null-toggle')
+  const toggle = target.closest(NULL_TOGGLE_SELECTOR)
   return toggle != null && wrapper.contains(toggle)
 }
 

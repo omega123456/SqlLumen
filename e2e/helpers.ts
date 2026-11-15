@@ -237,9 +237,9 @@ async function getGlideGridGeometryFromLocator(grid: Locator): Promise<GlideGrid
       height: box.height,
       rowMarkerWidth,
       headerHeight:
-        Number.parseFloat(computedStyle.getPropertyValue('--grid-header-height').trim()) || 32,
+        Number.parseFloat(computedStyle.getPropertyValue('--spacing-grid-header').trim()) || 32,
       rowHeight:
-        Number.parseFloat(computedStyle.getPropertyValue('--grid-row-height').trim()) || 32,
+        Number.parseFloat(computedStyle.getPropertyValue('--spacing-grid-row').trim()) || 32,
       columnWidths,
       scrollLeft: scroller.scrollLeft,
       scrollTop: scroller.scrollTop,

@@ -43,7 +43,7 @@ describe('BaseGridView', () => {
     // Verify it renders without throwing.
     render(<BaseGridView rows={[{ name: 'Ada' }]} columns={columns} editState={null} />)
     // No testId means no queryable element, but the component mounted successfully
-    expect(document.querySelector('.glide-grid-host')).toBeInTheDocument()
+    expect(document.querySelector('[data-sqllumen-glide-host]')).toBeInTheDocument()
   })
 
   it('passes sortColumn and onSortChange through to the inner grid', () => {

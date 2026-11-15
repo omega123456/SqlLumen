@@ -1,4 +1,3 @@
-import { getTemporalColumnType } from './date-utils'
 import type { TableDataColumnMeta } from '../types/schema'
 import { isNullish } from './value-checks'
 
@@ -50,29 +49,6 @@ export function isStringishPrimarySqlType(dataType: string): boolean {
     upperType.startsWith('CHAR') ||
     isWrappableTextSqlType(upperType)
   )
-}
-
-export function getGridCellClass(
-  columnName: string,
-  dataType: string,
-  primaryKeyColumnNames?: string[]
-): string {
-  if (isNumericSqlType(dataType)) {
-    return 'td-cell-mono-muted'
-  }
-  if (primaryKeyColumnNames?.includes(columnName)) {
-    return 'td-cell-mono-muted'
-  }
-  if (getTemporalColumnType(dataType)) {
-    return 'td-cell-mono'
-  }
-  if (isJsonSqlType(dataType)) {
-    return 'td-cell-body td-cell-json'
-  }
-  if (isStringishPrimarySqlType(dataType)) {
-    return 'td-cell-body td-cell-primary'
-  }
-  return 'td-cell-body'
 }
 
 const AUTO_WIDTH_MAX = 560

@@ -14,10 +14,10 @@ export interface HeaderCellRendererProps {
 
 export function SortStatusRenderer({ sortDirection }: SortStatusRendererProps) {
   if (sortDirection === 'ASC') {
-    return <ArrowUp size={12} weight="bold" style={{ opacity: 0.6 }} />
+    return <ArrowUp size={12} weight="bold" className="opacity-60" />
   }
   if (sortDirection === 'DESC') {
-    return <ArrowDown size={12} weight="bold" style={{ opacity: 0.6 }} />
+    return <ArrowDown size={12} weight="bold" className="opacity-60" />
   }
   return null
 }
@@ -27,19 +27,8 @@ function HeaderCellWithIcon(props: HeaderCellRendererProps & { icon: React.React
   const columnName = typeof column.name === 'string' ? column.name : (column.key ?? '')
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '4px',
-        width: '100%',
-        overflow: 'hidden',
-      }}
-      tabIndex={tabIndex}
-    >
-      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {columnName}
-      </span>
+    <div className="flex w-full items-center gap-1 overflow-hidden" tabIndex={tabIndex}>
+      <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{columnName}</span>
       {icon}
       <SortStatusRenderer sortDirection={sortDirection} />
     </div>
@@ -50,7 +39,7 @@ export function ReadOnlyColumnHeaderCell(props: HeaderCellRendererProps) {
   return (
     <HeaderCellWithIcon
       {...props}
-      icon={<Lock size={10} weight="bold" style={{ opacity: 0.5, flexShrink: 0 }} />}
+      icon={<Lock size={10} weight="bold" className="shrink-0 opacity-50" />}
     />
   )
 }
@@ -59,7 +48,7 @@ export function ForeignKeyColumnHeaderCell(props: HeaderCellRendererProps) {
   return (
     <HeaderCellWithIcon
       {...props}
-      icon={<Link size={10} weight="bold" style={{ opacity: 0.5, flexShrink: 0 }} />}
+      icon={<Link size={10} weight="bold" className="shrink-0 opacity-50" />}
     />
   )
 }

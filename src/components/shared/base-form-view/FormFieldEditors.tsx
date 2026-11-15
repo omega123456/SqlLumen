@@ -10,12 +10,10 @@ import { JsonFormField } from '../JsonFormField'
 import {
   buildEnumDropdownOptions,
   displayValue,
-  fieldStateClassName,
   getBlobFieldDisplayValue,
   jsonFieldValue,
   type FormFieldKind,
 } from './form-field-values'
-import styles from '../BaseFormView.module.css'
 
 export interface FormFieldProps {
   col: GridColumnDescriptor
@@ -48,6 +46,9 @@ export interface FormFieldEditorProps {
   openPicker: (fallbackAnchor: HTMLElement) => void
 }
 
+const READONLY_FIELD_VALUE_CLASS_NAME =
+  'h-control min-w-0 flex-1 overflow-hidden rounded-control border border-light-stroke-control bg-light-fill-subtle-pressed px-2.5 font-mono text-size-mono leading-7.5 text-ellipsis whitespace-nowrap text-light-text-disabled select-text dark:border-dark-stroke-control dark:bg-dark-fill-subtle-pressed dark:text-dark-text-disabled'
+
 function fieldInputTestId(column: GridColumnDescriptor): string {
   return `form-input-${column.displayName}`
 }
@@ -55,8 +56,8 @@ function fieldInputTestId(column: GridColumnDescriptor): string {
 function BlobFieldEditor({ field, rawValue }: FormFieldEditorProps) {
   const { col: column, onBlobView, currentRowData, blobViewDisabled } = field
   return (
-    <div className={styles.fieldBlobRow}>
-      <div className={styles.fieldBlobReadonly} data-testid={fieldInputTestId(column)}>
+    <div className="flex min-w-0 flex-1 items-center gap-2">
+      <div className={READONLY_FIELD_VALUE_CLASS_NAME} data-testid={fieldInputTestId(column)}>
         {getBlobFieldDisplayValue(rawValue)}
       </div>
       {onBlobView && (
@@ -90,7 +91,7 @@ function JsonFieldEditor({ field, rawValue, isNull, isEditable }: FormFieldEdito
 
 function ReadonlyFieldValue({ field, rawValue }: FormFieldEditorProps) {
   return (
-    <div className={styles.fieldInputReadonly} data-testid={fieldInputTestId(field.col)}>
+    <div className={READONLY_FIELD_VALUE_CLASS_NAME} data-testid={fieldInputTestId(field.col)}>
       {formatCellValue(rawValue).displayValue}
     </div>
   )
@@ -148,7 +149,7 @@ function TextFieldEditor({
     <TextInput
       type="text"
       variant="formField"
-      className={fieldStateClassName(field.isModified, isNull)}
+      fieldState={{ modified: field.isModified, isNull: isNull }}
       value={displayValue(rawValue)}
       onFocus={handleFocus}
       onBlur={handleBlur}

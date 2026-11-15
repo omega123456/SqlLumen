@@ -895,20 +895,20 @@ describe('TableDataToolbar', () => {
     expect(screen.getByTestId('btn-discard')).not.toBeDisabled()
   })
 
-  it('grid view button has active class when viewMode is grid', () => {
+  it('grid view button is marked active when viewMode is grid', () => {
     setupConnection()
     setupTabState({ viewMode: 'grid' })
     render(<TableDataToolbar tabId="tab-1" />)
     const gridBtn = screen.getByTestId('view-mode-grid')
-    expect(gridBtn.className).toContain('Active')
+    expect(gridBtn).toHaveAttribute('data-active')
   })
 
-  it('form view button has active class when viewMode is form', () => {
+  it('form view button is marked active when viewMode is form', () => {
     setupConnection()
     setupTabState({ viewMode: 'form' })
     render(<TableDataToolbar tabId="tab-1" />)
     const formBtn = screen.getByTestId('view-mode-form')
-    expect(formBtn.className).toContain('Active')
+    expect(formBtn).toHaveAttribute('data-active')
   })
 
   it('handleDeleteRow no-ops when no selectedRowKey and no editState', () => {

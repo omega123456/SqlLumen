@@ -6,6 +6,7 @@ import type {
   Ref,
 } from 'react'
 import type { IconWeight } from '@phosphor-icons/react'
+import type { FieldValueState } from '../../../lib/class-names-field'
 
 export interface DropdownOption<TValue extends string = string> {
   value: TValue
@@ -18,16 +19,16 @@ export type DropdownPlacement = 'top' | 'bottom'
 
 export type DropdownTriggerSize = 'md' | 'sm'
 
-export type DropdownTriggerWidth = 'fill' | 'auto'
+export type DropdownTriggerWidth = 'fill' | 'auto' | 'combo'
 
-export interface DropdownFieldState {
-  modified: boolean
-  isNull: boolean
-}
+export type DropdownTriggerChrome = 'field' | 'gridCell' | 'gridCellOverlay'
+
+export type DropdownFieldState = FieldValueState
 
 export interface DropdownTriggerAppearance {
   size: DropdownTriggerSize
   width: DropdownTriggerWidth
+  chrome: DropdownTriggerChrome
   fieldState: DropdownFieldState
 }
 
@@ -62,6 +63,7 @@ export type CommonDropdownProps<TValue extends string = string> = DropdownLabelP
   triggerClassName?: string
   triggerSize?: DropdownTriggerSize
   triggerWidth?: DropdownTriggerWidth
+  triggerChrome?: DropdownTriggerChrome
   fieldState?: DropdownFieldState
   onTriggerKeyDown?: (event: ReactKeyboardEvent<HTMLButtonElement>) => void
   onListKeyDown?: (event: ReactKeyboardEvent<HTMLUListElement>) => void

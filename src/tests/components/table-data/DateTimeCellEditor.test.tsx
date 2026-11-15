@@ -116,26 +116,12 @@ describe('DateTimeCellEditor', () => {
     expect(screen.getByTestId('grid-calendar-btn')).toBeInTheDocument()
   })
 
-  it('keeps the editor wrapper and calendar button styling hooks', () => {
+  it('shows the calendar adornment next to the input', () => {
     setupStore()
     const props = makeMockProps()
     render(<DateTimeCellEditor {...props} />)
 
-    const wrapper = screen.getByTestId('datetime-cell-editor')
-    const button = screen.getByTestId('grid-calendar-btn')
-
-    expect(wrapper.className).toContain('dateTimeEditorWrapper')
-    expect(button.className).toContain('calendarBtn')
-  })
-
-  it('keeps the input flexed so the calendar adornment remains visible', () => {
-    setupStore()
-    const props = makeMockProps()
-    render(<DateTimeCellEditor {...props} />)
-
-    expect(screen.getByRole('textbox').className).toContain('editorInput')
-    expect(document.querySelector('[class*=editorFieldPrimary]')).toBeTruthy()
-    expect(document.querySelector('[class*=editorMarkerGroup]')).toBeTruthy()
+    expect(screen.getByRole('textbox')).toBeInTheDocument()
     expect(screen.getByTestId('grid-calendar-btn')).toBeInTheDocument()
   })
 

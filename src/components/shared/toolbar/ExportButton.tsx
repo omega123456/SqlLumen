@@ -1,13 +1,13 @@
 import { Export } from '@phosphor-icons/react'
 import type { ExportButtonProps } from '../../../types/shared-data-view'
 import { Button } from '../../common/Button'
-import styles from './toolbar-items.module.css'
 
 export function ExportButton({ disabled, onClick, testId }: ExportButtonProps) {
   return (
     <Button
-      variant="bare"
-      className={styles.exportButton}
+      variant="subtle"
+      size="sm"
+      className="shrink-0"
       disabled={disabled}
       onClick={onClick}
       data-testid={testId || 'btn-export'}

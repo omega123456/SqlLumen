@@ -1,16 +1,32 @@
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, type ReactNode } from 'react'
 import type { BaseFormViewProps } from '../../types/shared-data-view'
 import { FormField } from './base-form-view/FormField'
 import { FormRecordNav } from './base-form-view/FormRecordNav'
 import { collectModifiedKeys, resolveRecordCounts } from './base-form-view/form-field-values'
 import { useBaseFormHandlers } from './base-form-view/use-base-form-handlers'
-import styles from './BaseFormView.module.css'
+import { joinClassNames, SCROLLBAR } from '../../lib/class-names'
+
+function FormViewFrame({ testId, children }: { testId: string; children: ReactNode }) {
+  return (
+    <div
+      className={joinClassNames([
+        'flex h-full flex-col gap-3 overflow-auto border-t border-light-stroke-divider bg-light-surface-container-lowest px-5 py-4 font-body dark:border-dark-stroke-divider dark:bg-dark-surface-container-lowest',
+        SCROLLBAR,
+      ])}
+      data-testid={testId}
+    >
+      {children}
+    </div>
+  )
+}
 
 function EmptyFormView({ testId }: { testId: string }) {
   return (
-    <div className={styles.formView} data-testid={testId}>
-      <div className={styles.emptyState}>No rows to display</div>
-    </div>
+    <FormViewFrame testId={testId}>
+      <div className="flex h-full items-center justify-center text-size-row text-light-on-surface-variant dark:text-dark-on-surface-variant">
+        No rows to display
+      </div>
+    </FormViewFrame>
   )
 }
 
@@ -28,7 +44,7 @@ interface FormFieldListProps {
 function FormFieldList(list: FormFieldListProps) {
   const { props, handlers } = list
   return (
-    <div className={styles.formRows}>
+    <div className="grid grid-cols-form-rows items-center justify-start gap-x-4 gap-y-2">
       {props.columns.map((column, columnIndex) => (
         <FormField
           key={column.key}
@@ -69,7 +85,7 @@ export function BaseFormView(props: BaseFormViewProps) {
   if (hasNoRow) return <EmptyFormView testId={testId} />
 
   return (
-    <div className={styles.formView} data-testid={testId}>
+    <FormViewFrame testId={testId}>
       <FormRecordNav
         currentAbsoluteIndex={props.currentAbsoluteIndex}
         isFirstRecord={props.isFirstRecord}
@@ -92,6 +108,6 @@ export function BaseFormView(props: BaseFormViewProps) {
         handlers={handlers}
         inputFocusedRef={inputFocusedRef}
       />
-    </div>
+    </FormViewFrame>
   )
 }

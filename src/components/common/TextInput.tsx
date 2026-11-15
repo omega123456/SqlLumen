@@ -1,6 +1,10 @@
 import { forwardRef, type InputHTMLAttributes } from 'react'
 import { joinClassNames } from '../../lib/class-names'
-import { fieldChromeClassName } from '../../lib/class-names-field'
+import {
+  fieldChromeClassName,
+  NEUTRAL_FIELD_VALUE_STATE,
+  type FieldValueState,
+} from '../../lib/class-names-field'
 import { dataFlag } from '../../lib/data-attributes'
 
 export type TextInputVariant = 'default' | 'mono' | 'formField' | 'tableCell' | 'gridCell' | 'bare'
@@ -17,7 +21,8 @@ const CHROME_VARIANT_CLASSES: Record<ChromeVariant, string> = {
 }
 
 const UNCHROMED_VARIANT_CLASSES: Record<UnchromedVariant, string> = {
-  gridCell: 'td-cell-editor-input',
+  gridCell:
+    'grow shrink basis-0 w-full max-w-full min-w-0 h-full min-h-5.5 px-1 py-0.5 border-none bg-transparent outline-none font-mono text-size-mono leading-tight text-light-on-surface dark:text-dark-on-surface disabled:italic disabled:text-light-outline dark:disabled:text-dark-outline',
   bare: '',
 }
 
@@ -29,6 +34,7 @@ const PADDING_X_CLASSES: Record<PaddingKey, string> = {
 export type TextInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> & {
   variant?: TextInputVariant
   invalid?: boolean
+  fieldState?: FieldValueState
   passwordToggleGutter?: boolean
 }
 
@@ -44,13 +50,19 @@ function paddingKey(passwordToggleGutter: boolean): PaddingKey {
 interface VariantClassOptions {
   variant: TextInputVariant
   invalid: boolean
+  fieldState: FieldValueState
   passwordToggleGutter: boolean
 }
 
-function variantClassName({ variant, invalid, passwordToggleGutter }: VariantClassOptions): string {
+function variantClassName({
+  variant,
+  invalid,
+  fieldState,
+  passwordToggleGutter,
+}: VariantClassOptions): string {
   if (isUnchromed(variant)) return UNCHROMED_VARIANT_CLASSES[variant]
   return joinClassNames([
-    fieldChromeClassName(invalid),
+    fieldChromeClassName(invalid, fieldState),
     PADDING_X_CLASSES[paddingKey(passwordToggleGutter)],
     CHROME_VARIANT_CLASSES[variant],
   ])
@@ -60,6 +72,7 @@ export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(function T
   {
     variant = 'default',
     invalid = false,
+    fieldState = NEUTRAL_FIELD_VALUE_STATE,
     passwordToggleGutter = false,
     className,
     autoCapitalize = 'none',
@@ -74,8 +87,10 @@ export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(function T
       {...rest}
       data-variant={variant}
       data-invalid={dataFlag(invalid)}
+      data-modified={dataFlag(fieldState.modified)}
+      data-null={dataFlag(fieldState.isNull)}
       className={joinClassNames([
-        variantClassName({ variant, invalid, passwordToggleGutter }),
+        variantClassName({ variant, invalid, fieldState, passwordToggleGutter }),
         className,
       ])}
       autoCapitalize={autoCapitalize}

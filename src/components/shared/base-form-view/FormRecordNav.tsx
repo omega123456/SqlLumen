@@ -2,7 +2,6 @@ import { CaretLeftIcon, CaretRightIcon } from '@phosphor-icons/react'
 import { Button } from '../../common/Button'
 import type { BaseFormViewProps } from '../../../types/shared-data-view'
 import type { RecordCounts } from './form-field-values'
-import styles from '../BaseFormView.module.css'
 
 export interface FormRecordNavProps {
   currentAbsoluteIndex: number
@@ -21,7 +20,7 @@ export interface FormRecordNavProps {
 
 function FormEditButtons({ editActions }: Pick<FormRecordNavProps, 'editActions'>) {
   return (
-    <div className={styles.formButtons}>
+    <div className="ml-auto flex items-center gap-2">
       <Button
         size="sm"
         disabled={!editActions.hasModifications}
@@ -53,7 +52,7 @@ export function FormRecordNav({
   editActions,
 }: FormRecordNavProps) {
   return (
-    <div className={styles.recordNav}>
+    <div className="flex shrink-0 items-center gap-2 text-row text-light-on-surface-variant dark:text-dark-on-surface-variant">
       <Button
         variant="subtle"
         size="sm"
@@ -66,8 +65,11 @@ export function FormRecordNav({
       >
         <CaretLeftIcon size={16} />
       </Button>
-      <span className={styles.recordTitle} data-testid="form-record-label">
-        Record <b>{(currentAbsoluteIndex + 1).toLocaleString()}</b>
+      <span data-testid="form-record-label">
+        Record{' '}
+        <b className="font-semibold text-light-on-surface dark:text-dark-on-surface">
+          {(currentAbsoluteIndex + 1).toLocaleString()}
+        </b>
         {counts.knownTotalRows !== null && ` of ${counts.knownTotalRows.toLocaleString()}`}
       </span>
       <Button

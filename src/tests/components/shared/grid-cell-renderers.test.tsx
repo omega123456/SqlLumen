@@ -56,9 +56,8 @@ describe('TableDataCellRenderer', () => {
   it('displays NULL with muted styling for null values', () => {
     const { container } = render(<TableDataCellRenderer {...makeCellProps('name', null)} />)
 
-    const span = container.querySelector('.td-null-value')
+    const span = container.querySelector('[data-value-kind="null"]')
     expect(span).not.toBeNull()
-    expect(span).toHaveClass('td-cell-value')
     expect(span?.textContent).toBe('NULL')
   })
 
@@ -71,9 +70,8 @@ describe('TableDataCellRenderer', () => {
 
     const { container } = render(<TableDataCellRenderer {...props} />)
 
-    const span = container.querySelector('.td-null-value')
+    const span = container.querySelector('[data-value-kind="null"]')
     expect(span).not.toBeNull()
-    expect(span).toHaveClass('td-cell-value')
     expect(span?.textContent).toBe('NULL')
   })
 
@@ -82,9 +80,8 @@ describe('TableDataCellRenderer', () => {
       <TableDataCellRenderer {...makeCellProps('data', '[BLOB 1024 bytes]')} />
     )
 
-    const span = container.querySelector('.td-blob-value')
+    const span = container.querySelector('[data-value-kind="blob"]')
     expect(span).not.toBeNull()
-    expect(span).toHaveClass('td-cell-value')
     expect(span?.textContent).toBe('[BLOB 1024 bytes]')
   })
 
@@ -93,9 +90,9 @@ describe('TableDataCellRenderer', () => {
 
     const span = container.querySelector('span')
     expect(span?.textContent).toBe('Alice')
-    expect(span).toHaveClass('td-cell-value')
-    expect(container.querySelector('.td-null-value')).toBeNull()
-    expect(container.querySelector('.td-blob-value')).toBeNull()
+    expect(span).toHaveAttribute('data-value-kind', 'text')
+    expect(container.querySelector('[data-value-kind="null"]')).toBeNull()
+    expect(container.querySelector('[data-value-kind="blob"]')).toBeNull()
   })
 
   it('displays numeric values as stringified text', () => {
@@ -103,9 +100,9 @@ describe('TableDataCellRenderer', () => {
 
     const span = container.querySelector('span')
     expect(span?.textContent).toBe('42')
-    expect(span).toHaveClass('td-cell-value')
-    expect(container.querySelector('.td-null-value')).toBeNull()
-    expect(container.querySelector('.td-blob-value')).toBeNull()
+    expect(span).toHaveAttribute('data-value-kind', 'text')
+    expect(container.querySelector('[data-value-kind="null"]')).toBeNull()
+    expect(container.querySelector('[data-value-kind="blob"]')).toBeNull()
   })
 
   it('does not treat non-BLOB strings starting with [ as BLOB', () => {
@@ -113,7 +110,7 @@ describe('TableDataCellRenderer', () => {
       <TableDataCellRenderer {...makeCellProps('note', '[array value]')} />
     )
 
-    expect(container.querySelector('.td-blob-value')).toBeNull()
+    expect(container.querySelector('[data-value-kind="blob"]')).toBeNull()
     expect(container.querySelector('span')?.textContent).toBe('[array value]')
   })
 
@@ -124,7 +121,7 @@ describe('TableDataCellRenderer', () => {
 
     const { container } = render(<TableDataCellRenderer {...makeCellProps('name', null)} />)
 
-    const span = container.querySelector('.td-null-value')
+    const span = container.querySelector('[data-value-kind="null"]')
     expect(span).not.toBeNull()
     expect(span?.textContent).toBe('(empty)')
   })

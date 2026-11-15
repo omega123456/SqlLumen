@@ -311,7 +311,7 @@ describe('TableDataFormView', () => {
 
     // The name input should have the modified class
     const nameInput = screen.getByTestId('form-input-name')
-    expect(nameInput.className).toContain('Modified')
+    expect(nameInput).toHaveAttribute('data-modified')
   })
 
   it('Previous button disabled on first record', () => {

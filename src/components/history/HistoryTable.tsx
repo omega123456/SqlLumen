@@ -5,7 +5,7 @@ import { formatTableTimestamp } from '../../lib/format-utils'
 import { Button } from '../common/Button'
 import { TextInput } from '../common/TextInput'
 import type { HistoryEntry } from '../../types/schema'
-import dotStyles from '../shared/toolbar/toolbar-items.module.css'
+import { statusDotClassName } from '../../lib/class-names-status-dot'
 import styles from './HistoryTable.module.css'
 import { isActivationKey } from '../../lib/input-events'
 
@@ -32,12 +32,8 @@ function emptyHistoryMessage(search: string): string {
 }
 
 function StatusDot({ success }: { success: boolean }) {
-  const statusClassName = success ? dotStyles.statusDotOk : dotStyles.statusDotError
   return (
-    <span
-      className={`${dotStyles.statusDot} ${statusClassName}`}
-      title={success ? 'Succeeded' : 'Failed'}
-    >
+    <span className={statusDotClassName(success)} title={success ? 'Succeeded' : 'Failed'}>
       {success ? '✓' : '✕'}
     </span>
   )

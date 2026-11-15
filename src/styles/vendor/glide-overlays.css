@@ -1,23 +1,23 @@
-.glide-grid-host .dvn-scroller::-webkit-scrollbar {
+[data-sqllumen-glide-host] .dvn-scroller::-webkit-scrollbar {
   width: var(--grid-scrollbar-size);
   height: var(--grid-scrollbar-size);
 }
 
-.glide-grid-host .dvn-scroller::-webkit-scrollbar-track {
+[data-sqllumen-glide-host] .dvn-scroller::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.glide-grid-host .dvn-scroller::-webkit-scrollbar-thumb {
+[data-sqllumen-glide-host] .dvn-scroller::-webkit-scrollbar-thumb {
   background: var(--grid-scrollbar-thumb);
   border-radius: var(--radius-control);
 }
 
-.glide-grid-host .dvn-scroller::-webkit-scrollbar-thumb:hover {
+[data-sqllumen-glide-host] .dvn-scroller::-webkit-scrollbar-thumb:hover {
   background: var(--grid-scrollbar-thumb-hover);
 }
 
-.glide-grid-host .gdg-clip-region,
-.glide-grid-host .gdg-cell-edit {
+[data-sqllumen-glide-host] .gdg-clip-region,
+[data-sqllumen-glide-host] .gdg-cell-edit {
   font-family: var(--font-mono);
   color: var(--on-surface);
 }

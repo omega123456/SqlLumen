@@ -7,8 +7,8 @@ import {
   Table,
   type IconProps,
 } from '@phosphor-icons/react'
+import { joinClassNames } from '../../lib/class-names'
 import type { PaletteResultType } from '../../types/schema'
-import styles from './ObjectTypeIcon.module.css'
 
 export interface ObjectTypeIconProps {
   objectType: PaletteResultType
@@ -27,16 +27,12 @@ const ICONS: Record<PaletteResultType, typeof Table> = {
 }
 
 const TYPE_CLASS_NAMES: Record<PaletteResultType, string> = {
-  table: styles.table,
-  column: styles.column,
-  view: styles.view,
-  procedure: styles.procedure,
-  function: styles.function,
-  trigger: styles.trigger,
-}
-
-function getTypeClassName(objectType: PaletteResultType): string {
-  return TYPE_CLASS_NAMES[objectType]
+  table: 'text-light-primary dark:text-dark-primary',
+  column: 'text-light-primary dark:text-dark-primary',
+  view: 'text-light-secondary dark:text-dark-secondary',
+  procedure: 'text-light-on-surface-variant dark:text-dark-on-surface-variant',
+  function: 'text-light-tertiary dark:text-dark-tertiary',
+  trigger: 'text-light-warning dark:text-dark-warning',
 }
 
 export function ObjectTypeIcon({
@@ -46,13 +42,14 @@ export function ObjectTypeIcon({
   className,
 }: ObjectTypeIconProps) {
   const Icon = ICONS[objectType]
-  const mergedClassName = [styles.icon, getTypeClassName(objectType), className]
-    .filter(Boolean)
-    .join(' ')
 
   return (
     <span
-      className={mergedClassName}
+      className={joinClassNames([
+        'inline-flex shrink-0 items-center justify-center',
+        TYPE_CLASS_NAMES[objectType],
+        className,
+      ])}
       data-testid={`object-type-icon-${objectType}`}
       aria-hidden="true"
     >

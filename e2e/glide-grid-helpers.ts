@@ -21,8 +21,8 @@ export async function getGlideGridGeometry(page: Page, testId: string): Promise<
 
   return grid.evaluate((el) => {
     const cs = getComputedStyle(document.documentElement)
-    const headerHeight = parseFloat(cs.getPropertyValue('--grid-header-height')) || 32
-    const rowHeight = parseFloat(cs.getPropertyValue('--grid-row-height')) || 32
+    const headerHeight = parseFloat(cs.getPropertyValue('--spacing-grid-header')) || 32
+    const rowHeight = parseFloat(cs.getPropertyValue('--spacing-grid-row')) || 32
     const scroller = el.querySelector<HTMLElement>('.dvn-scroller') ?? (el as HTMLElement)
     const parsedWidths: unknown = JSON.parse((el as HTMLElement).dataset.glideColumnWidth ?? '[]')
     const columnWidths = Array.isArray(parsedWidths)

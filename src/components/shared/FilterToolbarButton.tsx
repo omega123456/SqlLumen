@@ -1,6 +1,5 @@
 import { Funnel, FunnelX } from '@phosphor-icons/react'
-import { Button } from '../common/Button'
-import styles from './FilterToolbarButton.module.css'
+import { Button, type ButtonVariant } from '../common/Button'
 
 export interface FilterToolbarButtonProps {
   isActive: boolean
@@ -11,6 +10,11 @@ export interface FilterToolbarButtonProps {
   filterButtonTestId?: string
   filterBadgeTestId?: string
   clearButtonTestId?: string
+}
+
+function filterButtonVariant(isActive: boolean): ButtonVariant {
+  if (isActive) return 'subtleAccent'
+  return 'subtle'
 }
 
 export function FilterToolbarButton({
@@ -25,11 +29,11 @@ export function FilterToolbarButton({
 }: FilterToolbarButtonProps) {
   return (
     <>
-      <div className={`${styles.filterButtonWrapper} ${isActive ? styles.filterButtonActive : ''}`}>
+      <div className="relative -mt-1 flex items-center overflow-visible pt-1">
         <Button
-          variant="subtle"
+          variant={filterButtonVariant(isActive)}
           size="sm"
-          className={styles.filterButton}
+          className="shrink-0"
           onClick={onFilterClick}
           disabled={isDisabled}
           title="Filter"
@@ -39,7 +43,10 @@ export function FilterToolbarButton({
           <span>Filter</span>
         </Button>
         {isActive && (
-          <span className={styles.filterBadge} data-testid={filterBadgeTestId}>
+          <span
+            className="pointer-events-none absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-badge bg-light-primary px-0.5 font-mono text-size-caption font-semibold text-light-on-primary dark:bg-dark-primary dark:text-dark-on-primary"
+            data-testid={filterBadgeTestId}
+          >
             {activeCount}
           </span>
         )}

@@ -249,6 +249,7 @@
   --font-weight-*: initial;
   --font-weight-regular: 400;
   --font-weight-semibold: 600;
+  --font-weight-bold: 700;
   --font-weight-extrabold: 800;
 
   --text-*: initial;
@@ -277,6 +278,7 @@
 
   --leading-*: initial;
   --leading-flat: 1;
+  --leading-tight: 1.25;
   --leading-snug: 1.35;
   --leading-compact: 1.4;
   --leading-cozy: 1.45;
@@ -312,6 +314,7 @@
 
   --grid-template-columns-workspace: auto minmax(0, 1fr);
   --grid-template-rows-workspace: auto minmax(0, 1fr);
+  --grid-template-columns-form-rows: 160px minmax(0, 420px) auto;
 
   --radius-*: initial;
   --radius-control: 4px;
@@ -323,6 +326,7 @@
   --radius-round: 50%;
   --radius-tile: 12px;
   --radius-marker: 1px;
+  --radius-badge: 7px;
 
   --border-width-check: 1.6px;
   --border-width-spinner: 1.5px;
@@ -367,6 +371,8 @@
 
   --transition-property-bg: background-color;
   --transition-property-background: background;
+  --transition-property-background-and-color: background, color;
+  --transition-property-bg-and-border: background-color, border-color;
   --transition-property-color: color;
   --transition-property-border-color: border-color;
   --transition-property-width: width;

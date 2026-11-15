@@ -11,7 +11,6 @@ import { PaginationGroup } from '../../../../components/shared/toolbar/Paginatio
 import { ExportButton } from '../../../../components/shared/toolbar/ExportButton'
 import { StatusArea } from '../../../../components/shared/toolbar/StatusArea'
 import type { ViewMode } from '../../../../types/shared-data-view'
-import styles from '../../../../components/shared/toolbar/toolbar-items.module.css'
 
 // ---------------------------------------------------------------------------
 // ViewModeGroup
@@ -49,10 +48,9 @@ describe('ViewModeGroup', () => {
     const formBtn = screen.getByTestId('view-mode-form')
     const textBtn = screen.getByTestId('view-mode-text')
 
-    // The active button should have the viewModeActive class
-    expect(formBtn.className).toContain('viewModeActive')
-    expect(gridBtn.className).not.toContain('viewModeActive')
-    expect(textBtn.className).not.toContain('viewModeActive')
+    expect(formBtn).toHaveAttribute('data-active')
+    expect(gridBtn).not.toHaveAttribute('data-active')
+    expect(textBtn).not.toHaveAttribute('data-active')
   })
 
   it('calls onModeChange when a mode button is clicked', () => {
@@ -262,7 +260,7 @@ describe('PaginationGroup', () => {
     expect(onPageSizeChange).toHaveBeenCalledWith(500)
   })
 
-  it('uses compact trigger styling for the page size dropdown', async () => {
+  it('renders the page size dropdown as a small combo', async () => {
     const user = userEvent.setup()
     render(
       <PaginationGroup
@@ -276,7 +274,8 @@ describe('PaginationGroup', () => {
     )
 
     const trigger = screen.getByTestId('page-size-select')
-    expect(trigger.className).toContain(styles.pageSizeSelect)
+    expect(trigger).toHaveAttribute('data-size', 'sm')
+    expect(trigger).toHaveAttribute('data-width', 'combo')
 
     await user.click(trigger)
 

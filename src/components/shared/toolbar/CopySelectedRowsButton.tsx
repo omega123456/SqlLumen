@@ -1,6 +1,5 @@
 import { ClipboardText } from '@phosphor-icons/react'
 import { Button } from '../../common/Button'
-import styles from './toolbar-items.module.css'
 
 interface CopySelectedRowsButtonProps {
   disabled: boolean
@@ -12,7 +11,8 @@ export function CopySelectedRowsButton({ disabled, onClick }: CopySelectedRowsBu
     <Button
       variant="subtle"
       size="sm"
-      className={styles.iconButton}
+      iconOnly
+      className="shrink-0"
       disabled={disabled}
       onClick={onClick}
       aria-label="Copy selected rows to clipboard"
