@@ -4,7 +4,7 @@ import { Dropdown, type DropdownOption } from '../../common/Dropdown'
 import { TextInput } from '../../common/TextInput'
 import type { FilterCondition, FilterOperator } from '../../../types/schema'
 import { isNullaryOperator } from '../filter-conditions'
-import styles from '../FilterDialog.module.css'
+import { joinClassNames } from '../../../lib/class-names'
 import { FIELD_CHROME } from '../../../lib/class-names-field'
 
 const REMOVE_ICON_SIZE = 14
@@ -50,7 +50,7 @@ export function FilterConditionRow({ condition, index, context }: FilterConditio
   const isNullary = isNullaryOperator(condition.operator)
   const position = index + 1
   return (
-    <div className={styles.row} data-testid="filter-row">
+    <div className="flex items-center gap-2" data-testid="filter-row">
       <Dropdown
         id={`filter-column-${index}`}
         ariaLabel={`Column for condition ${position}`}
@@ -58,8 +58,9 @@ export function FilterConditionRow({ condition, index, context }: FilterConditio
         value={condition.column}
         onChange={(value) => context.onChange(index, 'column', value)}
         data-testid={`filter-column-select-${index}`}
-        className={styles.dropdownWrapper}
-        triggerClassName={styles.columnSelect}
+        className="flex min-w-0 grow shrink basis-0"
+        triggerSize="filter"
+        triggerClassName="min-w-0 flex-1"
       />
       <Dropdown
         id={`filter-operator-${index}`}
@@ -68,14 +69,18 @@ export function FilterConditionRow({ condition, index, context }: FilterConditio
         value={condition.operator}
         onChange={(value) => context.onChange(index, 'operator', value)}
         data-testid={`filter-operator-select-${index}`}
-        className={styles.dropdownWrapper}
-        triggerClassName={styles.operatorSelect}
+        className="flex min-w-0 grow shrink basis-0"
+        triggerSize="filter"
+        triggerClassName="min-w-0 flex-1"
       />
       <TextInput
         ref={(element) => context.registerValueInput(index, element)}
         variant="bare"
         type="text"
-        className={`${FIELD_CHROME} ${styles.valueInput} ${isNullary ? styles.valueInputDisabled : ''}`}
+        className={joinClassNames([
+          FIELD_CHROME,
+          'h-8.5 min-w-0 grow shrink basis-0 px-2.5 font-body text-size-caption leading-5 disabled:opacity-50 disabled:placeholder:italic',
+        ])}
         value={condition.value}
         onChange={(event) => context.onChange(index, 'value', event.target.value)}
         disabled={isNullary}
@@ -85,7 +90,7 @@ export function FilterConditionRow({ condition, index, context }: FilterConditio
       />
       <Button
         variant="bare"
-        className={styles.removeButton}
+        className="flex size-6.5 min-w-6.5 cursor-pointer items-center justify-center rounded-control bg-transparent text-light-on-surface-variant transition-color-and-background hover:bg-light-fill-subtle-hover hover:text-light-error dark:text-dark-on-surface-variant dark:hover:bg-dark-fill-subtle-hover dark:hover:text-dark-error"
         onClick={() => context.onRemove(index)}
         aria-label={`Remove condition ${position}`}
         data-testid="filter-remove-button"

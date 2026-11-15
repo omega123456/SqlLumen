@@ -8,7 +8,12 @@ import {
   type UpdateCopyOption,
 } from './copy-to-host-model'
 import { Section } from './CopySection'
-import styles from '../CopyToHostDialog.module.css'
+import { joinClassNames } from '../../../lib/class-names'
+import {
+  DIALOG_CHECKBOX_LABEL,
+  DIALOG_SECTION_FIELD_GROUP,
+  DIALOG_SECTION_FIELD_LABEL,
+} from '../../../lib/class-names-dialog'
 
 interface CopyOptionsSectionProps {
   options: CopyDialogOptions
@@ -27,18 +32,43 @@ interface OptionCheckboxProps {
   isRisky?: boolean
 }
 
+type OptionGroupState = 'active' | 'dimmed'
+
+const OPTION_GROUP_STATE_CLASSES: Record<OptionGroupState, string> = {
+  active: '',
+  dimmed: 'opacity-45',
+}
+
 function dimmedWhen(isDimmed: boolean): string {
-  if (!isDimmed) return styles.optionGroup
-  return `${styles.optionGroup} ${styles.dimmed}`
+  const state: OptionGroupState = isDimmed ? 'dimmed' : 'active'
+  return joinClassNames([
+    'flex flex-col gap-2 transition-opacity',
+    OPTION_GROUP_STATE_CLASSES[state],
+  ])
+}
+
+type OptionRowRisk = 'safe' | 'risky'
+
+const OPTION_ROW_RISK_CLASSES: Record<OptionRowRisk, string> = {
+  safe: '',
+  risky: 'border-l-2 border-light-warning pl-2 dark:border-dark-warning',
+}
+
+function optionRowClassName(isRisky: boolean | undefined): string {
+  const risk: OptionRowRisk = isRisky ? 'risky' : 'safe'
+  return joinClassNames(['flex items-center gap-2', OPTION_ROW_RISK_CLASSES[risk]])
 }
 
 function OptionCheckbox({ id, optionKey, label, section, disabled, isRisky }: OptionCheckboxProps) {
-  const rowClassName = isRisky
-    ? `${styles.checkboxRow} ${styles.warningAccent}`
-    : styles.checkboxRow
   return (
-    <div className={rowClassName}>
-      {isRisky && <Warning size={14} weight="fill" className={styles.warningIcon} />}
+    <div className={optionRowClassName(isRisky)}>
+      {isRisky && (
+        <Warning
+          size={14}
+          weight="fill"
+          className="shrink-0 text-light-warning dark:text-dark-warning"
+        />
+      )}
       <Checkbox
         id={id}
         checked={section.options[optionKey]}
@@ -46,7 +76,7 @@ function OptionCheckbox({ id, optionKey, label, section, disabled, isRisky }: Op
         onChange={(event) => section.onOptionChange(optionKey, event.target.checked)}
         data-testid={id}
       />
-      <label htmlFor={id} className={styles.checkboxLabel}>
+      <label htmlFor={id} className={DIALOG_CHECKBOX_LABEL}>
         {label}
       </label>
     </div>
@@ -61,7 +91,7 @@ function StructureOptions(section: CopyOptionsSectionProps) {
       aria-disabled={structureDisabled}
       data-testid="copy-structure-group"
     >
-      <span className={styles.optionGroupLabel}>Structure</span>
+      <span className={DIALOG_SECTION_FIELD_LABEL}>Structure</span>
       <OptionCheckbox
         id="copy-drop-if-exists"
         optionKey="dropIfExists"
@@ -78,7 +108,10 @@ function StructureOptions(section: CopyOptionsSectionProps) {
         disabled={structureDisabled}
       />
       {structureDisabled && (
-        <p className={styles.notApplicable} data-testid="copy-structure-na">
+        <p
+          className="font-body text-size-caption italic text-light-on-surface-variant dark:text-dark-on-surface-variant"
+          data-testid="copy-structure-na"
+        >
           Not applicable for Data only
         </p>
       )}
@@ -95,9 +128,9 @@ function DataOptions(section: CopyOptionsSectionProps) {
       aria-disabled={dataDisabled}
       data-testid="copy-data-group"
     >
-      <span className={styles.optionGroupLabel}>Data</span>
-      <div className={styles.fieldGroup}>
-        <label className={styles.fieldLabel} id="copy-insert-mode-label">
+      <span className={DIALOG_SECTION_FIELD_LABEL}>Data</span>
+      <div className={DIALOG_SECTION_FIELD_GROUP}>
+        <label className={DIALOG_SECTION_FIELD_LABEL} id="copy-insert-mode-label">
           Insert mode
         </label>
         <Dropdown
@@ -119,7 +152,10 @@ function DataOptions(section: CopyOptionsSectionProps) {
         isRisky
       />
       {dataDisabled && (
-        <p className={styles.notApplicable} data-testid="copy-data-na">
+        <p
+          className="font-body text-size-caption italic text-light-on-surface-variant dark:text-dark-on-surface-variant"
+          data-testid="copy-data-na"
+        >
           Not applicable for Structure only
         </p>
       )}
@@ -131,8 +167,8 @@ export function CopyOptionsSection(section: CopyOptionsSectionProps) {
   const { options, onOptionChange } = section
   return (
     <Section title="Options" testId="copy-options-section">
-      <div className={styles.fieldGroup}>
-        <label className={styles.fieldLabel} id="copy-type-label">
+      <div className={DIALOG_SECTION_FIELD_GROUP}>
+        <label className={DIALOG_SECTION_FIELD_LABEL} id="copy-type-label">
           Copy type
         </label>
         <Dropdown
@@ -145,9 +181,15 @@ export function CopyOptionsSection(section: CopyOptionsSectionProps) {
         />
       </div>
       <StructureOptions {...section} />
-      <div className={styles.divider} role="separator" />
+      <div
+        className="my-3 h-0 border-t border-light-stroke-divider dark:border-dark-stroke-divider"
+        role="separator"
+      />
       <DataOptions {...section} />
-      <div className={styles.divider} role="separator" />
+      <div
+        className="my-3 h-0 border-t border-light-stroke-divider dark:border-dark-stroke-divider"
+        role="separator"
+      />
       <OptionCheckbox
         id="copy-ignore-definer"
         optionKey="ignoreDefiner"

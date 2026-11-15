@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { TextInput } from '../../common/TextInput'
-import styles from '../SavedConnectionsList.module.css'
+import { joinClassNames } from '../../../lib/class-names'
 import { FIELD_CHROME } from '../../../lib/class-names-field'
 
 interface GroupInlineInputProps {
@@ -34,7 +34,10 @@ export function GroupInlineInput({
       ref={inputRef}
       variant="bare"
       type="text"
-      className={`${FIELD_CHROME} ${styles.renameInput}`}
+      className={joinClassNames([
+        FIELD_CHROME,
+        'w-full px-1 py-0.5 text-size-caption font-semibold',
+      ])}
       value={value}
       onChange={(event) => onChange(event.target.value)}
       onBlur={onCommit}

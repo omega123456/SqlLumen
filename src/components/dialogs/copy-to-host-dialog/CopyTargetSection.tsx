@@ -4,7 +4,10 @@ import { TextInput } from '../../common/TextInput'
 import { Dropdown, type DropdownOption } from '../../common/Dropdown'
 import { NEW_DB_SENTINEL } from './copy-to-host-model'
 import { Section } from './CopySection'
-import styles from '../CopyToHostDialog.module.css'
+import {
+  DIALOG_SECTION_FIELD_GROUP,
+  DIALOG_SECTION_FIELD_LABEL,
+} from '../../../lib/class-names-dialog'
 
 export interface CopyTargetState {
   connectionOptions: DropdownOption[]
@@ -32,7 +35,7 @@ function TargetDatabaseExtras({ target, newDatabaseInputRef, handlers }: CopyTar
   return (
     <>
       {target.databaseValue === NEW_DB_SENTINEL && (
-        <div className={styles.newDbGroup}>
+        <div className="mt-2">
           <TextInput
             ref={newDatabaseInputRef}
             value={target.newDatabaseName}
@@ -44,8 +47,15 @@ function TargetDatabaseExtras({ target, newDatabaseInputRef, handlers }: CopyTar
         </div>
       )}
       {target.notice && (
-        <p className={styles.infoNote} data-testid="copy-target-database-notice">
-          <Info size={14} weight="fill" className={styles.infoIcon} />
+        <p
+          className="mt-1.5 flex items-center gap-2 font-body text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant"
+          data-testid="copy-target-database-notice"
+        >
+          <Info
+            size={14}
+            weight="fill"
+            className="shrink-0 text-light-primary dark:text-dark-primary"
+          />
           {target.notice}
         </p>
       )}
@@ -60,8 +70,8 @@ export function CopyTargetSection({
 }: CopyTargetSectionProps) {
   return (
     <Section title="Target" testId="copy-target-section">
-      <div className={styles.fieldGroup}>
-        <label className={styles.fieldLabel} id="copy-target-connection-label">
+      <div className={DIALOG_SECTION_FIELD_GROUP}>
+        <label className={DIALOG_SECTION_FIELD_LABEL} id="copy-target-connection-label">
           Connection
         </label>
         <Dropdown
@@ -73,8 +83,8 @@ export function CopyTargetSection({
           data-testid="copy-target-connection"
         />
       </div>
-      <div className={styles.fieldGroup}>
-        <label className={styles.fieldLabel} id="copy-target-database-label">
+      <div className={DIALOG_SECTION_FIELD_GROUP}>
+        <label className={DIALOG_SECTION_FIELD_LABEL} id="copy-target-database-label">
           Database
         </label>
         <Dropdown
@@ -93,8 +103,15 @@ export function CopyTargetSection({
         />
       </div>
       {target.isSameHost && (
-        <p className={styles.warningNote} data-testid="copy-same-host-warning">
-          <Warning size={14} weight="fill" className={styles.warningIcon} />
+        <p
+          className="mt-1 flex items-center gap-2 font-body text-size-caption text-light-warning dark:text-dark-warning"
+          data-testid="copy-same-host-warning"
+        >
+          <Warning
+            size={14}
+            weight="fill"
+            className="shrink-0 text-light-warning dark:text-dark-warning"
+          />
           The target resolves to the same host as the source. Choose a different host.
         </p>
       )}

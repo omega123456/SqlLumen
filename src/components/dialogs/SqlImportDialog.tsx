@@ -10,7 +10,20 @@ import {
   type ImportJobProgress,
 } from '../../lib/sql-dump-commands'
 import { showSuccessToast, showErrorToast, showWarningToast } from '../../stores/toast-store'
-import styles from './SqlImportDialog.module.css'
+import { joinClassNames, SCROLLBAR } from '../../lib/class-names'
+import {
+  DIALOG_CHECKBOX_LABEL,
+  DIALOG_CHECKBOX_ROW,
+  DIALOG_CLOSE_BUTTON,
+  DIALOG_EDGE_TO_EDGE_ROOT,
+  DIALOG_FORM_FIELD,
+  DIALOG_FORM_LABEL,
+  DIALOG_HEADER,
+  DIALOG_HEADER_TITLE,
+  DIALOG_JOB_BODY,
+  DIALOG_JOB_FOOTER_GRID,
+  DIALOG_PROGRESS_TRACK,
+} from '../../lib/class-names-dialog'
 
 import { logFrontendError } from '../../lib/app-log-commands'
 import { isPlaywrightBuild } from '../../lib/tauri-env'
@@ -81,10 +94,23 @@ function ImportOutcomeText({ progress }: { progress: ImportJobProgress }) {
   return null
 }
 
+type ImportStatusTone = 'neutral' | 'success'
+
+const IMPORT_STATUS_TONE_CLASSES: Record<ImportStatusTone, string> = {
+  neutral: 'text-light-on-surface-variant dark:text-dark-on-surface-variant',
+  success: 'font-semibold text-light-primary dark:text-dark-primary',
+}
+
 function ImportStatusMessage({ progress }: { progress: ImportJobProgress }) {
-  const successClassName = isCleanCompletion(progress) ? styles.statusSuccess : ''
+  const tone: ImportStatusTone = isCleanCompletion(progress) ? 'success' : 'neutral'
   return (
-    <div className={`${styles.statusMessage} ${successClassName}`} data-testid="import-status">
+    <div
+      className={joinClassNames([
+        'py-2 text-center font-body text-size-caption',
+        IMPORT_STATUS_TONE_CLASSES[tone],
+      ])}
+      data-testid="import-status"
+    >
       <ImportOutcomeText progress={progress} />
     </div>
   )
@@ -93,11 +119,17 @@ function ImportStatusMessage({ progress }: { progress: ImportJobProgress }) {
 function ImportProgressPanel({ progress }: { progress: ImportJobProgress }) {
   const statementsPercent = progressPercent(progress.statementsDone, progress.statementsTotal)
   return (
-    <div className={styles.progressSection} data-testid="import-progress">
-      <div className={styles.progressBar}>
-        <div className={styles.progressFill} style={{ width: `${statementsPercent}%` }} />
+    <div
+      className="flex flex-col gap-2 bg-light-fill-control dark:bg-dark-fill-control"
+      data-testid="import-progress"
+    >
+      <div className={joinClassNames([DIALOG_PROGRESS_TRACK, 'w-full'])}>
+        <div
+          className="h-full rounded-track bg-light-primary transition-width duration-300 dark:bg-dark-primary"
+          style={{ width: `${statementsPercent}%` }}
+        />
       </div>
-      <span className={styles.progressText}>
+      <span className="font-body text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant">
         {progress.statementsDone} / {progress.statementsTotal} statements — {statementsPercent}%
       </span>
     </div>
@@ -107,11 +139,22 @@ function ImportProgressPanel({ progress }: { progress: ImportJobProgress }) {
 function ImportErrorList({ errors }: { errors: ImportJobProgress['errors'] }) {
   if (errors.length === 0) return null
   return (
-    <div className={styles.errorList} data-testid="import-error-list">
+    <div
+      className={joinClassNames(['flex max-h-40 flex-col gap-1.5 overflow-y-auto', SCROLLBAR])}
+      data-testid="import-error-list"
+    >
       {errors.map((error, index) => (
-        <div key={index} className={styles.errorItem} data-testid={`import-error-${index}`}>
+        <div
+          key={index}
+          className="rounded-card border border-light-stroke-card bg-light-error-container px-3 py-2 font-body text-size-caption text-light-error dark:border-dark-stroke-card dark:bg-dark-error-container dark:text-dark-error"
+          data-testid={`import-error-${index}`}
+        >
           <strong>Statement #{error.statementIndex + 1}:</strong> {error.errorMessage}
-          {error.sqlPreview && <span className={styles.errorSql}>{error.sqlPreview}</span>}
+          {error.sqlPreview && (
+            <span className="mt-1 block font-mono text-size-caption break-all whitespace-pre-wrap text-light-outline dark:text-dark-outline">
+              {error.sqlPreview}
+            </span>
+          )}
         </div>
       ))}
     </div>
@@ -140,7 +183,7 @@ function ImportActions({
   )
   if (isTerminal) {
     return (
-      <div className={styles.actions}>
+      <div className={DIALOG_JOB_FOOTER_GRID}>
         {isImporting && cancelImportButton}
         <Button type="button" onClick={onClose} data-testid="import-done-button">
           Close
@@ -149,7 +192,7 @@ function ImportActions({
     )
   }
   return (
-    <div className={styles.actions}>
+    <div className={DIALOG_JOB_FOOTER_GRID}>
       <Button
         type="button"
         variant="accent"
@@ -238,11 +281,11 @@ function ImportDialogHeader({
   onClose: () => void
 }) {
   return (
-    <div className={styles.header}>
-      <h2 className={styles.title}>Import SQL script</h2>
+    <div className={DIALOG_HEADER}>
+      <h2 className={DIALOG_HEADER_TITLE}>Import SQL script</h2>
       <Button
         variant="bare"
-        className={styles.closeButton}
+        className={joinClassNames([DIALOG_CLOSE_BUTTON, 'svg:size-5'])}
         onClick={onClose}
         aria-label="Close"
         disabled={isImporting}
@@ -271,15 +314,18 @@ function ImportFileAndOptions({
 }: ImportOptionsProps) {
   return (
     <>
-      <div className={styles.fieldGroup}>
-        <span className={styles.label}>File</span>
-        <div className={styles.filePath} data-testid="import-file-path">
+      <div className={DIALOG_FORM_FIELD}>
+        <span className={DIALOG_FORM_LABEL}>File</span>
+        <div
+          className="rounded-control border border-light-stroke-control bg-light-fill-control px-2.5 py-1.25 font-mono text-size-mono leading-5 break-all text-light-on-surface dark:border-dark-stroke-control dark:bg-dark-fill-control dark:text-dark-on-surface"
+          data-testid="import-file-path"
+        >
           {fileName}
         </div>
       </div>
-      <div className={styles.fieldGroup}>
-        <span className={styles.label}>Options</span>
-        <div className={styles.checkboxRow}>
+      <div className={DIALOG_FORM_FIELD}>
+        <span className={DIALOG_FORM_LABEL}>Options</span>
+        <div className={DIALOG_CHECKBOX_ROW}>
           <Checkbox
             id="import-stop-on-error"
             checked={stopOnError}
@@ -287,7 +333,7 @@ function ImportFileAndOptions({
             disabled={disabled}
             data-testid="import-stop-on-error"
           />
-          <label htmlFor="import-stop-on-error" className={styles.checkboxLabel}>
+          <label htmlFor="import-stop-on-error" className={DIALOG_CHECKBOX_LABEL}>
             Stop on first error
           </label>
         </div>
@@ -333,9 +379,9 @@ export default function SqlImportDialog({ connectionId, filePath, onClose }: Sql
       disableFocusManagement={isPlaywrightBuild()}
       nonDismissible={isImporting}
     >
-      <div className={styles.root}>
+      <div className={DIALOG_EDGE_TO_EDGE_ROOT}>
         <ImportDialogHeader isImporting={isImporting} onClose={onClose} />
-        <div className={styles.body}>
+        <div className={DIALOG_JOB_BODY}>
           <ImportFileAndOptions
             fileName={fileNameFromPath(filePath)}
             stopOnError={stopOnError}

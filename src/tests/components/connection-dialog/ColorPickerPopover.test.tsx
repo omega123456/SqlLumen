@@ -33,17 +33,15 @@ describe('ColorPickerPopover', () => {
     const popover = screen.getByTestId('color-picker-popover')
 
     // The popover should have some indication it's flipped upward
-    // (e.g., bottom positioning instead of top, or a data attribute, or a CSS class)
+    // (e.g., bottom positioning instead of top, or a data attribute, or a data attribute)
     // Currently the popover ALWAYS opens downward with top: calc(100% + var(--space-xs)).
     // If viewport-aware positioning existed, the popover would use bottom positioning
     // when near the viewport bottom. We check for the presence of any upward-flip logic.
     //
-    // The component should apply a class or inline style that positions the popover above
+    // The component should apply a data attribute or inline style that positions the popover above
     // the swatch when there isn't enough space below.
     const hasUpwardFlip =
-      Array.from(popover.classList).some((c) => c.includes('popoverUp')) ||
-      popover.getAttribute('data-placement') === 'top' ||
-      popover.style.bottom !== ''
+      popover.getAttribute('data-placement') === 'top' || popover.style.bottom !== ''
 
     expect(hasUpwardFlip).toBe(true)
   })

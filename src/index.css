@@ -317,11 +317,22 @@
   --spacing-connection-rail-edged: 42px;
   --spacing-connection-tab-active: 33px;
   --spacing-connection-tab-active-edged: 34px;
+  --spacing-dialog-min: min(90vw, 320px);
+  --spacing-viewport-cap: 90vw;
+  --spacing-popover-offset: calc(100% + 4px);
+  --spacing-state-message: 32ch;
+  --spacing-connection-dialog-width: min(920px, calc(100vw - 32px));
+  --spacing-connection-dialog-height: min(600px, calc(100vh - 32px));
+  --spacing-viewport-inset-width: calc(100vw - 32px);
+  --spacing-viewport-inset-height: calc(100vh - 32px);
 
   --grid-template-columns-workspace: auto minmax(0, 1fr);
   --grid-template-rows-workspace: auto minmax(0, 1fr);
   --grid-template-columns-form-rows: 160px minmax(0, 420px) auto;
   --grid-template-columns-ddl-split: minmax(0, 13fr) minmax(0, 7fr);
+  --grid-template-columns-connection-body: 260px minmax(0, 1fr);
+  --grid-template-rows-connection-body: minmax(0, 1fr) auto;
+  --grid-template-columns-connection-row: minmax(0, 1fr) 140px;
 
   --radius-*: initial;
   --radius-control: 4px;
@@ -367,6 +378,8 @@
   --shadow-light-divider-right: inset -1px 0 0 var(--color-light-stroke-divider);
   --shadow-dark-strip-tint: inset 0 0 0 999px var(--color-dark-surface-strip);
   --shadow-light-strip-tint: inset 0 0 0 999px var(--color-light-surface-strip);
+  --shadow-dark-row-selected: inset 0 0 0 1px var(--color-dark-primary-a45);
+  --shadow-light-row-selected: inset 0 0 0 1px var(--color-light-primary-a45);
   --shadow-dark-slider-thumb-hover: 0 0 0 4px var(--color-dark-primary-a15);
   --shadow-light-slider-thumb-hover: 0 0 0 4px var(--color-light-primary-a15);
   --shadow-dark-slider-thumb-focus: 0 0 0 4px var(--color-dark-primary-a25);
@@ -403,6 +416,9 @@
   --transition-property-color-and-background: color, background;
   --transition-property-fade-slide: opacity, translate;
   --transition-property-color-border-bg-opacity: color, border-color, background-color, opacity;
+  --transition-property-color-and-border-color: color, border-color;
+  --transition-property-bg-border-shadow: background-color, border-color, box-shadow;
+  --transition-property-opacity-and-color: opacity, color;
 
   --animate-*: initial;
   --animate-spin-600ms: spin 0.6s linear infinite;

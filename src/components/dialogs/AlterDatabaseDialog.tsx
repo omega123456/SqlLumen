@@ -5,7 +5,7 @@ import { useDatabaseEncoding } from '../../hooks/useDatabaseEncoding'
 import { DialogShell } from './DialogShell'
 import { EncodingFields } from './EncodingFields'
 import { showErrorToast } from '../../stores/toast-store'
-import styles from './AlterDatabaseDialog.module.css'
+import { DIALOG_ERROR_BOX, DIALOG_FOOTER_ACTIONS, DIALOG_TITLE } from '../../lib/class-names-dialog'
 import { toErrorMessage } from '../../lib/error-message'
 import { useFormSubmit } from '../../hooks/useFormSubmit'
 
@@ -53,7 +53,13 @@ function AlterDatabaseEncodingSection({
   hasBlockingLoadError,
   encoding,
 }: AlterDatabaseEncodingSectionProps) {
-  if (isLoading) return <div className={styles.loading}>Loading database details...</div>
+  if (isLoading) {
+    return (
+      <div className="p-6 text-center text-size-body text-light-on-surface-variant dark:text-dark-on-surface-variant">
+        Loading database details...
+      </div>
+    )
+  }
   if (hasBlockingLoadError) return null
   return <EncodingFields idPrefix="alter-db" encoding={encoding} />
 }
@@ -68,7 +74,7 @@ interface AlterDatabaseActionsProps {
 
 function AlterDatabaseActions({ canSubmit, isSubmitting, onCancel }: AlterDatabaseActionsProps) {
   return (
-    <div className={styles.actions}>
+    <div className={DIALOG_FOOTER_ACTIONS}>
       <Button
         variant="accent"
         type="submit"
@@ -87,7 +93,7 @@ function AlterDatabaseActions({ canSubmit, isSubmitting, onCancel }: AlterDataba
 function AlterDatabaseError({ message }: { message: string | null }) {
   if (!message) return null
   return (
-    <div className={styles.error} data-testid="alter-db-error">
+    <div className={DIALOG_ERROR_BOX} data-testid="alter-db-error">
       {message}
     </div>
   )
@@ -219,8 +225,10 @@ export function AlterDatabaseDialog({
       nonDismissible={isSubmitting}
       formProps={{ onSubmit: handleFormSubmit }}
     >
-      <h2 className={styles.title}>Alter database</h2>
-      <p className={styles.subtitle}>{databaseName}</p>
+      <h2 className={DIALOG_TITLE}>Alter database</h2>
+      <p className="mb-5 font-mono text-size-body text-light-on-surface-variant dark:text-dark-on-surface-variant">
+        {databaseName}
+      </p>
 
       <AlterDatabaseEncodingSection
         isLoading={isLoading}

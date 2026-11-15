@@ -9,7 +9,8 @@ import {
   formatSnapshotTrigger,
 } from '../../../lib/snapshot-format'
 import type { SnapshotSummary } from '../../../lib/session-snapshot-commands'
-import styles from '../SnapshotDialog.module.css'
+import { joinClassNames, SCROLLBAR } from '../../../lib/class-names'
+import { FOCUS_RING } from '../../../lib/focus-ring'
 
 const EMPTY_ICON_SIZE = 40
 const BUTTON_ICON_SIZE = 16
@@ -38,12 +39,34 @@ function activeSnapshotRowId(selectedSnapshotId: number | null): string | undefi
   return snapshotRowId(selectedSnapshotId)
 }
 
+type SnapshotRowState = 'idle' | 'selected'
+
+const SNAPSHOT_ROW_STATE_CLASSES: Record<SnapshotRowState, string> = {
+  idle: 'border-l-transparent hover:bg-light-fill-subtle-hover dark:hover:bg-dark-fill-subtle-hover',
+  selected:
+    'border-l-light-primary bg-light-fill-subtle-hover shadow-light-row-selected dark:border-l-dark-primary dark:bg-dark-fill-subtle-hover dark:shadow-dark-row-selected',
+}
+
+function snapshotRowClassName(isSelected: boolean): string {
+  const state: SnapshotRowState = isSelected ? 'selected' : 'idle'
+  return joinClassNames([
+    'flex cursor-pointer flex-col gap-1 rounded-card border-l-4 px-3 py-2 transition-bg-border-shadow duration-120',
+    'group',
+    SNAPSHOT_ROW_STATE_CLASSES[state],
+  ])
+}
+
 function EmptySnapshotList({ onCreate }: { onCreate: () => void }) {
   return (
-    <div className={styles.empty}>
-      <ClockCounterClockwiseIcon size={EMPTY_ICON_SIZE} className={styles.emptyIcon} />
-      <h3 className={styles.emptyTitle}>No snapshots yet.</h3>
-      <p className={styles.emptyBody}>
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+      <ClockCounterClockwiseIcon
+        size={EMPTY_ICON_SIZE}
+        className="text-light-on-surface-variant dark:text-dark-on-surface-variant"
+      />
+      <h3 className="text-size-body font-semibold text-light-on-surface dark:text-dark-on-surface">
+        No snapshots yet.
+      </h3>
+      <p className="max-w-90 text-size-body text-light-on-surface-variant dark:text-dark-on-surface-variant">
         Snapshots capture your open connections and tabs so you can restore them later.
       </p>
       <Button onClick={onCreate}>
@@ -63,25 +86,28 @@ interface SnapshotRowProps {
 
 function SnapshotRow({ snapshot, isSelected, onSelect, onDelete }: SnapshotRowProps) {
   const timestamp = formatSnapshotTimestamp(snapshot.createdAt)
-  const rowClassName = isSelected ? `${styles.row} ${styles.rowSelected}` : styles.row
   return (
     <div
       id={snapshotRowId(snapshot.id)}
       data-testid={snapshotRowId(snapshot.id)}
       role="option"
       aria-selected={isSelected}
-      className={rowClassName}
+      className={snapshotRowClassName(isSelected)}
       onClick={() => onSelect(snapshot.id)}
     >
-      <div className={styles.rowHeader}>
-        <span className={styles.timestamp}>{timestamp}</span>
-        <span className={styles.chip}>{formatSnapshotTrigger(snapshot.triggerType)}</span>
+      <div className="flex items-center gap-2">
+        <span className="text-size-body font-semibold text-light-on-surface dark:text-dark-on-surface">
+          {timestamp}
+        </span>
+        <span className="inline-flex items-center rounded-card border border-light-stroke-card bg-light-fill-neutral-selected px-1.5 py-0.5 text-size-caption font-semibold text-light-on-surface-variant dark:border-dark-stroke-card dark:bg-dark-fill-neutral-selected dark:text-dark-on-surface-variant">
+          {formatSnapshotTrigger(snapshot.triggerType)}
+        </span>
         <Button
-          variant="subtle"
-          size="sm"
-          dangerText
-          iconOnly
-          className={styles.deleteButton}
+          variant="bare"
+          className={joinClassNames([
+            'ml-auto inline-flex size-7 cursor-pointer items-center justify-center gap-1.5 rounded-card bg-transparent p-1 text-size-row whitespace-nowrap text-light-on-surface opacity-0 transition-opacity-and-color duration-120 not-disabled:hover:bg-light-fill-subtle-hover not-disabled:active:bg-light-fill-subtle-pressed hover:text-light-error group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 disabled:cursor-not-allowed dark:text-dark-on-surface dark:not-disabled:hover:bg-dark-fill-subtle-hover dark:not-disabled:active:bg-dark-fill-subtle-pressed dark:hover:text-dark-error',
+            FOCUS_RING,
+          ])}
           aria-label={`Delete snapshot from ${timestamp}`}
           data-testid={`snapshot-delete-${snapshot.id}`}
           onClick={(event) => {
@@ -92,10 +118,12 @@ function SnapshotRow({ snapshot, isSelected, onSelect, onDelete }: SnapshotRowPr
           <TrashIcon size={BUTTON_ICON_SIZE} />
         </Button>
       </div>
-      <div className={styles.counts}>
+      <div className="text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant">
         {formatSnapshotCounts(snapshot.connectionCount, snapshot.tabCount)}
       </div>
-      <div className={styles.breakdown}>{formatConnectionBreakdown(snapshot.connections)}</div>
+      <div className="text-size-caption wrap-anywhere text-light-on-surface-variant dark:text-dark-on-surface-variant">
+        {formatConnectionBreakdown(snapshot.connections)}
+      </div>
     </div>
   )
 }
@@ -140,7 +168,10 @@ export function SnapshotList({ onCreate, onDelete }: SnapshotListProps) {
 
   return (
     <div
-      className={styles.list}
+      className={joinClassNames([
+        'flex flex-1 flex-col gap-1 overflow-y-auto p-2 outline-none',
+        SCROLLBAR,
+      ])}
       role="listbox"
       aria-label="Session snapshots"
       aria-activedescendant={activeSnapshotRowId(selectedSnapshotId)}

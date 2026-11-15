@@ -6,7 +6,10 @@ import { IconButton } from '../../common/IconButton'
 import { Checkbox } from '../../common/Checkbox'
 import type { ConnectionFormData } from '../../../types/connection'
 import type { FormErrors, UpdateField } from '../connection-editor-state'
-import styles from '../ConnectionForm.module.css'
+import {
+  CONNECTION_FIELD_GROUP,
+  CONNECTION_FIELD_LABEL,
+} from '../../../lib/class-names-connection-form'
 
 const FIELD_ICON_SIZE = 16
 
@@ -19,12 +22,12 @@ export interface FormFieldProps {
 
 export function FormField({ id, label, error, children }: FormFieldProps) {
   return (
-    <div className={styles.fieldGroup}>
-      <label htmlFor={id} className={styles.labelCaps}>
+    <div className={CONNECTION_FIELD_GROUP}>
+      <label htmlFor={id} className={CONNECTION_FIELD_LABEL}>
         {label}
       </label>
       {children}
-      {error && <span className={styles.errorText}>{error}</span>}
+      {error && <span className="text-caption text-light-error dark:text-dark-error">{error}</span>}
     </div>
   )
 }
@@ -51,16 +54,19 @@ export function SslFileField({
   placeholder,
 }: SslFileFieldProps) {
   return (
-    <div className={styles.fieldGroup}>
-      <label htmlFor={id} className={styles.label}>
+    <div className={CONNECTION_FIELD_GROUP}>
+      <label
+        htmlFor={id}
+        className="font-body text-size-body font-regular text-light-on-surface-variant dark:text-dark-on-surface-variant"
+      >
         {label}
       </label>
-      <div className={styles.fileInputRow}>
+      <div className="flex gap-1">
         <TextInput
           type="text"
           id={id}
           variant="mono"
-          className={styles.fileInputRowField}
+          className="min-w-0 flex-1"
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
@@ -69,7 +75,7 @@ export function SslFileField({
         />
         <Button
           variant="bare"
-          className={styles.browseButton}
+          className="flex shrink-0 cursor-pointer items-center justify-center rounded-control border border-light-stroke-control bg-light-fill-control px-2 py-1 text-light-on-surface transition-bg-and-color not-disabled:hover:bg-light-fill-control-hover disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-stroke-control dark:bg-dark-fill-control dark:text-dark-on-surface dark:not-disabled:hover:bg-dark-fill-control-hover"
           onClick={onBrowse}
           disabled={disabled}
           aria-label={browseLabel}
@@ -113,7 +119,7 @@ interface PasswordFieldProps {
 export function PasswordField({ value, password }: PasswordFieldProps) {
   return (
     <FormField id="conn-password" label="Password">
-      <div className={styles.passwordWrapper}>
+      <div className="relative flex items-center">
         <TextInput
           id="conn-password"
           type={password.showPassword ? 'text' : 'password'}
@@ -125,7 +131,7 @@ export function PasswordField({ value, password }: PasswordFieldProps) {
         />
         <IconButton
           size="sm"
-          className={styles.passwordToggle}
+          className="absolute right-1"
           onClick={password.onToggleShowPassword}
           aria-label={password.showPassword ? 'Hide password' : 'Show password'}
         >
@@ -137,12 +143,15 @@ export function PasswordField({ value, password }: PasswordFieldProps) {
         </IconButton>
       </div>
       {password.showDuplicateHint && (
-        <span className={styles.fieldHint} data-testid="duplicate-password-hint">
+        <span
+          className="text-caption text-light-on-surface-variant dark:text-dark-on-surface-variant"
+          data-testid="duplicate-password-hint"
+        >
           Password is not copied — enter it to save.
         </span>
       )}
       {password.hasSavedPassword && (
-        <label className={styles.label}>
+        <label className="font-body text-size-body font-regular text-light-on-surface-variant dark:text-dark-on-surface-variant">
           <Checkbox
             checked={password.clearSavedPassword}
             onChange={(event) => password.onClearSavedPasswordChange(event.target.checked)}

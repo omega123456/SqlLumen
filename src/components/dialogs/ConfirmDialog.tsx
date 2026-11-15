@@ -1,7 +1,8 @@
 import { useRef } from 'react'
 import { Button } from '../common/Button'
 import { DialogShell } from './DialogShell'
-import styles from './ConfirmDialog.module.css'
+import { DIALOG_FOOTER_GRID, DIALOG_TITLE } from '../../lib/class-names-dialog'
+import { joinClassNames } from '../../lib/class-names'
 
 export interface ConfirmDialogProps {
   isOpen: boolean
@@ -26,18 +27,28 @@ function resolveWarningText(warningText: string | null | undefined): string | nu
   return warningText
 }
 
-function actionsClassName(hideCancel: boolean): string {
-  if (!hideCancel) return styles.actions
-  return `${styles.actions} ${styles.actionsSingle}`
-}
-
 function ConfirmButtonContent({ isLoading, label }: { isLoading: boolean; label: string }) {
   if (!isLoading) return <>{label}</>
   return (
-    <span className={styles.confirmContent}>
-      <span className={styles.spinner} aria-hidden="true" />
+    <span className="inline-flex items-center gap-2">
+      <span
+        className="size-3.5 animate-spin-700ms rounded-round border-2 border-current border-r-transparent opacity-90 window-blurred:animate-spin-700ms-paused"
+        aria-hidden="true"
+      />
       Processing...
     </span>
+  )
+}
+
+function ConfirmError({ error }: { error: string | null | undefined }) {
+  if (!error) return null
+  return (
+    <div
+      className="mt-3 rounded-card border border-light-stroke-card bg-light-error-container px-3 py-2 text-size-row text-light-error dark:border-dark-stroke-card dark:bg-dark-error-container dark:text-dark-error"
+      data-testid="confirm-dialog-error"
+    >
+      {error}
+    </div>
   )
 }
 
@@ -71,15 +82,15 @@ export function ConfirmDialog({
       nonDismissible={nonDismissible}
       initialFocusRef={confirmButtonRef}
     >
-      <h2 className={styles.title}>{title}</h2>
-      <div className={styles.message}>{message}</div>
-      {resolvedWarning !== null && <p className={styles.warning}>{resolvedWarning}</p>}
-      {error && (
-        <div className={styles.error} data-testid="confirm-dialog-error">
-          {error}
-        </div>
+      <h2 className={DIALOG_TITLE}>{title}</h2>
+      <div className="text-body text-light-on-surface dark:text-dark-on-surface">{message}</div>
+      {resolvedWarning !== null && (
+        <p className="mt-3 text-body text-light-on-surface-variant dark:text-dark-on-surface-variant">
+          {resolvedWarning}
+        </p>
       )}
-      <div className={actionsClassName(hideCancel)}>
+      <ConfirmError error={error} />
+      <div className={joinClassNames([DIALOG_FOOTER_GRID, 'mt-6 *:only:col-start-2'])}>
         <Button
           ref={confirmButtonRef}
           variant={isDestructive ? 'danger' : 'accent'}

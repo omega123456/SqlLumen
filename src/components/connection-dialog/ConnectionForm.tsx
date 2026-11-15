@@ -4,7 +4,7 @@ import { UnderlineTabBar, UnderlineTab } from '../common/UnderlineTabs'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { TestConnectionResult } from './TestConnectionResult'
 import type { ConnectionFormData, SavedConnection } from '../../types/connection'
-import styles from './ConnectionForm.module.css'
+import { SUBTLE_THIN_SCROLLBAR, joinClassNames } from '../../lib/class-names'
 import {
   TAB_ORDER,
   tabHasError,
@@ -63,10 +63,14 @@ function deleteTargetName(formData: ConnectionFormData): string {
 
 function ConnectionFormHeader({ formData }: { formData: ConnectionFormData }) {
   return (
-    <header className={styles.formHeader} data-testid="connection-form-header">
-      <div className={styles.formHeaderText}>
-        <h3 className={styles.formHeaderName}>{connectionTitle(formData)}</h3>
-        <span className={styles.formHeaderMeta}>{connectionSubtitle(formData)}</span>
+    <header className="flex w-full flex-col" data-testid="connection-form-header">
+      <div className="flex min-w-0 flex-col">
+        <h3 className="truncate font-headline text-subtitle font-semibold text-light-on-surface dark:text-dark-on-surface">
+          {connectionTitle(formData)}
+        </h3>
+        <span className="truncate text-row text-light-on-surface-variant dark:text-dark-on-surface-variant">
+          {connectionSubtitle(formData)}
+        </span>
       </div>
     </header>
   )
@@ -106,7 +110,10 @@ function ConnectionFormTabs({ activeTab, errors, onSelectTab }: ConnectionFormTa
         >
           {TAB_LABELS[tab]}
           {tabHasError(errors, tab) && (
-            <span className={styles.tabErrorDot} aria-label="Has errors" />
+            <span
+              className="ml-1 inline-block size-1.5 rounded-round bg-light-error align-middle dark:bg-dark-error"
+              aria-label="Has errors"
+            />
           )}
         </UnderlineTab>
       ))}
@@ -218,11 +225,17 @@ export function ConnectionForm({
   }, [])
 
   return (
-    <div ref={rootRef} className={styles.formGridRoot}>
-      <div className={styles.formMain} data-testid="connection-form-main">
+    <div ref={rootRef} className="contents">
+      <div
+        className={joinClassNames([
+          'col-start-2 row-start-1 flex min-h-0 flex-col gap-3.5 overflow-x-hidden overflow-y-auto px-7 pt-5 pb-2',
+          SUBTLE_THIN_SCROLLBAR,
+        ])}
+        data-testid="connection-form-main"
+      >
         <ConnectionFormHeader formData={formData} />
         <form
-          className={styles.formInner}
+          className="flex w-full flex-col gap-3.5"
           autoComplete="off"
           onSubmit={(event) => {
             event.preventDefault()
@@ -230,7 +243,7 @@ export function ConnectionForm({
         >
           <ConnectionFormTabs activeTab={activeTab} errors={errors} onSelectTab={form.selectTab} />
           {testResult ? (
-            <div className={styles.testResultSlot}>
+            <div>
               <TestConnectionResult result={testResult} />
             </div>
           ) : null}

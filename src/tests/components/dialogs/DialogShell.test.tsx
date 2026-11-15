@@ -118,7 +118,7 @@ describe('DialogShell', () => {
   it('removes panel padding when panelPadding is false', () => {
     render(<DialogShell {...defaultProps} panelPadding={false} />)
     const panel = screen.getByTestId('test-dialog-panel')
-    expect(panel).toHaveStyle({ padding: '0px' })
+    expect(panel).toHaveAttribute('data-padding', 'flush')
   })
 
   it('applies panelHeight and flex layout when set', () => {
@@ -126,9 +126,7 @@ describe('DialogShell', () => {
     const panel = screen.getByTestId('test-dialog-panel')
     expect(panel.style.height).toBe('min(50vh, 560px)')
     expect(panel.style.maxHeight).toBe('min(50vh, 560px)')
-    expect(panel.style.display).toBe('flex')
-    expect(panel.style.flexDirection).toBe('column')
-    expect(panel.style.overflow).toBe('hidden')
+    expect(panel).toHaveAttribute('data-height', 'fixed')
   })
 
   it('uses default maxWidth of 420 when not specified', () => {

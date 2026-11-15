@@ -1,7 +1,6 @@
 import { FolderPlus, MagnifyingGlass, Plus, X } from '@phosphor-icons/react'
 import { TextInput } from '../../common/TextInput'
 import { IconButton } from '../../common/IconButton'
-import styles from '../SavedConnectionsList.module.css'
 
 const TOOLBAR_ICON_SIZE = 16
 
@@ -19,14 +18,14 @@ export function SavedConnectionsToolbar({
   onCreateGroup,
 }: SavedConnectionsToolbarProps) {
   return (
-    <div className={styles.toolbar}>
-      <div className={styles.searchWrapper}>
-        <span className={styles.searchIcon}>
+    <div className="flex shrink-0 gap-1">
+      <div className="relative flex min-w-0 flex-1 items-center">
+        <span className="pointer-events-none absolute left-2.5 flex items-center text-light-outline dark:text-dark-outline">
           <MagnifyingGlass size={TOOLBAR_ICON_SIZE} weight="regular" />
         </span>
         <TextInput
           type="text"
-          className={styles.searchInput}
+          variant="listSearch"
           placeholder="Filter connections"
           value={filterText}
           onChange={(event) => onFilterTextChange(event.target.value)}
@@ -36,7 +35,7 @@ export function SavedConnectionsToolbar({
         {filterText && (
           <IconButton
             size="sm"
-            className={styles.clearButton}
+            className="absolute right-1"
             onClick={() => onFilterTextChange('')}
             tabIndex={-1}
             aria-label="Clear connection filter"

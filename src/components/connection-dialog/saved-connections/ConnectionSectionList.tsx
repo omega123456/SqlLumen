@@ -9,7 +9,7 @@ import {
   type ConnectionSection,
 } from './connection-sections'
 import type { GroupEditing } from './use-group-editing'
-import styles from '../SavedConnectionsList.module.css'
+import { SUBTLE_THIN_SCROLLBAR, joinClassNames } from '../../../lib/class-names'
 
 interface SectionListContext {
   groups: GroupEditing
@@ -48,8 +48,11 @@ function ConnectionSectionGroup({
   if (isHidden) return null
 
   return (
-    <div className={styles.group}>
-      <div className={styles.groupHeader} onContextMenu={groupHeaderContextMenu(section, context)}>
+    <div className="flex flex-col gap-2 not-first:mt-2">
+      <div
+        className="flex select-none items-center px-2 pt-1.5"
+        onContextMenu={groupHeaderContextMenu(section, context)}
+      >
         {isRenaming ? (
           <GroupInlineInput
             value={renameValue}
@@ -59,7 +62,12 @@ function ConnectionSectionGroup({
             ariaLabel="Group name"
           />
         ) : (
-          <span className={styles.groupName}>{sectionTitle(section)}</span>
+          <span
+            className="text-caption font-semibold text-light-on-surface-variant dark:text-dark-on-surface-variant"
+            data-testid="connection-group-name"
+          >
+            {sectionTitle(section)}
+          </span>
         )}
       </div>
       {section.connections.map((connection) => (
@@ -79,8 +87,8 @@ function NewGroupInput({ groups }: { groups: GroupEditing }) {
   const isCreatingGroup = editingGroup?.mode === 'create'
   if (!isCreatingGroup) return null
   return (
-    <div className={styles.group}>
-      <div className={styles.groupHeader}>
+    <div className="flex flex-col gap-2 not-first:mt-2">
+      <div className="flex select-none items-center px-2 pt-1.5">
         <GroupInlineInput
           value={editingGroup.value}
           onChange={groups.changeValue}
@@ -106,9 +114,11 @@ export function ConnectionSectionList({
   context,
 }: ConnectionSectionListProps) {
   return (
-    <div className={styles.list}>
+    <div className={joinClassNames(['min-h-0 flex-1 overflow-y-auto', SUBTLE_THIN_SCROLLBAR])}>
       {emptyFilterText && (
-        <div className={styles.emptyState}>No connections match “{emptyFilterText}”</div>
+        <div className="px-3 py-4 text-center text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant">
+          No connections match “{emptyFilterText}”
+        </div>
       )}
       {sections.map((section) => (
         <ConnectionSectionGroup key={sectionKey(section)} section={section} context={context} />

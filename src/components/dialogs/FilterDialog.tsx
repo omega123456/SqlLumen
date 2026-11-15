@@ -4,7 +4,13 @@ import { Button } from '../common/Button'
 import type { DropdownOption } from '../common/Dropdown'
 import { DialogShell } from './DialogShell'
 import type { FilterCondition } from '../../types/schema'
-import styles from './FilterDialog.module.css'
+import { joinClassNames, SCROLLBAR } from '../../lib/class-names'
+import {
+  DIALOG_CLOSE_BUTTON,
+  DIALOG_EDGE_TO_EDGE_ROOT,
+  DIALOG_HEADER,
+  DIALOG_HEADER_TITLE,
+} from '../../lib/class-names-dialog'
 import { useFormSubmit } from '../../hooks/useFormSubmit'
 import { FilterConditionRow, type FilterRowContext } from './filter-dialog/FilterConditionRow'
 import { useFilterConditions } from './filter-dialog/use-filter-conditions'
@@ -25,11 +31,11 @@ interface FilterDialogProps {
 
 function FilterDialogHeader({ onCancel }: { onCancel: () => void }) {
   return (
-    <div className={styles.header}>
-      <h2 className={styles.title}>Filter conditions</h2>
+    <div className={DIALOG_HEADER}>
+      <h2 className={DIALOG_HEADER_TITLE}>Filter conditions</h2>
       <Button
         variant="bare"
-        className={styles.closeButton}
+        className={DIALOG_CLOSE_BUTTON}
         onClick={onCancel}
         aria-label="Close"
         data-testid="filter-dialog-close"
@@ -44,7 +50,7 @@ function AddConditionButton({ onAdd }: { onAdd: () => void }) {
   return (
     <Button
       variant="bare"
-      className={styles.addButton}
+      className="inline-flex cursor-pointer items-center gap-1.5 rounded-control bg-transparent px-3 py-1.5 font-body text-size-caption font-semibold text-light-primary transition-color-and-background hover:bg-light-fill-subtle-hover dark:text-dark-primary dark:hover:bg-dark-fill-subtle-hover"
       onClick={onAdd}
       data-testid="filter-add-button"
     >
@@ -56,10 +62,16 @@ function AddConditionButton({ onAdd }: { onAdd: () => void }) {
 
 function EmptyFilterState({ onAdd }: { onAdd: () => void }) {
   return (
-    <div className={styles.emptyState} data-testid="filter-empty-state">
-      <Funnel size={EMPTY_ICON_SIZE} weight="thin" className={styles.emptyIcon} />
-      <span className={styles.emptyTitle}>No filter conditions</span>
-      <span className={styles.emptyHelp}>
+    <div className="flex flex-col items-center gap-2 py-8" data-testid="filter-empty-state">
+      <Funnel
+        size={EMPTY_ICON_SIZE}
+        weight="thin"
+        className="text-light-on-surface-variant opacity-40 dark:text-dark-on-surface-variant"
+      />
+      <span className="font-body text-size-caption text-light-on-surface-variant opacity-60 dark:text-dark-on-surface-variant">
+        No filter conditions
+      </span>
+      <span className="max-w-85 text-center font-body text-size-caption leading-body text-light-on-surface-variant opacity-40 dark:text-dark-on-surface-variant">
         Add conditions to narrow table rows. All conditions are combined with AND.
       </span>
       <AddConditionButton onAdd={onAdd} />
@@ -75,15 +87,15 @@ interface FilterDialogFooterProps {
 
 function FilterDialogFooter({ hasConditions, onClearAll, onCancel }: FilterDialogFooterProps) {
   return (
-    <div className={styles.footer}>
-      <div className={styles.footerLeft}>
+    <div className="flex items-center justify-between gap-2 border-t border-light-stroke-divider bg-light-surface p-6 dark:border-dark-stroke-divider dark:bg-dark-surface">
+      <div className="flex items-center">
         {hasConditions && (
           <Button onClick={onClearAll} data-testid="filter-clear-all-button">
             Clear all
           </Button>
         )}
       </div>
-      <div className={styles.footerRight}>
+      <div className="flex items-center gap-2">
         <Button variant="accent" type="submit" data-testid="filter-apply-button">
           Apply
         </Button>
@@ -105,7 +117,7 @@ function FilterConditionList({ conditions, rowContext, onAdd }: FilterConditionL
   if (conditions.length === 0) return <EmptyFilterState onAdd={onAdd} />
   return (
     <>
-      <div className={styles.rows} data-testid="filter-rows">
+      <div className="flex flex-col gap-3" data-testid="filter-rows">
         {conditions.map((condition, index) => (
           <FilterConditionRow
             key={index}
@@ -149,9 +161,14 @@ export function FilterDialog({
       ariaLabel="Filter conditions"
       formProps={{ onSubmit: handleSubmit }}
     >
-      <div className={styles.root}>
+      <div className={joinClassNames([DIALOG_EDGE_TO_EDGE_ROOT, 'min-h-0 flex-1'])}>
         <FilterDialogHeader onCancel={onCancel} />
-        <div className={styles.body}>
+        <div
+          className={joinClassNames([
+            'flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pt-3 pb-6',
+            SCROLLBAR,
+          ])}
+        >
           <FilterConditionList
             conditions={conditions}
             onAdd={filter.add}

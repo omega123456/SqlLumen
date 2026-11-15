@@ -1,7 +1,7 @@
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import type { UseDatabaseEncodingReturn } from '../../hooks/useDatabaseEncoding'
 import type { CharsetInfo, CollationInfo } from '../../types/schema'
-import styles from './EncodingFields.module.css'
+import { DIALOG_FIELD_GROUP, DIALOG_FIELD_LABEL } from '../../lib/class-names-dialog'
 
 const SERVER_DEFAULT_CHARSET_OPTION: DropdownOption = { value: '', label: 'Server default' }
 const DEFAULT_COLLATION_OPTION: DropdownOption = { value: '', label: 'Default' }
@@ -35,8 +35,8 @@ export function EncodingFields({ idPrefix, encoding }: EncodingFieldsProps) {
   const collationId = `${idPrefix}-collation`
   return (
     <>
-      <div className={styles.formGroup}>
-        <label className={styles.label} id={`${charsetId}-label`}>
+      <div className={DIALOG_FIELD_GROUP}>
+        <label className={DIALOG_FIELD_LABEL} id={`${charsetId}-label`}>
           Character set
         </label>
         <Dropdown
@@ -48,8 +48,8 @@ export function EncodingFields({ idPrefix, encoding }: EncodingFieldsProps) {
         />
       </div>
 
-      <div className={styles.formGroup}>
-        <label className={styles.label} id={`${collationId}-label`}>
+      <div className={DIALOG_FIELD_GROUP}>
+        <label className={DIALOG_FIELD_LABEL} id={`${collationId}-label`}>
           Collation
         </label>
         <Dropdown

@@ -17,7 +17,40 @@ import { BlobPastePopover } from '../BlobPastePopover'
 import { formatBytes, readImageDimensions } from '../../../lib/blob-utils'
 import { showErrorToast } from '../../../stores/toast-store'
 import { TABS, nextTabIndex, saveButtonTitle, type BlobTab } from './blob-working-value'
-import styles from '../BlobViewerDialog.module.css'
+import { joinClassNames } from '../../../lib/class-names'
+import { DIALOG_HEADER_TITLE, DIALOG_PANEL_FOOTER } from '../../../lib/class-names-dialog'
+
+type ChipTone = 'neutral' | 'warning'
+
+const CHIP_TONE_CLASSES: Record<ChipTone, string> = {
+  neutral:
+    'border-light-stroke-card bg-light-fill-neutral-selected text-light-on-surface-variant dark:border-dark-stroke-card dark:bg-dark-fill-neutral-selected dark:text-dark-on-surface-variant',
+  warning:
+    'border-light-warning bg-light-warning-container text-light-warning dark:border-dark-warning dark:bg-dark-warning-container dark:text-dark-warning',
+}
+
+function chipClassName(tone: ChipTone): string {
+  return joinClassNames([
+    'inline-flex items-center gap-1 rounded-control border px-2 py-1 font-mono text-size-caption whitespace-nowrap',
+    CHIP_TONE_CLASSES[tone],
+  ])
+}
+
+type TabState = 'idle' | 'active'
+
+const TAB_STATE_CLASSES: Record<TabState, string> = {
+  idle: 'border-b-transparent text-light-on-surface-variant dark:text-dark-on-surface-variant',
+  active:
+    'border-b-light-primary text-light-primary dark:border-b-dark-primary dark:text-dark-primary',
+}
+
+function tabClassName(selected: boolean): string {
+  const state: TabState = selected ? 'active' : 'idle'
+  return joinClassNames([
+    'cursor-pointer appearance-none border-b-2 bg-transparent px-3 py-2 text-size-caption font-regular transition-color-and-border-color hover:text-light-on-surface dark:hover:text-dark-on-surface',
+    TAB_STATE_CLASSES[state],
+  ])
+}
 
 export interface SaveToFileButtonProps {
   canSave: boolean
@@ -51,16 +84,19 @@ interface BlobChipRowProps {
 
 export function BlobChipRow({ typeLabel, byteCount, tooLarge, dimensions }: BlobChipRowProps) {
   return (
-    <div className={styles.chipRow} data-testid="blob-chip-row">
+    <div
+      className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-2"
+      data-testid="blob-chip-row"
+    >
       {typeLabel && (
-        <span className={styles.chip} data-testid="blob-chip-type">
+        <span className={chipClassName('neutral')} data-testid="blob-chip-type">
           <FileIcon size={12} />
           {typeLabel}
         </span>
       )}
       {byteCount != null && (
         <span
-          className={tooLarge ? `${styles.chip} ${styles.chipWarning}` : styles.chip}
+          className={chipClassName(tooLarge ? 'warning' : 'neutral')}
           role={tooLarge ? 'alert' : undefined}
           data-testid="blob-chip-size"
         >
@@ -69,7 +105,7 @@ export function BlobChipRow({ typeLabel, byteCount, tooLarge, dimensions }: Blob
         </span>
       )}
       {dimensions && (
-        <span className={styles.chip} data-testid="blob-chip-dimensions">
+        <span className={chipClassName('neutral')} data-testid="blob-chip-dimensions">
           <ArrowsOutIcon size={12} />
           {dimensions.width} × {dimensions.height}
         </span>
@@ -92,7 +128,7 @@ interface BlobEditToolbarProps {
 function BlobAcquireActions(props: BlobEditToolbarProps) {
   const pasteAnchorRef = useRef<HTMLButtonElement>(null)
   return (
-    <div className={styles.toolbarGroup}>
+    <div className="flex items-center gap-1">
       <Button
         variant="subtle"
         size="sm"
@@ -104,7 +140,7 @@ function BlobAcquireActions(props: BlobEditToolbarProps) {
         <UploadSimpleIcon size={16} />
         Load file
       </Button>
-      <div className={styles.pasteAnchor}>
+      <div className="relative inline-flex">
         <Button
           ref={pasteAnchorRef}
           variant="subtle"
@@ -132,7 +168,7 @@ function BlobAcquireActions(props: BlobEditToolbarProps) {
 
 function BlobDestructiveActions({ onSetNull, onClear }: BlobEditToolbarProps) {
   return (
-    <div className={styles.toolbarGroup}>
+    <div className="flex items-center gap-1">
       <Button
         variant="subtle"
         size="sm"
@@ -163,9 +199,15 @@ function BlobDestructiveActions({ onSetNull, onClear }: BlobEditToolbarProps) {
 
 export function BlobEditToolbar(props: BlobEditToolbarProps) {
   return (
-    <div className={styles.toolbar} data-testid="blob-action-bar">
+    <div
+      className="flex shrink-0 items-center gap-2 border-b border-light-stroke-divider px-4 py-2 dark:border-dark-stroke-divider"
+      data-testid="blob-action-bar"
+    >
       <BlobAcquireActions {...props} />
-      <div className={styles.toolbarDivider} aria-hidden="true" />
+      <div
+        className="mr-1 ml-auto w-px self-stretch bg-light-outline-variant opacity-50 dark:bg-dark-outline-variant"
+        aria-hidden="true"
+      />
       <BlobDestructiveActions {...props} />
     </div>
   )
@@ -186,16 +228,15 @@ export function BlobTabList({ activeTab, firstTabRef, onSelectTab }: BlobTabList
   }
   return (
     <UnderlineTabBar data-testid="blob-tabs">
-      <div role="tablist" aria-label="BLOB views" className={styles.tablist}>
+      <div role="tablist" aria-label="BLOB views" className="flex w-full items-stretch gap-1">
         {TABS.map((tab, index) => {
           const selected = activeTab === tab.id
-          const tabClass = selected ? `${styles.tab} ${styles.tabActive}` : styles.tab
           return (
             <Button
               variant="bare"
               key={tab.id}
               ref={index === 0 ? firstTabRef : undefined}
-              className={tabClass}
+              className={tabClassName(selected)}
               onClick={() => onSelectTab(tab.id)}
               onKeyDown={(event) => handleTabKeyDown(event, index)}
               role="tab"
@@ -225,7 +266,7 @@ export function BlobDialogFooter({
 }) {
   if (!isEdit) {
     return (
-      <div className={styles.footer}>
+      <div className={DIALOG_PANEL_FOOTER}>
         <Button variant="accent" onClick={onClose} data-testid="blob-close-footer">
           Close
         </Button>
@@ -233,7 +274,7 @@ export function BlobDialogFooter({
     )
   }
   return (
-    <div className={styles.footer}>
+    <div className={DIALOG_PANEL_FOOTER}>
       <Button variant="accent" onClick={onApply} data-testid="blob-apply">
         Apply
       </Button>
@@ -258,11 +299,12 @@ export function BlobDialogHeader({
   onClose,
 }: BlobDialogHeaderProps) {
   return (
-    <div className={styles.header}>
-      <h2 className={styles.title}>
-        BLOB · <code className={styles.columnName}>{columnLabel}</code>
+    <div className="flex shrink-0 items-center justify-between gap-3 px-6 pt-6">
+      <h2 className={joinClassNames([DIALOG_HEADER_TITLE, 'min-w-0 truncate'])}>
+        BLOB ·{' '}
+        <code className="font-mono text-light-primary dark:text-dark-primary">{columnLabel}</code>
       </h2>
-      <div className={styles.headerActions}>
+      <div className="flex shrink-0 items-center gap-2">
         {!isEdit && <SaveToFileButton {...saveButton} />}
         <IconButton aria-label="Close" title="Close" onClick={onClose} data-testid="blob-close">
           <XIcon size={16} weight="bold" />
@@ -275,7 +317,10 @@ export function BlobDialogHeader({
 export function BlobDropOverlay({ isVisible }: { isVisible: boolean }) {
   if (!isVisible) return null
   return (
-    <div className={styles.dropOverlay} data-testid="blob-drop-overlay">
+    <div
+      className="pointer-events-none absolute inset-0 z-5 flex flex-col items-center justify-center gap-3 rounded-overlay border-2 border-dashed border-light-primary bg-light-fill-accent-tint text-size-caption font-semibold text-light-primary dark:border-dark-primary dark:bg-dark-fill-accent-tint dark:text-dark-primary"
+      data-testid="blob-drop-overlay"
+    >
       <UploadSimpleIcon size={40} weight="bold" />
       <span>Drop to load</span>
     </div>

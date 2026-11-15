@@ -3,9 +3,10 @@ import ReactDOM from 'react-dom'
 import { HexColorPicker } from 'react-colorful'
 import { TextInput } from '../common/TextInput'
 import { Button } from '../common/Button'
-import styles from './ColorPickerPopover.module.css'
+import { joinClassNames } from '../../lib/class-names'
 import { isTargetOutside } from '../../lib/input-events'
 import { FIELD_CHROME } from '../../lib/class-names-field'
+import '../../styles/vendor/react-colorful.css'
 
 interface ColorPickerPopoverProps {
   color: string | null
@@ -25,6 +26,26 @@ function popoverPositionFor(swatchRect: DOMRect): React.CSSProperties {
     }
   }
   return { position: 'fixed', top: swatchRect.bottom + POPOVER_GAP, left: swatchRect.left }
+}
+
+type SwatchFill = 'chosen' | 'unset'
+
+const SWATCH_FILL_CLASSES: Record<SwatchFill, string> = {
+  chosen: '',
+  unset: 'bg-light-surface-container-high dark:bg-dark-surface-container-high',
+}
+
+function swatchClassName(color: string | null): string {
+  const fill: SwatchFill = color === null ? 'unset' : 'chosen'
+  return joinClassNames([
+    'size-4 shrink-0 cursor-pointer rounded-round border border-light-stroke-control p-0 transition-border-color hover:border-light-stroke-card dark:border-dark-stroke-control dark:hover:border-dark-stroke-card',
+    SWATCH_FILL_CLASSES[fill],
+  ])
+}
+
+function swatchStyle(color: string | null): React.CSSProperties | undefined {
+  if (color === null) return undefined
+  return { backgroundColor: color }
 }
 
 const DEFAULT_PICKER_COLOR = '#3b82f6'
@@ -92,12 +113,18 @@ function ColorPickerPanel({ color, onChange, panelRef, style, onClose }: ColorPi
   }
 
   return (
-    <div ref={panelRef} className={styles.popover} style={style} data-testid="color-picker-popover">
+    <div
+      ref={panelRef}
+      className="z-10000 flex flex-col gap-2 rounded-overlay border border-light-stroke-flyout bg-light-surface-container-high p-2 shadow-light-flyout dark:border-dark-stroke-flyout dark:bg-dark-surface-container-high dark:shadow-dark-flyout"
+      style={style}
+      data-color-picker-panel
+      data-testid="color-picker-popover"
+    >
       <HexColorPicker color={color ?? DEFAULT_PICKER_COLOR} onChange={handlePickerColorChange} />
       <TextInput
         variant="bare"
         type="text"
-        className={`${FIELD_CHROME} ${styles.hexInput}`}
+        className={joinClassNames([FIELD_CHROME, 'w-full px-2 py-1 font-mono text-size-body'])}
         value={hexInput}
         onChange={handleHexInputChange}
         placeholder="#000000"
@@ -105,7 +132,7 @@ function ColorPickerPanel({ color, onChange, panelRef, style, onClose }: ColorPi
       />
       <Button
         variant="bare"
-        className={styles.clearButton}
+        className="cursor-pointer rounded-control bg-transparent p-1 text-center font-body text-size-caption text-light-on-surface-variant hover:bg-light-surface-container-high hover:text-light-on-surface dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-high dark:hover:text-dark-on-surface"
         onClick={() => {
           onChange(null)
           onClose()
@@ -138,11 +165,11 @@ export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps)
   }
 
   return (
-    <div className={styles.wrapper} ref={wrapperRef}>
+    <div className="relative inline-flex items-center" ref={wrapperRef}>
       <Button
         variant="bare"
-        className={styles.swatch}
-        style={{ backgroundColor: color ?? 'var(--surface-container-high)' }}
+        className={swatchClassName(color)}
+        style={swatchStyle(color)}
         ref={swatchRef}
         onClick={handleToggleOpen}
         aria-label="Choose color"

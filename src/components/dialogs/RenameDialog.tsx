@@ -2,7 +2,12 @@ import { useState, useEffect, useCallback } from 'react'
 import { Button } from '../common/Button'
 import { TextInput } from '../common/TextInput'
 import { DialogShell } from './DialogShell'
-import styles from './RenameDialog.module.css'
+import {
+  DIALOG_ERROR_BOX,
+  DIALOG_FIELD_LABEL,
+  DIALOG_FOOTER_ACTIONS,
+  DIALOG_TITLE,
+} from '../../lib/class-names-dialog'
 import { MYSQL_IDENTIFIER_MAX_LENGTH } from '../../lib/sql-utils'
 import { useFormSubmit } from '../../hooks/useFormSubmit'
 
@@ -43,17 +48,23 @@ function RenameFields({
   return (
     <>
       {warning && (
-        <div className={styles.warningBox} data-testid="rename-dialog-warning">
+        <div
+          className="mb-4 rounded-card border border-light-stroke-card bg-light-warning-container px-3 py-2.5 font-body text-size-caption leading-body text-light-warning dark:border-dark-stroke-card dark:bg-dark-warning-container dark:text-dark-warning"
+          data-testid="rename-dialog-warning"
+        >
           {warning}
         </div>
       )}
 
-      <p className={styles.currentName}>
-        Current name: <span className={styles.currentNameValue}>{currentName}</span>
+      <p className="mb-4 font-body text-size-body text-light-on-surface-variant dark:text-dark-on-surface-variant">
+        Current name:{' '}
+        <span className="font-mono font-semibold text-light-on-surface dark:text-dark-on-surface">
+          {currentName}
+        </span>
       </p>
 
       <div>
-        <label className={styles.label} htmlFor="rename-new-name">
+        <label className={DIALOG_FIELD_LABEL} htmlFor="rename-new-name">
           New name
         </label>
         <TextInput
@@ -68,7 +79,7 @@ function RenameFields({
       </div>
 
       {error && (
-        <div className={styles.error} data-testid="rename-dialog-error">
+        <div className={DIALOG_ERROR_BOX} data-testid="rename-dialog-error">
           {error}
         </div>
       )}
@@ -112,7 +123,7 @@ export function RenameDialog({
       ariaLabel={title}
       formProps={{ onSubmit: handleFormSubmit }}
     >
-      <h2 className={styles.title}>{title}</h2>
+      <h2 className={DIALOG_TITLE}>{title}</h2>
       <RenameFields
         warning={warning}
         currentName={currentName}
@@ -120,7 +131,7 @@ export function RenameDialog({
         onNewNameChange={setNewName}
         error={error}
       />
-      <div className={styles.actions}>
+      <div className={DIALOG_FOOTER_ACTIONS}>
         <Button
           variant="accent"
           type="submit"

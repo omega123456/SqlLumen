@@ -123,13 +123,14 @@ describe('SavedConnectionsList', () => {
         connectionGroups: [],
       })
 
-      const { container } = render(<SavedConnectionsList {...defaultProps} />)
+      render(<SavedConnectionsList {...defaultProps} />)
 
-      const dot = container.querySelector('[class*="colorDot"]')
-      expect(dot).toHaveStyle({ backgroundColor: '#ff0000' })
+      expect(screen.getByTestId('connection-color-dot')).toHaveStyle({
+        backgroundColor: '#ff0000',
+      })
     })
 
-    it('renders color dot with muted color when connection color is null', () => {
+    it('renders color dot without an inline color when connection color is null', () => {
       const conn = makeConnection({ id: 'c1', name: 'No Color DB', color: null })
 
       useConnectionStore.setState({
@@ -137,10 +138,9 @@ describe('SavedConnectionsList', () => {
         connectionGroups: [],
       })
 
-      const { container } = render(<SavedConnectionsList {...defaultProps} />)
+      render(<SavedConnectionsList {...defaultProps} />)
 
-      const dot = container.querySelector('[class*="colorDot"]')
-      expect(dot).toHaveStyle({ backgroundColor: 'var(--outline)' })
+      expect(screen.getByTestId('connection-color-dot').style.backgroundColor).toBe('')
     })
 
     it('sorts connections within groups by name', () => {
@@ -154,11 +154,11 @@ describe('SavedConnectionsList', () => {
         connectionGroups: [group],
       })
 
-      const { container } = render(<SavedConnectionsList {...defaultProps} />)
+      render(<SavedConnectionsList {...defaultProps} />)
 
-      const connectionNames = Array.from(
-        container.querySelectorAll('[class*="connectionTitle"]')
-      ).map((el) => el.textContent)
+      const connectionNames = screen
+        .getAllByTestId('connection-list-item-name')
+        .map((element) => element.textContent)
 
       expect(connectionNames).toEqual(['Alpha', 'Bravo', 'Charlie'])
     })
@@ -172,11 +172,11 @@ describe('SavedConnectionsList', () => {
         connectionGroups: [group1, group2],
       })
 
-      const { container } = render(<SavedConnectionsList {...defaultProps} />)
+      render(<SavedConnectionsList {...defaultProps} />)
 
-      const groupNames = Array.from(container.querySelectorAll('[class*="groupName"]')).map(
-        (el) => el.textContent
-      )
+      const groupNames = screen
+        .getAllByTestId('connection-group-name')
+        .map((element) => element.textContent)
 
       expect(groupNames).toEqual(['First', 'Second'])
     })
@@ -206,12 +206,10 @@ describe('SavedConnectionsList', () => {
         connectionGroups: [],
       })
 
-      const { container } = render(
-        <SavedConnectionsList {...defaultProps} selectedConnectionId="c1" />
-      )
+      render(<SavedConnectionsList {...defaultProps} selectedConnectionId="c1" />)
 
-      const item = container.querySelector('[class*="connectionItemSelected"]')
-      expect(item).toBeInTheDocument()
+      const item = screen.getByTestId('connection-list-item')
+      expect(item).toHaveAttribute('data-selected')
       expect(item).toHaveTextContent('Selected DB')
     })
 
@@ -223,10 +221,9 @@ describe('SavedConnectionsList', () => {
         connectionGroups: [],
       })
 
-      const { container } = render(<SavedConnectionsList {...defaultProps} />)
+      render(<SavedConnectionsList {...defaultProps} />)
 
-      const selectedItem = container.querySelector('[class*="connectionItemSelected"]')
-      expect(selectedItem).not.toBeInTheDocument()
+      expect(screen.getByTestId('connection-list-item')).not.toHaveAttribute('data-selected')
     })
   })
 

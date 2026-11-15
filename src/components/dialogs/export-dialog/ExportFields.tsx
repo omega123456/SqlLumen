@@ -14,7 +14,25 @@ import {
   ignoredViewMessage,
   type ViewModifiers,
 } from './export-format'
-import styles from '../ExportDialog.module.css'
+import { joinClassNames } from '../../../lib/class-names'
+import {
+  EXPORT_DIALOG_BODY,
+  DIALOG_BROWSE_BUTTON,
+  DIALOG_CHECKBOX_LABEL,
+  DIALOG_CLOSE_BUTTON,
+  DIALOG_DESTINATION_GROUP,
+  DIALOG_DESTINATION_INPUT,
+  DIALOG_DESTINATION_PREFIX,
+  DIALOG_FOOTER_BLEED,
+  DIALOG_FOOTER_GRID,
+  DIALOG_FORM_FIELD,
+  DIALOG_FORM_LABEL,
+  DIALOG_HEADER,
+  DIALOG_HEADER_TITLE,
+  DIALOG_INLINE_ERROR_BOX,
+  DIALOG_PROGRESS_PANEL,
+  DIALOG_PROGRESS_TRACK,
+} from '../../../lib/class-names-dialog'
 
 const HEADER_ICON_SIZE = 20
 
@@ -25,19 +43,25 @@ interface FullExportProgressProps {
 
 export function FullExportProgress({ exportJob, onCancel }: FullExportProgressProps) {
   return (
-    <div className={styles.body}>
-      <div className={styles.progressSection} data-testid="export-progress">
-        <span className={styles.progressTitle} role="status">
+    <div className={EXPORT_DIALOG_BODY}>
+      <div className={DIALOG_PROGRESS_PANEL} data-testid="export-progress">
+        <span
+          className="font-body text-size-body text-light-on-surface dark:text-dark-on-surface"
+          role="status"
+        >
           Exporting all rows…
         </span>
-        <div className={styles.progressBar} aria-hidden="true">
-          <div className={styles.progressIndicator} />
+        <div className={joinClassNames([DIALOG_PROGRESS_TRACK, 'relative'])} aria-hidden="true">
+          <div className="absolute inset-y-0 rounded-track bg-light-primary dark:bg-dark-primary motion-reduce:left-0 motion-reduce:w-full motion-safe:-left-2/5 motion-safe:w-2/5 motion-safe:animate-indeterminate-slide motion-safe:window-blurred:animate-indeterminate-slide-paused" />
         </div>
-        <span className={styles.progressStats} data-testid="export-progress-stats">
+        <span
+          className="font-body text-size-caption tabular-nums text-light-on-surface-variant dark:text-dark-on-surface-variant"
+          data-testid="export-progress-stats"
+        >
           {exportProgressText(exportJob)}
         </span>
       </div>
-      <div className={`${styles.actions} ${styles.progressActions}`}>
+      <div className={joinClassNames([DIALOG_FOOTER_BLEED, 'mt-2.5 flex justify-end gap-2'])}>
         <Button
           type="button"
           disabled={exportJob.cancelRequested}
@@ -61,8 +85,8 @@ interface RowScopeFieldProps {
 export function RowScopeField({ offersAllRows, options, value, onChange }: RowScopeFieldProps) {
   if (!offersAllRows) return null
   return (
-    <div className={styles.fieldGroup}>
-      <label className={styles.label} id="export-rows-label">
+    <div className={DIALOG_FORM_FIELD}>
+      <label className={DIALOG_FORM_LABEL} id="export-rows-label">
         Rows
       </label>
       <Dropdown
@@ -72,8 +96,8 @@ export function RowScopeField({ offersAllRows, options, value, onChange }: RowSc
         value={value}
         onChange={onChange}
         data-testid="export-rows-select"
-        className={styles.formatDropdownRoot}
-        triggerClassName={styles.formatDropdownTrigger}
+        className="w-full"
+        triggerChrome="dialogField"
       />
     </div>
   )
@@ -147,15 +171,15 @@ interface TableNameFieldProps {
 export function TableNameField({ format, tableName, onChange }: TableNameFieldProps) {
   if (!EXPORT_FORMAT_CONFIG[format].requiresTableName) return null
   return (
-    <div className={styles.fieldGroup}>
-      <label className={styles.label} htmlFor="export-table-name">
+    <div className={DIALOG_FORM_FIELD}>
+      <label className={DIALOG_FORM_LABEL} htmlFor="export-table-name">
         Table name
       </label>
       <TextInput
         id="export-table-name"
         variant="bare"
         type="text"
-        className={styles.tableNameInput}
+        className="w-full rounded-control border border-light-stroke-control bg-light-fill-control px-2.5 py-1.25 font-mono text-size-mono leading-5 text-light-on-surface transition-shadow outline-none focus:border-light-primary focus:shadow-light-field-focus dark:border-dark-stroke-control dark:bg-dark-fill-control dark:text-dark-on-surface dark:focus:border-dark-primary dark:focus:shadow-dark-field-focus"
         value={tableName}
         onChange={(event) => onChange(event.target.value)}
         placeholder={DEFAULT_EXPORT_TABLE_NAME}
@@ -172,10 +196,10 @@ interface ExportDialogHeaderProps {
 
 export function ExportDialogHeader({ canClose, onClose }: ExportDialogHeaderProps) {
   return (
-    <div className={styles.header}>
-      <h2 className={styles.title}>Export results</h2>
+    <div className={DIALOG_HEADER}>
+      <h2 className={DIALOG_HEADER_TITLE}>Export results</h2>
       {canClose && (
-        <Button variant="bare" className={styles.closeButton} onClick={onClose} aria-label="Close">
+        <Button variant="bare" className={DIALOG_CLOSE_BUTTON} onClick={onClose} aria-label="Close">
           <X size={HEADER_ICON_SIZE} aria-hidden="true" />
         </Button>
       )}
@@ -191,8 +215,8 @@ interface FormatFieldProps {
 
 export function FormatField({ options, format, onChange }: FormatFieldProps) {
   return (
-    <div className={styles.fieldGroup}>
-      <label className={styles.label} id="export-format-label">
+    <div className={DIALOG_FORM_FIELD}>
+      <label className={DIALOG_FORM_LABEL} id="export-format-label">
         Format
       </label>
       <Dropdown
@@ -202,8 +226,8 @@ export function FormatField({ options, format, onChange }: FormatFieldProps) {
         value={format}
         onChange={onChange}
         data-testid="export-format-select"
-        className={styles.formatDropdownRoot}
-        triggerClassName={styles.formatDropdownTrigger}
+        className="w-full"
+        triggerChrome="dialogField"
       />
     </div>
   )
@@ -219,17 +243,17 @@ interface DestinationFieldProps {
 export function DestinationField({ format, filePath, onChange, onBrowse }: DestinationFieldProps) {
   const extension = EXPORT_FORMAT_CONFIG[format].extension
   return (
-    <div className={styles.fieldGroup}>
-      <label className={styles.label} htmlFor="export-file-path">
+    <div className={DIALOG_FORM_FIELD}>
+      <label className={DIALOG_FORM_LABEL} htmlFor="export-file-path">
         Destination
       </label>
-      <div className={styles.destinationGroup}>
-        <span className={styles.destinationPrefix}>.{extension}</span>
+      <div className={DIALOG_DESTINATION_GROUP}>
+        <span className={DIALOG_DESTINATION_PREFIX}>.{extension}</span>
         <TextInput
           id="export-file-path"
           variant="bare"
           type="text"
-          className={styles.destinationInput}
+          className={DIALOG_DESTINATION_INPUT}
           value={filePath}
           onChange={(event) => onChange(event.target.value)}
           placeholder={`query_results.${extension}`}
@@ -237,7 +261,7 @@ export function DestinationField({ format, filePath, onChange, onBrowse }: Desti
         />
         <Button
           variant="bare"
-          className={styles.browseButton}
+          className={DIALOG_BROWSE_BUTTON}
           onClick={onBrowse}
           aria-label="Browse"
           data-testid="export-browse-button"
@@ -256,14 +280,14 @@ interface IncludeHeadersFieldProps {
 
 export function IncludeHeadersField({ checked, onChange }: IncludeHeadersFieldProps) {
   return (
-    <div className={styles.checkboxRow}>
+    <div className="flex cursor-pointer items-center gap-3">
       <Checkbox
         id="export-include-headers"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
         data-testid="export-include-headers-checkbox"
       />
-      <label htmlFor="export-include-headers" className={styles.checkboxLabel}>
+      <label htmlFor="export-include-headers" className={DIALOG_CHECKBOX_LABEL}>
         Include column headers in first row
       </label>
     </div>
@@ -273,7 +297,7 @@ export function IncludeHeadersField({ checked, onChange }: IncludeHeadersFieldPr
 export function ExportError({ error }: { error: string | null }) {
   if (!error) return null
   return (
-    <div className={styles.error} data-testid="export-error">
+    <div className={DIALOG_INLINE_ERROR_BOX} data-testid="export-error">
       {error}
     </div>
   )
@@ -323,7 +347,7 @@ interface ExportFormActionsProps {
 
 export function ExportFormActions({ canSubmit, isExporting, onClose }: ExportFormActionsProps) {
   return (
-    <div className={styles.actions}>
+    <div className={joinClassNames([DIALOG_FOOTER_GRID, 'mt-2.5'])}>
       <Button
         type="submit"
         variant="accent"

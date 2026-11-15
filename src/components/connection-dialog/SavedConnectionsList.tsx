@@ -16,7 +16,6 @@ import {
   SavedConnectionsContextMenu,
   type ContextMenuState,
 } from './saved-connections/SavedConnectionsContextMenu'
-import styles from './SavedConnectionsList.module.css'
 
 const FOOTER_ICON_SIZE = 16
 
@@ -55,7 +54,7 @@ function ErrorBanner({ groups }: { groups: GroupEditing }) {
   return (
     <InfoBar
       severity="error"
-      className={styles.errorBanner}
+      className="m-2 shrink-0"
       message={groups.error}
       actions={
         <IconButton size="sm" onClick={groups.dismissError} aria-label="Dismiss error">
@@ -116,7 +115,7 @@ export function SavedConnectionsList({
   const showsNoMatches = trimmedFilter !== '' && !hasMatches
 
   return (
-    <div className={styles.container}>
+    <div className="box-border flex h-full min-h-0 flex-col gap-2 px-2 py-3">
       <SavedConnectionsToolbar
         filterText={filterText}
         onFilterTextChange={setFilterText}
@@ -138,13 +137,8 @@ export function SavedConnectionsList({
           onGroupContextMenu: menus.openGroupMenu,
         }}
       />
-      <div className={styles.storageFooter}>
-        <ShieldCheck
-          size={FOOTER_ICON_SIZE}
-          weight="regular"
-          className={styles.storageIcon}
-          aria-hidden
-        />
+      <div className="mt-auto flex shrink-0 items-center gap-2 px-2 py-1.5 text-caption text-light-on-surface-variant dark:text-dark-on-surface-variant">
+        <ShieldCheck size={FOOTER_ICON_SIZE} weight="regular" className="shrink-0" aria-hidden />
         <span>Encrypted storage active</span>
       </div>
       <ErrorBanner groups={groups} />

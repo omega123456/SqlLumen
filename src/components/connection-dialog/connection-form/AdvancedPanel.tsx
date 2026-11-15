@@ -6,7 +6,11 @@ import {
   DEFAULT_KEEPALIVE_INTERVAL_SECONDS,
 } from '../connection-editor-state'
 import { FormField, type FormFields } from './form-fields'
-import styles from '../ConnectionForm.module.css'
+import {
+  CONNECTION_FIELD_GROUP,
+  CONNECTION_FIELD_LABEL,
+  CONNECTION_TAB_PANEL,
+} from '../../../lib/class-names-connection-form'
 
 const DECIMAL_RADIX = 10
 const MAX_CONNECT_TIMEOUT_SECONDS = 300
@@ -24,9 +28,9 @@ interface AdvancedPanelProps {
 
 function GroupAndAccessRow({ fields, groupDropdownOptions }: AdvancedPanelProps) {
   return (
-    <div className={styles.rowEvenSplit}>
-      <div className={styles.fieldGroup}>
-        <label id="conn-group-label" htmlFor="conn-group" className={styles.labelCaps}>
+    <div className="grid grid-cols-2 items-start gap-x-3 gap-y-3.5 max-compact:grid-cols-1">
+      <div className={CONNECTION_FIELD_GROUP}>
+        <label id="conn-group-label" htmlFor="conn-group" className={CONNECTION_FIELD_LABEL}>
           Group
         </label>
         <Dropdown
@@ -38,8 +42,8 @@ function GroupAndAccessRow({ fields, groupDropdownOptions }: AdvancedPanelProps)
           onChange={(value) => fields.updateField('groupId', value || null)}
         />
       </div>
-      <div className={styles.fieldGroup}>
-        <label id="conn-access-label" htmlFor="conn-access" className={styles.labelCaps}>
+      <div className={CONNECTION_FIELD_GROUP}>
+        <label id="conn-access-label" htmlFor="conn-access" className={CONNECTION_FIELD_LABEL}>
           Access mode
         </label>
         <Dropdown
@@ -56,14 +60,16 @@ function GroupAndAccessRow({ fields, groupDropdownOptions }: AdvancedPanelProps)
 
 function TabColorField({ fields }: { fields: FormFields }) {
   return (
-    <div className={styles.fieldGroup}>
-      <span className={styles.labelCaps}>Tab color</span>
-      <div className={styles.tabColorRow}>
+    <div className={CONNECTION_FIELD_GROUP}>
+      <span className={CONNECTION_FIELD_LABEL}>Tab color</span>
+      <div className="flex min-h-10 items-center gap-2">
         <ColorPickerPopover
           color={fields.formData.color}
           onChange={(color) => fields.updateField('color', color)}
         />
-        <span className={styles.tabColorValue}>{fields.formData.color ?? 'No color set'}</span>
+        <span className="font-mono text-size-body text-light-on-surface-variant dark:text-dark-on-surface-variant">
+          {fields.formData.color ?? 'No color set'}
+        </span>
       </div>
     </div>
   )
@@ -100,12 +106,12 @@ const TIMEOUT_FIELDS: SecondsFieldSpec[] = [
 function SecondsField({ fields, spec }: { fields: FormFields; spec: SecondsFieldSpec }) {
   return (
     <FormField id={spec.id} label={spec.label} error={fields.errors[spec.field]}>
-      <div className={styles.numberInputRow}>
+      <div className="flex items-center gap-2">
         <TextInput
           id={spec.id}
           type="number"
           variant="mono"
-          className={styles.numberField}
+          className="max-w-30"
           invalid={!!fields.errors[spec.field]}
           value={fields.formData[spec.field]}
           onChange={(event) =>
@@ -117,7 +123,9 @@ function SecondsField({ fields, spec }: { fields: FormFields; spec: SecondsField
           min={spec.min}
           max={spec.max}
         />
-        <span className={styles.unitLabel}>seconds</span>
+        <span className="font-body text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant">
+          seconds
+        </span>
       </div>
     </FormField>
   )
@@ -125,10 +133,14 @@ function SecondsField({ fields, spec }: { fields: FormFields; spec: SecondsField
 
 export function AdvancedPanel({ fields, groupDropdownOptions }: AdvancedPanelProps) {
   return (
-    <div className={styles.tabPanel} role="tabpanel" data-testid="connection-form-panel-advanced">
+    <div
+      className={CONNECTION_TAB_PANEL}
+      role="tabpanel"
+      data-testid="connection-form-panel-advanced"
+    >
       <GroupAndAccessRow fields={fields} groupDropdownOptions={groupDropdownOptions} />
       <TabColorField fields={fields} />
-      <div className={styles.rowTimeouts}>
+      <div className="grid grid-cols-2 items-start gap-x-3 gap-y-3.5 max-compact:grid-cols-1">
         {TIMEOUT_FIELDS.map((spec) => (
           <SecondsField key={spec.id} fields={fields} spec={spec} />
         ))}

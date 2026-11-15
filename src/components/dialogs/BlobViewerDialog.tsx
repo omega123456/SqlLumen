@@ -1,6 +1,6 @@
 import { DialogShell } from './DialogShell'
 import type { BlobEnvelope, BlobValueResponse } from '../../types/schema'
-import styles from './BlobViewerDialog.module.css'
+import { joinClassNames, SCROLLBAR } from '../../lib/class-names'
 import { isPlaywrightBuild } from '../../lib/tauri-env'
 import {
   hasByteMetadata,
@@ -31,8 +31,20 @@ export interface BlobViewerDialogProps {
   onApply?: (envelope: BlobEnvelope) => void
 }
 
+type BlobPanelMode = 'edit' | 'view'
+
+const PANEL_MODE_CLASSES: Record<BlobPanelMode, string> = {
+  edit: 'after:pointer-events-none after:absolute after:inset-2 after:rounded-control after:border-2 after:border-dashed after:border-light-primary-a18 dark:after:border-dark-primary-a18',
+  view: '',
+}
+
 function panelClassName(isEdit: boolean): string {
-  return isEdit ? `${styles.panel} ${styles.panelDroppable}` : styles.panel
+  const mode: BlobPanelMode = isEdit ? 'edit' : 'view'
+  return joinClassNames([
+    'relative flex min-h-0 flex-1 overflow-auto bg-light-surface-container-high dark:bg-dark-surface-container-high',
+    SCROLLBAR,
+    PANEL_MODE_CLASSES[mode],
+  ])
 }
 
 interface BlobContentAreaProps {
@@ -159,7 +171,7 @@ export function BlobViewerDialog(props: BlobViewerDialogProps) {
       disableFocusManagement={isPlaywrightBuild()}
     >
       <div
-        className={styles.root}
+        className="relative flex h-full min-h-0 flex-col"
         onDragEnter={drag.handleDragEnter}
         onDragOver={drag.handleDragOver}
         onDragLeave={drag.handleDragLeave}

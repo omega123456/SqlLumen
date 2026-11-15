@@ -1,0 +1,17 @@
+[data-color-picker-panel] .react-colorful {
+  width: 200px;
+  height: 150px;
+}
+
+[data-color-picker-panel] .react-colorful__saturation {
+  border-radius: var(--radius-control) var(--radius-control) 0 0;
+}
+
+[data-color-picker-panel] .react-colorful__hue {
+  border-radius: 0 0 var(--radius-control) var(--radius-control);
+}
+
+[data-color-picker-panel] .react-colorful__pointer {
+  width: 16px;
+  height: 16px;
+}

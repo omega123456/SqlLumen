@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import styles from '../CopyToHostDialog.module.css'
+import { ELEVATED_SURFACE, joinClassNames } from '../../../lib/class-names'
 
 export function Section({
   title,
@@ -11,9 +11,14 @@ export function Section({
   children: ReactNode
 }) {
   return (
-    <section className={styles.section} data-testid={testId}>
-      <h3 className={styles.sectionTitle}>{title}</h3>
-      <div className={styles.sectionBody}>{children}</div>
+    <section
+      className={joinClassNames([ELEVATED_SURFACE, 'flex flex-col gap-3 p-4'])}
+      data-testid={testId}
+    >
+      <h3 className="font-headline text-size-caption font-semibold text-light-on-surface dark:text-dark-on-surface">
+        {title}
+      </h3>
+      <div className="flex flex-col">{children}</div>
     </section>
   )
 }

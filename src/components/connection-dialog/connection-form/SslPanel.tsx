@@ -1,7 +1,7 @@
 import { Checkbox } from '../../common/Checkbox'
 import type { SslPathField } from '../connection-editor-state'
 import { SslFileField, type FormFields } from './form-fields'
-import styles from '../ConnectionForm.module.css'
+import { CONNECTION_TAB_PANEL } from '../../../lib/class-names-connection-form'
 
 interface SslPanelProps {
   fields: FormFields
@@ -10,9 +10,9 @@ interface SslPanelProps {
 
 export function SslPanel({ fields, onBrowseFile }: SslPanelProps) {
   return (
-    <div className={styles.tabPanel} role="tabpanel" data-testid="connection-form-panel-ssl">
-      <div className={styles.sslBlock}>
-        <div className={styles.sslCheckboxWrap}>
+    <div className={CONNECTION_TAB_PANEL} role="tabpanel" data-testid="connection-form-panel-ssl">
+      <div className="flex min-w-0 items-start gap-3">
+        <div className="flex shrink-0 items-center pt-0.5">
           <Checkbox
             id="ssl-enabled"
             checked={fields.formData.sslEnabled}
@@ -20,13 +20,20 @@ export function SslPanel({ fields, onBrowseFile }: SslPanelProps) {
             aria-label="Use SSL / TLS"
           />
         </div>
-        <div className={styles.sslCopy}>
-          <span className={styles.sslTitle}>Use SSL / TLS</span>
-          <span className={styles.sslHint}>Required for AWS RDS and many managed clusters.</span>
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="font-headline text-size-body font-semibold text-light-on-surface dark:text-dark-on-surface">
+            Use SSL / TLS
+          </span>
+          <span className="font-body text-size-caption leading-snug font-semibold text-light-on-surface-variant dark:text-dark-on-surface-variant">
+            Required for AWS RDS and many managed clusters.
+          </span>
         </div>
       </div>
 
-      <div className={styles.sslFiles} data-testid="ssl-certificate-section">
+      <div
+        className="flex flex-col gap-3 border-t border-light-stroke-divider pt-4 dark:border-dark-stroke-divider"
+        data-testid="ssl-certificate-section"
+      >
         <SslFileField
           id="ssl-ca"
           label="CA certificate"

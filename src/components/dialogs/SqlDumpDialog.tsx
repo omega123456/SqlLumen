@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { DialogShell } from './DialogShell'
 import { InfoBar } from '../common/InfoBar'
 import type { DumpOptions } from '../../lib/sql-dump-commands'
-import styles from './SqlDumpDialog.module.css'
+import { DIALOG_EDGE_TO_EDGE_ROOT, DIALOG_JOB_BODY } from '../../lib/class-names-dialog'
 import { isPlaywrightBuild } from '../../lib/tauri-env'
 import { isCancelInFlight } from '../../lib/job-progress'
 import { useBrowseFilePath } from '../../hooks/useBrowseFilePath'
@@ -121,9 +121,9 @@ export default function SqlDumpDialog(props: SqlDumpDialogProps) {
       disableFocusManagement={isPlaywrightBuild()}
       nonDismissible={job.isExporting}
     >
-      <div className={styles.root}>
+      <div className={DIALOG_EDGE_TO_EDGE_ROOT}>
         <DumpDialogHeader schemaOnly={schemaOnly} isExporting={job.isExporting} onClose={onClose} />
-        <div className={styles.body}>
+        <div className={DIALOG_JOB_BODY}>
           <DumpOptionsGroup options={dump.options} onChange={dump.changeOption} />
           <ObjectsToExportField
             selectedCount={dump.selectedCount}

@@ -1,7 +1,6 @@
 import { Plug } from '@phosphor-icons/react'
 import { Button } from '../../common/Button'
 import type { PendingAction } from '../connection-editor-state'
-import styles from '../ConnectionForm.module.css'
 
 const FOOTER_ICON_SIZE = 16
 
@@ -41,8 +40,8 @@ export function ConnectionFormFooter({
 }: ConnectionFormFooterProps) {
   const isAnyPending = pendingAction !== null
   return (
-    <footer className={styles.formFooter}>
-      <div className={styles.footerActionsLeft}>
+    <footer className="col-span-full row-start-2 flex shrink-0 items-center justify-between gap-2 border-t border-light-stroke-divider bg-light-surface px-6 py-5 max-narrow:flex-col max-narrow:items-stretch dark:border-dark-stroke-divider dark:bg-dark-surface">
+      <div className="flex items-center gap-2 max-narrow:flex-wrap max-narrow:justify-between">
         <Button onClick={onTest} disabled={isAnyPending}>
           <Plug size={FOOTER_ICON_SIZE} weight="regular" aria-hidden />
           {actionLabel({
@@ -57,7 +56,7 @@ export function ConnectionFormFooter({
           </Button>
         ) : null}
       </div>
-      <div className={styles.footerActionsRight}>
+      <div className="flex items-center gap-2 max-narrow:flex-wrap max-narrow:justify-between">
         <Button variant="accent" onClick={onConnect} disabled={isAnyPending}>
           {actionLabel({
             pendingAction: pendingAction,

@@ -2,7 +2,7 @@ import { DialogShell } from './DialogShell'
 import { useQueryStore, type ExportRowScope } from '../../stores/query-store'
 import type { ExportFormat } from '../../types/schema'
 import type { DropdownOption } from '../common/Dropdown'
-import styles from './ExportDialog.module.css'
+import { DIALOG_EDGE_TO_EDGE_ROOT, EXPORT_DIALOG_BODY } from '../../lib/class-names-dialog'
 import { isPlaywrightBuild } from '../../lib/tauri-env'
 import { useFormSubmit } from '../../hooks/useFormSubmit'
 import type { ViewModifiers } from './export-dialog/export-format'
@@ -51,7 +51,7 @@ interface ExportFormBodyProps {
 function ExportFormBody({ scope, formatChoice, actions, outcome, onClose }: ExportFormBodyProps) {
   const { format, setFormat } = formatChoice
   return (
-    <div className={styles.body}>
+    <div className={EXPORT_DIALOG_BODY}>
       <RowScopeField
         offersAllRows={scope.offersAllRows}
         options={scope.rowScopeOptions}
@@ -135,7 +135,7 @@ export default function ExportDialog(props: ExportDialogProps) {
       nonDismissible={isFullExportRunning}
       formProps={{ onSubmit: handleSubmit }}
     >
-      <div className={styles.root}>
+      <div className={DIALOG_EDGE_TO_EDGE_ROOT}>
         <ExportDialogHeader canClose={!isFullExportRunning} onClose={onClose} />
         {runningJob ? (
           <FullExportProgress

@@ -7,7 +7,12 @@ import { useConnectionStore } from '../../stores/connection-store'
 import type { SnapshotSummary } from '../../lib/session-snapshot-commands'
 import { SnapshotConfirmDialogs, type ConfirmState } from './snapshot-dialog/SnapshotConfirmDialogs'
 import { SnapshotList } from './snapshot-dialog/SnapshotList'
-import styles from './SnapshotDialog.module.css'
+import { joinClassNames } from '../../lib/class-names'
+import {
+  DIALOG_HEADER,
+  DIALOG_HEADER_TITLE,
+  DIALOG_PANEL_FOOTER,
+} from '../../lib/class-names-dialog'
 
 const BUTTON_ICON_SIZE = 16
 
@@ -80,15 +85,15 @@ export function SnapshotDialog() {
       testId="snapshot-dialog"
       ariaLabel="Session snapshots"
     >
-      <div className={styles.header}>
-        <span className={styles.title}>Session snapshots</span>
+      <div className={joinClassNames([DIALOG_HEADER, 'shrink-0 gap-3'])}>
+        <span className={DIALOG_HEADER_TITLE}>Session snapshots</span>
         <Button onClick={confirmation.requestCreate} data-testid="snapshot-create-button">
           <CameraPlusIcon size={BUTTON_ICON_SIZE} />
           Create snapshot
         </Button>
       </div>
       <SnapshotList onCreate={confirmation.requestCreate} onDelete={confirmation.requestDelete} />
-      <div className={styles.footer}>
+      <div className={DIALOG_PANEL_FOOTER}>
         <Button onClick={closeDialog}>Close</Button>
         <Button
           variant="accent"

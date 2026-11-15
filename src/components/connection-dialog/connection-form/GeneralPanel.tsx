@@ -1,6 +1,6 @@
 import { TextInput } from '../../common/TextInput'
 import { FormField, PasswordField, type FormFields, type PasswordControls } from './form-fields'
-import styles from '../ConnectionForm.module.css'
+import { CONNECTION_TAB_PANEL } from '../../../lib/class-names-connection-form'
 
 const DECIMAL_RADIX = 10
 const MIN_PORT = 1
@@ -14,7 +14,7 @@ interface GeneralPanelProps {
 
 function HostPortRow({ fields }: { fields: FormFields }) {
   return (
-    <div className={styles.row2}>
+    <div className="grid grid-cols-connection-row items-start gap-x-3 gap-y-3.5">
       <FormField id="conn-host" label="Host address" error={fields.errors.host}>
         <TextInput
           id="conn-host"
@@ -47,7 +47,7 @@ function HostPortRow({ fields }: { fields: FormFields }) {
 
 function UserPasswordRow({ fields, password }: Omit<GeneralPanelProps, 'nameAutoFocus'>) {
   return (
-    <div className={styles.rowUserPass}>
+    <div className="grid grid-cols-connection-row items-start gap-x-3 gap-y-3.5 max-compact:grid-cols-1">
       <FormField id="conn-username" label="Username" error={fields.errors.username}>
         <TextInput
           id="conn-username"
@@ -66,7 +66,11 @@ function UserPasswordRow({ fields, password }: Omit<GeneralPanelProps, 'nameAuto
 
 export function GeneralPanel({ fields, nameAutoFocus, password }: GeneralPanelProps) {
   return (
-    <div className={styles.tabPanel} role="tabpanel" data-testid="connection-form-panel-general">
+    <div
+      className={CONNECTION_TAB_PANEL}
+      role="tabpanel"
+      data-testid="connection-form-panel-general"
+    >
       <FormField id="conn-name" label="Connection name" error={fields.errors.name}>
         <TextInput
           id="conn-name"

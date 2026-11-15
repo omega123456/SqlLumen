@@ -164,7 +164,7 @@ describe('ConfirmDialog', () => {
     expect(screen.queryByTestId('confirm-cancel-button')).not.toBeInTheDocument()
     const ok = screen.getByTestId('confirm-confirm-button')
     expect(ok).toHaveTextContent('OK')
-    expect(ok.parentElement?.className).toMatch(/actionsSingle/)
+    expect(ok.parentElement?.children).toHaveLength(1)
     await user.click(ok)
     expect(onConfirm).toHaveBeenCalledTimes(1)
   })

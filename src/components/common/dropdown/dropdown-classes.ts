@@ -33,6 +33,16 @@ const TRIGGER_SIZE_CLASSES: Record<DropdownTriggerSize, string> = {
   cell: 'h-7.5 pr-2 pl-2.5 font-body text-size-row leading-5',
   monoCell: 'h-control px-2 py-1.75 font-mono text-size-caption leading-5 transition-bg-and-color',
   field: 'h-control min-h-10 px-3 py-2.5 font-body text-size-caption leading-5',
+  filter: 'h-8.5 px-2.5 font-body text-size-caption leading-5',
+}
+
+const TRIGGER_CURSOR_CLASSES: Record<DropdownTriggerSize, string> = {
+  md: 'cursor-default',
+  sm: 'cursor-default',
+  cell: 'cursor-default',
+  monoCell: 'cursor-default',
+  field: 'cursor-default',
+  filter: 'cursor-pointer',
 }
 
 const TRIGGER_WIDTH_CLASSES: Record<DropdownTriggerWidth, string> = {
@@ -146,8 +156,7 @@ export interface DropdownTriggerClassOptions {
   className: string | undefined
 }
 
-const TRIGGER_FRAME =
-  'group flex items-center justify-between gap-2 whitespace-nowrap text-left cursor-default'
+const TRIGGER_FRAME = 'group flex items-center justify-between gap-2 whitespace-nowrap text-left'
 
 function fieldTriggerClassName({ open, appearance }: DropdownTriggerClassOptions): string {
   return joinClassNames([
@@ -161,11 +170,20 @@ function fieldTriggerClassName({ open, appearance }: DropdownTriggerClassOptions
   ])
 }
 
+function dialogFieldTriggerClassName({ appearance }: DropdownTriggerClassOptions): string {
+  return joinClassNames([
+    'h-control w-full rounded-control border border-light-stroke-control bg-light-fill-control px-2.5 py-1.25 font-body text-body font-regular dark:border-dark-stroke-control dark:bg-dark-fill-control',
+    FOCUS_RING,
+    TRIGGER_TEXT_CLASSES[triggerTextTone(appearance.fieldState)],
+  ])
+}
+
 const TRIGGER_CHROME_CLASS_BUILDERS: Record<
   DropdownTriggerChrome,
   (options: DropdownTriggerClassOptions) => string
 > = {
   field: fieldTriggerClassName,
+  dialogField: dialogFieldTriggerClassName,
   gridCell: () => gridCellTriggerClassName(),
   gridCellOverlay: ({ open, placement }) => gridCellOverlayTriggerClassName(open, placement),
 }
@@ -173,6 +191,7 @@ const TRIGGER_CHROME_CLASS_BUILDERS: Record<
 export function dropdownTriggerClassName(options: DropdownTriggerClassOptions): string {
   return joinClassNames([
     TRIGGER_FRAME,
+    TRIGGER_CURSOR_CLASSES[options.appearance.size],
     TRIGGER_DISABLED_LOOK_CLASSES[triggerDisabledLook(options.appearance)],
     TRIGGER_CHROME_CLASS_BUILDERS[options.appearance.chrome](options),
     options.className,

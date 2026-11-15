@@ -8,8 +8,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
-import styles from './DialogShell.module.css'
-import { ELEVATED_SURFACE } from '../../lib/class-names'
+import { joinClassNames } from '../../lib/class-names'
 
 export interface DialogShellProps {
   isOpen: boolean
@@ -39,36 +38,76 @@ interface DialogSizing {
   panelPadding: boolean
 }
 
+type DialogWidthMode = 'fit' | 'fixed'
+type DialogHeightMode = 'content' | 'fixed'
+type DialogPaddingMode = 'padded' | 'flush'
+
+const WIDTH_CLASSES: Record<DialogWidthMode, string> = {
+  fit: 'w-fit',
+  fixed: '',
+}
+
+const HEIGHT_CLASSES: Record<DialogHeightMode, string> = {
+  content: '',
+  fixed: 'flex flex-col overflow-hidden',
+}
+
+const PADDING_CLASSES: Record<DialogPaddingMode, string> = {
+  padded: 'p-6',
+  flush: 'p-0',
+}
+
 const VIEWPORT_WIDTH_CAP = '90vw'
 
-function baseDialogStyle(sizing: DialogSizing): CSSProperties {
+function widthModeOf(sizing: DialogSizing): DialogWidthMode {
+  if (sizing.panelWidth) return 'fixed'
+  if (sizing.fillMaxWidth) return 'fixed'
+  return 'fit'
+}
+
+function heightModeOf(sizing: DialogSizing): DialogHeightMode {
+  if (sizing.panelHeight) return 'fixed'
+  return 'content'
+}
+
+interface PanelLayout {
+  padding: DialogPaddingMode
+  height: DialogHeightMode
+}
+
+function panelLayoutOf(sizing: DialogSizing): PanelLayout {
+  return { padding: paddingModeOf(sizing), height: heightModeOf(sizing) }
+}
+
+function paddingModeOf(sizing: DialogSizing): DialogPaddingMode {
+  if (sizing.panelPadding) return 'padded'
+  return 'flush'
+}
+
+function dialogWidthStyle(sizing: DialogSizing): CSSProperties {
   if (sizing.panelWidth) return { width: sizing.panelWidth, maxWidth: sizing.panelWidth }
   const widthCap = `min(${sizing.maxWidth}px, ${VIEWPORT_WIDTH_CAP})`
   if (sizing.fillMaxWidth) return { width: widthCap, maxWidth: widthCap }
   return { maxWidth: widthCap }
 }
 
-function resolveDialogStyle(sizing: DialogSizing): CSSProperties {
-  let dialogStyle = baseDialogStyle(sizing)
-  if (sizing.panelHeight) {
-    dialogStyle = {
-      ...dialogStyle,
-      height: sizing.panelHeight,
-      maxHeight: sizing.panelHeight,
-      display: 'flex',
-      flexDirection: 'column',
-      overflow: 'hidden',
-    }
-  }
-  if (!sizing.panelPadding) {
-    dialogStyle = { ...dialogStyle, padding: 0 }
-  }
-  return dialogStyle
+function dialogHeightStyle(sizing: DialogSizing): CSSProperties {
+  if (!sizing.panelHeight) return {}
+  return { height: sizing.panelHeight, maxHeight: sizing.panelHeight }
 }
 
-function withOptionalClassName(baseClassName: string, extraClassName: string | undefined): string {
-  if (!extraClassName) return baseClassName
-  return `${baseClassName} ${extraClassName}`
+function resolveDialogStyle(sizing: DialogSizing): CSSProperties {
+  return { ...dialogWidthStyle(sizing), ...dialogHeightStyle(sizing) }
+}
+
+function resolvePanelClassName(sizing: DialogSizing, panelClassName: string | undefined): string {
+  return joinClassNames([
+    'min-w-dialog-min rounded-overlay border border-light-stroke-flyout bg-light-surface-container-high shadow-light-dialog dark:border-dark-stroke-flyout dark:bg-dark-surface-container-high dark:shadow-dark-dialog',
+    WIDTH_CLASSES[widthModeOf(sizing)],
+    HEIGHT_CLASSES[heightModeOf(sizing)],
+    PADDING_CLASSES[paddingModeOf(sizing)],
+    panelClassName,
+  ])
 }
 
 function panelTestIdFor(testId: string | undefined): string | undefined {
@@ -77,6 +116,7 @@ function panelTestIdFor(testId: string | undefined): string | undefined {
 }
 
 interface DialogPanelProps {
+  layout: PanelLayout
   formProps: DialogShellProps['formProps']
   className: string
   style: CSSProperties
@@ -87,6 +127,7 @@ interface DialogPanelProps {
 }
 
 function DialogPanel({
+  layout,
   formProps,
   className,
   style,
@@ -102,6 +143,8 @@ function DialogPanel({
         className={className}
         ref={setFormRef}
         style={style}
+        data-padding={layout.padding}
+        data-height={layout.height}
         data-testid={testId}
       >
         {children}
@@ -109,7 +152,14 @@ function DialogPanel({
     )
   }
   return (
-    <div className={className} ref={panelRef} style={style} data-testid={testId}>
+    <div
+      className={className}
+      ref={panelRef}
+      style={style}
+      data-padding={layout.padding}
+      data-height={layout.height}
+      data-testid={testId}
+    >
       {children}
     </div>
   )
@@ -141,11 +191,51 @@ function useEscapeToClose({ isOpen, nonDismissible, onClose }: DismissInputs) {
   }, [isOpen, handleKeyDown])
 }
 
+interface DialogPanelRefInputs {
+  isFocusTrapActive: boolean
+  initialFocusRef: RefObject<HTMLElement | null> | undefined
+}
+
+function useDialogPanelRef({ isFocusTrapActive, initialFocusRef }: DialogPanelRefInputs) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(dialogRef, isFocusTrapActive, initialFocusRef)
+  const setFormRef = useCallback((node: HTMLFormElement | null) => {
+    dialogRef.current = node as HTMLDivElement | null
+  }, [])
+  return { dialogRef: dialogRef, setFormRef: setFormRef }
+}
+
 function closeOnBackdropClick(event: React.MouseEvent, dismiss: Omit<DismissInputs, 'isOpen'>) {
   if (dismiss.nonDismissible) return
   if (event.target === event.currentTarget) {
     dismiss.onClose()
   }
+}
+
+interface DialogBackdropProps {
+  className: string | undefined
+  testId: string | undefined
+  ariaLabel: string | undefined
+  dismiss: Omit<DismissInputs, 'isOpen'>
+  children: React.ReactNode
+}
+
+function DialogBackdrop({ className, testId, ariaLabel, dismiss, children }: DialogBackdropProps) {
+  return (
+    <div
+      className={joinClassNames([
+        'fixed inset-0 z-1000 flex items-center justify-center bg-light-smoke dark:bg-dark-smoke',
+        className,
+      ])}
+      data-testid={testId}
+      onClick={(event) => closeOnBackdropClick(event, dismiss)}
+      role="dialog"
+      aria-modal="true"
+      aria-label={ariaLabel}
+    >
+      {children}
+    </div>
+  )
 }
 
 export function DialogShell({
@@ -167,46 +257,42 @@ export function DialogShell({
   formProps,
   children,
 }: DialogShellProps) {
-  const dialogRef = useRef<HTMLDivElement>(null)
-  useFocusTrap(dialogRef, isOpen && !disableFocusManagement, initialFocusRef)
-  const setFormRef = useCallback((node: HTMLFormElement | null) => {
-    dialogRef.current = node as HTMLDivElement | null
-  }, [])
+  const { dialogRef, setFormRef } = useDialogPanelRef({
+    isFocusTrapActive: isOpen && !disableFocusManagement,
+    initialFocusRef: initialFocusRef,
+  })
 
   useEscapeToClose({ isOpen: isOpen, nonDismissible: nonDismissible, onClose: onClose })
 
   if (!isOpen) return null
 
-  const dialogStyle = resolveDialogStyle({
+  const sizing: DialogSizing = {
     maxWidth: maxWidth,
     panelWidth: panelWidth,
     panelHeight: panelHeight,
     fillMaxWidth: fillMaxWidth,
     panelPadding: panelPadding,
-  })
+  }
 
   return createPortal(
-    <div
-      className={withOptionalClassName(styles.backdrop, backdropClassName)}
-      data-testid={testId}
-      onClick={(event) =>
-        closeOnBackdropClick(event, { nonDismissible: nonDismissible, onClose: onClose })
-      }
-      role="dialog"
-      aria-modal="true"
-      aria-label={ariaLabel}
+    <DialogBackdrop
+      className={backdropClassName}
+      testId={testId}
+      ariaLabel={ariaLabel}
+      dismiss={{ nonDismissible: nonDismissible, onClose: onClose }}
     >
       <DialogPanel
+        layout={panelLayoutOf(sizing)}
         formProps={formProps}
-        className={withOptionalClassName(`${ELEVATED_SURFACE} ${styles.dialog}`, panelClassName)}
-        style={dialogStyle}
+        className={resolvePanelClassName(sizing, panelClassName)}
+        style={resolveDialogStyle(sizing)}
         testId={panelTestIdFor(testId)}
         panelRef={dialogRef}
         setFormRef={setFormRef}
       >
         {children}
       </DialogPanel>
-    </div>,
+    </DialogBackdrop>,
     portalRoot ?? document.body
   )
 }

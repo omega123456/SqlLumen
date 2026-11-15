@@ -3,7 +3,13 @@ import { Info } from '@phosphor-icons/react'
 import { Button } from '../common/Button'
 import { TextInput } from '../common/TextInput'
 import { DialogShell } from './DialogShell'
-import styles from './CopyToHostDialog.module.css'
+import {
+  DIALOG_HEADER,
+  DIALOG_HEADER_TITLE,
+  DIALOG_SECTION_FIELD_GROUP,
+  DIALOG_SECTION_FIELD_LABEL,
+} from '../../lib/class-names-dialog'
+import { SCROLLBAR, joinClassNames } from '../../lib/class-names'
 import { isCancelInFlight, isTerminalJobStatus } from '../../lib/job-progress'
 import {
   DEFAULT_COPY_OPTIONS,
@@ -32,13 +38,13 @@ export default function CopyToHostDialog(props: CopyToHostDialogProps) {
 
 function CopyDialogHeader({ isCopying, onClose }: { isCopying: boolean; onClose: () => void }) {
   return (
-    <div className={styles.header}>
-      <h2 className={styles.title}>Copy to another host</h2>
+    <div className={joinClassNames([DIALOG_HEADER, 'shrink-0'])}>
+      <h2 className={DIALOG_HEADER_TITLE}>Copy to another host</h2>
       {!isCopying && (
         <Button
           variant="subtle"
-          size="sm"
-          className={styles.closeButton}
+          iconOnly
+          className="svg:size-5"
           onClick={onClose}
           aria-label="Close"
           data-testid="copy-close-button"
@@ -60,8 +66,8 @@ interface CopySourceSectionProps {
 function CopySourceSection({ connectionLabel, database }: CopySourceSectionProps) {
   return (
     <Section title="Source" testId="copy-source-section">
-      <div className={styles.fieldGroup}>
-        <label className={styles.fieldLabel} htmlFor="copy-source-connection">
+      <div className={DIALOG_SECTION_FIELD_GROUP}>
+        <label className={DIALOG_SECTION_FIELD_LABEL} htmlFor="copy-source-connection">
           Connection
         </label>
         <TextInput
@@ -72,8 +78,8 @@ function CopySourceSection({ connectionLabel, database }: CopySourceSectionProps
           data-testid="copy-source-connection"
         />
       </div>
-      <div className={styles.fieldGroup}>
-        <label className={styles.fieldLabel} htmlFor="copy-source-database">
+      <div className={DIALOG_SECTION_FIELD_GROUP}>
+        <label className={DIALOG_SECTION_FIELD_LABEL} htmlFor="copy-source-database">
           Database
         </label>
         <TextInput
@@ -90,9 +96,13 @@ function CopySourceSection({ connectionLabel, database }: CopySourceSectionProps
 
 function CopyFooterHint() {
   return (
-    <div className={styles.footer}>
-      <Info size={18} weight="fill" className={styles.footerIcon} />
-      <p className={styles.footerText}>
+    <div className="flex shrink-0 items-center gap-2 border-t border-light-stroke-divider bg-light-surface p-6 dark:border-dark-stroke-divider dark:bg-dark-surface">
+      <Info
+        size={18}
+        weight="fill"
+        className="shrink-0 text-light-primary dark:text-dark-primary"
+      />
+      <p className="font-body text-caption text-light-on-surface-variant dark:text-dark-on-surface-variant">
         Foreign-key checks are disabled on the target during the copy and restored afterward.
       </p>
     </div>
@@ -125,7 +135,12 @@ function CopyDialogSections(sections: CopyDialogSectionsProps) {
   const { props, target, newDatabaseInputRef, sourceObjects, options } = sections
   const { targetSelection, setTargetSelection } = target
   return (
-    <div className={styles.body}>
+    <div
+      className={joinClassNames([
+        'flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto px-6 pt-3 pb-6',
+        SCROLLBAR,
+      ])}
+    >
       <CopySourceSection
         connectionLabel={props.sourceConnectionLabel}
         database={props.sourceDatabase}
@@ -226,7 +241,7 @@ function CopyToHostDialogBody(props: CopyToHostDialogProps) {
       disableFocusManagement={skipFocusManagement}
       nonDismissible={isCopying}
     >
-      <div className={styles.root}>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-overlay bg-light-surface-container-low dark:bg-dark-surface-container-low">
         <CopyDialogHeader isCopying={isCopying} onClose={onClose} />
         <CopyDialogSections
           props={props}

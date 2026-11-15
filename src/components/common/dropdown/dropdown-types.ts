@@ -17,11 +17,11 @@ export interface DropdownOption<TValue extends string = string> {
 
 export type DropdownPlacement = 'top' | 'bottom'
 
-export type DropdownTriggerSize = 'md' | 'sm' | 'cell' | 'monoCell' | 'field'
+export type DropdownTriggerSize = 'md' | 'sm' | 'cell' | 'monoCell' | 'field' | 'filter'
 
 export type DropdownTriggerWidth = 'fill' | 'auto' | 'combo'
 
-export type DropdownTriggerChrome = 'field' | 'gridCell' | 'gridCellOverlay'
+export type DropdownTriggerChrome = 'field' | 'dialogField' | 'gridCell' | 'gridCellOverlay'
 
 export type DropdownFieldState = FieldValueState
 

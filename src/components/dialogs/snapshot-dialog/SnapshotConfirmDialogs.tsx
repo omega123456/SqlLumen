@@ -1,7 +1,6 @@
 import { ConfirmDialog } from '../ConfirmDialog'
 import { formatSnapshotTimestamp } from '../../../lib/snapshot-format'
 import type { SnapshotSummary } from '../../../lib/session-snapshot-commands'
-import styles from '../SnapshotDialog.module.css'
 
 export type ConfirmState =
   | { kind: 'create' }
@@ -21,7 +20,9 @@ function RestoreConfirmMessage({ confirm }: { confirm: ConfirmState }) {
       Replace your current connections and tabs with the state from{' '}
       <strong>{formatSnapshotTimestamp(confirm.snapshot.createdAt)}</strong>?
       {confirm.unsavedCount > 0 && (
-        <span className={styles.unsavedWarning}>{unsavedChangesWarning(confirm.unsavedCount)}</span>
+        <span className="mt-2 block text-light-error dark:text-dark-error">
+          {unsavedChangesWarning(confirm.unsavedCount)}
+        </span>
       )}
     </>
   )

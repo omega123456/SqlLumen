@@ -8,7 +8,32 @@ import type {
 } from '../../../lib/sql-dump-commands'
 import { progressPercent } from '../../../lib/job-progress'
 import type { TableSelection } from '../sql-dump-selection'
-import styles from '../SqlDumpDialog.module.css'
+import { joinClassNames } from '../../../lib/class-names'
+import {
+  DIALOG_BROWSE_BUTTON,
+  DIALOG_CHECKBOX_LABEL,
+  DIALOG_CLOSE_BUTTON,
+  DIALOG_DESTINATION_GROUP,
+  DIALOG_DESTINATION_INPUT,
+  DIALOG_DESTINATION_PREFIX,
+  DIALOG_JOB_FOOTER_GRID,
+  DIALOG_CHECKBOX_ROW,
+  DIALOG_FORM_FIELD,
+  DIALOG_FORM_LABEL,
+  DIALOG_HEADER,
+  DIALOG_HEADER_TITLE,
+  DIALOG_INLINE_ERROR_BOX,
+  DIALOG_LOADING,
+  DIALOG_OBJECT_CATEGORY_LABEL,
+  DIALOG_OBJECT_COUNT,
+  DIALOG_OBJECT_GROUP_HEADER,
+  DIALOG_OBJECT_NAME,
+  DIALOG_OBJECT_TREE,
+  DIALOG_PROGRESS_COUNT,
+  DIALOG_PROGRESS_LABEL,
+  DIALOG_PROGRESS_PANEL,
+  DIALOG_PROGRESS_TRACK,
+} from '../../../lib/class-names-dialog'
 
 function objectCountLabel(count: number): string {
   return `${count} ${count === 1 ? 'object' : 'objects'}`
@@ -23,14 +48,14 @@ interface DumpOptionCheckboxProps {
 
 function DumpOptionCheckbox({ id, label, checked, onChange }: DumpOptionCheckboxProps) {
   return (
-    <div className={styles.checkboxRow}>
+    <div className={DIALOG_CHECKBOX_ROW}>
       <Checkbox
         id={id}
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
         data-testid={id}
       />
-      <label htmlFor={id} className={styles.checkboxLabel}>
+      <label htmlFor={id} className={DIALOG_CHECKBOX_LABEL}>
         {label}
       </label>
     </div>
@@ -56,8 +81,8 @@ function DatabaseObjectGroup({
   const someSelected = selectedCount > 0 && !allSelected
 
   return (
-    <div className={styles.objectGroup}>
-      <div className={styles.objectGroupHeader}>
+    <div className="mb-1">
+      <div className={joinClassNames([DIALOG_OBJECT_GROUP_HEADER, 'cursor-pointer'])}>
         <Checkbox
           checked={allSelected}
           ref={(element) => {
@@ -66,18 +91,18 @@ function DatabaseObjectGroup({
           onChange={() => onToggleDatabase(database.name)}
           data-testid={`dump-db-${database.name}`}
         />
-        <span className={styles.objectGroupLabel}>{database.name}</span>
-        <span className={styles.objectGroupCount}>({objectCountLabel(tableCount)})</span>
+        <span className={DIALOG_OBJECT_CATEGORY_LABEL}>{database.name}</span>
+        <span className={DIALOG_OBJECT_COUNT}>({objectCountLabel(tableCount)})</span>
       </div>
       {database.tables.map((table) => (
-        <div key={table.name} className={styles.objectItem}>
+        <div key={table.name} className="flex items-center gap-2 py-0.5 pl-6">
           <Checkbox
             checked={selectedTableNames?.has(table.name) ?? false}
             onChange={() => onToggleTable(database.name, table.name)}
             data-testid={`dump-table-${database.name}-${table.name}`}
           />
-          <span className={styles.objectItemLabel}>{table.name}</span>
-          <span className={styles.objectItemType}>{table.objectType}</span>
+          <span className={DIALOG_OBJECT_NAME}>{table.name}</span>
+          <span className={DIALOG_OBJECT_COUNT}>{table.objectType}</span>
         </div>
       ))}
     </div>
@@ -103,23 +128,26 @@ function DumpObjectList({
 }: DumpObjectListProps) {
   if (loadingObjects) {
     return (
-      <div className={styles.loadingObjects} data-testid="dump-loading-objects">
+      <div className={DIALOG_LOADING} data-testid="dump-loading-objects">
         Loading objects...
       </div>
     )
   }
   if (loadError) {
     return (
-      <div className={styles.error} data-testid="dump-load-error">
+      <div className={DIALOG_INLINE_ERROR_BOX} data-testid="dump-load-error">
         {loadError}
       </div>
     )
   }
   if (databases.length === 0) {
-    return <div className={styles.loadingObjects}>No databases found</div>
+    return <div className={DIALOG_LOADING}>No databases found</div>
   }
   return (
-    <div className={styles.objectTree} data-testid="dump-object-tree">
+    <div
+      className={joinClassNames([DIALOG_OBJECT_TREE, 'max-h-60'])}
+      data-testid="dump-object-tree"
+    >
       {databases.map((database) => (
         <DatabaseObjectGroup
           key={database.name}
@@ -146,20 +174,28 @@ function selectionCountSuffix(selectedCount: number): string {
 export function DumpProgressPanel({ progress }: { progress: DumpJobProgress }) {
   const tablesPercent = progressPercent(progress.tablesDone, progress.tablesTotal)
   return (
-    <div className={styles.progressSection} data-testid="dump-progress">
-      <div className={styles.progressRow}>
-        <span className={styles.progressLabel}>Tables</span>
-        <div className={styles.progressBar}>
-          <div className={styles.progressFill} style={{ width: `${tablesPercent}%` }} />
+    <div className={DIALOG_PROGRESS_PANEL} data-testid="dump-progress">
+      <div className="flex items-center gap-2.5">
+        <span className={joinClassNames([DIALOG_PROGRESS_LABEL, 'min-w-12'])}>Tables</span>
+        <div className={joinClassNames([DIALOG_PROGRESS_TRACK, 'flex-1'])}>
+          <div
+            className="h-full rounded-track bg-light-primary transition-width duration-300 dark:bg-dark-primary"
+            style={{ width: `${tablesPercent}%` }}
+          />
         </div>
-        <span className={styles.progressCount}>
+        <span className={joinClassNames([DIALOG_PROGRESS_COUNT, 'min-w-12 text-right'])}>
           {progress.tablesDone} / {progress.tablesTotal}
         </span>
       </div>
       {progress.currentTable && (
-        <div className={styles.progressRow}>
-          <span className={styles.progressLabel}>{progress.currentTable}</span>
-          <span className={styles.rowCount} data-testid="dump-row-count">
+        <div className="flex items-center gap-2.5">
+          <span className={joinClassNames([DIALOG_PROGRESS_LABEL, 'min-w-12'])}>
+            {progress.currentTable}
+          </span>
+          <span
+            className="ml-auto font-mono text-size-caption font-semibold tabular-nums text-light-primary dark:text-dark-primary"
+            data-testid="dump-row-count"
+          >
             {progress.rowsExported.toLocaleString()} rows
           </span>
         </div>
@@ -174,8 +210,11 @@ export function DumpFooterMessage({ schemaOnly }: { schemaOnly: boolean }) {
   }
   return (
     <>
-      Only <span className={styles.footerTextBold}>DDL statements</span> will be exported (no data).
-      Useful for version-controlling schema changes.
+      Only{' '}
+      <span className="font-semibold text-light-on-surface dark:text-dark-on-surface">
+        DDL statements
+      </span>{' '}
+      will be exported (no data). Useful for version-controlling schema changes.
     </>
   )
 }
@@ -199,7 +238,7 @@ export function DumpActions({
 }: DumpActionsProps) {
   if (isExporting) {
     return (
-      <div className={styles.actions}>
+      <div className={DIALOG_JOB_FOOTER_GRID}>
         <Button
           type="button"
           onClick={onCancelExport}
@@ -212,7 +251,7 @@ export function DumpActions({
     )
   }
   return (
-    <div className={styles.actions}>
+    <div className={DIALOG_JOB_FOOTER_GRID}>
       <Button
         type="button"
         variant="accent"
@@ -249,9 +288,9 @@ interface DumpOptionsGroupProps {
 
 export function DumpOptionsGroup({ options, onChange }: DumpOptionsGroupProps) {
   return (
-    <div className={styles.fieldGroup}>
-      <span className={styles.label}>Options</span>
-      <div className={styles.optionsRow}>
+    <div className={DIALOG_FORM_FIELD}>
+      <span className={DIALOG_FORM_LABEL}>Options</span>
+      <div className="flex flex-wrap gap-4">
         {DUMP_OPTION_SPECS.map((spec) => (
           <DumpOptionCheckbox
             key={spec.id}
@@ -278,17 +317,17 @@ export function DumpDestinationField({
   onBrowse,
 }: DumpDestinationFieldProps) {
   return (
-    <div className={styles.fieldGroup}>
-      <label className={styles.label} htmlFor="dump-file-path">
+    <div className={DIALOG_FORM_FIELD}>
+      <label className={DIALOG_FORM_LABEL} htmlFor="dump-file-path">
         Destination
       </label>
-      <div className={styles.destinationGroup}>
-        <span className={styles.destinationPrefix}>.sql</span>
+      <div className={DIALOG_DESTINATION_GROUP}>
+        <span className={DIALOG_DESTINATION_PREFIX}>.sql</span>
         <TextInput
           id="dump-file-path"
           variant="bare"
           type="text"
-          className={styles.destinationInput}
+          className={DIALOG_DESTINATION_INPUT}
           value={filePath}
           onChange={(event) => onFilePathChange(event.target.value)}
           placeholder="database_dump.sql"
@@ -296,7 +335,7 @@ export function DumpDestinationField({
         />
         <Button
           variant="bare"
-          className={styles.browseButton}
+          className={DIALOG_BROWSE_BUTTON}
           onClick={onBrowse}
           aria-label="Browse"
           data-testid="dump-browse-button"
@@ -318,10 +357,15 @@ interface DumpDialogHeaderProps {
 
 export function DumpDialogHeader({ schemaOnly, isExporting, onClose }: DumpDialogHeaderProps) {
   return (
-    <div className={styles.header}>
-      <h2 className={styles.title}>{dumpDialogTitle(schemaOnly)}</h2>
+    <div className={DIALOG_HEADER}>
+      <h2 className={DIALOG_HEADER_TITLE}>{dumpDialogTitle(schemaOnly)}</h2>
       {!isExporting && (
-        <Button variant="bare" className={styles.closeButton} onClick={onClose} aria-label="Close">
+        <Button
+          variant="bare"
+          className={joinClassNames([DIALOG_CLOSE_BUTTON, 'svg:size-5'])}
+          onClick={onClose}
+          aria-label="Close"
+        >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path d="M18 6L6 18M6 6l12 12" />
           </svg>
@@ -338,8 +382,10 @@ interface ObjectsToExportFieldProps {
 
 export function ObjectsToExportField({ selectedCount, listProps }: ObjectsToExportFieldProps) {
   return (
-    <div className={styles.fieldGroup}>
-      <span className={styles.label}>Objects to Export{selectionCountSuffix(selectedCount)}</span>
+    <div className={DIALOG_FORM_FIELD}>
+      <span className={DIALOG_FORM_LABEL}>
+        Objects to Export{selectionCountSuffix(selectedCount)}
+      </span>
       <DumpObjectList {...listProps} />
     </div>
   )
@@ -348,7 +394,7 @@ export function ObjectsToExportField({ selectedCount, listProps }: ObjectsToExpo
 export function DumpErrorMessage({ error }: { error: string | null }) {
   if (!error) return null
   return (
-    <div className={styles.error} data-testid="dump-error">
+    <div className={DIALOG_INLINE_ERROR_BOX} data-testid="dump-error">
       {error}
     </div>
   )

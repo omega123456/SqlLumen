@@ -9,7 +9,7 @@ import {
 import { Textarea } from '../common/Textarea'
 import { Button } from '../common/Button'
 import { parsePastedBytes } from '../../lib/blob-utils'
-import styles from './BlobPastePopover.module.css'
+import { joinClassNames } from '../../lib/class-names'
 import { isTargetInside } from '../../lib/input-events'
 
 const FOCUSABLE_SELECTOR = [
@@ -35,6 +35,13 @@ function isFocusableElement(element: HTMLElement): boolean {
 }
 
 type PopoverPlacement = 'below' | 'above'
+
+const POPOVER_PLACEMENT_CLASSES: Record<PopoverPlacement, string> = {
+  below:
+    'top-popover-offset before:-top-2.25 before:border-b-9 before:border-b-light-primary-a35 after:-top-2 after:border-b-8 after:border-b-light-surface-container-high dark:before:border-b-dark-primary-a35 dark:after:border-b-dark-surface-container-high',
+  above:
+    'bottom-popover-offset before:-bottom-2.25 before:border-t-9 before:border-t-light-primary-a35 after:-bottom-2 after:border-t-8 after:border-t-light-surface-container-high dark:before:border-t-dark-primary-a35 dark:after:border-t-dark-surface-container-high',
+}
 
 const PASTE_INPUT_ROWS = 4
 
@@ -151,7 +158,9 @@ interface PasteFormProps {
 function PasteForm({ text, onTextChange, textareaRef, onLoad }: PasteFormProps) {
   return (
     <>
-      <span className={styles.title}>Paste base64 or hex</span>
+      <span className="text-size-caption font-semibold text-light-on-surface dark:text-dark-on-surface">
+        Paste base64 or hex
+      </span>
       <Textarea
         ref={textareaRef}
         variant="mono"
@@ -162,8 +171,10 @@ function PasteForm({ text, onTextChange, textareaRef, onLoad }: PasteFormProps) 
         aria-label="Paste base64 or hex"
         data-testid="blob-paste-input"
       />
-      <div className={styles.footer}>
-        <span className={styles.hint}>Accepts base64 or hex</span>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant">
+          Accepts base64 or hex
+        </span>
         <Button variant="accent" onClick={onLoad} data-testid="blob-paste-apply">
           Load
         </Button>
@@ -218,9 +229,10 @@ export function BlobPastePopover({
   return (
     <div
       ref={popoverRef}
-      className={
-        placement === 'above' ? `${styles.popover} ${styles.popoverAbove}` : styles.popover
-      }
+      className={joinClassNames([
+        'absolute left-0 z-10 flex w-80 max-w-viewport-cap flex-col gap-2 rounded-overlay border border-light-stroke-flyout bg-light-surface-container-high p-3 shadow-light-flyout before:pointer-events-none before:absolute before:left-8.5 before:size-0 before:border-x-8 before:border-x-transparent after:pointer-events-none after:absolute after:left-8.5 after:size-0 after:border-x-8 after:border-x-transparent dark:border-dark-stroke-flyout dark:bg-dark-surface-container-high dark:shadow-dark-flyout',
+        POPOVER_PLACEMENT_CLASSES[placement],
+      ])}
       role="dialog"
       aria-label="Paste base64 or hex"
       onKeyDown={handleKeyDown}

@@ -6,7 +6,13 @@ import { useDatabaseEncoding } from '../../hooks/useDatabaseEncoding'
 import { DialogShell } from './DialogShell'
 import { EncodingFields } from './EncodingFields'
 import { showErrorToast } from '../../stores/toast-store'
-import styles from './CreateDatabaseDialog.module.css'
+import {
+  DIALOG_ERROR_BOX,
+  DIALOG_FIELD_GROUP,
+  DIALOG_FIELD_LABEL,
+  DIALOG_FOOTER_ACTIONS,
+  DIALOG_TITLE,
+} from '../../lib/class-names-dialog'
 import { MYSQL_IDENTIFIER_MAX_LENGTH } from '../../lib/sql-utils'
 import { toErrorMessage } from '../../lib/error-message'
 import { isPlaywrightBuild } from '../../lib/tauri-env'
@@ -117,8 +123,8 @@ interface DatabaseNameFieldProps {
 
 function DatabaseNameField({ name, nameError, onChange }: DatabaseNameFieldProps) {
   return (
-    <div className={styles.formGroup}>
-      <label className={styles.label} htmlFor="create-db-name">
+    <div className={DIALOG_FIELD_GROUP}>
+      <label className={DIALOG_FIELD_LABEL} htmlFor="create-db-name">
         Database name
       </label>
       <TextInput
@@ -133,7 +139,10 @@ function DatabaseNameField({ name, nameError, onChange }: DatabaseNameFieldProps
         data-testid="create-db-name-input"
       />
       {nameError && (
-        <div className={styles.validationError} data-testid="create-db-name-error">
+        <div
+          className="mt-1 text-size-caption text-light-error dark:text-dark-error"
+          data-testid="create-db-name-error"
+        >
           {nameError}
         </div>
       )}
@@ -167,21 +176,21 @@ export function CreateDatabaseDialog({
       formProps={{ onSubmit: form.handleFormSubmit }}
     >
       <div
-        className={styles.encodingRoot}
+        className="contents"
         data-testid="create-db-form"
         aria-busy={encoding.isLoading ? true : undefined}
       >
-        <h2 className={styles.title}>Create database</h2>
+        <h2 className={DIALOG_TITLE}>Create database</h2>
         <DatabaseNameField name={name} nameError={nameError} onChange={form.changeName} />
         <EncodingFields idPrefix="create-db" encoding={encoding} />
 
         {error && (
-          <div className={styles.error} data-testid="create-db-error">
+          <div className={DIALOG_ERROR_BOX} data-testid="create-db-error">
             {error}
           </div>
         )}
 
-        <div className={styles.actions}>
+        <div className={DIALOG_FOOTER_ACTIONS}>
           <Button
             variant="accent"
             type="submit"

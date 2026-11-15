@@ -12,7 +12,7 @@ export type ButtonVariant =
   | 'danger'
   | 'bare'
 
-export type ButtonSize = 'md' | 'sm' | 'xs' | 'cell' | 'toolbar'
+export type ButtonSize = 'md' | 'sm' | 'xs' | 'tiny' | 'cell' | 'toolbar'
 
 type StyledButtonVariant = Exclude<ButtonVariant, 'bare'>
 type ButtonTextTone =
@@ -119,6 +119,10 @@ const SIZE_CLASSES: Record<ButtonSize, Record<ButtonShape, string>> = {
   xs: {
     labelled: 'h-6 gap-1.5 px-2.5 align-middle text-size-row leading-5',
     iconOnly: 'size-6 gap-1.5 px-0 align-middle text-size-row leading-5',
+  },
+  tiny: {
+    labelled: 'h-5 gap-1.5 px-2.5 text-size-row leading-5',
+    iconOnly: 'size-5 gap-1.5 px-0 text-size-row leading-5',
   },
   cell: {
     labelled: 'h-7.5 gap-2 px-3 text-size-row leading-5',

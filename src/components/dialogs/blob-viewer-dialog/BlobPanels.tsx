@@ -7,7 +7,24 @@ import {
   type BlobTab,
   type WorkingValue,
 } from './blob-working-value'
-import styles from '../BlobViewerDialog.module.css'
+import { joinClassNames, SCROLLBAR } from '../../../lib/class-names'
+
+type StateTone = 'null' | 'muted' | 'warning'
+
+const STATE_TONE_CLASSES: Record<StateTone, string> = {
+  null: 'text-light-outline dark:text-dark-outline',
+  muted: 'text-light-on-surface-variant dark:text-dark-on-surface-variant',
+  warning: 'text-light-warning dark:text-dark-warning',
+}
+
+function stateClassName(tone: StateTone): string {
+  return joinClassNames([
+    'flex flex-1 flex-col items-center justify-center gap-2 p-4 text-center',
+    STATE_TONE_CLASSES[tone],
+  ])
+}
+
+const SKELETON_BAR_WIDTHS = ['', 'w-4/5', 'w-3/5']
 
 interface BytesPanelProps {
   objectUrl: string | null
@@ -19,22 +36,32 @@ interface BytesPanelProps {
 function ImagePanel({ objectUrl, columnLabel }: BytesPanelProps) {
   if (!objectUrl) {
     return (
-      <div className={styles.notImageState} data-testid="blob-not-image">
+      <div className={stateClassName('muted')} data-testid="blob-not-image">
         <ImageIcon size={40} weight="thin" />
-        <span className={styles.stateTitle}>Not a valid image</span>
+        <span className="text-size-caption font-semibold">Not a valid image</span>
       </div>
     )
   }
   return (
-    <div className={styles.imagePanel} data-testid="blob-image">
-      <img className={styles.image} src={objectUrl} alt={`${columnLabel} contents`} />
+    <div className="flex flex-1 items-center justify-center p-4" data-testid="blob-image">
+      <img
+        className="max-h-full max-w-full object-contain"
+        src={objectUrl}
+        alt={`${columnLabel} contents`}
+      />
     </div>
   )
 }
 
 function TextPanel({ textContent }: BytesPanelProps) {
   return (
-    <pre className={styles.textPanel} data-testid="blob-text">
+    <pre
+      className={joinClassNames([
+        'flex-1 overflow-auto px-4 py-3 font-mono text-size-caption leading-5 whitespace-pre-wrap wrap-anywhere text-light-on-surface dark:text-dark-on-surface',
+        SCROLLBAR,
+      ])}
+      data-testid="blob-text"
+    >
       {textContent}
     </pre>
   )
@@ -42,19 +69,23 @@ function TextPanel({ textContent }: BytesPanelProps) {
 
 function HexPanel({ hexRows }: BytesPanelProps) {
   return (
-    <div className={styles.hexPanel} data-testid="blob-hex">
+    <div className="flex-1 px-4 py-3 font-mono text-size-caption leading-5" data-testid="blob-hex">
       {hexRows.map((row) => (
-        <div className={styles.hexRow} key={row.offset}>
-          <span className={styles.hexOffset}>{row.offset}</span>
-          <span className={styles.hexBytes}>
-            <span className={styles.hexGroup}>
+        <div className="flex gap-4 whitespace-pre" key={row.offset}>
+          <span className="text-light-on-surface-variant dark:text-dark-on-surface-variant">
+            {row.offset}
+          </span>
+          <span className="flex gap-3 text-light-on-surface dark:text-dark-on-surface">
+            <span className="whitespace-pre">
               {row.hexBytes.slice(0, HEX_DUMP_GROUP_SIZE).join(' ')}
             </span>
-            <span className={styles.hexGroup}>
+            <span className="whitespace-pre">
               {row.hexBytes.slice(HEX_DUMP_GROUP_SIZE).join(' ')}
             </span>
           </span>
-          <span className={styles.hexAscii}>{row.ascii}</span>
+          <span className="text-light-on-surface-variant dark:text-dark-on-surface-variant">
+            {row.ascii}
+          </span>
         </div>
       ))}
     </div>
@@ -77,19 +108,29 @@ export function BlobPanelBody({ loading, working, activeTab, ...bytesPanel }: Bl
   const isAwaitingValue = loading || !working
   if (isAwaitingValue) {
     return (
-      <div className={styles.skeleton} data-testid="blob-loading" aria-label="Loading">
-        <div className={styles.skeletonBar} />
-        <div className={styles.skeletonBar} />
-        <div className={styles.skeletonBar} />
+      <div
+        className="flex flex-1 flex-col gap-3 p-4"
+        data-testid="blob-loading"
+        aria-label="Loading"
+      >
+        {SKELETON_BAR_WIDTHS.map((widthClassName) => (
+          <div
+            key={widthClassName}
+            className={joinClassNames([
+              'h-4 rounded-control bg-light-fill-neutral-selected dark:bg-dark-fill-neutral-selected',
+              widthClassName,
+            ])}
+          />
+        ))}
       </div>
     )
   }
   if (working.kind === 'tooLarge') {
     return (
-      <div className={styles.warningState} data-testid="blob-too-large-content">
+      <div className={stateClassName('warning')} data-testid="blob-too-large-content">
         <WarningCircleIcon size={40} weight="thin" />
-        <span className={styles.stateTitle}>Preview limit reached</span>
-        <span className={styles.stateSub}>
+        <span className="text-size-caption font-semibold">Preview limit reached</span>
+        <span className="max-w-state-message text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant">
           Exceeds the 10 MB preview limit. Save to file to access the full content.
         </span>
       </div>
@@ -97,18 +138,20 @@ export function BlobPanelBody({ loading, working, activeTab, ...bytesPanel }: Bl
   }
   if (working.kind === 'null') {
     return (
-      <div className={styles.nullState} data-testid="blob-null-state">
+      <div className={stateClassName('null')} data-testid="blob-null-state">
         <ProhibitIcon size={40} weight="thin" />
-        <span className={styles.stateTitle}>NULL value</span>
-        <span className={styles.stateSub}>This cell contains no data.</span>
+        <span className="text-size-caption font-semibold">NULL value</span>
+        <span className="max-w-state-message text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant">
+          This cell contains no data.
+        </span>
       </div>
     )
   }
   if (!hasBytes(working.bytes)) {
     return (
-      <div className={styles.emptyState} data-testid="blob-empty-state">
+      <div className={stateClassName('muted')} data-testid="blob-empty-state">
         <EraserIcon size={40} weight="thin" />
-        <span className={styles.stateTitle}>Empty — {formatBytes(0)}</span>
+        <span className="text-size-caption font-semibold">Empty — {formatBytes(0)}</span>
       </div>
     )
   }

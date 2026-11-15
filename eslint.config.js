@@ -86,6 +86,14 @@ const TAILWIND_CLASS_RULE_FILES = [
   'src/components/table-designer/*.tsx',
   'src/components/table-designer/**/*.ts',
   'src/components/table-designer/**/*.tsx',
+  'src/components/dialogs/*.tsx',
+  'src/components/dialogs/**/*.ts',
+  'src/components/dialogs/**/*.tsx',
+  'src/components/connection-dialog/*.tsx',
+  'src/components/connection-dialog/**/*.ts',
+  'src/components/connection-dialog/**/*.tsx',
+  'src/lib/class-names-dialog.ts',
+  'src/lib/class-names-connection-form.ts',
 ]
 const localRulesPlugin = {
   rules: { ...namedConditionsPlugin.rules, ...tailwindRulesPlugin.rules },
