@@ -1,6 +1,5 @@
 import type { WorkspaceTab } from '../../types/schema'
 import type { WorkspaceTabStackGroup, WorkspaceTabStackKey } from '../../lib/workspace-tab-stacks'
-import styles from './WorkspaceGroupRail.module.css'
 import {
   pinnedKey,
   railClassName,
@@ -93,7 +92,7 @@ export function WorkspaceGroupRail(props: WorkspaceGroupRailProps) {
     >
       <div
         ref={markerRef}
-        className={styles.marker}
+        className="pointer-events-none absolute top-0 left-0 h-6 w-0.5 rounded-marker bg-light-on-surface motion-safe:data-animate:transition-transform motion-safe:data-animate:duration-170 motion-safe:data-animate:ease-rail dark:bg-dark-on-surface"
         hidden={!selectedKey}
         aria-hidden="true"
         data-testid="workspace-group-rail-marker"

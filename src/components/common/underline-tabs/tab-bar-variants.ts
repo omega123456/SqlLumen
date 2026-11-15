@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 
-export type UnderlineTabVariant = 'default' | 'selector' | 'document'
+export type UnderlineTabBarVariant = 'default' | 'selector' | 'document'
+
+export type UnderlineTabVariant = UnderlineTabBarVariant | 'connection'
 
 export type UnderlineTabRowHeight = 'default' | 'tall'
 
@@ -11,6 +13,6 @@ export interface UnderlineTabBarProps {
   prefix?: ReactNode
   suffix?: ReactNode
   scrollable?: boolean
-  variant?: UnderlineTabVariant
+  variant?: UnderlineTabBarVariant
   rowHeight?: UnderlineTabRowHeight
 }

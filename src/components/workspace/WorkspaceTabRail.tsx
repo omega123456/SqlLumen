@@ -4,7 +4,6 @@ import { useWorkspaceStore } from '../../stores/workspace-store'
 import { TabContextMenu } from '../shared/TabContextMenu'
 import { usePointerTabDrag } from '../shared/use-pointer-tab-drag'
 import { isPinnedWorkspaceTab } from '../../lib/workspace-tab-stacks'
-import styles from './WorkspaceTabs.module.css'
 import {
   WORKSPACE_TAB_TEST_ID_PREFIX,
   focusWorkspaceTab,
@@ -111,7 +110,7 @@ export function WorkspaceTabRail(props: WorkspaceTabRailProps) {
   const { contextMenu } = menu
 
   return (
-    <div ref={railRef} className={styles.workspaceTabRailGroup}>
+    <div ref={railRef} className="contents">
       {tabs.map((tab) => (
         <WorkspaceRailTab
           key={tab.id}

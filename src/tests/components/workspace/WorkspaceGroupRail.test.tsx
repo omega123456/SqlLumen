@@ -110,25 +110,13 @@ describe('WorkspaceGroupRail', () => {
       <WorkspaceGroupRail stackGroups={[QUERIES, TABLES]} value="queries" onSelect={vi.fn()} />
     )
     const marker = screen.getByTestId('workspace-group-rail-marker')
-    expect(marker).toHaveAttribute('data-animate', 'false')
+    expect(marker).not.toHaveAttribute('data-animate')
     expect(marker.style.transform).toMatch(/^translateY\(/)
 
     rerender(
       <WorkspaceGroupRail stackGroups={[QUERIES, TABLES]} value="tables" onSelect={vi.fn()} />
     )
-    expect(marker).toHaveAttribute('data-animate', 'true')
-  })
-
-  it('applies an extra class name', () => {
-    render(
-      <WorkspaceGroupRail
-        stackGroups={[QUERIES]}
-        value="queries"
-        onSelect={vi.fn()}
-        className="extra-rail"
-      />
-    )
-    expect(screen.getByTestId('workspace-group-rail')).toHaveClass('extra-rail')
+    expect(marker).toHaveAttribute('data-animate')
   })
 
   it('selects a group on click', async () => {

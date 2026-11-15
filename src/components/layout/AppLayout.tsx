@@ -32,7 +32,6 @@ import {
 } from '../query-editor/sql-parser-utils'
 import { buildExecuteQueryPlan, runExecuteQueryPlan } from '../../lib/query-execution-plan'
 import { CommandPalette } from '../command-palette/CommandPalette'
-import styles from './AppLayout.module.css'
 
 import { logFrontend, logFrontendError } from '../../lib/app-log-commands'
 import { isAiLockStatus } from '../../lib/query-tab-status'
@@ -313,20 +312,23 @@ function MainPanels() {
     sidebarPanelRef.current?.resize('20%')
   }
   return (
-    <div className={styles.mainContent}>
-      <Group orientation="horizontal" className={styles.panelGroup}>
+    <div className="min-h-0 flex-1 overflow-hidden bg-light-surface-container dark:bg-dark-surface-container">
+      <Group orientation="horizontal" className="h-full">
         <Panel
           panelRef={sidebarPanelRef}
           id="sidebar"
           defaultSize="20%"
           minSize="12%"
           maxSize="37%"
-          className={styles.sidebarPanel}
+          className="overflow-hidden"
         >
           <Sidebar />
         </Panel>
-        <Separator className={styles.resizeHandle} onDoubleClick={handleSeparatorDoubleClick} />
-        <Panel id="workspace" className={styles.workspacePanel} style={{ overflow: 'visible' }}>
+        <Separator
+          className="relative z-0 w-resize-handle shrink-0 cursor-col-resize bg-transparent transition-bg duration-150 hover:bg-light-primary resize-dragging:bg-light-primary dark:hover:bg-dark-primary dark:resize-dragging:bg-dark-primary"
+          onDoubleClick={handleSeparatorDoubleClick}
+        />
+        <Panel id="workspace" className="min-h-0" style={{ overflow: 'visible' }}>
           <WorkspaceArea />
         </Panel>
       </Group>
@@ -365,7 +367,7 @@ export function AppLayout() {
   }, [closeSettingsDialog])
 
   return (
-    <div className={styles.appLayout} data-testid="app-layout">
+    <div className="flex h-full flex-col overflow-hidden" data-testid="app-layout">
       <ConnectionTabBar
         onOpenSettings={handleOpenSettings}
         onOpenSnapshots={() => useSnapshotStore.getState().openDialog()}

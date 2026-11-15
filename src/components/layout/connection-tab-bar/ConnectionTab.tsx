@@ -12,7 +12,6 @@ import {
   type PendingConnectionClose,
 } from './connection-tab-model'
 import { ConnectionTabPrefix } from './ConnectionTabParts'
-import styles from '../ConnectionTabBar.module.css'
 
 export interface ConnectionTabActions {
   drag: PointerTabDrag
@@ -33,7 +32,7 @@ function CloseTabButton({ displayName, onClose }: { displayName: string; onClose
   return (
     <IconButton
       size="sm"
-      className={styles.closeButton}
+      className="group-not-data-active/tab:not-group-hover/tab:invisible"
       aria-label={`Close ${displayName}`}
       draggable={false}
       data-tab-drag-ignore="true"
@@ -50,10 +49,9 @@ export function ConnectionTab({ connection, displayName, isActive, actions }: Co
   const sessionId = connection.id
   return (
     <UnderlineTab
-      variant="document"
+      variant="connection"
       data-testid={`${CONNECTION_TAB_TEST_ID_PREFIX}${sessionId}`}
       active={isActive}
-      className={styles.connectionTab}
       onSelect={() => {
         if (drag.isSelectSuppressed()) {
           return
@@ -98,7 +96,7 @@ export function ConnectionTab({ connection, displayName, isActive, actions }: Co
         <CloseTabButton displayName={displayName} onClose={() => void actions.onClose(sessionId)} />
       }
     >
-      <span className={styles.tabName}>{displayName}</span>
+      <span className="max-w-40 flex-1 truncate">{displayName}</span>
     </UnderlineTab>
   )
 }

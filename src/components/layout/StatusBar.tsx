@@ -6,9 +6,16 @@ import { useSchemaIndexStore } from '../../stores/schema-index-store'
 import { useSettingsStore } from '../../stores/settings-store'
 import { useUpdateStore } from '../../stores/update-store'
 import { ConnectionStatusIndicator } from './ConnectionStatusIndicator'
-import styles from './StatusBar.module.css'
+import { joinClassNames } from '../../lib/class-names'
 import {
-  hasAnyActivity,
+  STATUS_BAR,
+  STATUS_BAR_ACTIVITY,
+  STATUS_BAR_LEFT,
+  STATUS_BAR_RIGHT,
+  STATUS_BAR_SPACER,
+  STATUS_TEXT,
+} from '../../lib/class-names-status-bar'
+import {
   resolveIndexingProgress,
   resolveStatusActivity,
   statusLabel,
@@ -28,7 +35,7 @@ import {
 
 function ActivityRegion({ activity }: { activity: StatusActivity }) {
   return (
-    <div className={styles.activity} aria-live="polite">
+    <div className={STATUS_BAR_ACTIVITY} aria-live="polite">
       {activity.buildingIndex && (
         <IndexBuildingIndicator
           indexState={activity.buildingIndex}
@@ -54,20 +61,14 @@ interface StatusBarTrailingProps {
 }
 
 function StatusBarTrailing({ activity, updateIndicator, serverVersion }: StatusBarTrailingProps) {
-  const hasActivity = hasAnyActivity(activity)
-  const hasUpdateIndicator = updateIndicator !== null
   return (
-    <div className={styles.right}>
+    <div className={STATUS_BAR_RIGHT}>
       <ActivityRegion activity={activity} />
       {activity.queryInfo && (
         <QueryInfo result={activity.queryInfo.result} rowCount={activity.queryInfo.rowCount} />
       )}
-      {hasActivity && hasUpdateIndicator && <span className={styles.divider} aria-hidden="true" />}
       {updateIndicator}
-      {(hasActivity || hasUpdateIndicator) && (
-        <span className={styles.divider} aria-hidden="true" />
-      )}
-      <span className={styles.statusText}>{serverVersion}</span>
+      <span className={STATUS_TEXT}>{serverVersion}</span>
     </div>
   )
 }
@@ -122,20 +123,19 @@ export function StatusBar() {
   }
 
   return (
-    <div className={styles.statusBar} data-testid="status-bar">
-      <div className={styles.left}>
-        <div className={styles.segment}>
+    <div className={STATUS_BAR} data-testid="status-bar">
+      <div className={STATUS_BAR_LEFT}>
+        <div className="flex shrink-0 items-center gap-1.5">
           <ConnectionStatusIndicator status={activeConnection.status} size={10} />
-          <span className={styles.statusText}>{statusLabel[activeConnection.status]}</span>
+          <span className={STATUS_TEXT}>{statusLabel[activeConnection.status]}</span>
         </div>
-        <span className={styles.divider} aria-hidden="true" />
-        <span className={`${styles.statusText} ${styles.connName}`}>
+        <span className={joinClassNames([STATUS_TEXT, 'min-w-0 truncate'])}>
           {activeConnection.profile.name} — {activeConnection.profile.host}:
           {activeConnection.profile.port}
         </span>
       </div>
 
-      <div className={styles.spacer} />
+      <div className={STATUS_BAR_SPACER} />
 
       <StatusBarTrailing
         activity={activity}

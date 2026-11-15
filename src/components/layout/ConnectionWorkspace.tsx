@@ -9,9 +9,13 @@ import { AiDiffBridgeProvider } from '../query-editor/ai-diff-bridge-context'
 import type { WorkspaceTab } from '../../types/schema'
 import { WorkspaceBody } from './WorkspaceBody'
 import { WorkspaceTabPanel } from './WorkspaceTabPanel'
-import styles from './WorkspaceArea.module.css'
+import { RETAINED_HIDDEN_STYLE } from '../../lib/retained-hidden-style'
 
 const EMPTY_TABS: WorkspaceTab[] = []
+const CONNECTED_PLACEHOLDER_CLASS_NAME =
+  'absolute top-1/2 left-1/2 flex max-w-120 -translate-1/2 flex-col items-center gap-3 p-8 text-center'
+const CONNECTED_TEXT_CLASS_NAME =
+  'wrap-break-word text-size-body font-regular text-light-on-surface dark:text-dark-on-surface'
 
 function reconcilePanelOrder(panelOrder: string[], tabs: WorkspaceTab[]): string[] {
   const nextPanelOrder = panelOrder.filter((tabId) => tabs.some((tab) => tab.id === tabId))
@@ -32,15 +36,17 @@ function isBottomPanelTableTab(tab: WorkspaceTab, bottomTableTabsEnabled: boolea
 function workspaceVisibilityProps(isActive: boolean) {
   if (isActive) {
     return {
-      className: `${styles.connectionWorkspace} ${styles.connectionWorkspaceActive}`,
+      className: 'relative flex h-full min-h-0 flex-col',
       'data-testid': 'active-connection-workspace',
       'aria-hidden': undefined,
       inert: undefined,
     }
   }
   return {
-    className: `${styles.connectionWorkspace} ${styles.connectionWorkspaceInactive}`,
+    className: 'pointer-events-none absolute inset-0 flex min-h-0 flex-col aria-hidden:invisible',
+    style: RETAINED_HIDDEN_STYLE,
     'data-testid': 'inactive-connection-workspace',
+    'data-animation-paused': true,
     'aria-hidden': true,
     inert: true,
   }
@@ -67,10 +73,10 @@ function TabPanelStack(stack: TabPanelStackProps) {
   const { tabs, panelTabs, visibleActiveWorkspaceTabId, sessionId, activeConnection } = stack
   const activeTab = tabs.find((tab) => tab.id === visibleActiveWorkspaceTabId) ?? null
   return (
-    <div className={styles.panelStack}>
+    <div className="relative h-full min-h-0 flex-1 overflow-hidden">
       {tabs.length === 0 && (
-        <div className={styles.connectedPlaceholder}>
-          <p className={styles.connectedText}>
+        <div className={CONNECTED_PLACEHOLDER_CLASS_NAME}>
+          <p className={CONNECTED_TEXT_CLASS_NAME}>
             Connected to {activeConnection.profile.name} ({activeConnection.profile.host}:
             {activeConnection.profile.port})
           </p>
@@ -86,8 +92,8 @@ function TabPanelStack(stack: TabPanelStackProps) {
         />
       ))}
       {tabs.length > 0 && !activeTab && (
-        <div className={styles.connectedPlaceholder}>
-          <p className={styles.connectedText}>Select a tab to view content</p>
+        <div className={CONNECTED_PLACEHOLDER_CLASS_NAME}>
+          <p className={CONNECTED_TEXT_CLASS_NAME}>Select a tab to view content</p>
         </div>
       )}
     </div>

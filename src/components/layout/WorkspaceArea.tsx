@@ -9,7 +9,6 @@ import {
   dispatchWorkspaceTabDeactivated,
 } from '../../lib/workspace-tab-activity-events'
 import { ConnectionWorkspace } from './ConnectionWorkspace'
-import styles from './WorkspaceArea.module.css'
 
 type PendingCascadeClose = ReturnType<typeof useWorkspaceStore.getState>['pendingCascadeClose']
 
@@ -43,16 +42,24 @@ function useWorkspaceTabActivityEvents(
 
 function WelcomeScreen({ onOpenDialog }: { onOpenDialog: () => void }) {
   return (
-    <div className={styles.workspace} data-testid="workspace-area">
-      <div className={styles.welcome}>
-        <div className={styles.welcomeTile} aria-hidden="true">
+    <div
+      className="flex h-full items-center justify-center overflow-hidden bg-light-surface-container dark:bg-dark-surface-container"
+      data-testid="workspace-area"
+    >
+      <div className="flex max-w-105 flex-col items-center gap-3 text-center">
+        <div
+          className="mb-2 grid size-16 place-items-center rounded-tile bg-light-fill-accent-tint text-light-primary dark:bg-dark-fill-accent-tint dark:text-dark-primary"
+          aria-hidden="true"
+        >
           <Database size={32} weight="light" />
         </div>
-        <h2 className={styles.welcomeTitle}>Connect to a server</h2>
-        <p className={styles.welcomeMessage}>
+        <h2 className="wrap-break-word font-headline text-title font-semibold text-light-on-surface dark:text-dark-on-surface">
+          Connect to a server
+        </h2>
+        <p className="wrap-break-word text-body text-light-on-surface-variant dark:text-dark-on-surface-variant">
           Open a saved MySQL or MariaDB connection, or add a new one.
         </p>
-        <div className={styles.welcomeActions}>
+        <div className="mt-2 flex gap-2">
           <Button variant="accent" onClick={onOpenDialog}>
             <Plus size={16} weight="regular" aria-hidden="true" />
             New connection
@@ -116,8 +123,11 @@ export function WorkspaceArea() {
   if (!activeConnection) return <WelcomeScreen onOpenDialog={openDialog} />
 
   return (
-    <div className={styles.workspaceTabbed} data-testid="workspace-area">
-      <div className={styles.connectionWorkspaceStack}>
+    <div
+      className="flex h-full min-h-0 flex-col bg-light-surface-container dark:bg-dark-surface-container"
+      data-testid="workspace-area"
+    >
+      <div className="relative min-h-0 flex-1">
         {Object.keys(activeConnections).map((sessionId) => (
           <ConnectionWorkspace
             key={sessionId}

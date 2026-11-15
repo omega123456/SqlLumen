@@ -6,27 +6,23 @@ import { isMiddleMouseButton } from '../../../lib/input-events'
 import { hasResultColumns } from '../../../lib/query-result-column-utils'
 import type { BottomPanelTabItem } from './bottom-panel-tab-items'
 import styles from '../BottomPanelTabs.module.css'
-import workspaceTabStyles from '../../workspace/WorkspaceTabs.module.css'
+import { joinClassNames } from '../../../lib/class-names'
 
 function getResultTabIcon(result: SingleResultState) {
   if (result.resultStatus === 'error') {
     return (
-      <Warning
-        size={12}
-        weight="fill"
-        className={`${workspaceTabStyles.tabTypeIcon} ${styles.errorIcon}`}
-      />
+      <Warning size={12} weight="fill" className={joinClassNames(['shrink-0', styles.errorIcon])} />
     )
   }
   if (!hasResultColumns(result)) {
-    return <CheckCircle size={12} weight="fill" className={workspaceTabStyles.tabTypeIcon} />
+    return <CheckCircle size={12} weight="fill" className="shrink-0" />
   }
-  return <Table size={16} weight="regular" className={workspaceTabStyles.tabTypeIcon} />
+  return <Table size={16} weight="regular" className="shrink-0" />
 }
 
 function bottomTabIcon(item: BottomPanelTabItem) {
   if (item.kind === 'result') return getResultTabIcon(item.result)
-  return <Table size={16} weight="regular" className={workspaceTabStyles.tabTypeIcon} />
+  return <Table size={16} weight="regular" className="shrink-0" />
 }
 
 function bottomTabPanelId(item: BottomPanelTabItem, queryTabId: string): string {
@@ -62,7 +58,7 @@ function TableTabCloseButton({ item, onCloseTableTab }: BottomPanelTabProps) {
   return (
     <Button
       variant="bare"
-      className={`${workspaceTabStyles.tabClose} ${styles.closeButton}`}
+      className={styles.closeButton}
       aria-label={`Close ${item.tab.label} table`}
       onClick={(event) => {
         event.stopPropagation()
@@ -108,9 +104,9 @@ export function BottomPanelTab(props: BottomPanelTabProps) {
           className={styles.tabButton}
           onClick={() => onActivate(item)}
         >
-          <span className={workspaceTabStyles.tabLabel}>
+          <span className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap">
             {bottomTabIcon(item)}
-            <span className={workspaceTabStyles.tabLabelText}>{item.label}</span>
+            <span className="min-w-0">{item.label}</span>
           </span>
         </Button>
         <TableTabCloseButton {...props} />

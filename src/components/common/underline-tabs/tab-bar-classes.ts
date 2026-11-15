@@ -1,5 +1,5 @@
 import { joinClassNames } from '../../../lib/class-names'
-import type { UnderlineTabRowHeight, UnderlineTabVariant } from './tab-bar-variants'
+import type { UnderlineTabBarVariant, UnderlineTabRowHeight } from './tab-bar-variants'
 
 type BarShape = 'standalone' | 'wrapper' | 'wrapped'
 type EdgeZone = 'start' | 'end'
@@ -9,7 +9,7 @@ const ROW_HEIGHT_CLASSES: Record<UnderlineTabRowHeight, string> = {
   tall: 'h-title-strip',
 }
 
-const BAR_SHAPE_CLASSES: Record<BarShape, Record<UnderlineTabVariant, string>> = {
+const BAR_SHAPE_CLASSES: Record<BarShape, Record<UnderlineTabBarVariant, string>> = {
   standalone: {
     default:
       'flex flex-none w-full min-w-0 items-stretch gap-1 bg-transparent border-b border-b-light-stroke-divider dark:border-b-dark-stroke-divider',
@@ -33,13 +33,13 @@ const BAR_SHAPE_CLASSES: Record<BarShape, Record<UnderlineTabVariant, string>> =
   },
 }
 
-const BAR_CONTENT_CLASSES: Record<UnderlineTabVariant, string> = {
+const BAR_CONTENT_CLASSES: Record<UnderlineTabBarVariant, string> = {
   default: 'items-stretch gap-1',
   selector: 'items-stretch gap-0',
   document: 'items-end gap-0.5',
 }
 
-const EDGE_ZONE_CLASSES: Record<EdgeZone, Record<UnderlineTabVariant, string>> = {
+const EDGE_ZONE_CLASSES: Record<EdgeZone, Record<UnderlineTabBarVariant, string>> = {
   start: {
     default:
       'absolute z-3 top-1.5 bottom-px left-0 flex items-end pr-1 pb-px bg-light-surface-container dark:bg-dark-surface-container shadow-light-strip-tint dark:shadow-dark-strip-tint border-r border-r-light-stroke-divider dark:border-r-dark-stroke-divider',
@@ -62,7 +62,7 @@ const NATIVE_THIN_SCROLLBAR =
   'scrollbar-thin scrollbar-thumb-light-text-disabled dark:scrollbar-thumb-dark-text-disabled scrollbar-track-transparent scrollbar-thumb-rounded-control scrollbar-hover:scrollbar-thumb-light-outline dark:scrollbar-hover:scrollbar-thumb-dark-outline'
 
 export interface TabBarShapeOptions {
-  variant: UnderlineTabVariant
+  variant: UnderlineTabBarVariant
   rowHeight: UnderlineTabRowHeight
 }
 
@@ -71,7 +71,7 @@ export interface TabBarClassOptions extends TabBarShapeOptions {
 }
 
 export interface WrapperClassOptions {
-  variant: UnderlineTabVariant
+  variant: UnderlineTabBarVariant
   className: string | undefined
 }
 
@@ -131,6 +131,6 @@ export function barSuffixClassName(rowHeight: UnderlineTabRowHeight): string {
   return joinClassNames(['flex shrink-0 items-stretch self-start', ROW_HEIGHT_CLASSES[rowHeight]])
 }
 
-export function edgeZoneClassName(zone: EdgeZone, variant: UnderlineTabVariant): string {
+export function edgeZoneClassName(zone: EdgeZone, variant: UnderlineTabBarVariant): string {
   return EDGE_ZONE_CLASSES[zone][variant]
 }

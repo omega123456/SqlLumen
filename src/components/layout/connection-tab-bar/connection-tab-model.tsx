@@ -10,7 +10,6 @@ import type { ActiveConnection } from '../../../types/connection'
 export const CONNECTION_TAB_TEST_ID_PREFIX = 'connection-session-tab-'
 
 export const UNNAMED_CONNECTION_LABEL = 'Unnamed connection'
-export const CONNECTION_EDGE_WIDTH = '2px'
 
 export interface PendingConnectionClose {
   id: string
@@ -59,12 +58,16 @@ export function connectionTabTitle(displayName: string, connection: ActiveConnec
   return `${displayName} (${hostPortOf(connection)})${readOnlySuffix}`
 }
 
-export function connectionEdgeStyle(edgeColor: string | null): CSSProperties {
-  if (!edgeColor) return {}
-  return {
-    '--connection-edge-color': edgeColor,
-    '--connection-edge-width': CONNECTION_EDGE_WIDTH,
-  } as CSSProperties
+export interface ConnectionEdgeFill {
+  className: string
+  style: CSSProperties | undefined
+}
+
+export function connectionEdgeFill(edgeColor: string | null): ConnectionEdgeFill {
+  if (!edgeColor) {
+    return { className: 'bg-light-stroke-card dark:bg-dark-stroke-card', style: undefined }
+  }
+  return { className: '', style: { backgroundColor: edgeColor } }
 }
 
 export interface MoveMenuInputs {

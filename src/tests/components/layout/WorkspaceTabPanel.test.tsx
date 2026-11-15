@@ -2,7 +2,6 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { WorkspaceTabPanel } from '../../../components/layout/WorkspaceTabPanel'
 import type { WorkspaceTab } from '../../../types/schema'
-import styles from '../../../components/layout/WorkspaceTabPanel.module.css'
 
 const baseTab = {
   id: 'tab-1',
@@ -93,7 +92,7 @@ describe('WorkspaceTabPanel', () => {
     const panel = screen.getByTestId('workspace-panel')
     expect(panel).toHaveAttribute('data-active', 'false')
     expect(panel).toHaveAttribute('aria-hidden', 'true')
-    expect(panel).toHaveClass(styles.inactive)
+    expect(panel).toHaveAttribute('data-animation-paused')
   })
 
   it('defaults to active for backwards compatibility', () => {

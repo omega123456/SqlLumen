@@ -5,7 +5,6 @@ import { IconButton } from '../common/IconButton'
 import { UnderlineTabBar } from '../common/UnderlineTabs'
 import { WorkspaceTabRail } from './WorkspaceTabRail'
 import { WorkspaceGroupRail } from './WorkspaceGroupRail'
-import styles from './WorkspaceTabs.module.css'
 import { useRevealActiveWorkspaceTab } from './workspace-tabs/use-reveal-active-workspace-tab'
 import { useStackActivation } from './workspace-tabs/use-stack-activation'
 import { useWorkspaceStacks, type WorkspaceStacks } from './workspace-tabs/use-workspace-stacks'
@@ -25,7 +24,7 @@ export interface WorkspaceTabsProps {
 function NewQueryTabButton({ connectionId }: { connectionId: string }) {
   const openQueryTab = useWorkspaceStore((state) => state.openQueryTab)
   return (
-    <div className={styles.rowActions}>
+    <div className="relative flex flex-none items-center gap-0.5 self-end pr-2 pl-2.25 before:absolute before:top-1/2 before:left-0 before:-mt-2.5 before:h-5 before:w-px before:bg-light-stroke-divider dark:before:bg-dark-stroke-divider">
       <IconButton
         size="lg"
         title="New query tab"
@@ -61,18 +60,18 @@ function WorkspaceTabStrip({
   return (
     <div
       ref={workspaceRootRef}
-      className={styles.workspaceTabs}
+      className="col-start-2 row-start-1 flex min-w-0 flex-col"
       hidden={stacks.activePinnedTabId !== null}
       data-testid="workspace-tabs"
     >
       <UnderlineTabBar
         variant="document"
-        className={styles.workspaceTabRailBleed}
+        className="relative z-2 before:pointer-events-none before:absolute before:inset-y-0 before:-left-resize-handle before:w-resize-handle before:bg-light-surface-container dark:before:bg-dark-surface-container"
         data-testid="workspace-tab-members"
         scrollable
         suffix={<NewQueryTabButton connectionId={connectionId} />}
       >
-        <div ref={memberRowRef} className={styles.memberRow}>
+        <div ref={memberRowRef} className="contents">
           <WorkspaceTabRail
             connectionId={connectionId}
             tabs={stacks.shownStackTabs}
@@ -106,9 +105,12 @@ export function WorkspaceTabs(props: WorkspaceTabsProps) {
   }
 
   return (
-    <div ref={layoutRef} className={styles.workspaceLayout}>
+    <div
+      ref={layoutRef}
+      className="grid min-h-0 min-w-0 flex-1 grid-cols-workspace grid-rows-workspace"
+    >
       <WorkspaceGroupRail
-        className={styles.groupRail}
+        className="col-start-1 row-span-2 row-start-1"
         stackGroups={stacks.stackGroups}
         value={stacks.shownStackKey}
         onSelect={activateStack}
@@ -123,7 +125,9 @@ export function WorkspaceTabs(props: WorkspaceTabsProps) {
         workspaceRootRef={workspaceRootRef}
         onFocusGroupRail={focusGroupRail}
       />
-      {children ? <div className={styles.workspaceMain}>{children}</div> : null}
+      {children ? (
+        <div className="col-start-2 row-start-2 flex min-h-0 min-w-0 flex-col">{children}</div>
+      ) : null}
     </div>
   )
 }

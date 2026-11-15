@@ -10,9 +10,10 @@ import type { ContextMenuOpenPoint } from '../../../lib/context-menu-utils'
 import { isPinnedWorkspaceTab } from '../../../lib/workspace-tab-stacks'
 import { isContextMenuKey } from '../../../lib/input-events'
 import { getWorkspaceTabIconDescriptor } from '../workspace-tab-icons'
+import { joinClassNames } from '../../../lib/class-names'
+import { FOCUS_RING } from '../../../lib/focus-ring'
 import { WORKSPACE_TAB_TEST_ID_PREFIX } from './tab-rail-model'
 import type { TabRename } from './use-tab-rename'
-import styles from '../WorkspaceTabs.module.css'
 
 const TAB_ICON_SIZE = 16
 const TAB_ICON_WEIGHT = 'regular'
@@ -42,15 +43,15 @@ function WorkspaceTabLabel({ tab }: { tab: WorkspaceTab }) {
       weight={TAB_ICON_WEIGHT}
       aria-hidden={true}
       data-testid={testId}
-      className={styles.tabTypeIcon}
+      className="shrink-0"
     />
   )
 
   return (
-    <span className={styles.tabLabel}>
+    <span className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap group-data-active/tab:text-light-primary dark:group-data-active/tab:text-dark-primary">
       {leadingIcon}
-      <span className={styles.tabLabelText}>{tab.label}</span>
-      {isDirty && <span className={styles.dirtyIndicator}> ●</span>}
+      <span className="min-w-0">{tab.label}</span>
+      {isDirty && <span className="text-light-primary dark:text-dark-primary"> ●</span>}
     </span>
   )
 }
@@ -66,7 +67,10 @@ function RailTabRenameInput({ tab, rename, renameInputRef }: RenameInputProps) {
     <TextInput
       ref={renameInputRef}
       value={rename.renameDraft}
-      className={styles.renameInput}
+      className={joinClassNames([
+        'min-w-21 max-w-55 rounded-control border border-light-outline bg-light-surface px-1 py-0 text-light-on-surface group-data-active/tab:border-light-primary dark:border-dark-outline dark:bg-dark-surface dark:text-dark-on-surface dark:group-data-active/tab:border-dark-primary',
+        FOCUS_RING,
+      ])}
       variant="bare"
       data-testid="workspace-tab-rename-input"
       data-tab-drag-ignore="true"
@@ -85,7 +89,7 @@ function RailTabCloseButton({ tab, onClose }: { tab: WorkspaceTab; onClose: () =
   return (
     <IconButton
       size="sm"
-      className={styles.tabClose}
+      className="group-not-data-active/tab:not-group-hover/tab:invisible"
       aria-label={`Close ${tab.label}`}
       draggable={false}
       data-tab-drag-ignore="true"
@@ -160,7 +164,7 @@ export function WorkspaceRailTab(props: WorkspaceRailTabProps) {
       variant="document"
       active={props.isActive}
       autoScrollOnActive={props.autoScrollOnActive}
-      className={styles.workspaceTab}
+      editing={rename.renamingTabId === tab.id}
       data-testid={`${WORKSPACE_TAB_TEST_ID_PREFIX}${tab.id}`}
       onSelect={() => handlers.onActivate(tab.id)}
       onPointerDown={(event) => handlers.onPointerDown(tab, event)}
@@ -187,7 +191,7 @@ export function WorkspaceRailTab(props: WorkspaceRailTabProps) {
       suffix={isPinned ? undefined : <RailTabCloseButton tab={tab} onClose={closeTab} />}
     >
       <span
-        className={styles.tabLabelRoot}
+        className="inline-flex min-w-0 flex-1 items-center"
         onDoubleClick={(event) => {
           event.stopPropagation()
           rename.startRename(tab.id)

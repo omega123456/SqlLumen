@@ -1,22 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { PlusIcon } from '@phosphor-icons/react'
+import { joinClassNames } from '../../lib/class-names'
 import { useThemeStore } from '../../stores/theme-store'
 import { IconButton } from '../common/IconButton'
 import { normalizeActiveConnectionOrder, useConnectionStore } from '../../stores/connection-store'
 import type { Theme } from '../../stores/theme-store'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
-import { UnderlineTabBar } from '../common/UnderlineTabs'
 import { TabContextMenu } from '../shared/TabContextMenu'
 import { usePointerTabDrag } from '../shared/use-pointer-tab-drag'
+import { dataFlag } from '../../lib/data-attributes'
 import { dispatchDismissAll } from '../../lib/context-menu-events'
 import { getContextMenuPortalRoot } from '../../lib/context-menu-utils'
 import type { ContextMenuOpenPoint } from '../../lib/context-menu-utils'
 import type { ActiveConnection } from '../../types/connection'
-import styles from './ConnectionTabBar.module.css'
 import {
   CONNECTION_TAB_TEST_ID_PREFIX,
   connectionEdgeColor,
-  connectionEdgeStyle,
+  connectionEdgeFill,
   connectionMoveMenuItems,
   connectionTabDisplayName,
   focusConnectionTab,
@@ -174,7 +174,7 @@ function ConnectionTabRail({ tabs, activeTabId, actions }: ConnectionTabRailProp
   const tabsByProfileId = groupTabsByProfile(tabs)
   if (tabs.length === 0) return null
   return (
-    <UnderlineTabBar variant="document" rowHeight="tall" className={styles.connectionTabRail}>
+    <div className="relative z-1 flex h-connection-rail min-w-0 flex-initial items-end gap-0.5 self-start overflow-x-auto overflow-y-hidden pl-1.5 scrollbar-none group-data-connection-edge/strip:h-connection-rail-edged">
       {tabs.map((connection) => (
         <ConnectionTab
           key={connection.id}
@@ -184,7 +184,22 @@ function ConnectionTabRail({ tabs, activeTabId, actions }: ConnectionTabRailProp
           actions={actions}
         />
       ))}
-    </UnderlineTabBar>
+    </div>
+  )
+}
+
+function ConnectionEdge({ color }: { color: string | null }) {
+  const fill = connectionEdgeFill(color)
+  return (
+    <span
+      className={joinClassNames([
+        'pointer-events-none absolute inset-x-0 bottom-0 h-px group-data-connection-edge/strip:h-0.5',
+        fill.className,
+      ])}
+      style={fill.style}
+      aria-hidden="true"
+      data-testid="connection-tab-bar-edge"
+    />
   )
 }
 
@@ -219,10 +234,9 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
 
   return (
     <div
-      className={styles.tabBar}
+      className="group/strip relative box-content flex h-title-strip shrink-0 items-stretch overflow-hidden bg-light-surface pb-px pl-1 data-connection-edge:pb-0.5 mica:bg-transparent dark:bg-dark-surface"
       data-testid="connection-tab-bar"
-      data-edge-color={edgeColor ? 'connection' : 'none'}
-      style={connectionEdgeStyle(edgeColor)}
+      data-connection-edge={dataFlag(edgeColor !== null)}
     >
       <ConnectionTabRail
         tabs={tabs}
@@ -236,14 +250,14 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
         }}
       />
       <IconButton
-        className={styles.newConnectionButton}
+        className="ml-0.5 self-center"
         aria-label="New connection"
         title="New connection"
         onClick={openDialog}
       >
         <PlusIcon size={16} weight="regular" />
       </IconButton>
-      <div className={styles.dragSpace} />
+      <div className="min-w-0 flex-1" />
       <ConnectionStripTools
         resolvedTheme={theme.resolvedTheme}
         onToggleTheme={theme.handleThemeToggle}
@@ -252,6 +266,7 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
       />
       <ConnectionMoveMenu menu={menu} sessionIds={sessionIds} />
       <CloseConnectionDialog flow={closeFlow} />
+      <ConnectionEdge color={edgeColor} />
     </div>
   )
 }

@@ -12,6 +12,7 @@ import { Textarea } from '../../common/Textarea'
 import { MemoryRow, type MemoryDragPayload } from './MemoryRow'
 import type { AiMemory, MemoryScope } from '../../../lib/ai-memory-commands'
 import { joinClassNames } from '../../../lib/class-names'
+import { SHIMMER_BLOCK_CONTROL } from '../../../lib/class-names-skeleton'
 import type { MemoryOwner } from './memory-section-model'
 import type { RefObject } from 'react'
 import type { MemoryAddForm } from './use-memory-add-form'
@@ -91,10 +92,10 @@ export function MemorySectionHeader({
 export function MemoryDropSkeleton({ sectionKey }: { sectionKey: string }) {
   return (
     <div className={styles.skeletonRow} data-testid={`ai-memory-drop-skeleton-${sectionKey}`}>
-      <div className={`shimmerBlock ${styles.skeletonHandle}`} />
+      <div className={joinClassNames([SHIMMER_BLOCK_CONTROL, styles.skeletonHandle])} />
       <div className={styles.skeletonContent}>
-        <div className={`shimmerBlock ${styles.skeletonLineText}`} />
-        <div className={`shimmerBlock ${styles.skeletonLineDate}`} />
+        <div className={joinClassNames([SHIMMER_BLOCK_CONTROL, styles.skeletonLineText])} />
+        <div className={joinClassNames([SHIMMER_BLOCK_CONTROL, styles.skeletonLineDate])} />
       </div>
     </div>
   )

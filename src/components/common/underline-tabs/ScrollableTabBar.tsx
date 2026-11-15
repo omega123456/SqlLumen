@@ -12,7 +12,7 @@ import {
   scrollableViewportClassName,
   wrapperClassName,
 } from './tab-bar-classes'
-import type { UnderlineTabBarProps, UnderlineTabVariant } from './tab-bar-variants'
+import type { UnderlineTabBarProps, UnderlineTabBarVariant } from './tab-bar-variants'
 
 const EDGE_CHIP_ICON_SIZE = 14
 
@@ -185,7 +185,7 @@ function EdgeChipButton(props: ButtonProps) {
 
 interface EdgeChipProps {
   hiddenCount: number
-  variant: UnderlineTabVariant
+  variant: UnderlineTabBarVariant
   onClick: () => void
 }
 

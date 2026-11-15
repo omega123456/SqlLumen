@@ -8,14 +8,14 @@
 @custom-variant dark (&:where(.dark, .dark *));
 @custom-variant mica (&:where(.mica, .mica *));
 @custom-variant hover (&:hover);
-@custom-variant window-blurred (&:where([data-window-focused='false'] *));
+@custom-variant window-blurred (&:where([data-window-focused='false'] *, [data-animation-paused], [data-animation-paused] *));
 @custom-variant slider-thumb (&::-webkit-slider-thumb);
 @custom-variant webkit-scrollbar (&::-webkit-scrollbar);
 @custom-variant webkit-scrollbar-track (&::-webkit-scrollbar-track);
 @custom-variant webkit-scrollbar-thumb (&::-webkit-scrollbar-thumb);
 @custom-variant webkit-scrollbar-thumb-hover (&::-webkit-scrollbar-thumb:hover);
 @custom-variant svg (& svg);
-@custom-variant resize-dragging (&:where([data-separator='active'], [data-resize-handle-state='drag'], [data-resize-handle-active]));
+@custom-variant resize-dragging (&[data-separator='active']);
 
 @theme static {
   --color-*: initial;
@@ -264,6 +264,9 @@
   --text-caption--line-height: 16px;
   --text-mono: 13px;
   --text-mono--line-height: 20px;
+  --text-key-hint: 11px;
+  --text-key-hint--line-height: 18px;
+  --text-size-key-hint: 11px;
   --text-size-title: 28px;
   --text-size-subtitle: 20px;
   --text-size-body: 14px;
@@ -301,6 +304,14 @@
   --spacing-progress-bar: 4px;
   --spacing-context-menu: 260px;
   --spacing-toast: 380px;
+  --spacing-rail-tooltip: calc(100% + 2px);
+  --spacing-connection-rail: 41px;
+  --spacing-connection-rail-edged: 42px;
+  --spacing-connection-tab-active: 33px;
+  --spacing-connection-tab-active-edged: 34px;
+
+  --grid-template-columns-workspace: auto minmax(0, 1fr);
+  --grid-template-rows-workspace: auto minmax(0, 1fr);
 
   --radius-*: initial;
   --radius-control: 4px;
@@ -310,8 +321,11 @@
   --radius-track: 2px;
   --radius-switch: 10px;
   --radius-round: 50%;
+  --radius-tile: 12px;
+  --radius-marker: 1px;
 
   --border-width-check: 1.6px;
+  --border-width-spinner: 1.5px;
 
   --shadow-*: initial;
   --shadow-dark-flyout: 0 8px 16px rgba(0, 0, 0, 0.26);
@@ -330,6 +344,8 @@
   --shadow-light-field-error: inset 0 -1px 0 var(--color-light-error);
   --shadow-dark-divider-bottom: inset 0 -1px 0 var(--color-dark-stroke-divider);
   --shadow-light-divider-bottom: inset 0 -1px 0 var(--color-light-stroke-divider);
+  --shadow-dark-divider-right: inset -1px 0 0 var(--color-dark-stroke-divider);
+  --shadow-light-divider-right: inset -1px 0 0 var(--color-light-stroke-divider);
   --shadow-dark-strip-tint: inset 0 0 0 999px var(--color-dark-surface-strip);
   --shadow-light-strip-tint: inset 0 0 0 999px var(--color-light-surface-strip);
   --shadow-dark-slider-thumb-hover: 0 0 0 4px var(--color-dark-primary-a15);
@@ -358,6 +374,7 @@
   --transition-property-opacity: opacity;
   --transition-property-shadow: box-shadow;
   --transition-property-transform: transform;
+  --transition-property-fade-slide: opacity, translate;
 
   --animate-*: initial;
   --animate-spin-600ms: spin 0.6s linear infinite;

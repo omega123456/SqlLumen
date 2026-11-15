@@ -15,7 +15,6 @@ import type { QueryEditorTab, WorkspaceTab } from '../../types/schema'
 import AiPanelSkeleton from '../skeletons/AiPanelSkeleton'
 import { QueryWorkspaceAiRail } from '../ai-panel/QueryWorkspaceAiRail'
 import { useAiDiffTrigger } from '../query-editor/ai-diff-bridge-context'
-import styles from './WorkspaceBody.module.css'
 
 const LazyAiPanel = lazy(() => import('../ai-panel/AiPanel'))
 
@@ -75,6 +74,11 @@ function syncAiPanelOpenState(tabId: string, collapsed: boolean): void {
   }
 }
 
+const AI_PANEL_HOST_CLASS_NAMES: Record<'active' | 'inactive', string> = {
+  active: 'absolute inset-0',
+  inactive: 'pointer-events-none invisible absolute inset-0',
+}
+
 interface AiPanelHostsProps {
   queryTabs: QueryEditorTab[]
   activeQueryTabId: string | null
@@ -90,8 +94,7 @@ function AiPanelHosts({ queryTabs, activeQueryTabId }: AiPanelHostsProps) {
         return (
           <div
             key={tab.id}
-            className={styles.aiPanelHost}
-            style={isActive ? undefined : { visibility: 'hidden', pointerEvents: 'none' }}
+            className={AI_PANEL_HOST_CLASS_NAMES[isActive ? 'active' : 'inactive']}
             aria-hidden={isActive ? undefined : true}
             data-testid="workspace-ai-panel-host"
             data-tab-id={tab.id}
@@ -171,7 +174,7 @@ function AiPanelStack({ queryTabs, activeQueryTabId, layout }: AiPanelStackProps
       maxSize="48%"
       collapsible={true}
       collapsedSize="0%"
-      className={styles.aiSide}
+      className="relative min-w-0 overflow-hidden"
       onResize={handleAiChatResize}
     >
       <AiPanelHosts queryTabs={queryTabs} activeQueryTabId={activeQueryTabId} />
@@ -195,18 +198,20 @@ export function WorkspaceBody({
   const aiPanelLayout = useAiPanelLayout(activeQueryTabId)
 
   return (
-    <div className={styles.body} data-testid="workspace-body">
-      <Group orientation="horizontal" className={styles.body}>
+    <div className="flex h-full min-h-0 min-w-0 flex-row" data-testid="workspace-body">
+      <Group orientation="horizontal" className="flex h-full min-h-0 min-w-0 flex-row">
         <Panel
           defaultSize="75%"
           minSize="35%"
-          className={styles.tabStack}
+          className="relative min-w-0 flex-1"
           onResize={() => dispatchWorkspaceLayoutResize()}
         >
           {renderTabStack({ tabs, activeTabId, connectionId, sessionId })}
         </Panel>
         {showActiveQueryAiLayout ? <QueryWorkspaceAiRail tab={activeQueryTab} /> : null}
-        {showActiveQueryAiLayout ? <Separator className={styles.separator} /> : null}
+        {showActiveQueryAiLayout ? (
+          <Separator className="shrink-0 grow-0 basis-resize-handle cursor-col-resize" />
+        ) : null}
         {shouldRenderAiPanelStack ? (
           <AiPanelStack
             queryTabs={queryTabs}

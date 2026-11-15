@@ -4,7 +4,7 @@ import {
   type WorkspaceTabStackGroup,
   type WorkspaceTabStackKey,
 } from '../../../lib/workspace-tab-stacks'
-import styles from '../WorkspaceGroupRail.module.css'
+import { joinClassNames } from '../../../lib/class-names'
 import { HALF_DIVISOR } from '../../../lib/units'
 
 export const RAIL_ITEM_TRANSITION_MS = 150
@@ -76,7 +76,10 @@ export function resolveSelectedRailKey(inputs: SelectedRailKeyInputs): RailKey |
 }
 
 export function railClassName(className: string | undefined): string {
-  return className ? `${styles.rail} ${className}` : styles.rail
+  return joinClassNames([
+    'relative flex min-h-0 w-11 flex-col items-center gap-1 bg-light-surface-strip pt-1.5 shadow-light-divider-right dark:bg-dark-surface-strip dark:shadow-dark-divider-right',
+    className,
+  ])
 }
 
 export function railItemAccessibility(live: boolean, selected: boolean) {

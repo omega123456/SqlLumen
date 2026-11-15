@@ -16,19 +16,31 @@ const TAB_SHAPE_CLASSES: Record<TabShape, Record<UnderlineTabVariant, string>> =
     default: 'items-center px-3',
     selector: 'items-center px-4',
     document: 'items-center pr-1.5 pl-3',
+    connection: 'items-center pr-1.5 pl-3',
   },
   cell: {
     default: 'items-stretch',
     selector: 'items-stretch',
     document: 'items-stretch',
+    connection: 'items-stretch',
   },
 }
+
+const TAB_CURSOR_CLASSES: Record<UnderlineTabVariant, string> = {
+  default: 'cursor-default',
+  selector: 'cursor-default',
+  document: 'cursor-default',
+  connection: 'cursor-grab active:cursor-grabbing',
+}
+
+const DOCUMENT_FRAME =
+  'self-end border border-transparent border-b-0 rounded-t-overlay text-size-row leading-5'
 
 const TAB_FRAME_CLASSES: Record<UnderlineTabVariant, string> = {
   default: 'rounded-control text-body',
   selector: 'rounded-none text-body',
-  document:
-    'self-end h-tab min-w-37.5 border border-transparent border-b-0 rounded-t-overlay text-size-row leading-5',
+  document: joinClassNames([DOCUMENT_FRAME, 'h-tab min-w-37.5']),
+  connection: joinClassNames([DOCUMENT_FRAME, 'min-w-42.5']),
 }
 
 const HOVER_FILL = 'hover:bg-light-fill-subtle-hover dark:hover:bg-dark-fill-subtle-hover'
@@ -38,6 +50,12 @@ const UNDERLINE_DEFAULT =
 
 const UNDERLINE_SELECTOR =
   'after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-t-track after:bg-light-primary dark:after:bg-dark-primary'
+
+const DOCUMENT_IDLE =
+  'bg-transparent font-regular text-light-on-surface-variant dark:text-dark-on-surface-variant hover:text-light-on-surface dark:hover:text-dark-on-surface'
+
+const DOCUMENT_ACTIVE =
+  'bg-light-surface-container dark:bg-dark-surface-container font-semibold text-light-on-surface dark:text-dark-on-surface'
 
 const TAB_ACTIVITY_CLASSES: Record<UnderlineTabVariant, Record<TabActivity, string>> = {
   default: {
@@ -59,9 +77,15 @@ const TAB_ACTIVITY_CLASSES: Record<UnderlineTabVariant, Record<TabActivity, stri
     ]),
   },
   document: {
-    idle: 'bg-transparent font-regular text-light-on-surface-variant dark:text-dark-on-surface-variant hover:text-light-on-surface dark:hover:text-dark-on-surface',
-    active:
-      'bg-light-surface-container dark:bg-dark-surface-container font-semibold text-light-on-surface dark:text-dark-on-surface',
+    idle: DOCUMENT_IDLE,
+    active: DOCUMENT_ACTIVE,
+  },
+  connection: {
+    idle: joinClassNames([DOCUMENT_IDLE, 'h-tab mb-px group-data-connection-edge/strip:mb-0.5']),
+    active: joinClassNames([
+      DOCUMENT_ACTIVE,
+      'h-connection-tab-active group-data-connection-edge/strip:h-connection-tab-active-edged',
+    ]),
   },
 }
 
@@ -73,16 +97,23 @@ const DROP_INDICATOR_CLASSES: Record<TabDropIndicator, string> = {
   after: joinClassNames([DROP_INDICATOR_BASE, 'before:right-0']),
 }
 
-const LABEL_BUTTON_PADDING_CLASSES: Record<UnderlineTabVariant, string> = {
-  default: 'px-3',
-  selector: 'px-4',
-  document: 'pl-3',
+const LABEL_BUTTON_LAYOUT_CLASSES: Record<UnderlineTabVariant, string> = {
+  default: 'gap-2 px-3',
+  selector: 'gap-2 px-4',
+  document: 'gap-2 pl-3',
+  connection: 'gap-2.5 pl-3',
 }
 
 const SUFFIX_SLOT_CLASSES: Record<UnderlineTabVariant, string> = {
   default: 'pr-1.5',
   selector: 'pr-1.5',
   document: 'pr-1.5 pl-2',
+  connection: 'pr-1.5 pl-2',
+}
+
+function cursorClassName(variant: UnderlineTabVariant, editing: boolean): string {
+  if (editing) return 'cursor-text'
+  return TAB_CURSOR_CLASSES[variant]
 }
 
 function activityOf(isActive: boolean): TabActivity {
@@ -96,6 +127,7 @@ export interface TabClassOptions {
   active: boolean
   dragging: boolean
   dropIndicator: TabDropIndicator | undefined
+  editing: boolean
   className: string | undefined
 }
 
@@ -105,10 +137,12 @@ export function tabClassName({
   active,
   dragging,
   dropIndicator,
+  editing,
   className,
 }: TabClassOptions): string {
   return joinClassNames([
-    'relative shrink-0 inline-flex gap-2 font-body whitespace-nowrap cursor-default',
+    'group/tab relative shrink-0 inline-flex gap-2 font-body whitespace-nowrap',
+    cursorClassName(variant, editing),
     TAB_FOCUS_CLASSES[shape],
     TAB_SHAPE_CLASSES[shape][variant],
     TAB_FRAME_CLASSES[variant],
@@ -121,9 +155,9 @@ export function tabClassName({
 
 export function labelButtonClassName(variant: UnderlineTabVariant): string {
   return joinClassNames([
-    'flex min-w-0 flex-1 items-center gap-2 bg-transparent text-left whitespace-nowrap cursor-default',
+    'flex min-w-0 flex-1 items-center bg-transparent text-left whitespace-nowrap cursor-default',
     FOCUS_RING,
-    LABEL_BUTTON_PADDING_CLASSES[variant],
+    LABEL_BUTTON_LAYOUT_CLASSES[variant],
   ])
 }
 

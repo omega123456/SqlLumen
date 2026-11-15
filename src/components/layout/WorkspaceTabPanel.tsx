@@ -7,7 +7,7 @@ import ProcessListTabComponent from '../processlist/ProcessListTab'
 import TableDesignerSkeleton from '../skeletons/TableDesignerSkeleton'
 import MonacoEditorSkeleton from '../skeletons/MonacoEditorSkeleton'
 import type { WorkspaceTab } from '../../types/schema'
-import styles from './WorkspaceTabPanel.module.css'
+import { RETAINED_HIDDEN_STYLE } from '../../lib/retained-hidden-style'
 
 const LazyTableDesignerTab = lazy(() => import('../table-designer/TableDesignerTab'))
 const LazyObjectEditorTab = lazy(() => import('../object-editor/ObjectEditorTab'))
@@ -19,9 +19,19 @@ export interface WorkspaceTabPanelProps {
   sessionId?: string
 }
 
+const ACTIVE_PANEL_CLASS_NAME = 'absolute inset-0 overflow-hidden'
+const INACTIVE_PANEL_CLASS_NAME =
+  'pointer-events-none absolute inset-0 overflow-hidden aria-hidden:invisible'
+
 function panelVisibilityProps(isActive: boolean) {
-  if (isActive) return { className: styles.panel }
-  return { className: `${styles.panel} ${styles.inactive}`, 'aria-hidden': true, tabIndex: -1 }
+  if (isActive) return { className: ACTIVE_PANEL_CLASS_NAME }
+  return {
+    className: INACTIVE_PANEL_CLASS_NAME,
+    style: RETAINED_HIDDEN_STYLE,
+    'aria-hidden': true,
+    tabIndex: -1,
+    'data-animation-paused': true,
+  }
 }
 
 interface WorkspaceTabContentProps {

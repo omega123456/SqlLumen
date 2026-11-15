@@ -1,6 +1,16 @@
 import type { ReactNode } from 'react'
 import { Database, ArrowsClockwise, WarningCircle } from '@phosphor-icons/react'
 import { Button } from '../../common/Button'
+import { joinClassNames } from '../../../lib/class-names'
+import { FOCUS_RING } from '../../../lib/focus-ring'
+import {
+  STATUS_BAR,
+  STATUS_BAR_ACTIVITY,
+  STATUS_BAR_LEFT,
+  STATUS_BAR_RIGHT,
+  STATUS_BAR_SPACER,
+  STATUS_TEXT,
+} from '../../../lib/class-names-status-bar'
 import type { SingleResultState } from '../../../stores/query-store'
 import type { ConnectionIndexState } from '../../../stores/schema-index-store'
 import {
@@ -11,7 +21,17 @@ import {
   type IndexingProgress,
   type RowCountParts,
 } from './status-bar-model'
-import styles from '../StatusBar.module.css'
+
+const INDEXING_INDICATOR = 'flex shrink-0 items-center gap-1 transition-fade-slide duration-500'
+const INDEXING_ICON = 'size-3 shrink-0'
+const QUERY_INFO = 'flex shrink-0 items-center gap-5'
+const QUERY_INFO_LABEL = 'text-light-on-surface-variant dark:text-dark-on-surface-variant'
+const QUERY_INFO_VALUE = 'font-semibold text-light-on-surface dark:text-dark-on-surface'
+
+function flashFadeClassName(fadingOut: boolean): string {
+  if (fadingOut) return 'opacity-0 -translate-x-1'
+  return ''
+}
 
 export function IndexBuildingIndicator({
   indexState,
@@ -32,13 +52,16 @@ export function IndexBuildingIndicator({
     : { role: 'status', 'aria-label': progress.label }
   return (
     <div
-      className={styles.indexingIndicator}
+      className={INDEXING_INDICATOR}
       data-testid="indexing-indicator"
       data-phase={phase}
       {...accessibilityProps}
     >
-      <Database size={12} className={`${styles.indexingIcon} ${styles.indexingIconAnimated}`} />
-      <span className={styles.indexingText} data-testid="indexing-text">
+      <Database
+        size={12}
+        className="size-3 shrink-0 motion-safe:animate-pulse-dim motion-safe:window-blurred:animate-pulse-dim-paused"
+      />
+      <span className={STATUS_TEXT} data-testid="indexing-text">
         {progress.label}
       </span>
     </div>
@@ -54,30 +77,40 @@ export function IndexFlashIndicator({
 }) {
   const display = INDEX_FLASH_DISPLAY[flashType]
   const Icon = display.icon
-  const fadeClassName = fadingOut ? styles.indexingFadeOut : ''
   return (
-    <div className={`${styles.indexingIndicator} ${fadeClassName}`} data-testid={display.testId}>
-      <Icon size={12} weight="fill" className={`${styles.indexingIcon} ${display.toneClassName}`} />
-      <span className={`${styles.indexingText} ${display.toneClassName}`}>{display.text}</span>
+    <div
+      className={joinClassNames([INDEXING_INDICATOR, flashFadeClassName(fadingOut)])}
+      data-testid={display.testId}
+    >
+      <Icon
+        size={12}
+        weight="fill"
+        className={joinClassNames([INDEXING_ICON, display.toneClassName])}
+      />
+      <span
+        className={joinClassNames(['whitespace-nowrap text-size-caption', display.toneClassName])}
+      >
+        {display.text}
+      </span>
     </div>
   )
 }
 
 export function QueryRunningInfo() {
   return (
-    <div className={styles.queryRunningInfo} data-testid="query-running-info">
-      <span className={styles.queryRunningSpinner} />
-      <span className={styles.queryRunningText}>Running...</span>
+    <div className="flex shrink-0 items-center gap-1" data-testid="query-running-info">
+      <span className="inline-block size-2.5 animate-spin-700ms rounded-round border-spinner border-light-primary-a30 border-t-light-primary window-blurred:animate-spin-700ms-paused dark:border-dark-primary-a30 dark:border-t-dark-primary" />
+      <span className={STATUS_TEXT}>Running...</span>
     </div>
   )
 }
 
 export function TableDataInfo({ visibleRows }: { visibleRows: number }) {
   return (
-    <div className={styles.queryInfo} data-testid="table-data-info">
-      <span className={styles.queryInfoItem} data-testid="table-data-rows">
-        <span className={styles.queryInfoLabel}>Rows</span>{' '}
-        <b className={styles.queryInfoTime}>{visibleRows}</b>
+    <div className={QUERY_INFO} data-testid="table-data-info">
+      <span className={STATUS_TEXT} data-testid="table-data-rows">
+        <span className={QUERY_INFO_LABEL}>Rows</span>{' '}
+        <b className={QUERY_INFO_VALUE}>{visibleRows}</b>
       </span>
     </div>
   )
@@ -91,14 +124,14 @@ export function QueryInfo({
   rowCount: RowCountParts
 }) {
   return (
-    <div className={styles.queryInfo} data-testid="query-info">
-      <span className={styles.queryInfoItem} data-testid="query-rows">
-        <b className={`${styles.queryInfoTime} ${styles.queryRowCount}`}>
+    <div className={QUERY_INFO} data-testid="query-info">
+      <span className={STATUS_TEXT} data-testid="query-rows">
+        <b className={joinClassNames([QUERY_INFO_VALUE, 'inline-flex items-center gap-1'])}>
           {rowCount.segmentKind === 'truncated' && (
             <WarningCircle
               size={12}
               weight="fill"
-              className={styles.queryRowCountWarning}
+              className="flex-none text-light-warning dark:text-dark-warning"
               aria-hidden="true"
               data-testid="query-rows-truncated-icon"
             />
@@ -106,13 +139,13 @@ export function QueryInfo({
           {rowCountText(rowCount)}
         </b>
       </span>
-      <span className={styles.queryInfoItem} data-testid="query-time">
-        <span className={styles.queryInfoLabel}>Exec</span>{' '}
-        <b className={styles.queryInfoTime}>{result.executionTimeMs} ms</b>
+      <span className={STATUS_TEXT} data-testid="query-time">
+        <span className={QUERY_INFO_LABEL}>Exec</span>{' '}
+        <b className={QUERY_INFO_VALUE}>{result.executionTimeMs} ms</b>
       </span>
-      <span className={styles.queryInfoItem} data-testid="query-total-time">
-        <span className={styles.queryInfoLabel}>Total</span>{' '}
-        <b className={styles.queryInfoTime}>{result.totalTimeMs} ms</b>
+      <span className={STATUS_TEXT} data-testid="query-total-time">
+        <span className={QUERY_INFO_LABEL}>Total</span>{' '}
+        <b className={QUERY_INFO_VALUE}>{result.totalTimeMs} ms</b>
       </span>
     </div>
   )
@@ -122,26 +155,31 @@ export function UpdateIndicator({ onOpenUpdates }: { onOpenUpdates: () => void }
   return (
     <Button
       variant="bare"
-      className={styles.updateButton}
+      className={joinClassNames([
+        'group/update flex shrink-0 cursor-pointer items-center gap-1 p-0',
+        FOCUS_RING,
+      ])}
       data-testid="status-bar-update-indicator"
       aria-label="Update available, click to open update settings"
       onClick={onOpenUpdates}
     >
-      <ArrowsClockwise size={12} weight="fill" className={styles.indexingIcon} />
-      <span className={styles.updateButtonText}>Update available</span>
+      <ArrowsClockwise size={12} weight="fill" className={INDEXING_ICON} />
+      <span className="whitespace-nowrap text-size-caption text-light-primary group-hover/update:underline group-focus-visible/update:underline dark:text-dark-primary">
+        Update available
+      </span>
     </Button>
   )
 }
 
 export function IdleStatusBar({ updateIndicator }: { updateIndicator: ReactNode }) {
   return (
-    <div className={styles.statusBar} data-testid="status-bar">
-      <div className={styles.left}>
-        <span className={styles.statusText}>Ready</span>
+    <div className={STATUS_BAR} data-testid="status-bar">
+      <div className={STATUS_BAR_LEFT}>
+        <span className={STATUS_TEXT}>Ready</span>
       </div>
-      <div className={styles.spacer} />
-      <div className={styles.right}>
-        <div className={styles.activity} aria-live="polite">
+      <div className={STATUS_BAR_SPACER} />
+      <div className={STATUS_BAR_RIGHT}>
+        <div className={STATUS_BAR_ACTIVITY} aria-live="polite">
           {updateIndicator}
         </div>
       </div>

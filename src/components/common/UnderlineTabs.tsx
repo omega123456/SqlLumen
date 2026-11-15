@@ -22,6 +22,7 @@ import {
   suffixSlotClassName,
   tabClassName,
   type TabDropIndicator,
+  type TabShape,
 } from './underline-tabs/tab-classes'
 import type { UnderlineTabBarProps, UnderlineTabVariant } from './underline-tabs/tab-bar-variants'
 import { ScrollableTabBar } from './underline-tabs/ScrollableTabBar'
@@ -98,6 +99,7 @@ export interface UnderlineTabProps {
   onDrop?: (e: DragEvent<HTMLElement>) => void
   draggable?: boolean
   dragging?: boolean
+  editing?: boolean
   dropIndicator?: TabDropIndicator
   prefix?: ReactNode
   suffix?: ReactNode
@@ -105,7 +107,7 @@ export interface UnderlineTabProps {
 }
 
 type ResolvedUnderlineTabProps = UnderlineTabProps &
-  Required<Pick<UnderlineTabProps, 'active' | 'dragging' | 'variant'>>
+  Required<Pick<UnderlineTabProps, 'active' | 'dragging' | 'editing' | 'variant'>>
 
 interface ResolvedTabViewProps {
   props: ResolvedUnderlineTabProps
@@ -143,6 +145,18 @@ function selectHandler(props: UnderlineTabProps): (() => void) | undefined {
   return props.onSelect ?? props.onClick
 }
 
+function resolvedTabClassName(shape: TabShape, props: ResolvedUnderlineTabProps): string {
+  return tabClassName({
+    shape: shape,
+    variant: props.variant,
+    active: props.active,
+    dragging: props.dragging,
+    dropIndicator: props.dropIndicator,
+    editing: props.editing,
+    className: props.className,
+  })
+}
+
 function TabSuffixSlot({ props }: { props: ResolvedUnderlineTabProps }) {
   if (props.suffix == null) return null
   return (
@@ -162,14 +176,7 @@ function TabSuffixSlot({ props }: { props: ResolvedUnderlineTabProps }) {
 
 function SplitUnderlineTab({ props, elementRef }: ResolvedTabViewProps) {
   const handleSelect = selectHandler(props)
-  const cellClass = tabClassName({
-    shape: 'cell',
-    variant: props.variant,
-    active: props.active,
-    dragging: props.dragging,
-    dropIndicator: props.dropIndicator,
-    className: props.className,
-  })
+  const cellClass = resolvedTabClassName('cell', props)
 
   const onLabelKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     props.onKeyDown?.(event)
@@ -186,6 +193,7 @@ function SplitUnderlineTab({ props, elementRef }: ResolvedTabViewProps) {
       className={cellClass}
       data-variant={props.variant}
       data-dragging={dataFlag(props.dragging)}
+      data-editing={dataFlag(props.editing)}
       data-drop-indicator={props.dropIndicator}
       data-active={activeDataAttribute(props.active)}
       data-testid={props['data-testid']}
@@ -224,14 +232,7 @@ function SplitUnderlineTab({ props, elementRef }: ResolvedTabViewProps) {
 }
 
 function SimpleUnderlineTab({ props, elementRef }: ResolvedTabViewProps) {
-  const simpleClass = tabClassName({
-    shape: 'simple',
-    variant: props.variant,
-    active: props.active,
-    dragging: props.dragging,
-    dropIndicator: props.dropIndicator,
-    className: props.className,
-  })
+  const simpleClass = resolvedTabClassName('simple', props)
 
   return (
     <button
@@ -240,6 +241,7 @@ function SimpleUnderlineTab({ props, elementRef }: ResolvedTabViewProps) {
       className={simpleClass}
       data-variant={props.variant}
       data-dragging={dataFlag(props.dragging)}
+      data-editing={dataFlag(props.editing)}
       data-drop-indicator={props.dropIndicator}
       data-active={activeDataAttribute(props.active)}
       data-testid={props['data-testid']}
@@ -267,6 +269,7 @@ export function UnderlineTab({
   active = false,
   autoScrollOnActive = true,
   dragging = false,
+  editing = false,
   variant = 'default',
   ...props
 }: UnderlineTabProps) {
@@ -282,6 +285,7 @@ export function UnderlineTab({
     ...props,
     active: active,
     dragging: dragging,
+    editing: editing,
     variant: variant,
   }
   const isSplit = props.prefix != null || props.suffix != null

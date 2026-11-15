@@ -10,19 +10,20 @@ import { useCommandPaletteStore } from '../../../stores/command-palette-store'
 import { useShortcutStore } from '../../../stores/shortcut-store'
 import { shortcutLabelParts } from '../../../lib/shortcut-labels'
 import { Button } from '../../common/Button'
+import { FOCUS_RING } from '../../../lib/focus-ring'
+import { joinClassNames } from '../../../lib/class-names'
 import { IconButton } from '../../common/IconButton'
 import type { Theme } from '../../../stores/theme-store'
 import type { ActiveConnection } from '../../../types/connection'
 import { ConnectionStatusIndicator } from '../ConnectionStatusIndicator'
 import type { PendingConnectionClose } from './connection-tab-model'
-import styles from '../ConnectionTabBar.module.css'
 
 export function ConnectionTabPrefix({ connection }: { connection: ActiveConnection }) {
   return (
     <>
       {connection.profile.color ? (
         <span
-          className={styles.colorMarker}
+          className="absolute top-1/2 left-1 -mt-2 h-4 w-0.75 rounded-track"
           style={{ backgroundColor: connection.profile.color }}
           data-testid={`connection-color-marker-${connection.id}`}
           aria-hidden
@@ -31,7 +32,7 @@ export function ConnectionTabPrefix({ connection }: { connection: ActiveConnecti
       <ConnectionStatusIndicator status={connection.status} size={8} />
       {connection.profile.readOnly ? (
         <LockIcon
-          className={styles.readOnlyIcon}
+          className="shrink-0 text-light-on-surface-variant dark:text-dark-on-surface-variant"
           size={12}
           weight="fill"
           aria-label="Read-only connection"
@@ -85,15 +86,19 @@ function PaletteSearchButton() {
   const paletteBinding = useShortcutStore((state) => state.shortcuts['command-palette'])
   return (
     <Button
-      variant="subtle"
-      className={styles.searchBox}
+      variant="bare"
+      className={joinClassNames([
+        'flex h-7.5 w-70 flex-none cursor-default items-center justify-start gap-2 self-center rounded-control border border-light-stroke-control border-b-light-stroke-control-bottom bg-light-fill-control pr-1.5 pl-2.5 font-body text-body whitespace-nowrap text-light-on-surface dark:border-dark-stroke-control dark:border-b-dark-stroke-control-bottom dark:bg-dark-fill-control dark:text-dark-on-surface',
+        FOCUS_RING,
+        'not-disabled:hover:bg-light-fill-control-hover dark:not-disabled:hover:bg-dark-fill-control-hover not-disabled:active:bg-light-fill-control-hover dark:not-disabled:active:bg-dark-fill-control-hover',
+      ])}
       onClick={() => togglePalette()}
       data-testid="connection-strip-search"
     >
       <MagnifyingGlassIcon size={16} weight="regular" aria-hidden />
-      <span className={styles.searchLabel}>Search tables, views, routines</span>
+      <span className="min-w-0 truncate">Search tables, views, routines</span>
       {paletteBinding ? (
-        <span className={styles.searchShortcut}>
+        <span className="ml-auto rounded-bar border border-light-stroke-card px-1.25 text-key-hint text-light-outline dark:border-dark-stroke-card dark:text-dark-outline">
           {shortcutLabelParts(paletteBinding).join(' ')}
         </span>
       ) : null}
@@ -105,7 +110,7 @@ export function ConnectionStripTools(tools: ConnectionStripToolsProps) {
   return (
     <>
       <PaletteSearchButton />
-      <div className={styles.tools}>
+      <div className="flex shrink-0 items-center gap-0.5 pr-2 pl-3">
         <ThemeToggleButton resolvedTheme={tools.resolvedTheme} onToggle={tools.onToggleTheme} />
         <IconButton
           size="lg"

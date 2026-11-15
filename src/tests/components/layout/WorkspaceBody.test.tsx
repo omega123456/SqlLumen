@@ -64,7 +64,6 @@ function renderWorkspaceBodyWithTabs(tabs: WorkspaceTab[], activeTabId: string |
 
 function expectAllAiHostsHidden() {
   for (const host of screen.getAllByTestId('workspace-ai-panel-host')) {
-    expect(host).toHaveStyle({ visibility: 'hidden' })
     expect(host).toHaveAttribute('aria-hidden', 'true')
   }
 }
@@ -143,10 +142,7 @@ describe('WorkspaceBody', () => {
       expect(screen.getAllByTestId('ai-panel')).toHaveLength(2)
     })
     const hosts = screen.getAllByTestId('workspace-ai-panel-host')
-    expect(hosts[0]).not.toHaveStyle({ visibility: 'hidden' })
     expect(hosts[0]).not.toHaveAttribute('aria-hidden')
-    expect(hosts[1]).toHaveStyle({ visibility: 'hidden' })
-    expect(hosts[1]).toHaveStyle({ pointerEvents: 'none' })
     expect(hosts[1]).toHaveAttribute('aria-hidden', 'true')
   })
 

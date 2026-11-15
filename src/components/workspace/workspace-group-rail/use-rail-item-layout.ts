@@ -27,7 +27,7 @@ export function useRailMarker(
       markerPlacedRef.current = false
       return
     }
-    marker.dataset.animate = markerPlacedRef.current ? 'true' : 'false'
+    marker.toggleAttribute('data-animate', markerPlacedRef.current)
     marker.style.transform = `translateY(${centeredOffset(item, MARKER_HEIGHT)}px)`
     markerPlacedRef.current = true
   }, [selectedKey, entries, itemRefs])

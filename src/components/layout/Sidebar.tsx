@@ -2,7 +2,9 @@ import { useCallback, useState } from 'react'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useSchemaStore } from '../../stores/schema-store'
 import { ObjectBrowser } from '../object-browser/ObjectBrowser'
-import styles from './Sidebar.module.css'
+
+const SIDEBAR_CLASS_NAME =
+  'flex h-full flex-col overflow-hidden border-r border-r-light-stroke-divider bg-light-surface-container dark:border-r-dark-stroke-divider dark:bg-dark-surface-container'
 
 export function Sidebar() {
   const activeConnections = useConnectionStore((state) => state.activeConnections)
@@ -39,7 +41,7 @@ export function Sidebar() {
 
   if (activeConnection && activeTabId) {
     return (
-      <div className={styles.sidebar} data-testid="sidebar-inner">
+      <div className={SIDEBAR_CLASS_NAME} data-testid="sidebar-inner">
         <ObjectBrowser
           connectionId={activeTabId}
           favouritesOpen={favouritesOpen}
@@ -50,8 +52,10 @@ export function Sidebar() {
   }
 
   return (
-    <div className={styles.sidebar} data-testid="sidebar-inner">
-      <span className={styles.emptyState}>No active connection</span>
+    <div className={SIDEBAR_CLASS_NAME} data-testid="sidebar-inner">
+      <span className="m-auto p-3 text-center text-size-row font-regular text-light-on-surface-variant dark:text-dark-on-surface-variant">
+        No active connection
+      </span>
     </div>
   )
 }

@@ -5,7 +5,6 @@ import { useQueryStore, type SingleResultState } from '../../../stores/query-sto
 import type { ConnectionIndexState } from '../../../stores/schema-index-store'
 import { formatRowCountParts } from '../../../lib/format-row-count'
 import type { TableDataTabState, WorkspaceTab } from '../../../types/schema'
-import styles from '../StatusBar.module.css'
 
 export const READY_FLASH_DURATION_MS = 2000
 export const STATUS_FLASH_DURATION_MS = 3000
@@ -32,13 +31,13 @@ export const INDEX_FLASH_DISPLAY: Record<
   ready: {
     testId: 'indexing-ready',
     icon: CheckCircle,
-    toneClassName: styles.indexingReady,
+    toneClassName: 'text-light-tertiary dark:text-dark-tertiary',
     text: 'Index ready',
   },
   error: {
     testId: 'indexing-error',
     icon: WarningCircle,
-    toneClassName: styles.indexingError,
+    toneClassName: 'text-light-error dark:text-dark-error',
     text: 'Index error',
   },
 }
@@ -277,16 +276,6 @@ export function resolveStatusActivity(inputs: StatusActivityInputs): StatusActiv
     tableRows: visibleTableRows(inputs.tableData),
     queryInfo: resolveQueryInfo(inputs.queryPane),
   }
-}
-
-export function hasAnyActivity(activity: StatusActivity): boolean {
-  return [
-    activity.buildingIndex !== null,
-    activity.flash !== null,
-    activity.showRunningInfo,
-    activity.queryInfo !== null,
-    activity.tableRows !== null,
-  ].some(Boolean)
 }
 
 export type RowCountParts = ReturnType<typeof formatRowCountParts>
