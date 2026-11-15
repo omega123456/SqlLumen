@@ -3,7 +3,6 @@ import { formatCount, formatRowRange } from '../../../lib/format-row-count'
 import { Button } from '../../common/Button'
 import { InfoBar } from '../../common/InfoBar'
 import { TRUNCATION_MESSAGES } from './result-panel-model'
-import styles from '../ResultPanel.module.css'
 
 interface ResultBandsProps {
   tabId: string
@@ -104,7 +103,10 @@ export function ResultBands({ tabId, result, isTabRunning }: ResultBandsProps) {
   const openExportDialog = useQueryStore((state) => state.openExportDialog)
   if (!hasAnyBand(result)) return null
   return (
-    <div className={styles.bandSlot} data-testid="result-band-slot">
+    <div
+      className="flex flex-none flex-col gap-2 border-t border-t-light-stroke-divider bg-light-surface-container-lowest p-3 dark:border-t-dark-stroke-divider dark:bg-dark-surface-container-lowest"
+      data-testid="result-band-slot"
+    >
       {result.truncated && (
         <TruncationBand
           result={result}

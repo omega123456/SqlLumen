@@ -306,6 +306,7 @@
   --spacing-progress-bar: 4px;
   --spacing-context-menu: 260px;
   --spacing-toast: 380px;
+  --spacing-elapsed-timer: 9ch;
   --spacing-rail-tooltip: calc(100% + 2px);
   --spacing-connection-rail: 41px;
   --spacing-connection-rail-edged: 42px;
@@ -381,6 +382,7 @@
   --transition-property-shadow: box-shadow;
   --transition-property-transform: transform;
   --transition-property-fade-slide: opacity, translate;
+  --transition-property-color-border-bg-opacity: color, border-color, background-color, opacity;
 
   --animate-*: initial;
   --animate-spin-600ms: spin 0.6s linear infinite;
@@ -417,6 +419,12 @@
   --animate-rail-tooltip-in-paused: rail-tooltip-in 90ms ease paused;
   --animate-indeterminate-slide: indeterminate-slide 1.6s ease-in-out infinite;
   --animate-indeterminate-slide-paused: indeterminate-slide 1.6s ease-in-out infinite paused;
+  --animate-edit-mode-load-pulse-light: edit-mode-load-pulse-light 1s ease-in-out infinite;
+  --animate-edit-mode-load-pulse-light-paused: edit-mode-load-pulse-light 1s ease-in-out infinite
+    paused;
+  --animate-edit-mode-load-pulse-dark: edit-mode-load-pulse-dark 1s ease-in-out infinite;
+  --animate-edit-mode-load-pulse-dark-paused: edit-mode-load-pulse-dark 1s ease-in-out infinite
+    paused;
   --animate-toast-progress: toast-progress-shrink linear forwards;
   --animate-toast-progress-paused: toast-progress-shrink linear forwards paused;
 
@@ -513,6 +521,26 @@
     }
     to {
       left: 100%;
+    }
+  }
+
+  @keyframes edit-mode-load-pulse-light {
+    0%,
+    100% {
+      border-color: var(--color-light-stroke-control);
+    }
+    50% {
+      border-color: var(--color-light-primary);
+    }
+  }
+
+  @keyframes edit-mode-load-pulse-dark {
+    0%,
+    100% {
+      border-color: var(--color-dark-stroke-control);
+    }
+    50% {
+      border-color: var(--color-dark-primary);
     }
   }
 

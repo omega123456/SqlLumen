@@ -15,15 +15,19 @@ import {
   type ActiveResult,
   type RowCountParts,
 } from './result-toolbar-model'
-import styles from '../ResultToolbar.module.css'
 
 function ResultRowCount({ rowCount }: { rowCount: RowCountParts }) {
   if (rowCount.segmentKind !== 'truncated') {
     return <span data-testid="result-row-count">{rowCount.count}</span>
   }
   return (
-    <span className={styles.truncatedCount} data-testid="result-row-count">
-      <WarningCircle size={12} weight="fill" className={styles.truncatedIcon} aria-hidden="true" />
+    <span className="inline-flex items-center gap-1" data-testid="result-row-count">
+      <WarningCircle
+        size={12}
+        weight="fill"
+        className="flex-none text-light-warning dark:text-dark-warning"
+        aria-hidden="true"
+      />
       {rowCount.count} · {rowCount.segment}
     </span>
   )
@@ -55,16 +59,22 @@ function ResultStatusDetails({ rowCount, isFiltering, windowLabel }: StatusDetai
   return (
     <>
       {rowCount.segmentKind === 'autoLimit' && (
-        <span className={styles.autoLimit}>· {rowCount.segment}</span>
+        <span className="-ml-1 whitespace-nowrap">· {rowCount.segment}</span>
       )}
       {isFiltering && (
-        <span className={styles.statusNote} data-testid="result-filtering-status">
+        <span className="whitespace-nowrap" data-testid="result-filtering-status">
           Filtering…
         </span>
       )}
       {windowLabel && (
-        <span className={styles.windowLoading} data-testid="result-window-loading">
-          <span className={styles.miniSpinner} aria-hidden="true" />
+        <span
+          className="inline-flex items-center gap-2 whitespace-nowrap"
+          data-testid="result-window-loading"
+        >
+          <span
+            className="size-3 animate-spin-700ms rounded-round border-2 border-y-light-primary border-l-light-primary border-r-transparent window-blurred:animate-spin-700ms-paused dark:border-y-dark-primary dark:border-l-dark-primary"
+            aria-hidden="true"
+          />
           <span>{windowLabel}</span>
         </span>
       )}
@@ -137,7 +147,7 @@ export function ResultToolbarStatus({ tabId, result, filterModel }: ResultToolba
   })
 
   return (
-    <div className={styles.statusWrapper}>
+    <div className="min-w-0 flex-1">
       <StatusArea
         status={resolveStatusAreaStatus(showActionProgress, result.resultStatus)}
         totalRows={statusTotalRows}
@@ -147,7 +157,7 @@ export function ResultToolbarStatus({ tabId, result, filterModel }: ResultToolba
         errorMessage={truncateErrorMessage(result.errorMessage)}
         customContent={customContent}
       />
-      <span className={styles.srOnly} role="status" aria-live="polite">
+      <span className="sr-only" role="status" aria-live="polite">
         {announcement}
       </span>
     </div>

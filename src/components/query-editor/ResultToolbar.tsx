@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, type ReactNode } from 'react'
 import { countRanges, useQueryStore, getActiveResult } from '../../stores/query-store'
 import { EditModeDropdown } from './EditModeDropdown'
 import { ViewModeGroup } from '../shared/toolbar/ViewModeGroup'
@@ -7,7 +7,6 @@ import { CopySelectedRowsButton } from '../shared/toolbar/CopySelectedRowsButton
 import { FilterToolbarButton } from '../shared/FilterToolbarButton'
 import type { ViewMode } from '../../types/shared-data-view'
 import type { FilterCondition } from '../../types/schema'
-import styles from './ResultToolbar.module.css'
 import {
   editTableNameOf,
   isCopySelectedDisabled,
@@ -64,6 +63,17 @@ function useCheckedRowActions(tabId: string, activeResult: ActiveResult) {
   return { checkedCount, handleCopySelectedRows, deletion }
 }
 
+function ResultToolbarFrame({ children }: { children: ReactNode }) {
+  return (
+    <div
+      className="flex h-command-bar shrink-0 items-center gap-1.5 px-2"
+      data-testid="result-toolbar"
+    >
+      {children}
+    </div>
+  )
+}
+
 export function ResultToolbar({
   tabId,
   connectionId,
@@ -84,7 +94,7 @@ export function ResultToolbar({
   const isFilterDisabled = activeResult.columns.length === 0 || isEditingActive
 
   return (
-    <div className={styles.toolbar} data-testid="result-toolbar">
+    <ResultToolbarFrame>
       <ViewModeGroup
         currentMode={activeResult.viewMode}
         availableModes={['grid', 'form', 'text']}
@@ -122,6 +132,6 @@ export function ResultToolbar({
         onClick={() => void handleCopySelectedRows()}
       />
       <DeleteRowsConfirmDialog deletion={deletion} />
-    </div>
+    </ResultToolbarFrame>
   )
 }

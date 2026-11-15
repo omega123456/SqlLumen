@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { CopySimple, WarningCircle } from '@phosphor-icons/react'
 import { Button } from '../common/Button'
 import { writeClipboardText } from '../../lib/context-menu-utils'
@@ -10,8 +10,8 @@ import { TEXT_VIEW_ROW_CAP, useQueryStore } from '../../stores/query-store'
 import { showErrorToast } from '../../stores/toast-store'
 import type { ColumnMeta } from '../../types/schema'
 import { formatTextOutput } from './result-text-format'
-import styles from './ResultTextView.module.css'
 import { toErrorMessage } from '../../lib/error-message'
+import { joinClassNames, SCROLLBAR } from '../../lib/class-names'
 
 export interface ResultTextViewProps {
   columns: ColumnMeta[]
@@ -59,7 +59,12 @@ function CapStripText({
   return (
     <>
       Showing first {formatCount(TEXT_VIEW_ROW_CAP)} of{' '}
-      <WarningCircle size={12} weight="fill" className={styles.capWarning} aria-hidden="true" />{' '}
+      <WarningCircle
+        size={12}
+        weight="fill"
+        className="flex-none text-light-warning dark:text-dark-warning"
+        aria-hidden="true"
+      />{' '}
       {formatCount(viewRowCount)}+ rows · truncated
     </>
   )
@@ -83,6 +88,33 @@ function CopyAllButton({ isCapped, disabled, onCopy }: CopyAllButtonProps) {
       <CopySimple size={14} aria-hidden="true" />
       <span>{isCapped ? `Copy first ${formatCount(TEXT_VIEW_ROW_CAP)}` : 'Copy all'}</span>
     </Button>
+  )
+}
+
+interface ResultTextHeaderProps {
+  isCapped: boolean
+  showTruncatedCopy: boolean
+  viewRowCount: number
+  copyButton: ReactNode
+}
+
+function ResultTextHeader(props: ResultTextHeaderProps) {
+  if (!props.isCapped) {
+    return <div className="absolute top-2 right-2 z-1">{props.copyButton}</div>
+  }
+  return (
+    <div
+      className="flex flex-none items-center justify-between gap-3 border-b border-b-light-stroke-divider bg-light-surface-container py-1.5 pr-2 pl-4 text-caption text-light-on-surface-variant dark:border-b-dark-stroke-divider dark:bg-dark-surface-container dark:text-dark-on-surface-variant"
+      data-testid="result-text-view-cap-strip"
+    >
+      <span className="inline-flex min-w-0 items-center gap-0.5 truncate">
+        <CapStripText
+          showTruncatedCopy={props.showTruncatedCopy}
+          viewRowCount={props.viewRowCount}
+        />
+      </span>
+      {props.copyButton}
+    </div>
   )
 }
 
@@ -175,19 +207,22 @@ export function ResultTextView({
   const showTruncatedCopy = truncated && !isFiltered
 
   return (
-    <div className={styles.container} data-testid="result-text-view">
-      {isCapped ? (
-        <div className={styles.capStrip} data-testid="result-text-view-cap-strip">
-          <span className={styles.capText}>
-            <CapStripText showTruncatedCopy={showTruncatedCopy} viewRowCount={viewRowCount} />
-          </span>
-          {copyButton}
-        </div>
-      ) : (
-        <div className={styles.copyAllSlot}>{copyButton}</div>
-      )}
+    <div
+      className="relative flex h-full flex-col bg-light-surface-container-low dark:bg-dark-surface-container-low"
+      data-testid="result-text-view"
+    >
+      <ResultTextHeader
+        isCapped={isCapped}
+        showTruncatedCopy={showTruncatedCopy}
+        viewRowCount={viewRowCount}
+        copyButton={copyButton}
+      />
       <pre
-        className={isCapped ? `${styles.pre} ${styles.preBelowStrip}` : styles.pre}
+        className={joinClassNames([
+          'm-0 flex-1 overflow-auto px-4 pb-4 font-mono text-size-row leading-loose whitespace-pre text-light-on-surface tab-4 dark:text-dark-on-surface',
+          SCROLLBAR,
+          isCapped ? 'pt-4' : 'pt-11',
+        ])}
         aria-busy={rows === null}
       >
         {formattedText}

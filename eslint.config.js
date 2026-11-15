@@ -67,6 +67,11 @@ const TAILWIND_CLASS_RULE_FILES = [
   'src/lib/class-names-grid-editor.ts',
   'src/lib/class-names-status-dot.ts',
   'src/lib/grid-cell-classes.ts',
+  'src/lib/class-names-result-tab.ts',
+  'src/components/query-editor/*.ts',
+  'src/components/query-editor/*.tsx',
+  'src/components/query-editor/**/*.ts',
+  'src/components/query-editor/**/*.tsx',
 ]
 const localRulesPlugin = {
   rules: { ...namedConditionsPlugin.rules, ...tailwindRulesPlugin.rules },

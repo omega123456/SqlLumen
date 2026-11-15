@@ -1,7 +1,6 @@
 import { FloppyDisk, FolderOpen, MagicWand, UploadSimple } from '@phosphor-icons/react'
 import { IconButton } from '../../common/IconButton'
 import type { useEditorToolbarActions } from './use-editor-toolbar-actions'
-import styles from '../EditorToolbar.module.css'
 
 interface EditorFileActionsProps {
   actions: ReturnType<typeof useEditorToolbarActions>
@@ -11,7 +10,7 @@ interface EditorFileActionsProps {
 
 export function EditorFileActions({ actions, isDisabled, isReadOnly }: EditorFileActionsProps) {
   return (
-    <div className={styles.leftActions}>
+    <div className="flex items-center gap-0.5">
       <IconButton
         size="lg"
         title="Save (Ctrl+S)"

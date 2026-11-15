@@ -12,7 +12,6 @@ import {
   useResultPanelControllers,
   useRetryExpiredResult,
 } from './result-panel/use-result-panel-controllers'
-import styles from './ResultPanel.module.css'
 
 interface ResultPanelProps {
   tabId: string
@@ -58,7 +57,7 @@ export function ResultPanel({
 
   return (
     <div
-      className={styles.container}
+      className="relative flex h-full flex-col overflow-hidden bg-light-surface-container-lowest dark:bg-dark-surface-container-lowest"
       data-testid="result-panel"
       aria-busy={displayStatus === 'restoring'}
     >

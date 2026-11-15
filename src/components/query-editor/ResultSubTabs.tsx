@@ -7,21 +7,33 @@ import type { SingleResultState } from '../../stores/query-store'
 import { UnderlineTabBar } from '../common/UnderlineTabs'
 import { Button } from '../common/Button'
 import { TAB_STRIP_NAVIGATION } from '../../lib/tab-strip-navigation'
-import styles from './ResultSubTabs.module.css'
 import { hasResultColumns } from '../../lib/query-result-column-utils'
+import { joinClassNames } from '../../lib/class-names'
+import { FOCUS_RING } from '../../lib/focus-ring'
+import {
+  RESULT_TAB_ACTIVITY_CLASSES,
+  RESULT_TAB_FRAME,
+  resultTabActivityOf,
+  type ResultTabActivity,
+} from '../../lib/class-names-result-tab'
 
 interface ResultSubTabsProps {
   tabId: string
 }
 
-function getTabIcon(result: SingleResultState) {
+const ICON_TONE_CLASSES: Record<ResultTabActivity, string> = {
+  idle: '',
+  active: 'text-light-primary dark:text-dark-primary',
+}
+
+function getTabIcon(result: SingleResultState, activity: ResultTabActivity) {
   if (result.resultStatus === 'error') {
-    return <Warning size={12} weight="fill" className={styles.errorIcon} />
+    return <Warning size={12} weight="fill" className="text-light-error dark:text-dark-error" />
   }
   if (!hasResultColumns(result)) {
-    return <CheckCircle size={12} weight="fill" className={styles.dmlIcon} />
+    return <CheckCircle size={12} weight="fill" className={ICON_TONE_CLASSES[activity]} />
   }
-  return <Table size={12} weight="fill" className={styles.selectIcon} />
+  return <Table size={12} weight="fill" className={ICON_TONE_CLASSES[activity]} />
 }
 
 interface ResultSubTabProps {
@@ -41,6 +53,7 @@ function ResultSubTab({
   registerTab,
   onSelect,
 }: ResultSubTabProps) {
+  const activity = resultTabActivityOf(isActive)
   return (
     <Button
       variant="bare"
@@ -51,16 +64,21 @@ function ResultSubTab({
       aria-controls={`result-tabpanel-${tabId}-${index}`}
       tabIndex={isActive ? 0 : -1}
       aria-label={result.truncated ? `Result ${index + 1} truncated` : undefined}
-      className={`${styles.tab} ${isActive ? styles.tabActive : ''}`}
+      className={joinClassNames([
+        RESULT_TAB_FRAME,
+        'px-3.5',
+        RESULT_TAB_ACTIVITY_CLASSES[activity],
+        FOCUS_RING,
+      ])}
       onClick={() => onSelect(index)}
       data-testid={`result-tab-${index}`}
     >
-      <span className={styles.tabLabel}>
-        {getTabIcon(result)}
+      <span className="inline-flex items-center gap-2 whitespace-nowrap">
+        {getTabIcon(result, activity)}
         <span>Result {index + 1}</span>
         {result.truncated && (
           <span
-            className={styles.truncatedIndicator}
+            className="inline-flex items-center text-light-warning dark:text-dark-warning"
             title={`Truncated at ${formatCount(result.rowCeiling)} rows`}
             data-testid={`result-tab-${index}-truncated`}
           >
@@ -106,7 +124,7 @@ export function ResultSubTabs({ tabId }: ResultSubTabsProps) {
       onKeyDown={handleKeyDown}
       data-testid="result-sub-tabs"
     >
-      <UnderlineTabBar variant="selector" className={styles.strip} scrollable>
+      <UnderlineTabBar variant="selector" className="px-2" scrollable>
         {results.map((result, index) => (
           <ResultSubTab
             key={index}

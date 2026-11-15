@@ -3,7 +3,6 @@ import { useQueryStore } from '../../stores/query-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { Button } from '../common/Button'
 import { RunningIndicator } from './RunningIndicator'
-import styles from './EditorToolbar.module.css'
 import { isAiLockStatus } from '../../lib/query-tab-status'
 import { useEditorToolbarActions } from './editor-toolbar/use-editor-toolbar-actions'
 import { EditorFileActions } from './editor-toolbar/EditorFileActions'
@@ -29,10 +28,13 @@ export function EditorToolbar({ connectionId, tabId }: EditorToolbarProps) {
   })
 
   return (
-    <div className={styles.toolbar} data-testid="editor-toolbar">
+    <div
+      className="flex h-command-bar shrink-0 items-center justify-between gap-2 border-b border-b-light-stroke-divider bg-light-surface-container px-2 dark:border-b-dark-stroke-divider dark:bg-dark-surface-container"
+      data-testid="editor-toolbar"
+    >
       <EditorFileActions actions={actions} isDisabled={isDisabled} isReadOnly={isReadOnly} />
 
-      <div className={styles.rightActions}>
+      <div className="flex items-center gap-2">
         {isRunning ? (
           <RunningIndicator connectionId={connectionId} tabId={tabId} />
         ) : (

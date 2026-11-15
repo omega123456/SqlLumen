@@ -1,10 +1,9 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, type ComponentPropsWithoutRef } from 'react'
 import { useQueryStore, type ActiveBottomPanelItem } from '../../stores/query-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { ResultPanel } from './ResultPanel'
 import { TableDataTab } from '../table-data/TableDataTab'
 import type { TableDataTab as TableDataTabType } from '../../types/schema'
-import styles from './QueryBottomPanel.module.css'
 import { isScopedTableDataTabOf } from '../../lib/workspace-tab-stacks'
 
 interface QueryBottomPanelProps {
@@ -14,6 +13,10 @@ interface QueryBottomPanelProps {
 }
 
 const DEFAULT_ACTIVE_BOTTOM_PANEL_ITEM = { type: 'result' } as const
+
+function BottomPanelSlot(attributes: ComponentPropsWithoutRef<'div'>) {
+  return <div className="flex min-h-0 flex-1 flex-col overflow-hidden" {...attributes} />
+}
 
 interface ResultTabPanelProps {
   queryTabId: string
@@ -27,12 +30,11 @@ function ResultTabPanel(props: ResultTabPanelProps) {
   const { queryTabId, resultIndex, isResultActive } = props
   const isActiveResultPanel = resultIndex === props.activeResultIndex
   return (
-    <div
+    <BottomPanelSlot
       role="tabpanel"
       id={`result-tabpanel-${queryTabId}-${resultIndex}`}
       aria-labelledby={`result-${queryTabId}-${resultIndex}`}
       hidden={!isResultActive}
-      className={styles.panel}
       data-testid={
         isActiveResultPanel
           ? 'query-bottom-panel-results'
@@ -47,7 +49,7 @@ function ResultTabPanel(props: ResultTabPanelProps) {
           hideSubTabs
         />
       )}
-    </div>
+    </BottomPanelSlot>
   )
 }
 
@@ -59,18 +61,17 @@ interface TableTabPanelProps {
 
 function TableTabPanel({ tab, isPanelActive, isTableActive }: TableTabPanelProps) {
   return (
-    <div
+    <BottomPanelSlot
       role="tabpanel"
       id={`table-data-tabpanel-${tab.id}`}
       aria-labelledby={`table-${tab.id}`}
       hidden={!isTableActive}
-      className={styles.panel}
       data-testid={`query-bottom-panel-table-${tab.id}`}
     >
       {isPanelActive && (
         <TableDataTab tab={tab} isActive={isTableActive} renderMode="bottom-panel" />
       )}
-    </div>
+    </BottomPanelSlot>
   )
 }
 
@@ -121,7 +122,7 @@ export function QueryBottomPanel({
   const isResultItemShown = isActive && activeBottomPanelItem.type === 'result'
 
   return (
-    <div className={styles.container} data-testid="query-bottom-panel">
+    <BottomPanelSlot data-testid="query-bottom-panel">
       {results.map((_, resultIndex) => (
         <ResultTabPanel
           key={`result-panel-${resultIndex}`}
@@ -140,6 +141,6 @@ export function QueryBottomPanel({
           isTableActive={isActive && isActiveTableItem(activeBottomPanelItem, tab.id)}
         />
       ))}
-    </div>
+    </BottomPanelSlot>
   )
 }

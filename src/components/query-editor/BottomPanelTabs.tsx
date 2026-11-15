@@ -14,7 +14,6 @@ import {
   showsResultSeparator,
   type BottomPanelTabItem,
 } from './bottom-panel-tabs/bottom-panel-tab-items'
-import styles from './BottomPanelTabs.module.css'
 
 interface BottomPanelTabsProps {
   queryTabId: string
@@ -125,7 +124,7 @@ export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsPro
       onKeyDown={handleKeyDown}
       data-testid="bottom-panel-tabs"
     >
-      <UnderlineTabBar variant="selector" className={styles.strip} scrollable>
+      <UnderlineTabBar variant="selector" className="px-2" scrollable>
         {items.map((item, index) => (
           <BottomPanelTab
             key={item.id}

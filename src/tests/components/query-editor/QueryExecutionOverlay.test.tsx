@@ -8,13 +8,6 @@ describe('QueryExecutionOverlay', () => {
     expect(screen.getByTestId('query-execution-overlay')).toBeInTheDocument()
   })
 
-  it('has the overlay CSS class', () => {
-    render(<QueryExecutionOverlay />)
-    const overlay = screen.getByTestId('query-execution-overlay')
-    // CSS modules transform class names, but the element should have a class attribute
-    expect(overlay.className).toBeTruthy()
-  })
-
   it('is a div element', () => {
     render(<QueryExecutionOverlay />)
     const overlay = screen.getByTestId('query-execution-overlay')

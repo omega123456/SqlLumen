@@ -5,13 +5,37 @@ import { Button } from '../../common/Button'
 import { isMiddleMouseButton } from '../../../lib/input-events'
 import { hasResultColumns } from '../../../lib/query-result-column-utils'
 import type { BottomPanelTabItem } from './bottom-panel-tab-items'
-import styles from '../BottomPanelTabs.module.css'
 import { joinClassNames } from '../../../lib/class-names'
+import { dataFlag } from '../../../lib/data-attributes'
+import { FOCUS_RING } from '../../../lib/focus-ring'
+import {
+  RESULT_TAB_ACTIVITY_CLASSES,
+  RESULT_TAB_FRAME,
+  resultTabActivityOf,
+  type ResultTabActivity,
+} from '../../../lib/class-names-result-tab'
 
-function getResultTabIcon(result: SingleResultState) {
+const TAB_ACTIVITY_CLASSES: Record<ResultTabActivity, string> = {
+  idle: RESULT_TAB_ACTIVITY_CLASSES.idle,
+  active: joinClassNames([
+    RESULT_TAB_ACTIVITY_CLASSES.active,
+    'svg:text-light-primary dark:svg:text-dark-primary',
+  ]),
+}
+
+const ERROR_ICON_TONE_CLASSES: Record<ResultTabActivity, string> = {
+  idle: 'text-light-error dark:text-dark-error',
+  active: '',
+}
+
+function getResultTabIcon(result: SingleResultState, activity: ResultTabActivity) {
   if (result.resultStatus === 'error') {
     return (
-      <Warning size={12} weight="fill" className={joinClassNames(['shrink-0', styles.errorIcon])} />
+      <Warning
+        size={12}
+        weight="fill"
+        className={joinClassNames(['shrink-0', ERROR_ICON_TONE_CLASSES[activity]])}
+      />
     )
   }
   if (!hasResultColumns(result)) {
@@ -20,8 +44,8 @@ function getResultTabIcon(result: SingleResultState) {
   return <Table size={16} weight="regular" className="shrink-0" />
 }
 
-function bottomTabIcon(item: BottomPanelTabItem) {
-  if (item.kind === 'result') return getResultTabIcon(item.result)
+function bottomTabIcon(item: BottomPanelTabItem, activity: ResultTabActivity) {
+  if (item.kind === 'result') return getResultTabIcon(item.result, activity)
   return <Table size={16} weight="regular" className="shrink-0" />
 }
 
@@ -37,8 +61,12 @@ function bottomTabTestId(item: BottomPanelTabItem): string {
 
 function bottomTabStateProps(isActive: boolean) {
   return {
-    className: `${styles.tab} ${isActive ? styles.tabActive : ''}`,
-    'data-active': isActive ? true : undefined,
+    className: joinClassNames([
+      'group/bottom-tab',
+      RESULT_TAB_FRAME,
+      TAB_ACTIVITY_CLASSES[resultTabActivityOf(isActive)],
+    ]),
+    'data-active': dataFlag(isActive),
   }
 }
 
@@ -58,7 +86,10 @@ function TableTabCloseButton({ item, onCloseTableTab }: BottomPanelTabProps) {
   return (
     <Button
       variant="bare"
-      className={styles.closeButton}
+      className={joinClassNames([
+        'mr-2 -ml-1.5 size-5 cursor-pointer self-center text-light-outline group-not-data-active/bottom-tab:not-group-hover/bottom-tab:invisible dark:text-dark-outline',
+        FOCUS_RING,
+      ])}
       aria-label={`Close ${item.tab.label} table`}
       onClick={(event) => {
         event.stopPropagation()
@@ -73,6 +104,7 @@ function TableTabCloseButton({ item, onCloseTableTab }: BottomPanelTabProps) {
 
 export function BottomPanelTab(props: BottomPanelTabProps) {
   const { item, index, isActive, registerTab, onActivate, onCloseTableTab } = props
+  const activity = resultTabActivityOf(isActive)
   const handleMouseDown = (event: MouseEvent) => {
     if (item.kind !== 'table-data') return
     if (!isMiddleMouseButton(event)) return
@@ -80,10 +112,10 @@ export function BottomPanelTab(props: BottomPanelTabProps) {
     onCloseTableTab(item.tab.id)
   }
   return (
-    <div className={styles.item}>
+    <div className="flex shrink-0 items-stretch">
       {props.showSeparator && (
         <div
-          className={styles.separator}
+          className="mx-1.5 h-5 w-px shrink-0 self-center bg-light-stroke-divider dark:bg-dark-stroke-divider"
           aria-hidden="true"
           data-testid="bottom-panel-tabs-separator"
         />
@@ -101,11 +133,14 @@ export function BottomPanelTab(props: BottomPanelTabProps) {
           aria-selected={isActive}
           aria-controls={bottomTabPanelId(item, props.queryTabId)}
           tabIndex={isActive ? 0 : -1}
-          className={styles.tabButton}
+          className={joinClassNames([
+            'flex h-full min-w-0 flex-1 cursor-pointer items-center px-3.5 text-left whitespace-nowrap',
+            FOCUS_RING,
+          ])}
           onClick={() => onActivate(item)}
         >
           <span className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap">
-            {bottomTabIcon(item)}
+            {bottomTabIcon(item, activity)}
             <span className="min-w-0">{item.label}</span>
           </span>
         </Button>

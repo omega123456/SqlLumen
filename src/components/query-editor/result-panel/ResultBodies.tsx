@@ -1,4 +1,4 @@
-import type { ComponentProps } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 import type { FkLookupArgs } from '../../shared/fk-lookup-context'
 import { FkLookupProvider } from '../../shared/fk-lookup-context'
 import { InfoBar } from '../../common/InfoBar'
@@ -12,7 +12,8 @@ import {
   type DisplayStatus,
   type TabPanelAttributes,
 } from './result-panel-model'
-import styles from '../ResultPanel.module.css'
+import { joinClassNames, SCROLLBAR } from '../../../lib/class-names'
+import { RESULT_TAB_PANEL } from './result-panel-classes'
 
 type ResultToolbarProps = ComponentProps<typeof ResultToolbar>
 
@@ -26,19 +27,32 @@ export interface ResultBodyProps {
   onForeignKeyLookup: (args: FkLookupArgs) => Promise<void>
 }
 
+function InfoBody({ children }: { children: ReactNode }) {
+  return (
+    <div
+      className={joinClassNames([
+        'min-h-0 flex-1 overflow-y-auto border-t border-t-light-stroke-divider bg-light-surface-container-lowest p-3 dark:border-t-dark-stroke-divider dark:bg-dark-surface-container-lowest',
+        SCROLLBAR,
+      ])}
+    >
+      {children}
+    </div>
+  )
+}
+
 function ResultContent({ views, isTabRunning, onForeignKeyLookup }: ResultBodyProps) {
   const { result } = views
   const hasNoColumns = result.columns.length === 0
   if (hasNoColumns) {
     return (
-      <div className={styles.infoBody}>
+      <InfoBody>
         <InfoBar
           severity="success"
           title="Query OK"
           message={dmlSuccessMessage(result.affectedRows)}
           data-testid="dml-success"
         />
-      </div>
+      </InfoBody>
     )
   }
   return (
@@ -66,16 +80,16 @@ function SuccessResultBody(props: ResultBodyProps) {
 
 function ErrorResultBody({ tabPanelAttributes, toolbar, views }: ResultBodyProps) {
   return (
-    <div {...tabPanelAttributes} className={styles.tabPanel}>
+    <div {...tabPanelAttributes} className={RESULT_TAB_PANEL}>
       <ResultToolbar {...toolbar} isCloneDisabled={true} />
-      <div className={styles.infoBody}>
+      <InfoBody>
         <InfoBar
           severity="error"
           title="Query failed"
           message={views.result.errorMessage}
           data-testid="result-error"
         />
-      </div>
+      </InfoBody>
     </div>
   )
 }

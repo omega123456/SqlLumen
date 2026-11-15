@@ -2,8 +2,8 @@ import { useCallback, useMemo } from 'react'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { useQueryStore, getActiveResult, isEditableSelectSql } from '../../stores/query-store'
 import { useConnectionStore } from '../../stores/connection-store'
-import styles from './EditModeDropdown.module.css'
 import { hasResultColumns } from '../../lib/query-result-column-utils'
+import { joinClassNames } from '../../lib/class-names'
 
 interface EditModeDropdownProps {
   tabId: string
@@ -19,9 +19,28 @@ function isEditModeAvailable(result: ActiveResult, isConnectionReadOnly: boolean
   return result.reExecutable && isEditableSelectSql(result.lastExecutedSql)
 }
 
-function editModeTriggerClassName(isAnalyzingQuery: boolean): string {
-  if (!isAnalyzingQuery) return `${styles.editModeSelect} `
-  return `${styles.editModeSelect} ${styles.editModeLoading}`
+const TRIGGER_WIDTH_BOUNDS = 'min-w-29.5 max-w-45'
+
+const ANALYZING_PULSE =
+  'animate-edit-mode-load-pulse-light window-blurred:animate-edit-mode-load-pulse-light-paused dark:animate-edit-mode-load-pulse-dark dark:window-blurred:animate-edit-mode-load-pulse-dark-paused'
+
+function triggerClassName(isAnalyzingQuery: boolean): string {
+  if (isAnalyzingQuery) return joinClassNames([TRIGGER_WIDTH_BOUNDS, ANALYZING_PULSE])
+  return TRIGGER_WIDTH_BOUNDS
+}
+
+type DetectedTable = ActiveResult['editTableMetadata'][string]
+
+function useEditModeOptions(detectedTables: DetectedTable[]): DropdownOption[] {
+  return useMemo(() => {
+    const databases = new Set(detectedTables.map((table) => table.database))
+    const needsPrefix = databases.size > 1
+    const tableOptions = detectedTables.map((table) => ({
+      value: `${table.database}.${table.table}`,
+      label: needsPrefix ? `${table.database}.${table.table}` : table.table,
+    }))
+    return [{ value: '', label: 'Read only' }, ...tableOptions]
+  }, [detectedTables])
 }
 
 export function EditModeDropdown({ tabId, connectionId }: EditModeDropdownProps) {
@@ -40,18 +59,6 @@ export function EditModeDropdown({ tabId, connectionId }: EditModeDropdownProps)
 
   const isVisible = isEditModeAvailable(activeResult, isConnectionReadOnly)
 
-  const tableOptions = useMemo(() => {
-    if (detectedTables.length === 0) return []
-
-    const databases = new Set(detectedTables.map((table) => table.database))
-    const needsPrefix = databases.size > 1
-
-    return detectedTables.map((table) => ({
-      value: `${table.database}.${table.table}`,
-      label: needsPrefix ? `${table.database}.${table.table}` : table.table,
-    }))
-  }, [detectedTables])
-
   const handleChange = useCallback(
     (value: string) => {
       const newTableName = value === '' ? null : value
@@ -69,20 +76,14 @@ export function EditModeDropdown({ tabId, connectionId }: EditModeDropdownProps)
     [editState, requestNavigationAction, setEditMode, connectionId, tabId]
   )
 
-  const editModeOptions: DropdownOption[] = useMemo(
-    () => [
-      { value: '', label: 'Read only' },
-      ...tableOptions.map((option) => ({ value: option.value, label: option.label })),
-    ],
-    [tableOptions]
-  )
+  const editModeOptions = useEditModeOptions(detectedTables)
 
   if (!isVisible) {
     return null
   }
 
   return (
-    <div className={styles.editModeGroup} data-testid="edit-mode-group">
+    <div className="flex shrink-0 items-center" data-testid="edit-mode-group">
       <Dropdown
         id={`edit-mode-dropdown-${tabId}`}
         ariaLabel="Edit mode"
@@ -91,7 +92,8 @@ export function EditModeDropdown({ tabId, connectionId }: EditModeDropdownProps)
         onChange={handleChange}
         disabled={isAnalyzingQuery}
         data-testid="edit-mode-dropdown"
-        triggerClassName={editModeTriggerClassName(isAnalyzingQuery)}
+        triggerSize="sm"
+        triggerClassName={triggerClassName(isAnalyzingQuery)}
       />
     </div>
   )

@@ -1,18 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { gridTabPanelClassNameFor } from '../../../components/query-editor/result-panel/result-panel-model'
 
-const resultPanelCss = readFileSync(
-  resolve(process.cwd(), 'src/components/query-editor/ResultPanel.module.css'),
-  'utf8'
-)
+const CONTAINMENT_AND_ISOLATION_UTILITIES = [
+  'contain-layout',
+  'contain-paint',
+  'contain-style',
+  'isolate',
+]
 
 describe('ResultPanel grid layout isolation', () => {
-  it('paint- and layout-contains mounted grid view so it does not invalidate Monaco siblings', () => {
-    const gridPanelRule = resultPanelCss.match(/\.gridTabPanel\s*\{([^}]+)\}/)
+  it('paint- and layout-contains a mounted grid view so it does not invalidate Monaco siblings', () => {
+    const gridPanelUtilities = gridTabPanelClassNameFor('grid', 3).split(' ')
 
-    expect(gridPanelRule).not.toBeNull()
-    expect(gridPanelRule![1]).toMatch(/contain:\s*[^;]*\blayout\b[^;]*\bpaint\b[^;]*\bstyle\b/)
-    expect(gridPanelRule![1]).toMatch(/isolation:\s*isolate/)
+    expect(gridPanelUtilities).toEqual(expect.arrayContaining(CONTAINMENT_AND_ISOLATION_UTILITIES))
   })
 })

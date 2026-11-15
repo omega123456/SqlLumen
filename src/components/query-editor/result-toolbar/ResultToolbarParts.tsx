@@ -1,17 +1,32 @@
+import type { ReactNode } from 'react'
 import { Copy, FloppyDisk, Trash } from '@phosphor-icons/react'
 import { formatCount } from '../../../lib/format-row-count'
-import { Button } from '../../common/Button'
+import { Button, type ButtonProps } from '../../common/Button'
 import { ConfirmDialog } from '../../dialogs/ConfirmDialog'
 import type { useDeleteCheckedRows } from './use-delete-checked-rows'
 import { pluralSuffix, type ActiveResult } from './result-toolbar-model'
-import styles from '../ResultToolbar.module.css'
+
+interface EditActionGroupProps {
+  testId: string
+  children: ReactNode
+}
+
+function EditActionGroup({ testId, children }: EditActionGroupProps) {
+  return (
+    <div className="flex shrink-0 items-center gap-1" data-testid={testId}>
+      {children}
+    </div>
+  )
+}
+
+function EditActionButton(props: ButtonProps) {
+  return <Button variant="subtle" size="sm" className="shrink-0" {...props} />
+}
 
 function CloneActionGroup({ isDisabled, onClone }: { isDisabled: boolean; onClone: () => void }) {
   return (
-    <div className={styles.editActionsGroup} data-testid="clone-actions-group">
-      <Button
-        variant="bare"
-        className={styles.cloneButton}
+    <EditActionGroup testId="clone-actions-group">
+      <EditActionButton
         onClick={onClone}
         title="Clone selected row; primary key fields are left blank."
         data-testid="query-clone-button"
@@ -19,8 +34,8 @@ function CloneActionGroup({ isDisabled, onClone }: { isDisabled: boolean; onClon
       >
         <Copy size={16} weight="regular" />
         <span>Clone</span>
-      </Button>
-    </div>
+      </EditActionButton>
+    </EditActionGroup>
   )
 }
 
@@ -35,18 +50,16 @@ function DeleteRowsActionGroup({ editMode, checkedCount, onDelete }: DeleteRowsA
   if (checkedCount === 0) return null
   const formattedCount = formatCount(checkedCount)
   return (
-    <div className={styles.editActionsGroup} data-testid="result-delete-actions-group">
-      <Button
-        variant="bare"
-        className={styles.discardButton}
+    <EditActionGroup testId="result-delete-actions-group">
+      <EditActionButton
         onClick={onDelete}
         title={`Delete ${formattedCount} selected row${pluralSuffix(checkedCount)} from the database`}
         data-testid="query-delete-rows-button"
       >
         <Trash size={16} weight="regular" />
         <span>Delete ({formattedCount})</span>
-      </Button>
-    </div>
+      </EditActionButton>
+    </EditActionGroup>
   )
 }
 
@@ -60,29 +73,21 @@ function SaveDiscardActionGroup({ editState, onSave, onDiscard }: SaveDiscardAct
   if (editState === null) return null
   const hasModifications = editState.modifiedColumns.size > 0
   return (
-    <div className={styles.editActionsGroup} data-testid="edit-actions-group">
+    <EditActionGroup testId="edit-actions-group">
       {hasModifications && (
-        <Button
-          variant="bare"
-          className={styles.saveButton}
-          onClick={onSave}
-          title="Save changes"
-          data-testid="query-save-button"
-        >
+        <EditActionButton onClick={onSave} title="Save changes" data-testid="query-save-button">
           <FloppyDisk size={16} weight="regular" />
           <span>Save</span>
-        </Button>
+        </EditActionButton>
       )}
-      <Button
-        variant="bare"
-        className={styles.discardButton}
+      <EditActionButton
         onClick={onDiscard}
         title="Discard changes"
         data-testid="query-discard-button"
       >
         <span>Discard</span>
-      </Button>
-    </div>
+      </EditActionButton>
+    </EditActionGroup>
   )
 }
 

@@ -8,7 +8,7 @@ import type {
   PrimaryKeyInfo,
   TableDataColumnMeta,
 } from '../../../types/schema'
-import styles from '../ResultPanel.module.css'
+import { RESULT_GRID_TAB_PANEL, RESULT_TAB_PANEL } from './result-panel-classes'
 import { toErrorMessage } from '../../../lib/error-message'
 import { hasPendingRowChanges } from '../../../lib/row-edit-state'
 
@@ -98,7 +98,8 @@ export function isCloneDisabled(availability: CloneAvailability): boolean {
 
 export function gridTabPanelClassNameFor(viewMode: string, columnCount: number): string {
   const isGridWithColumns = viewMode === 'grid' && columnCount > 0
-  return isGridWithColumns ? `${styles.tabPanel} ${styles.gridTabPanel}` : styles.tabPanel
+  if (isGridWithColumns) return RESULT_GRID_TAB_PANEL
+  return RESULT_TAB_PANEL
 }
 
 export interface TabPanelAttributes {

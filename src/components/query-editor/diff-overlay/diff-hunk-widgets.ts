@@ -1,9 +1,11 @@
 import type { MutableRefObject } from 'react'
 import * as monaco from 'monaco-editor'
 import type { LineChange } from '../diff-overlay-utils'
-import styles from '../DiffOverlay.module.css'
 
 const HUNK_ZONE_ORDINAL_BASE = 500_000
+
+const ACCEPT_HUNK_BUTTON_CLASSES =
+  'relative z-2 text-size-caption font-regular whitespace-nowrap text-light-on-surface-variant cursor-pointer pointer-events-auto hover:text-light-on-surface hover:underline dark:text-dark-on-surface-variant dark:hover:text-dark-on-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-light-primary focus-visible:shadow-light-focus-ring dark:focus-visible:outline-dark-primary dark:focus-visible:shadow-dark-focus-ring'
 
 export type CodeEditor = monaco.editor.ICodeEditor
 export type HunkZoneIds = { orig: string[]; mod: string[] }
@@ -89,7 +91,7 @@ export function addHunkSpacerZones(editor: CodeEditor, plan: HunkSpacerPlan): st
   editor.changeViewZones((accessor) => {
     for (const { index, change } of plan.hunks) {
       const spacer = document.createElement('div')
-      spacer.className = styles.hunkSpacerRow
+      spacer.className = 'box-border h-full pointer-events-none'
       spacer.setAttribute('aria-hidden', 'true')
       zoneIds.push(
         accessor.addZone({
@@ -110,14 +112,13 @@ function createAcceptHunkContentWidget(options: {
   testId: string
   change: LineChange
   modifiedModel: monaco.editor.ITextModel
-  inlineClassName: string
   onAccept: () => void
 }): monaco.editor.IContentWidget {
-  const { id, testId, change, modifiedModel, inlineClassName, onAccept } = options
+  const { id, testId, change, modifiedModel, onAccept } = options
 
   const dom = document.createElement('button')
   dom.type = 'button'
-  dom.className = inlineClassName
+  dom.className = ACCEPT_HUNK_BUTTON_CLASSES
   dom.textContent = 'Accept'
   dom.setAttribute('data-testid', testId)
   dom.addEventListener('click', (event) => {
@@ -160,7 +161,6 @@ export function addAcceptWidgets(
       testId: `hunk-accept-inline-${index}`,
       change: change,
       modifiedModel: plan.modifiedModel,
-      inlineClassName: styles.inlineAccept,
       onAccept: () => {
         plan.onAcceptHunk(change)
       },
