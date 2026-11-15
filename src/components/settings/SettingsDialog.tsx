@@ -181,7 +181,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
             ])}
             data-testid="settings-content"
           >
-            <h2 className="mb-3 font-headline text-title font-semibold text-light-on-surface dark:text-dark-on-surface">
+            <h2 className="mb-3 font-headline text-title font-semibold text-light-on-surface dark:text-dark-on-surface wrap-break-word">
               {SETTINGS_SECTIONS.find((section) => section.id === activeSection)?.label}
             </h2>
             <ActiveSectionContent />

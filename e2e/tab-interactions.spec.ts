@@ -5,6 +5,7 @@ import {
   activeWorkspaceTabMembers,
   APP_READY_MS,
   connectToSample,
+  currentTheme,
   waitForApp,
 } from './helpers'
 
@@ -237,18 +238,19 @@ test.describe('Tab interactions', () => {
     await expect(activeGroupRailItem(page, 'schema')).toHaveAttribute('aria-selected', 'true')
     await expect(members.getByText('users')).toBeVisible()
 
-    // The selected document's label is the only accent: --primary, semibold.
+    // The selected document's label is the only accent: the primary colour, semibold.
     const selectedLabel = members
       .locator('[data-active] [aria-selected="true"]')
       .getByText('users', { exact: true })
-    const primary = await page.evaluate(() => {
+    const theme = await currentTheme(page)
+    const primary = await page.evaluate((themeName) => {
       const probe = document.createElement('span')
-      probe.style.color = 'var(--primary)'
+      probe.style.color = `var(--color-${themeName}-primary)`
       document.body.append(probe)
       const color = getComputedStyle(probe).color
       probe.remove()
       return color
-    })
+    }, theme)
     await expect(selectedLabel).toHaveCSS('color', primary)
     await expect(selectedLabel).toHaveCSS('font-weight', '600')
 

@@ -1,8 +1,7 @@
 <!doctype html>
 <html
   lang="en"
-  class="dark antialiased tab-8 scheme-light dark:scheme-dark h-full overflow-hidden"
-  data-theme="dark"
+  class="dark antialiased tab-8 scheme-light dark:scheme-dark h-full overflow-hidden svg:max-w-full canvas:max-w-full selection:bg-light-fill-accent-tint dark:selection:bg-dark-fill-accent-tint selection:text-light-on-surface dark:selection:text-dark-on-surface"
 >
   <head>
     <meta charset="UTF-8" />
@@ -11,10 +10,10 @@
     <title>SqlLumen</title>
   </head>
   <body
-    class="h-full overflow-hidden select-none font-body text-body bg-light-surface dark:bg-dark-surface mica:bg-transparent text-light-on-surface dark:text-dark-on-surface"
+    class="h-full overflow-hidden select-none selectable-descendants:select-text font-body text-body bg-light-surface dark:bg-dark-surface mica:bg-transparent text-light-on-surface dark:text-dark-on-surface"
   >
     <div id="root" class="h-full flex flex-col"></div>
-    <div id="portal" style="position: fixed; left: 0; top: 0; z-index: 9999;"></div>
+    <div id="portal" class="fixed top-0 left-0 z-9999"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

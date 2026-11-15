@@ -1,0 +1,24 @@
+[data-panel]::-webkit-scrollbar {
+  width: var(--spacing-grid-scrollbar);
+}
+
+[data-panel]::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[data-panel]::-webkit-scrollbar-thumb {
+  background: var(--color-light-text-disabled);
+  border-radius: var(--radius-control);
+}
+
+.dark [data-panel]::-webkit-scrollbar-thumb {
+  background: var(--color-dark-text-disabled);
+}
+
+[data-panel]::-webkit-scrollbar-thumb:hover {
+  background: var(--color-light-outline);
+}
+
+.dark [data-panel]::-webkit-scrollbar-thumb:hover {
+  background: var(--color-dark-outline);
+}

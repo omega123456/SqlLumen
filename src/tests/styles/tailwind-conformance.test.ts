@@ -7,20 +7,30 @@ import {
   stripCssComments,
   topLevelStatements,
 } from '../helpers/tailwind-theme'
-import { LEGACY_MODULES } from './legacy-css-modules'
 
 const SRC = path.resolve(process.cwd(), 'src')
-const PERMANENT_CSS_FILES = [
-  'index.css',
+const VENDOR_CSS_FILES = [
   'styles/vendor/fonts.css',
   'styles/vendor/glide-overlays.css',
   'styles/vendor/hljs-theme.css',
   'styles/vendor/monaco-parameter-hints.css',
+  'styles/vendor/monaco-paused-animations.css',
   'styles/vendor/monaco-suggest-widget.css',
   'styles/vendor/react-colorful.css',
   'styles/vendor/react-datepicker.css',
   'styles/vendor/react-datepicker-popover.css',
+  'styles/vendor/react-resizable-panels.css',
 ]
+const ALLOWED_CSS_FILES = ['index.css', ...VENDOR_CSS_FILES]
+const VENDOR_FOREIGN_VARIABLES = [
+  '--d19meir1-2',
+  '--d19meir1-3',
+  '--sqllumen-grid-editor-control-height',
+]
+const DARK_SELECTOR_PREFIX = '.dark '
+const CSS_VARIABLE_REFERENCE = /var\((--[a-z0-9-]+)/g
+const THEMED_VARIABLE = /^--(color|shadow)-(light|dark)-(.+)$/
+const CSS_RULE = /([^{}]+)\{([^{}]*)\}/g
 const ALLOWED_INDEX_DIRECTIVES = ['@import', '@plugin', '@custom-variant', '@theme']
 const COLOUR_LITERAL = /#[0-9a-fA-F]{3,8}\b|rgba?\(\s*\d|hsla?\(|oklch\(/
 
@@ -58,17 +68,12 @@ function rgbOf(rgba: string): string {
 }
 
 describe('css files — exact allowlist', () => {
-  it('only the permanent files and the shrinking legacy list exist', () => {
-    const expected = [...PERMANENT_CSS_FILES, ...LEGACY_MODULES].sort()
-    expect(sourceCssFiles()).toEqual(expected)
+  it('only index.css and the vendor files exist', () => {
+    expect(sourceCssFiles()).toEqual([...ALLOWED_CSS_FILES].sort())
   })
 
-  it('lists each legacy module once', () => {
-    expect(new Set(LEGACY_MODULES).size).toBe(LEGACY_MODULES.length)
-  })
-
-  it('keeps module styles out of the permanent files', () => {
-    expect(PERMANENT_CSS_FILES.filter((file) => file.endsWith('.module.css'))).toEqual([])
+  it('has no CSS module anywhere in the source tree', () => {
+    expect(sourceCssFiles().filter((file) => file.endsWith('.module.css'))).toEqual([])
   })
 })
 
@@ -104,6 +109,7 @@ describe('index.css — directives', () => {
       'webkit-scrollbar-thumb',
       'webkit-scrollbar-thumb-hover',
       'svg',
+      'canvas',
       'resize-dragging',
       'after-memory-section',
       'inside-pre',
@@ -111,6 +117,7 @@ describe('index.css — directives', () => {
       'top-level-list',
       'second-level-list',
       'deep-list',
+      'selectable-descendants',
     ])
   })
 
@@ -130,14 +137,31 @@ describe('preflight and base classes', () => {
     return classValue.split(/\s+/)
   }
 
-  it('imports the full tailwindcss entry and the legacy base inside the base layer', () => {
-    expect(statements[0]).toBe("@import 'tailwindcss'")
-    expect(statements).toContain("@import './styles/legacy-base.css' layer(base)")
+  it('imports only the full tailwindcss entry, so no global element rules remain', () => {
+    const imports = statements.filter((statement) => statement.startsWith('@import'))
+    expect(imports).toEqual(["@import 'tailwindcss'"])
+  })
+
+  it('has one theme switch: the dark class, with no data-theme attribute', () => {
+    expect(classesOf(/<html\b[^>]*>/s)).toContain('dark')
+    expect(indexHtml).not.toContain('data-theme')
   })
 
   it('sets the page defaults through classes on html, body and #root', () => {
     expect(classesOf(/<html\b[^>]*>/s)).toEqual(
-      expect.arrayContaining(['dark', 'antialiased', 'tab-8', 'scheme-light', 'dark:scheme-dark'])
+      expect.arrayContaining([
+        'dark',
+        'antialiased',
+        'tab-8',
+        'scheme-light',
+        'dark:scheme-dark',
+        'svg:max-w-full',
+        'canvas:max-w-full',
+        'selection:bg-light-fill-accent-tint',
+        'dark:selection:bg-dark-fill-accent-tint',
+        'selection:text-light-on-surface',
+        'dark:selection:text-dark-on-surface',
+      ])
     )
     expect(classesOf(/<body\b[^>]*>/s)).toEqual(
       expect.arrayContaining([
@@ -147,23 +171,110 @@ describe('preflight and base classes', () => {
         'bg-light-surface',
         'dark:bg-dark-surface',
         'mica:bg-transparent',
+        'selectable-descendants:select-text',
       ])
     )
     expect(classesOf(/<div id="root"[^>]*>/)).toEqual(
       expect.arrayContaining(['h-full', 'flex', 'flex-col'])
     )
   })
+})
 
-  it('keeps the legacy base free of colour literals', () => {
-    expect(filesMatching(['styles/legacy-base.css'], COLOUR_LITERAL)).toEqual([])
+interface CssRule {
+  selectors: string[]
+  body: string
+}
+
+function cssRules(relativePath: string): CssRule[] {
+  const rules: CssRule[] = []
+  for (const match of withoutComments(relativePath).matchAll(CSS_RULE)) {
+    const selectors = match[1].split(',').map((selector) => selector.trim())
+    rules.push({ selectors: selectors, body: match[2] })
+  }
+  return rules
+}
+
+function variablesReferencedBy(relativePath: string): string[] {
+  return [...withoutComments(relativePath).matchAll(CSS_VARIABLE_REFERENCE)].map(
+    (match) => match[1]
+  )
+}
+
+function themedNames(relativePath: string, themeName: 'light' | 'dark'): string[] {
+  const names = variablesReferencedBy(relativePath).flatMap((variable) => {
+    const match = THEMED_VARIABLE.exec(variable)
+    if (match === null || match[2] !== themeName) return []
+    return [`${match[1]}-${match[3]}`]
+  })
+  return [...new Set(names)].sort()
+}
+
+function isDarkRule(rule: CssRule): boolean {
+  return rule.selectors.every((selector) => selector.startsWith(DARK_SELECTOR_PREFIX))
+}
+
+function referencesDarkTheme(rule: CssRule): boolean {
+  return /var\(--(color|shadow)-dark-/.test(rule.body)
+}
+
+describe('vendor css', () => {
+  it('has no colour literals', () => {
+    expect(filesMatching(VENDOR_CSS_FILES, COLOUR_LITERAL)).toEqual([])
+  })
+
+  it('reads only @theme tokens and the Glide overlay variables', () => {
+    const known = new Set([...Object.keys(theme), ...VENDOR_FOREIGN_VARIABLES])
+    const unknown = VENDOR_CSS_FILES.flatMap((file) =>
+      variablesReferencedBy(file)
+        .filter((variable) => !known.has(variable))
+        .map((variable) => `${file}: ${variable}`)
+    )
+    expect(unknown).toEqual([])
+  })
+
+  it('reads dark theme variables only inside .dark rules', () => {
+    const offenders = VENDOR_CSS_FILES.flatMap((file) =>
+      cssRules(file)
+        .filter((rule) => referencesDarkTheme(rule) && !isDarkRule(rule))
+        .map((rule) => `${file}: ${rule.selectors.join(', ')}`)
+    )
+    expect(offenders).toEqual([])
+  })
+
+  it.each(VENDOR_CSS_FILES)('%s gives every light colour and shadow a dark twin', (file) => {
+    expect(themedNames(file, 'dark')).toEqual(themedNames(file, 'light'))
+  })
+
+  it('pauses Monaco animations while the window is unfocused or the panel is retained', () => {
+    const css = withoutComments('styles/vendor/monaco-paused-animations.css')
+    expect(css).toContain("html[data-window-focused='false'] .monaco-editor *")
+    expect(css).toContain('[data-animation-paused] .monaco-editor *')
+    expect(css).toContain('animation-play-state: paused')
   })
 })
 
-describe('vendor css', () => {
-  const vendorFiles = PERMANENT_CSS_FILES.filter((file) => file.startsWith('styles/vendor/'))
+function productionSourceFiles(): string[] {
+  return (readdirSync(SRC, { recursive: true }) as string[])
+    .map((file) => file.split(path.sep).join('/'))
+    .filter((file) => /\.tsx?$/.test(file))
+    .filter((file) => !file.startsWith('tests/'))
+}
 
-  it('has no colour literals', () => {
-    expect(filesMatching(vendorFiles, COLOUR_LITERAL)).toEqual([])
+describe('animations — paused while the window is blurred', () => {
+  const ANIMATION_UTILITY = /animate-[a-z0-9-]+/g
+  const BLURRED_PAUSED_UTILITY = /window-blurred:(?:[a-z-]+:)*(animate-[a-z0-9-]+-paused)/g
+
+  it('pairs every animate-* utility with a window-blurred paused twin in the same file', () => {
+    const unpaired = productionSourceFiles().flatMap((file) => {
+      const source = readSourceFile(file)
+      const paused = new Set([...source.matchAll(BLURRED_PAUSED_UTILITY)].map((match) => match[1]))
+      const animations = [...source.matchAll(ANIMATION_UTILITY)].map((match) => match[0])
+      return animations
+        .filter((animation) => !animation.endsWith('-paused'))
+        .filter((animation) => !paused.has(`${animation}-paused`))
+        .map((animation) => `${file}: ${animation}`)
+    })
+    expect([...new Set(unpaired)]).toEqual([])
   })
 })
 
@@ -371,21 +482,5 @@ describe('@theme — type', () => {
     expect(fontsCss).toContain('selawik-regular.woff2')
     expect(fontsCss).toContain('selawik-semibold.woff2')
     expect(fontsCss).not.toMatch(/@fontsource\/(manrope|inter)/)
-  })
-})
-
-describe('legacy module css — tokens are the single colour source', () => {
-  const legacyModuleFiles = LEGACY_MODULES.filter((file) => file.endsWith('.module.css'))
-
-  it('has no hard-coded colour literals', () => {
-    expect(filesMatching(legacyModuleFiles, /#[0-9a-fA-F]{3,8}\b|rgba?\(\s*\d/)).toEqual([])
-  })
-
-  it('has no uppercase text transforms', () => {
-    expect(filesMatching(legacyModuleFiles, /text-transform:\s*uppercase/)).toEqual([])
-  })
-
-  it('has no gradients', () => {
-    expect(filesMatching(legacyModuleFiles, /gradient\(/)).toEqual([])
   })
 })

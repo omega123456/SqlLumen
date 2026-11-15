@@ -85,3 +85,14 @@
 .dark [data-sqllumen-popover-calendar] .react-datepicker__day--disabled {
   color: var(--color-dark-outline);
 }
+
+[data-sqllumen-popover-calendar] .react-datepicker__day:focus-visible,
+[data-sqllumen-popover-calendar] .react-datepicker__navigation:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-light-focus-ring);
+}
+
+.dark [data-sqllumen-popover-calendar] .react-datepicker__day:focus-visible,
+.dark [data-sqllumen-popover-calendar] .react-datepicker__navigation:focus-visible {
+  box-shadow: var(--shadow-dark-focus-ring);
+}

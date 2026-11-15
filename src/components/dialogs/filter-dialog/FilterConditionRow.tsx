@@ -6,6 +6,7 @@ import type { FilterCondition, FilterOperator } from '../../../types/schema'
 import { isNullaryOperator } from '../filter-conditions'
 import { joinClassNames } from '../../../lib/class-names'
 import { FIELD_CHROME } from '../../../lib/class-names-field'
+import { FOCUS_RING } from '../../../lib/focus-ring'
 
 const REMOVE_ICON_SIZE = 14
 
@@ -90,7 +91,10 @@ export function FilterConditionRow({ condition, index, context }: FilterConditio
       />
       <Button
         variant="bare"
-        className="flex size-6.5 min-w-6.5 cursor-pointer items-center justify-center rounded-control bg-transparent text-light-on-surface-variant transition-color-and-background hover:bg-light-fill-subtle-hover hover:text-light-error dark:text-dark-on-surface-variant dark:hover:bg-dark-fill-subtle-hover dark:hover:text-dark-error"
+        className={joinClassNames([
+          'flex size-6.5 min-w-6.5 cursor-pointer items-center justify-center rounded-control bg-transparent text-light-on-surface-variant transition-color-and-background hover:bg-light-fill-subtle-hover hover:text-light-error dark:text-dark-on-surface-variant dark:hover:bg-dark-fill-subtle-hover dark:hover:text-dark-error',
+          FOCUS_RING,
+        ])}
         onClick={() => context.onRemove(index)}
         aria-label={`Remove condition ${position}`}
         data-testid="filter-remove-button"

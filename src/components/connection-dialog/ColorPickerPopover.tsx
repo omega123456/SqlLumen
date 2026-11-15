@@ -5,6 +5,7 @@ import { TextInput } from '../common/TextInput'
 import { Button } from '../common/Button'
 import { joinClassNames } from '../../lib/class-names'
 import { isTargetOutside } from '../../lib/input-events'
+import { FOCUS_RING } from '../../lib/focus-ring'
 import { FIELD_CHROME } from '../../lib/class-names-field'
 import '../../styles/vendor/react-colorful.css'
 
@@ -40,6 +41,7 @@ function swatchClassName(color: string | null): string {
   return joinClassNames([
     'size-4 shrink-0 cursor-pointer rounded-round border border-light-stroke-control p-0 transition-border-color hover:border-light-stroke-card dark:border-dark-stroke-control dark:hover:border-dark-stroke-card',
     SWATCH_FILL_CLASSES[fill],
+    FOCUS_RING,
   ])
 }
 
@@ -132,7 +134,10 @@ function ColorPickerPanel({ color, onChange, panelRef, style, onClose }: ColorPi
       />
       <Button
         variant="bare"
-        className="cursor-pointer rounded-control bg-transparent p-1 text-center font-body text-size-caption text-light-on-surface-variant hover:bg-light-surface-container-high hover:text-light-on-surface dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-high dark:hover:text-dark-on-surface"
+        className={joinClassNames([
+          'cursor-pointer rounded-control bg-transparent p-1 text-center font-body text-size-caption text-light-on-surface-variant hover:bg-light-surface-container-high hover:text-light-on-surface dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-high dark:hover:text-dark-on-surface',
+          FOCUS_RING,
+        ])}
         onClick={() => {
           onChange(null)
           onClose()

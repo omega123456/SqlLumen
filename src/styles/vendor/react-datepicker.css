@@ -106,3 +106,12 @@
 [data-sqllumen-datetime-calendar] .react-datepicker__navigation {
   display: none;
 }
+
+[data-sqllumen-datetime-calendar] .react-datepicker__day:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-light-focus-ring);
+}
+
+.dark [data-sqllumen-datetime-calendar] .react-datepicker__day:focus-visible {
+  box-shadow: var(--shadow-dark-focus-ring);
+}

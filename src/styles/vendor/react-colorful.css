@@ -15,3 +15,12 @@
   width: 16px;
   height: 16px;
 }
+
+[data-color-picker-panel] .react-colorful__interactive:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-light-focus-ring);
+}
+
+.dark [data-color-picker-panel] .react-colorful__interactive:focus-visible {
+  box-shadow: var(--shadow-dark-focus-ring);
+}

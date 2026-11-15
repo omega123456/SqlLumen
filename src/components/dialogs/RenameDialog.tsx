@@ -56,7 +56,7 @@ function RenameFields({
         </div>
       )}
 
-      <p className="mb-4 font-body text-size-body text-light-on-surface-variant dark:text-dark-on-surface-variant">
+      <p className="mb-4 font-body text-size-body text-light-on-surface-variant dark:text-dark-on-surface-variant wrap-break-word">
         Current name:{' '}
         <span className="font-mono font-semibold text-light-on-surface dark:text-dark-on-surface">
           {currentName}

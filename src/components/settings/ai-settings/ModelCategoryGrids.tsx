@@ -3,6 +3,7 @@ import type { Icon } from '@phosphor-icons/react'
 import type { AiModelInfo } from '../../../lib/ai-commands'
 import { isActivationKey } from '../../../lib/input-events'
 import { joinClassNames } from '../../../lib/class-names'
+import { FOCUS_RING } from '../../../lib/focus-ring'
 import type { ModelCategories, ModelFetch } from './ai-settings-model'
 
 type ModelCardState = 'idle' | 'selected'
@@ -32,6 +33,7 @@ function ModelCard({ model, isSelected, onSelectModel }: ModelCardProps) {
         className={joinClassNames([
           'w-45 cursor-pointer truncate rounded-card border-2 px-3 py-2 text-size-caption text-light-on-surface shadow-light-elevated transition-border-color-background-shadow duration-150 dark:text-dark-on-surface dark:shadow-dark-elevated',
           MODEL_CARD_STATE_CLASSES[state],
+          FOCUS_RING,
         ])}
         onClick={() => onSelectModel(model.id)}
         onKeyDown={(event) => {

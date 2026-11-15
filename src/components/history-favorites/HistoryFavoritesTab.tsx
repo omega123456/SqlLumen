@@ -41,7 +41,7 @@ export function HistoryFavoritesTab({ tab }: HistoryFavoritesTabProps) {
     return (
       <div className={TAB_FRAME} data-testid="history-favorites-tab">
         <div className="flex-1 overflow-hidden">
-          <p>No active connection</p>
+          <p className="wrap-break-word">No active connection</p>
         </div>
       </div>
     )

@@ -80,7 +80,7 @@ export function LogExportDialog({ isOpen, onClose }: LogExportDialogProps) {
       <div className="flex flex-col overflow-hidden rounded-overlay">
         <div className="px-6 pt-6">
           <h2 className={DIALOG_HEADER_TITLE}>Export logs</h2>
-          <p className="mt-2 text-size-caption leading-body text-light-on-surface-variant dark:text-dark-on-surface-variant">
+          <p className="mt-2 text-size-caption leading-body text-light-on-surface-variant dark:text-dark-on-surface-variant wrap-break-word">
             Choose a date range of up to 7 days and save it as CSV.
           </p>
         </div>
@@ -91,7 +91,7 @@ export function LogExportDialog({ isOpen, onClose }: LogExportDialogProps) {
 
           <p
             className={joinClassNames([
-              'text-size-caption leading-compact',
+              'text-size-caption leading-compact wrap-break-word',
               VALIDATION_TONE_CLASSES[validationToneOf(validationMessage)],
             ])}
             data-testid="log-export-validation"

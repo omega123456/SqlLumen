@@ -5,6 +5,7 @@ import {
   activeWorkspaceTabMembers,
   activeWorkspaceTabs,
   connectToSample,
+  currentTheme,
   dismissAllToasts,
   getColumnIndexByName,
   getGridCellByColumnName,
@@ -47,8 +48,7 @@ test.beforeEach(async ({ page }) => {
 
 async function ensureTheme(page: Page, theme: 'light' | 'dark') {
   for (let i = 0; i < 6; i++) {
-    const cur = await page.evaluate(() => document.documentElement.getAttribute('data-theme'))
-    if (cur === theme) {
+    if ((await currentTheme(page)) === theme) {
       return
     }
     await page.getByTestId('theme-toggle').click()

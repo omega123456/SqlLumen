@@ -21,7 +21,7 @@ export function KillSummaryDialog({ results, onClose }: KillSummaryDialogProps) 
       testId="kill-summary-dialog"
       ariaLabel="Kill results"
     >
-      <h2 className="mb-3 text-size-heading-2 font-bold">Kill results</h2>
+      <h2 className="mb-3 text-size-heading-2 font-bold wrap-break-word">Kill results</h2>
       <p className="mb-2 wrap-break-word">
         {successes.length} {successes.length === 1 ? 'process' : 'processes'} killed successfully
       </p>

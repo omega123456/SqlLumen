@@ -188,7 +188,7 @@ export function HistoryDetailPanel({
           SQL
         </div>
         <pre className="px-3 py-2.5 font-mono text-size-code-block leading-4.75 whitespace-pre-wrap wrap-anywhere text-light-token-text select-text dark:text-dark-token-text">
-          <code>{highlighted}</code>
+          <code className="font-generic-mono">{highlighted}</code>
         </pre>
       </div>
 

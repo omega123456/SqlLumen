@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { dispatchAuxClick } from '../helpers/dispatch-aux-click'
 import userEvent from '@testing-library/user-event'
 import { ConnectionTabBar } from '../../components/layout/ConnectionTabBar'
+import { currentTheme } from '../../lib/theme-tokens'
 import { useThemeStore } from '../../stores/theme-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useCommandPaletteStore } from '../../stores/command-palette-store'
@@ -53,7 +54,7 @@ beforeEach(() => {
     dialogOpen: false,
     error: null,
   })
-  document.documentElement.removeAttribute('data-theme')
+  document.documentElement.classList.remove('dark')
   setupMatchMedia(false)
 })
 
@@ -374,7 +375,7 @@ describe('ConnectionTabBar', () => {
     await user.click(toggleButton)
 
     expect(useThemeStore.getState().resolvedTheme).toBe('dark')
-    expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+    expect(currentTheme()).toBe('dark')
   })
 
   it('clicking theme toggle switches from dark to light', async () => {

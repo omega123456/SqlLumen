@@ -1,0 +1,10 @@
+html[data-window-focused='false'] .monaco-editor,
+html[data-window-focused='false'] .monaco-editor *,
+html[data-window-focused='false'] .monaco-editor *::before,
+html[data-window-focused='false'] .monaco-editor *::after,
+[data-animation-paused] .monaco-editor,
+[data-animation-paused] .monaco-editor *,
+[data-animation-paused] .monaco-editor *::before,
+[data-animation-paused] .monaco-editor *::after {
+  animation-play-state: paused !important;
+}

@@ -47,7 +47,7 @@ function CopyOutcomeStatus({ progress }: { progress: CopyProgress }) {
   if (progress.status === 'completed') {
     return (
       <p
-        className="font-body text-size-caption text-light-tertiary dark:text-dark-tertiary"
+        className="font-body text-size-caption text-light-tertiary dark:text-dark-tertiary wrap-break-word"
         data-testid="copy-status-success"
       >
         Completed — {objectCountText(progress.objectsDone)} copied
@@ -57,7 +57,7 @@ function CopyOutcomeStatus({ progress }: { progress: CopyProgress }) {
   if (progress.status === 'cancelled') {
     return (
       <p
-        className="font-body text-size-caption text-light-warning dark:text-dark-warning"
+        className="font-body text-size-caption text-light-warning dark:text-dark-warning wrap-break-word"
         data-testid="copy-status-cancel"
       >
         Cancelled — {progress.objectsDone} of {progress.objectsTotal} objects copied

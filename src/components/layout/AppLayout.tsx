@@ -23,6 +23,8 @@ import { useSnapshotStore } from '../../stores/snapshot-store'
 import { useZoomStore } from '../../stores/zoom-store'
 import { useCommandPaletteStore } from '../../stores/command-palette-store'
 import { useCommandPaletteRecentsStore } from '../../stores/command-palette-recents-store'
+import { joinClassNames } from '../../lib/class-names'
+import { FOCUS_RING } from '../../lib/focus-ring'
 import { readFile } from '../../lib/query-commands'
 import { revealTabInObjectBrowser } from '../../lib/object-activation'
 import {
@@ -325,7 +327,10 @@ function MainPanels() {
           <Sidebar />
         </Panel>
         <Separator
-          className="relative z-0 w-resize-handle shrink-0 cursor-col-resize bg-transparent transition-bg duration-150 hover:bg-light-primary resize-dragging:bg-light-primary dark:hover:bg-dark-primary dark:resize-dragging:bg-dark-primary"
+          className={joinClassNames([
+            'relative z-0 w-resize-handle shrink-0 cursor-col-resize bg-transparent transition-bg duration-150 hover:bg-light-primary resize-dragging:bg-light-primary dark:hover:bg-dark-primary dark:resize-dragging:bg-dark-primary',
+            FOCUS_RING,
+          ])}
           onDoubleClick={handleSeparatorDoubleClick}
         />
         <Panel id="workspace" className="min-h-0" style={{ overflow: 'visible' }}>

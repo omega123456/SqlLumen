@@ -102,7 +102,7 @@ function CopyFooterHint() {
         weight="fill"
         className="shrink-0 text-light-primary dark:text-dark-primary"
       />
-      <p className="font-body text-caption text-light-on-surface-variant dark:text-dark-on-surface-variant">
+      <p className="font-body text-caption text-light-on-surface-variant dark:text-dark-on-surface-variant wrap-break-word">
         Foreign-key checks are disabled on the target during the copy and restored afterward.
       </p>
     </div>

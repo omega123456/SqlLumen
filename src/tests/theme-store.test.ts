@@ -6,7 +6,6 @@ import { setupMatchMedia } from './helpers/mock-match-media'
 beforeEach(() => {
   // Reset store state between tests
   useThemeStore.setState({ theme: 'system', resolvedTheme: 'light', _previewSnapshot: null })
-  document.documentElement.removeAttribute('data-theme')
   document.documentElement.classList.remove('dark')
   setupMatchMedia(false) // default: system prefers light
 })
@@ -26,28 +25,20 @@ describe('useThemeStore — setTheme', () => {
     expect(useThemeStore.getState().resolvedTheme).toBe('light')
   })
 
-  it('setTheme writes both the dark class and the data-theme attribute', async () => {
+  it('setTheme toggles the dark class and writes no data-theme attribute', async () => {
     await useThemeStore.getState().setTheme('dark')
     expect(document.documentElement.classList.contains('dark')).toBe(true)
-    expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false)
 
     await useThemeStore.getState().setTheme('light')
     expect(document.documentElement.classList.contains('dark')).toBe(false)
-    expect(document.documentElement.getAttribute('data-theme')).toBe('light')
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false)
   })
 
   it('setTheme to "dark" sets resolvedTheme to "dark"', async () => {
     await useThemeStore.getState().setTheme('dark')
     expect(useThemeStore.getState().theme).toBe('dark')
     expect(useThemeStore.getState().resolvedTheme).toBe('dark')
-  })
-
-  it('setTheme applies data-theme attribute to documentElement', async () => {
-    await useThemeStore.getState().setTheme('dark')
-    expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
-
-    await useThemeStore.getState().setTheme('light')
-    expect(document.documentElement.getAttribute('data-theme')).toBe('light')
   })
 
   it('setTheme to "system" resolves based on matchMedia', async () => {
@@ -75,7 +66,7 @@ describe('useThemeStore — setTheme', () => {
     await expect(useThemeStore.getState().setTheme('dark')).resolves.toBeUndefined()
     // Theme should still be applied
     expect(useThemeStore.getState().resolvedTheme).toBe('dark')
-    expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
   })
 })
 
@@ -105,7 +96,7 @@ describe('useThemeStore — native title bar sync', () => {
       throw new Error('no window')
     })
     await useThemeStore.getState().setTheme('dark')
-    expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
     await vi.waitFor(() => {
       expect(
         ipc
@@ -123,7 +114,7 @@ describe('useThemeStore — initialize', () => {
 
     await useThemeStore.getState().initialize()
     expect(useThemeStore.getState().resolvedTheme).toBe('dark')
-    expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
   })
 
   it('initialize applies saved theme from SQLite', async () => {
@@ -133,7 +124,7 @@ describe('useThemeStore — initialize', () => {
     await useThemeStore.getState().initialize()
     expect(useThemeStore.getState().theme).toBe('dark')
     expect(useThemeStore.getState().resolvedTheme).toBe('dark')
-    expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
   })
 
   it('initialize falls back to system preference when IPC fails', async () => {
@@ -159,12 +150,12 @@ describe('useThemeStore — previewTheme', () => {
   it('applies the previewed theme to the DOM without persisting', () => {
     // Start with light theme
     useThemeStore.setState({ theme: 'light', resolvedTheme: 'light', _previewSnapshot: null })
-    document.documentElement.setAttribute('data-theme', 'light')
+    document.documentElement.classList.remove('dark')
 
     useThemeStore.getState().previewTheme('dark')
 
     // DOM should reflect the preview
-    expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
     expect(useThemeStore.getState().resolvedTheme).toBe('dark')
     // The original theme is captured in the snapshot
     expect(useThemeStore.getState()._previewSnapshot).toBe('light')
@@ -191,7 +182,7 @@ describe('useThemeStore — previewTheme', () => {
     useThemeStore.getState().previewTheme('system')
 
     expect(useThemeStore.getState().resolvedTheme).toBe('dark')
-    expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
   })
 })
 
@@ -199,26 +190,26 @@ describe('useThemeStore — revertPreview', () => {
   it('reverts to the snapshot theme and clears the snapshot', () => {
     // Simulate: user was on 'light', then previewed 'dark'
     useThemeStore.setState({ theme: 'light', resolvedTheme: 'dark', _previewSnapshot: 'light' })
-    document.documentElement.setAttribute('data-theme', 'dark')
+    document.documentElement.classList.add('dark')
 
     useThemeStore.getState().revertPreview()
 
     expect(useThemeStore.getState().theme).toBe('light')
     expect(useThemeStore.getState().resolvedTheme).toBe('light')
-    expect(document.documentElement.getAttribute('data-theme')).toBe('light')
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
     expect(useThemeStore.getState()._previewSnapshot).toBeNull()
   })
 
   it('does nothing when there is no snapshot', () => {
     useThemeStore.setState({ theme: 'dark', resolvedTheme: 'dark', _previewSnapshot: null })
-    document.documentElement.setAttribute('data-theme', 'dark')
+    document.documentElement.classList.add('dark')
 
     useThemeStore.getState().revertPreview()
 
     // State and DOM remain unchanged
     expect(useThemeStore.getState().theme).toBe('dark')
     expect(useThemeStore.getState().resolvedTheme).toBe('dark')
-    expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
     expect(useThemeStore.getState()._previewSnapshot).toBeNull()
   })
 })
@@ -250,7 +241,7 @@ describe('useThemeStore — follows the OS by default (Fluent redesign decision)
     [true, 'dark'],
     [false, 'light'],
   ] as const)(
-    'with no saved theme and OS dark=%s, resolves to %s and keys the token set off the dark class and data-theme',
+    'with no saved theme and OS dark=%s, resolves to %s and keys the token set off the dark class',
     async (prefersDark, expected) => {
       setupMatchMedia(prefersDark)
       ipc.override('get_setting', () => null)
@@ -259,7 +250,6 @@ describe('useThemeStore — follows the OS by default (Fluent redesign decision)
 
       expect(useThemeStore.getState().theme).toBe('system')
       expect(useThemeStore.getState().resolvedTheme).toBe(expected)
-      expect(document.documentElement.getAttribute('data-theme')).toBe(expected)
       expect(document.documentElement.classList.contains('dark')).toBe(expected === 'dark')
     }
   )
@@ -271,6 +261,6 @@ describe('useThemeStore — follows the OS by default (Fluent redesign decision)
     await useThemeStore.getState().initialize()
 
     expect(useThemeStore.getState().theme).toBe('light')
-    expect(document.documentElement.getAttribute('data-theme')).toBe('light')
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
   })
 })

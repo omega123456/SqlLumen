@@ -1,4 +1,5 @@
 import { joinClassNames } from '../../lib/class-names'
+import { FOCUS_RING } from '../../lib/focus-ring'
 import { PERCENT_SCALE } from '../../lib/units'
 
 export interface SliderProps {
@@ -41,9 +42,10 @@ export function Slider({
           disabled={disabled}
           onChange={(event) => onChange(Number(event.target.value))}
           className={joinClassNames([
-            'h-1 flex-1 appearance-none rounded-track outline-none cursor-pointer bg-linear-to-r from-light-primary to-light-primary dark:from-dark-primary dark:to-dark-primary bg-light-surface-container-highest dark:bg-dark-surface-container-highest bg-left bg-no-repeat transition-opacity duration-150 disabled:cursor-not-allowed disabled:opacity-40',
+            'h-1 flex-1 appearance-none rounded-track cursor-pointer bg-linear-to-r from-light-primary to-light-primary dark:from-dark-primary dark:to-dark-primary bg-light-surface-container-highest dark:bg-dark-surface-container-highest bg-left bg-no-repeat transition-opacity duration-150 disabled:cursor-not-allowed disabled:opacity-40',
             'slider-thumb:size-4 slider-thumb:appearance-none slider-thumb:cursor-pointer slider-thumb:rounded-round slider-thumb:border-2 slider-thumb:border-solid slider-thumb:border-light-primary dark:slider-thumb:border-dark-primary slider-thumb:bg-light-primary dark:slider-thumb:bg-dark-primary slider-thumb:transition-shadow slider-thumb:duration-150 disabled:slider-thumb:cursor-not-allowed',
             'slider-thumb:hover:shadow-light-slider-thumb-hover dark:slider-thumb:hover:shadow-dark-slider-thumb-hover focus-visible:slider-thumb:shadow-light-slider-thumb-focus dark:focus-visible:slider-thumb:shadow-dark-slider-thumb-focus',
+            FOCUS_RING,
           ])}
           style={{ backgroundSize: `${percent}% 100%` }}
           aria-label={label ?? 'Slider'}

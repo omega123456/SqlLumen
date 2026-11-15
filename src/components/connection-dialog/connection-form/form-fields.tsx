@@ -6,6 +6,8 @@ import { IconButton } from '../../common/IconButton'
 import { Checkbox } from '../../common/Checkbox'
 import type { ConnectionFormData } from '../../../types/connection'
 import type { FormErrors, UpdateField } from '../connection-editor-state'
+import { joinClassNames } from '../../../lib/class-names'
+import { FOCUS_RING } from '../../../lib/focus-ring'
 import {
   CONNECTION_FIELD_GROUP,
   CONNECTION_FIELD_LABEL,
@@ -75,7 +77,10 @@ export function SslFileField({
         />
         <Button
           variant="bare"
-          className="flex shrink-0 cursor-pointer items-center justify-center rounded-control border border-light-stroke-control bg-light-fill-control px-2 py-1 text-light-on-surface transition-bg-and-color not-disabled:hover:bg-light-fill-control-hover disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-stroke-control dark:bg-dark-fill-control dark:text-dark-on-surface dark:not-disabled:hover:bg-dark-fill-control-hover"
+          className={joinClassNames([
+            'flex shrink-0 cursor-pointer items-center justify-center rounded-control border border-light-stroke-control bg-light-fill-control px-2 py-1 text-light-on-surface transition-bg-and-color not-disabled:hover:bg-light-fill-control-hover disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-stroke-control dark:bg-dark-fill-control dark:text-dark-on-surface dark:not-disabled:hover:bg-dark-fill-control-hover',
+            FOCUS_RING,
+          ])}
           onClick={onBrowse}
           disabled={disabled}
           aria-label={browseLabel}

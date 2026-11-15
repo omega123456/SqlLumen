@@ -75,7 +75,7 @@ function CascadeItems({ title, items }: { title: string; items: string[] }) {
   return (
     <div>
       <strong>{title}</strong>
-      <ul>
+      <ul className="list-disc">
         {items.map((item) => (
           <li key={item}>{item}</li>
         ))}
@@ -88,7 +88,7 @@ function CascadeCloseMessage({ pending }: { pending: PendingCascadeClose }) {
   if (!pending) return null
   return (
     <div>
-      <p>Closing this tab will discard changes in:</p>
+      <p className="wrap-break-word">Closing this tab will discard changes in:</p>
       <CascadeItems title="Query results" items={pending.queryResultItems} />
       <CascadeItems title="Table data tabs" items={pending.tableDataItems} />
     </div>

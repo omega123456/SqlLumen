@@ -1,9 +1,10 @@
 import { createElement, type ComponentPropsWithoutRef, type ReactElement } from 'react'
 import type { Components, ExtraProps } from 'react-markdown'
 import { joinClassNames, SCROLLBAR } from '../../lib/class-names'
+import { FOCUS_RING } from '../../lib/focus-ring'
 
 type MarkdownTag =
-  'p' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'ul' | 'ol' | 'pre' | 'table' | 'th' | 'td'
+  'a' | 'p' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'ul' | 'ol' | 'pre' | 'table' | 'th' | 'td'
 
 function markdownElement<Tag extends MarkdownTag>(tag: Tag, classNames: string) {
   return function MarkdownElement({
@@ -23,6 +24,7 @@ export const INLINE_CODE_CLASSES =
   'font-mono outside-pre:rounded-control outside-pre:bg-light-surface-container-lowest outside-pre:px-1.5 outside-pre:py-0.5 outside-pre:text-size-inline-code dark:outside-pre:bg-dark-surface-container-lowest'
 
 export const MARKDOWN_ELEMENTS: Components = {
+  a: markdownElement('a', FOCUS_RING),
   p: markdownElement('p', 'mb-2.5 wrap-break-word'),
   h1: markdownElement('h1', joinClassNames(['text-size-heading-1', HEADING_BASE])),
   h2: markdownElement('h2', joinClassNames(['text-size-heading-2', HEADING_BASE])),

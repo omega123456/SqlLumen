@@ -14,13 +14,11 @@ const rootElement = document.documentElement
 beforeEach(() => {
   rootElement.removeAttribute('style')
   rootElement.removeAttribute('class')
-  rootElement.removeAttribute('data-theme')
 })
 
 afterEach(() => {
   rootElement.removeAttribute('style')
   rootElement.removeAttribute('class')
-  rootElement.removeAttribute('data-theme')
 })
 
 describe('currentTheme', () => {
@@ -35,10 +33,10 @@ describe('currentTheme', () => {
 })
 
 describe('applyResolvedTheme', () => {
-  it('writes the dark class and the data-theme attribute together', () => {
+  it('writes the dark class and no data-theme attribute', () => {
     applyResolvedTheme('dark')
     expect(rootElement.classList.contains('dark')).toBe(true)
-    expect(rootElement.getAttribute('data-theme')).toBe('dark')
+    expect(rootElement.hasAttribute('data-theme')).toBe(false)
   })
 
   it('removes the dark class for the light theme and keeps other classes', () => {
@@ -47,7 +45,7 @@ describe('applyResolvedTheme', () => {
     applyResolvedTheme('light')
     expect(rootElement.classList.contains('dark')).toBe(false)
     expect(rootElement.classList.contains('mica')).toBe(true)
-    expect(rootElement.getAttribute('data-theme')).toBe('light')
+    expect(rootElement.hasAttribute('data-theme')).toBe(false)
   })
 })
 

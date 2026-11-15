@@ -1,5 +1,4 @@
 @import 'tailwindcss';
-@import './styles/legacy-base.css' layer(base);
 @plugin "tailwind-scrollbar" {
   preferredstrategy: pseudoelements;
   nocompatible: true;
@@ -15,6 +14,7 @@
 @custom-variant webkit-scrollbar-thumb (&::-webkit-scrollbar-thumb);
 @custom-variant webkit-scrollbar-thumb-hover (&::-webkit-scrollbar-thumb:hover);
 @custom-variant svg (& svg);
+@custom-variant canvas (& canvas);
 @custom-variant resize-dragging (&[data-separator='active']);
 @custom-variant after-memory-section (&:where([data-memory-section] + *));
 @custom-variant inside-pre (&:where(pre > *));
@@ -22,6 +22,7 @@
 @custom-variant top-level-list (&:where(:not(:is(ul, ol) *)));
 @custom-variant second-level-list (&:where(:is(ul, ol) *):not(:where(:is(ul, ol) :is(ul, ol) *)));
 @custom-variant deep-list (&:where(:is(ul, ol) :is(ul, ol) *));
+@custom-variant selectable-descendants (& :is(code, pre, .hljs, input:not(:disabled), textarea:not(:disabled), [contenteditable='true'], [role='gridcell']));
 
 @theme static {
   --color-*: initial;

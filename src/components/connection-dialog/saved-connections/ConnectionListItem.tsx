@@ -4,6 +4,7 @@ import { isActivationKey } from '../../../lib/input-events'
 import type { SavedConnection } from '../../../types/connection'
 import { joinClassNames } from '../../../lib/class-names'
 import { dataFlag } from '../../../lib/data-attributes'
+import { FOCUS_RING } from '../../../lib/focus-ring'
 
 const ITEM_ICON_SIZE = 16
 
@@ -27,6 +28,7 @@ function itemClassName(isSelected: boolean): string {
   return joinClassNames([
     'group relative flex cursor-default select-none flex-col rounded-control py-1.5 pr-2.5 pl-3.5',
     ITEM_SELECTION_CLASSES[selection],
+    FOCUS_RING,
   ])
 }
 

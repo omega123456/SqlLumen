@@ -31,7 +31,7 @@ function ConnectionDialogHeader({ onClose }: { onClose: () => void }) {
       <Plug size={HEADER_ICON_SIZE} weight="regular" aria-hidden />
       <h2
         id="connection-dialog-title"
-        className="flex-1 font-body text-caption font-regular text-light-on-surface dark:text-dark-on-surface"
+        className="flex-1 font-body text-caption font-regular text-light-on-surface dark:text-dark-on-surface wrap-break-word"
       >
         Connection manager
       </h2>

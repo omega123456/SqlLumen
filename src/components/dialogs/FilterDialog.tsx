@@ -5,6 +5,7 @@ import type { DropdownOption } from '../common/Dropdown'
 import { DialogShell } from './DialogShell'
 import type { FilterCondition } from '../../types/schema'
 import { joinClassNames, SCROLLBAR } from '../../lib/class-names'
+import { FOCUS_RING } from '../../lib/focus-ring'
 import {
   DIALOG_CLOSE_BUTTON,
   DIALOG_EDGE_TO_EDGE_ROOT,
@@ -50,7 +51,10 @@ function AddConditionButton({ onAdd }: { onAdd: () => void }) {
   return (
     <Button
       variant="bare"
-      className="inline-flex cursor-pointer items-center gap-1.5 rounded-control bg-transparent px-3 py-1.5 font-body text-size-caption font-semibold text-light-primary transition-color-and-background hover:bg-light-fill-subtle-hover dark:text-dark-primary dark:hover:bg-dark-fill-subtle-hover"
+      className={joinClassNames([
+        'inline-flex cursor-pointer items-center gap-1.5 rounded-control bg-transparent px-3 py-1.5 font-body text-size-caption font-semibold text-light-primary transition-color-and-background hover:bg-light-fill-subtle-hover dark:text-dark-primary dark:hover:bg-dark-fill-subtle-hover',
+        FOCUS_RING,
+      ])}
       onClick={onAdd}
       data-testid="filter-add-button"
     >

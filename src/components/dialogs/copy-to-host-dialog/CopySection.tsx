@@ -15,7 +15,7 @@ export function Section({
       className={joinClassNames([ELEVATED_SURFACE, 'flex flex-col gap-3 p-4'])}
       data-testid={testId}
     >
-      <h3 className="font-headline text-size-caption font-semibold text-light-on-surface dark:text-dark-on-surface">
+      <h3 className="font-headline text-size-caption font-semibold text-light-on-surface dark:text-dark-on-surface wrap-break-word">
         {title}
       </h3>
       <div className="flex flex-col">{children}</div>

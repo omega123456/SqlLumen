@@ -63,10 +63,10 @@ function EmptySnapshotList({ onCreate }: { onCreate: () => void }) {
         size={EMPTY_ICON_SIZE}
         className="text-light-on-surface-variant dark:text-dark-on-surface-variant"
       />
-      <h3 className="text-size-body font-semibold text-light-on-surface dark:text-dark-on-surface">
+      <h3 className="text-size-body font-semibold text-light-on-surface dark:text-dark-on-surface wrap-break-word">
         No snapshots yet.
       </h3>
-      <p className="max-w-90 text-size-body text-light-on-surface-variant dark:text-dark-on-surface-variant">
+      <p className="max-w-90 text-size-body text-light-on-surface-variant dark:text-dark-on-surface-variant wrap-break-word">
         Snapshots capture your open connections and tabs so you can restore them later.
       </p>
       <Button onClick={onCreate}>
@@ -169,8 +169,9 @@ export function SnapshotList({ onCreate, onDelete }: SnapshotListProps) {
   return (
     <div
       className={joinClassNames([
-        'flex flex-1 flex-col gap-1 overflow-y-auto p-2 outline-none',
+        'flex flex-1 flex-col gap-1 overflow-y-auto p-2',
         SCROLLBAR,
+        FOCUS_RING,
       ])}
       role="listbox"
       aria-label="Session snapshots"

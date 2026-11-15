@@ -39,7 +39,10 @@ export function SettingsCaption({
   return (
     <p
       id={id}
-      className={joinClassNames(['mt-1.5 text-caption', CAPTION_TONE_CLASSES[tone]])}
+      className={joinClassNames([
+        'mt-1.5 text-caption wrap-break-word',
+        CAPTION_TONE_CLASSES[tone],
+      ])}
       data-testid={dataTestId}
     >
       {children}

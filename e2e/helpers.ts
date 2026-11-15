@@ -14,6 +14,13 @@ const NO_BOX_SHADOW = 'none'
 const TRANSPARENT_EMPTY_SHADOW_LAYER = /rgba\(0, 0, 0, 0\) 0px 0px 0px 0px/g
 const SHADOW_LAYER_SEPARATOR = /^[, ]+|[, ]+$/g
 
+export type ThemeName = 'light' | 'dark'
+
+export async function currentTheme(page: Page): Promise<ThemeName> {
+  const isDark = await page.evaluate(() => document.documentElement.classList.contains('dark'))
+  return isDark ? 'dark' : 'light'
+}
+
 export async function visibleBoxShadow(locator: Locator): Promise<string> {
   const boxShadow = await locator.evaluate((element) => getComputedStyle(element).boxShadow)
   const visibleLayers = boxShadow

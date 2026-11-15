@@ -109,7 +109,7 @@ function StructureOptions(section: CopyOptionsSectionProps) {
       />
       {structureDisabled && (
         <p
-          className="font-body text-size-caption italic text-light-on-surface-variant dark:text-dark-on-surface-variant"
+          className="font-body text-size-caption italic text-light-on-surface-variant dark:text-dark-on-surface-variant wrap-break-word"
           data-testid="copy-structure-na"
         >
           Not applicable for Data only
@@ -153,7 +153,7 @@ function DataOptions(section: CopyOptionsSectionProps) {
       />
       {dataDisabled && (
         <p
-          className="font-body text-size-caption italic text-light-on-surface-variant dark:text-dark-on-surface-variant"
+          className="font-body text-size-caption italic text-light-on-surface-variant dark:text-dark-on-surface-variant wrap-break-word"
           data-testid="copy-data-na"
         >
           Not applicable for Structure only

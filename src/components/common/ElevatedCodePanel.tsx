@@ -77,7 +77,7 @@ export function ElevatedCodePanel({
             preClassName,
           ])}
         >
-          <code className={codeClassName}>{children}</code>
+          <code className={joinClassNames(['font-generic-mono', codeClassName])}>{children}</code>
         </pre>
       </div>
     </ElevatedSurface>

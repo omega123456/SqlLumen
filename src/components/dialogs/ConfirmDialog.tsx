@@ -85,7 +85,7 @@ export function ConfirmDialog({
       <h2 className={DIALOG_TITLE}>{title}</h2>
       <div className="text-body text-light-on-surface dark:text-dark-on-surface">{message}</div>
       {resolvedWarning !== null && (
-        <p className="mt-3 text-body text-light-on-surface-variant dark:text-dark-on-surface-variant">
+        <p className="mt-3 text-body text-light-on-surface-variant dark:text-dark-on-surface-variant wrap-break-word">
           {resolvedWarning}
         </p>
       )}

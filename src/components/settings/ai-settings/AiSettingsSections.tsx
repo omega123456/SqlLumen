@@ -45,7 +45,7 @@ function ModelListSection({
   return (
     <div className="mt-3" data-testid="ai-model-list-section">
       <p
-        className="mb-3 text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant"
+        className="mb-3 text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant wrap-break-word"
         data-testid="ai-helper-text"
       >
         Models will be grouped by type: chat for conversation, embedding for schema search
@@ -114,7 +114,7 @@ export function AiConnectionSection({ aiEnabled, onRequestReindex }: AiConnectio
         disabled={!aiEnabled}
       >
         <p
-          className="mb-3 text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant"
+          className="mb-3 text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant wrap-break-word"
           data-testid="ai-embedding-helper-text"
         >
           When blank, the chat URL is used for embeddings. Fill this in only if your embedding

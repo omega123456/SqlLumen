@@ -1,14 +1,17 @@
 import { joinClassNames, SCROLLBAR } from './class-names'
+import { FOCUS_RING } from './focus-ring'
 
 export const DIALOG_HEADER_TITLE =
-  'font-headline text-subtitle font-semibold text-light-on-surface dark:text-dark-on-surface'
+  'font-headline text-subtitle font-semibold wrap-break-word text-light-on-surface dark:text-dark-on-surface'
 
 export const DIALOG_TITLE = joinClassNames(['mb-3', DIALOG_HEADER_TITLE])
 
 export const DIALOG_HEADER = 'flex items-center justify-between px-6 pt-6'
 
-export const DIALOG_CLOSE_BUTTON =
-  'flex size-8 cursor-pointer items-center justify-center rounded-control text-light-on-surface transition-bg-and-color hover:bg-light-fill-subtle-hover dark:text-dark-on-surface dark:hover:bg-dark-fill-subtle-hover'
+export const DIALOG_CLOSE_BUTTON = joinClassNames([
+  'flex size-8 cursor-pointer items-center justify-center rounded-control text-light-on-surface transition-bg-and-color hover:bg-light-fill-subtle-hover dark:text-dark-on-surface dark:hover:bg-dark-fill-subtle-hover',
+  FOCUS_RING,
+])
 
 export const DIALOG_FIELD_LABEL =
   'mb-1.5 block font-body text-size-caption font-regular text-light-on-surface-variant dark:text-dark-on-surface-variant'
@@ -95,11 +98,15 @@ export const DIALOG_DESTINATION_GROUP =
 export const DIALOG_DESTINATION_PREFIX =
   'flex items-center border-r border-light-stroke-divider bg-light-surface-container-highest px-2.5 font-mono text-size-caption whitespace-nowrap text-light-on-surface-variant select-none dark:border-dark-stroke-divider dark:bg-dark-surface-container-highest dark:text-dark-on-surface-variant'
 
-export const DIALOG_DESTINATION_INPUT =
-  'min-w-0 flex-1 border-none bg-transparent px-2.5 py-1.25 font-body text-size-body leading-5 text-light-on-surface outline-none placeholder:text-light-outline dark:text-dark-on-surface dark:placeholder:text-dark-outline'
+export const DIALOG_DESTINATION_INPUT = joinClassNames([
+  'min-w-0 flex-1 border-none bg-transparent px-2.5 py-1.25 font-body text-size-body leading-5 text-light-on-surface placeholder:text-light-outline dark:text-dark-on-surface dark:placeholder:text-dark-outline',
+  FOCUS_RING,
+])
 
-export const DIALOG_BROWSE_BUTTON =
-  'flex cursor-pointer items-center justify-center px-4 text-light-on-surface-variant transition-color hover:bg-light-fill-subtle-hover hover:text-light-on-surface dark:text-dark-on-surface-variant dark:hover:bg-dark-fill-subtle-hover dark:hover:text-dark-on-surface svg:size-5'
+export const DIALOG_BROWSE_BUTTON = joinClassNames([
+  'flex cursor-pointer items-center justify-center px-4 text-light-on-surface-variant transition-color hover:bg-light-fill-subtle-hover hover:text-light-on-surface dark:text-dark-on-surface-variant dark:hover:bg-dark-fill-subtle-hover dark:hover:text-dark-on-surface svg:size-5',
+  FOCUS_RING,
+])
 
 export const DIALOG_SECTION_FIELD_GROUP = 'mb-2.5 flex flex-col gap-1.5 last:mb-0'
 

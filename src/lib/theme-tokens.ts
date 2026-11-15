@@ -1,7 +1,6 @@
 export type ThemeName = 'light' | 'dark'
 
 const DARK_THEME_CLASS = 'dark'
-const THEME_DATA_ATTRIBUTE = 'data-theme'
 const CLASS_ATTRIBUTE = 'class'
 
 function rootElement(): HTMLElement {
@@ -15,7 +14,6 @@ export function currentTheme(): ThemeName {
 
 export function applyResolvedTheme(theme: ThemeName): void {
   rootElement().classList.toggle(DARK_THEME_CLASS, theme === 'dark')
-  rootElement().setAttribute(THEME_DATA_ATTRIBUTE, theme)
 }
 
 export function readToken(name: string): string {

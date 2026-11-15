@@ -5,9 +5,15 @@
 .monaco-editor .suggest-widget,
 .monaco-editor .parameter-hints-widget {
   border-radius: var(--radius-overlay) !important;
-  box-shadow: var(--shadow-flyout) !important;
-  border: 1px solid var(--stroke-flyout) !important;
+  box-shadow: var(--shadow-light-flyout) !important;
+  border: 1px solid var(--color-light-stroke-flyout) !important;
   overflow: hidden;
+}
+
+.dark .monaco-editor .suggest-widget,
+.dark .monaco-editor .parameter-hints-widget {
+  box-shadow: var(--shadow-dark-flyout) !important;
+  border-color: var(--color-dark-stroke-flyout) !important;
 }
 
 /* ---------------------------------------------------------------------------
@@ -26,14 +32,23 @@
 }
 
 .monaco-editor .suggest-widget .monaco-list .monaco-list-row:hover:not(.focused) {
-  background-color: var(--fill-subtle-hover) !important;
+  background-color: var(--color-light-fill-subtle-hover) !important;
+}
+
+.dark .monaco-editor .suggest-widget .monaco-list .monaco-list-row:hover:not(.focused) {
+  background-color: var(--color-dark-fill-subtle-hover) !important;
 }
 
 /* Focused row: neutral selected fill with the 3×16 accent pill (prototype `.p-fly .mi.on`) */
 .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused {
   position: relative;
-  background-color: var(--fill-neutral-selected) !important;
-  color: var(--on-surface) !important;
+  background-color: var(--color-light-fill-neutral-selected) !important;
+  color: var(--color-light-on-surface) !important;
+}
+
+.dark .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused {
+  background-color: var(--color-dark-fill-neutral-selected) !important;
+  color: var(--color-dark-on-surface) !important;
 }
 
 .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused::before {
@@ -45,25 +60,45 @@
   height: 16px;
   margin-top: -8px;
   border-radius: 2px;
-  background: var(--primary);
+  background: var(--color-light-primary);
+}
+
+.dark .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused::before {
+  background: var(--color-dark-primary);
 }
 
 .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .codicon {
-  color: var(--primary) !important;
+  color: var(--color-light-primary) !important;
+}
+
+.dark .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .codicon {
+  color: var(--color-dark-primary) !important;
 }
 
 .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .monaco-icon-label {
-  color: var(--on-surface) !important;
+  color: var(--color-light-on-surface) !important;
+}
+
+.dark .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .monaco-icon-label {
+  color: var(--color-dark-on-surface) !important;
 }
 
 .monaco-editor .suggest-widget .details-label {
   font-family: var(--font-body);
-  font-size: var(--type-caption-size);
-  font-weight: var(--type-weight-regular);
+  font-size: var(--text-size-caption);
+  font-weight: var(--font-weight-regular);
   opacity: 1 !important;
-  color: var(--outline);
+  color: var(--color-light-outline);
+}
+
+.dark .monaco-editor .suggest-widget .details-label {
+  color: var(--color-dark-outline);
 }
 
 .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .details-label {
-  color: var(--on-surface-variant);
+  color: var(--color-light-on-surface-variant);
+}
+
+.dark .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .details-label {
+  color: var(--color-dark-on-surface-variant);
 }

@@ -1,5 +1,6 @@
 import type { HTMLAttributes, ReactNode, Ref } from 'react'
 import { joinClassNames } from '../../lib/class-names'
+import { FOCUS_RING } from '../../lib/focus-ring'
 
 export type InfoBarSeverity = 'info' | 'success' | 'warning' | 'error'
 
@@ -56,6 +57,7 @@ export function InfoBar({
       className={joinClassNames([
         'flex select-text items-start gap-3 rounded-card border py-3 pr-2 pl-3.5 font-body text-body border-light-stroke-card dark:border-dark-stroke-card text-light-on-surface dark:text-dark-on-surface',
         BAR_FILL_CLASSES[severity],
+        FOCUS_RING,
         className,
       ])}
     >

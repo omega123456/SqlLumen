@@ -136,10 +136,10 @@ export function ApplySchemaChangesDialog(props: ApplySchemaChangesDialogProps) {
     >
       <div className="flex flex-col gap-4 p-6 text-light-on-surface dark:text-dark-on-surface">
         <div className="flex flex-col gap-1">
-          <h2 className="font-headline text-subtitle font-semibold text-light-on-surface dark:text-dark-on-surface">
+          <h2 className="font-headline text-subtitle font-semibold text-light-on-surface dark:text-dark-on-surface wrap-break-word">
             Apply schema changes
           </h2>
-          <p className="text-light-on-surface-variant dark:text-dark-on-surface-variant">
+          <p className="text-light-on-surface-variant dark:text-dark-on-surface-variant wrap-break-word">
             The following SQL will be executed:
           </p>
         </div>
@@ -151,7 +151,7 @@ export function ApplySchemaChangesDialog(props: ApplySchemaChangesDialogProps) {
           ])}
           data-testid="apply-schema-ddl"
         >
-          <code>{highlightedDdl}</code>
+          <code className="font-generic-mono">{highlightedDdl}</code>
         </pre>
 
         <SchemaWarnings warnings={warnings} />

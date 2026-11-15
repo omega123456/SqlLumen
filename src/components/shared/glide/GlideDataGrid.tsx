@@ -5,6 +5,7 @@ import type {
   GridSelection,
 } from '@glideapps/glide-data-grid'
 import { joinClassNames } from '../../../lib/class-names'
+import { FOCUS_RING } from '../../../lib/focus-ring'
 import { useElementSize } from '../../../hooks/use-element-size'
 import type { GridHandle } from './glide-grid-types'
 import { GlideDataEditor } from './glide-data-grid/GlideDataEditor'
@@ -73,7 +74,7 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
   return (
     <div
       ref={hostRef}
-      className={joinClassNames([GLIDE_HOST_CLASS, props.className])}
+      className={joinClassNames([GLIDE_HOST_CLASS, FOCUS_RING, props.className])}
       data-sqllumen-glide-host=""
       data-testid={testId}
       data-glide-column-width={serializedColumnWidths}

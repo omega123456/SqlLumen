@@ -7,6 +7,8 @@ import {
   usePanelRef,
   type PanelImperativeHandle,
 } from 'react-resizable-panels'
+import { joinClassNames } from '../../lib/class-names'
+import { FOCUS_RING } from '../../lib/focus-ring'
 import { dispatchWorkspaceLayoutResize } from '../../lib/workspace-layout-events'
 import { useAiStore } from '../../stores/ai-store'
 import { useSettingsStore } from '../../stores/settings-store'
@@ -210,7 +212,12 @@ export function WorkspaceBody({
         </Panel>
         {showActiveQueryAiLayout ? <QueryWorkspaceAiRail tab={activeQueryTab} /> : null}
         {showActiveQueryAiLayout ? (
-          <Separator className="shrink-0 grow-0 basis-resize-handle cursor-col-resize" />
+          <Separator
+            className={joinClassNames([
+              'shrink-0 grow-0 basis-resize-handle cursor-col-resize',
+              FOCUS_RING,
+            ])}
+          />
         ) : null}
         {shouldRenderAiPanelStack ? (
           <AiPanelStack

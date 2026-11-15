@@ -118,7 +118,7 @@ export function HistoryTab({ tab, isActive = true }: HistoryTabProps) {
     return (
       <div className={HISTORY_TAB_FRAME} data-testid="history-tab">
         <div className="flex h-full items-center justify-center text-size-body text-light-on-surface-variant dark:text-dark-on-surface-variant">
-          <p>No active connection</p>
+          <p className="wrap-break-word">No active connection</p>
         </div>
       </div>
     )

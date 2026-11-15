@@ -226,7 +226,7 @@ export function AlterDatabaseDialog({
       formProps={{ onSubmit: handleFormSubmit }}
     >
       <h2 className={DIALOG_TITLE}>Alter database</h2>
-      <p className="mb-5 font-mono text-size-body text-light-on-surface-variant dark:text-dark-on-surface-variant">
+      <p className="mb-5 font-mono text-size-body text-light-on-surface-variant dark:text-dark-on-surface-variant wrap-break-word">
         {databaseName}
       </p>
 

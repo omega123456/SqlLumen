@@ -41,7 +41,7 @@ beforeEach(() => {
     errorMessage: null,
     restartPeriodicCheck: vi.fn().mockResolvedValue(undefined),
   })
-  document.documentElement.removeAttribute('data-theme')
+  document.documentElement.classList.remove('dark')
 })
 
 describe('SettingsDialog', () => {

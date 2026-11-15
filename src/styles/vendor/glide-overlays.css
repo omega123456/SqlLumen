@@ -1,6 +1,6 @@
 [data-sqllumen-glide-host] .dvn-scroller::-webkit-scrollbar {
-  width: var(--grid-scrollbar-size);
-  height: var(--grid-scrollbar-size);
+  width: var(--spacing-grid-scrollbar);
+  height: var(--spacing-grid-scrollbar);
 }
 
 [data-sqllumen-glide-host] .dvn-scroller::-webkit-scrollbar-track {
@@ -8,18 +8,71 @@
 }
 
 [data-sqllumen-glide-host] .dvn-scroller::-webkit-scrollbar-thumb {
-  background: var(--grid-scrollbar-thumb);
+  background: var(--color-light-text-disabled);
   border-radius: var(--radius-control);
 }
 
+.dark [data-sqllumen-glide-host] .dvn-scroller::-webkit-scrollbar-thumb {
+  background: var(--color-dark-text-disabled);
+}
+
 [data-sqllumen-glide-host] .dvn-scroller::-webkit-scrollbar-thumb:hover {
-  background: var(--grid-scrollbar-thumb-hover);
+  background: var(--color-light-outline);
+}
+
+.dark [data-sqllumen-glide-host] .dvn-scroller::-webkit-scrollbar-thumb:hover {
+  background: var(--color-dark-outline);
+}
+
+[data-sqllumen-glide-host] canvas:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-light-focus-ring);
+}
+
+.dark [data-sqllumen-glide-host] canvas:focus-visible {
+  box-shadow: var(--shadow-dark-focus-ring);
+}
+
+#portal .gdg-p13nj8j0 [role='listbox']::-webkit-scrollbar,
+#portal .gdg-d19meir1 textarea::-webkit-scrollbar {
+  width: var(--spacing-grid-scrollbar);
+}
+
+#portal .gdg-p13nj8j0 [role='listbox']::-webkit-scrollbar-track,
+#portal .gdg-d19meir1 textarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#portal .gdg-p13nj8j0 [role='listbox']::-webkit-scrollbar-thumb,
+#portal .gdg-d19meir1 textarea::-webkit-scrollbar-thumb {
+  background: var(--color-light-text-disabled);
+  border-radius: var(--radius-control);
+}
+
+.dark #portal .gdg-p13nj8j0 [role='listbox']::-webkit-scrollbar-thumb,
+.dark #portal .gdg-d19meir1 textarea::-webkit-scrollbar-thumb {
+  background: var(--color-dark-text-disabled);
+}
+
+#portal .gdg-p13nj8j0 [role='listbox']::-webkit-scrollbar-thumb:hover,
+#portal .gdg-d19meir1 textarea::-webkit-scrollbar-thumb:hover {
+  background: var(--color-light-outline);
+}
+
+.dark #portal .gdg-p13nj8j0 [role='listbox']::-webkit-scrollbar-thumb:hover,
+.dark #portal .gdg-d19meir1 textarea::-webkit-scrollbar-thumb:hover {
+  background: var(--color-dark-outline);
 }
 
 [data-sqllumen-glide-host] .gdg-clip-region,
 [data-sqllumen-glide-host] .gdg-cell-edit {
   font-family: var(--font-mono);
-  color: var(--on-surface);
+  color: var(--color-light-on-surface);
+}
+
+.dark [data-sqllumen-glide-host] .gdg-clip-region,
+.dark [data-sqllumen-glide-host] .gdg-cell-edit {
+  color: var(--color-dark-on-surface);
 }
 
 #portal {
@@ -59,7 +112,7 @@
    var, i.e. the active cell) instead of react-select's 38px default. Production emotion
    classes carry no label on the value/input containers, so target them structurally. */
 #portal .glide-select [class*='-control'] {
-  min-height: var(--d19meir1-3, var(--grid-row-height, 28px));
+  min-height: var(--d19meir1-3, var(--spacing-grid-row));
 }
 
 #portal .glide-select [class*='-control'] > div,
@@ -71,19 +124,26 @@
 }
 
 /* The overlay's accent edge is the focus indicator; inputs inside any cell editor (text,
-   enum, SET multi-select) must not draw the global :focus-visible ring, which the editor's
+   enum, SET multi-select) must not draw a focus ring or outline, which the editor's
    overflow clip would otherwise cut down to a stray bar or box. */
 #portal .gdg-d19meir1 input:focus-visible {
+  outline: none;
   box-shadow: none;
 }
 
 /* Enum DropdownCell menu: same Fluent flyout as the shared Dropdown panel.
    react-select keeps its own focused-option fill, so keyboard highlight stays visible. */
 #portal .gdg-p13nj8j0 [class*='-menu'] {
-  background: var(--surface-container-high);
-  border: 1px solid var(--stroke-flyout);
+  background: var(--color-light-surface-container-high);
+  border: 1px solid var(--color-light-stroke-flyout);
   border-radius: var(--radius-overlay);
-  box-shadow: var(--shadow-flyout);
+  box-shadow: var(--shadow-light-flyout);
+}
+
+.dark #portal .gdg-p13nj8j0 [class*='-menu'] {
+  background: var(--color-dark-surface-container-high);
+  border-color: var(--color-dark-stroke-flyout);
+  box-shadow: var(--shadow-dark-flyout);
 }
 
 #portal .gdg-p13nj8j0 [role='listbox'] {
@@ -95,17 +155,22 @@
   display: flex;
   align-items: center;
   box-sizing: border-box;
-  min-height: var(--menu-item-height);
+  min-height: var(--spacing-menu-item);
   padding: 0 10px;
   border-radius: var(--radius-control);
   font-family: var(--font-body);
-  font-size: var(--type-body-size);
-  line-height: var(--type-body-line);
+  font-size: var(--text-size-body);
+  line-height: var(--text-body--line-height);
 }
 
 #portal .gdg-p13nj8j0 [role='option'][aria-selected='true'] {
-  background: var(--fill-neutral-selected);
-  color: var(--on-surface);
+  background: var(--color-light-fill-neutral-selected);
+  color: var(--color-light-on-surface);
+}
+
+.dark #portal .gdg-p13nj8j0 [role='option'][aria-selected='true'] {
+  background: var(--color-dark-fill-neutral-selected);
+  color: var(--color-dark-on-surface);
 }
 
 #portal .gdg-p13nj8j0 [role='option'][aria-selected='true']::before {
@@ -117,7 +182,11 @@
   height: 16px;
   margin-top: -8px;
   border-radius: 2px;
-  background: var(--primary);
+  background: var(--color-light-primary);
+}
+
+.dark #portal .gdg-p13nj8j0 [role='option'][aria-selected='true']::before {
+  background: var(--color-dark-primary);
 }
 
 /* Constrain Glide's editor overlay to the active cell instead of its 400px default.
@@ -136,10 +205,7 @@
   padding: max(
       0px,
       calc(
-        (
-            var(--d19meir1-3, var(--grid-row-height, 28px)) -
-              var(--sqllumen-grid-editor-control-height)
-          ) /
+        (var(--d19meir1-3, var(--spacing-grid-row)) - var(--sqllumen-grid-editor-control-height)) /
           2
       )
     )

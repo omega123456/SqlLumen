@@ -34,7 +34,7 @@ export function ForeignKeysPanel({ foreignKeys }: ForeignKeysPanelProps) {
     return (
       <SchemaPanel data-testid="foreign-keys-panel">
         <div className="flex items-center justify-center px-4 py-12">
-          <p className="text-size-body text-light-on-surface-variant opacity-60 dark:text-dark-on-surface-variant">
+          <p className="text-size-body text-light-on-surface-variant opacity-60 dark:text-dark-on-surface-variant wrap-break-word">
             No foreign keys defined on this table
           </p>
         </div>

@@ -48,7 +48,7 @@ function TargetDatabaseExtras({ target, newDatabaseInputRef, handlers }: CopyTar
       )}
       {target.notice && (
         <p
-          className="mt-1.5 flex items-center gap-2 font-body text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant"
+          className="mt-1.5 flex items-center gap-2 font-body text-size-caption text-light-on-surface-variant dark:text-dark-on-surface-variant wrap-break-word"
           data-testid="copy-target-database-notice"
         >
           <Info
@@ -104,7 +104,7 @@ export function CopyTargetSection({
       </div>
       {target.isSameHost && (
         <p
-          className="mt-1 flex items-center gap-2 font-body text-size-caption text-light-warning dark:text-dark-warning"
+          className="mt-1 flex items-center gap-2 font-body text-size-caption text-light-warning dark:text-dark-warning wrap-break-word"
           data-testid="copy-same-host-warning"
         >
           <Warning

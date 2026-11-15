@@ -78,7 +78,7 @@ function DdlPreviewBody({ preview, highlightedSql }: DdlPreviewBodyProps) {
       ])}
       data-testid="ddl-preview-code"
     >
-      <code>{highlightedSql}</code>
+      <code className="font-generic-mono">{highlightedSql}</code>
     </pre>
   )
 }

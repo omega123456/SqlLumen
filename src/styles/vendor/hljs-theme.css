@@ -1,53 +1,99 @@
 /* ============================================================
    Custom highlight.js theme — maps hljs-* classes to the
-   --token-* syntax colours (VS Code Dark+ / Light+, prototype
-   `--sx-*`) so highlighting follows the theme via tokens.css
+   --color-*-token-* syntax colours (VS Code Dark+ / Light+, prototype
+   `--sx-*`) so highlighting follows the theme via the paired @theme colour tokens
    ============================================================ */
 
 .hljs {
-  color: var(--token-text);
-  background: var(--ai-code-block-bg);
+  color: var(--color-light-token-text);
+  background: var(--color-light-surface-container-lowest);
+}
+
+.dark .hljs {
+  color: var(--color-dark-token-text);
+  background: var(--color-dark-surface-container-lowest);
 }
 
 .hljs-keyword,
 .hljs-selector-tag,
 .hljs-built_in,
 .hljs-literal {
-  color: var(--token-keyword);
+  color: var(--color-light-token-keyword);
+}
+
+.dark .hljs-keyword,
+.dark .hljs-selector-tag,
+.dark .hljs-built_in,
+.dark .hljs-literal {
+  color: var(--color-dark-token-keyword);
 }
 
 .hljs-string,
 .hljs-doctag,
 .hljs-regexp,
 .hljs-addition {
-  color: var(--token-string);
+  color: var(--color-light-token-string);
+}
+
+.dark .hljs-string,
+.dark .hljs-doctag,
+.dark .hljs-regexp,
+.dark .hljs-addition {
+  color: var(--color-dark-token-string);
 }
 
 .hljs-comment,
 .hljs-quote,
 .hljs-meta,
 .hljs-deletion {
-  color: var(--token-comment);
+  color: var(--color-light-token-comment);
+}
+
+.dark .hljs-comment,
+.dark .hljs-quote,
+.dark .hljs-meta,
+.dark .hljs-deletion {
+  color: var(--color-dark-token-comment);
 }
 
 .hljs-title,
 .hljs-section,
 .hljs-title.function_ {
-  color: var(--token-function);
+  color: var(--color-light-token-function);
+}
+
+.dark .hljs-title,
+.dark .hljs-section,
+.dark .hljs-title.function_ {
+  color: var(--color-dark-token-function);
 }
 
 .hljs-number,
 .hljs-symbol {
-  color: var(--token-number);
+  color: var(--color-light-token-number);
+}
+
+.dark .hljs-number,
+.dark .hljs-symbol {
+  color: var(--color-dark-token-number);
 }
 
 .hljs-operator {
-  color: var(--token-operator);
+  color: var(--color-light-token-operator);
+}
+
+.dark .hljs-operator {
+  color: var(--color-dark-token-operator);
 }
 
 .hljs-punctuation,
 .hljs-tag {
-  color: var(--token-text);
+  color: var(--color-light-token-text);
+}
+
+.dark .hljs-punctuation,
+.dark .hljs-tag {
+  color: var(--color-dark-token-text);
 }
 
 .hljs-type,
@@ -55,13 +101,27 @@
 .hljs-name,
 .hljs-attr,
 .hljs-attribute {
-  color: var(--token-type);
+  color: var(--color-light-token-type);
+}
+
+.dark .hljs-type,
+.dark .hljs-class,
+.dark .hljs-name,
+.dark .hljs-attr,
+.dark .hljs-attribute {
+  color: var(--color-dark-token-type);
 }
 
 .hljs-variable,
 .hljs-template-variable,
 .hljs-params {
-  color: var(--token-identifier);
+  color: var(--color-light-token-identifier);
+}
+
+.dark .hljs-variable,
+.dark .hljs-template-variable,
+.dark .hljs-params {
+  color: var(--color-dark-token-identifier);
 }
 
 .hljs-emphasis {
@@ -69,7 +129,7 @@
 }
 
 .hljs-strong {
-  font-weight: var(--type-weight-semibold);
+  font-weight: var(--font-weight-semibold);
 }
 
 .hljs-link {

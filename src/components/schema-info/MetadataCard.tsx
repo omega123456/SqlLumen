@@ -43,7 +43,7 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
       className="px-3.5 py-3 select-text"
       data-testid="metadata-card"
     >
-      <h4 className="mb-2 font-body text-size-caption leading-5 font-semibold text-light-on-surface-variant dark:text-dark-on-surface-variant">
+      <h4 className="mb-2 font-body text-size-caption leading-5 font-semibold text-light-on-surface-variant dark:text-dark-on-surface-variant wrap-break-word">
         Metadata
       </h4>
       <dl className="flex flex-col gap-2">

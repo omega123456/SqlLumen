@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
-import path from 'node:path'
 import { MONACO_THEMES, getMonacoThemeName, registerMonacoThemes } from '../../../lib/monaco-theme'
+import { readThemeTokens } from '../../helpers/tailwind-theme'
 
 describe('getMonacoThemeName', () => {
   it('returns dark theme for dark preference', () => {
@@ -116,22 +115,19 @@ describe('Monaco themes match the Fluent proposal', () => {
     })
   }
 
-  it('keeps the --token-* syntax tokens in step with the Monaco palette', () => {
-    const css = readFileSync(path.resolve(process.cwd(), 'src/styles/tokens.css'), 'utf8')
-    const lightStart = css.lastIndexOf("[data-theme='light'] {")
-    const dark = css.slice(0, lightStart)
-    const light = css.slice(lightStart)
-    const token = (block: string, name: string) =>
-      block.match(new RegExp(`--token-${name}: (#[0-9a-f]{6});`))?.[1].slice(1)
-    for (const [block, p] of [
-      [dark, PROTOTYPE['precision-studio-dark']],
-      [light, PROTOTYPE['precision-studio-light']],
+  it('keeps the token-* syntax colours in step with the Monaco palette', () => {
+    const theme = readThemeTokens()
+    const token = (themeName: string, name: string) =>
+      theme[`--color-${themeName}-token-${name}`].slice(1)
+    for (const [themeName, p] of [
+      ['dark', PROTOTYPE['precision-studio-dark']],
+      ['light', PROTOTYPE['precision-studio-light']],
     ] as const) {
-      expect(token(block, 'text')).toBe(p.text)
-      expect(token(block, 'keyword')).toBe(p.keyword)
-      expect(token(block, 'string')).toBe(p.string)
-      expect(token(block, 'number')).toBe(p.number)
-      expect(token(block, 'identifier')).toBe(p.quoted)
+      expect(token(themeName, 'text')).toBe(p.text)
+      expect(token(themeName, 'keyword')).toBe(p.keyword)
+      expect(token(themeName, 'string')).toBe(p.string)
+      expect(token(themeName, 'number')).toBe(p.number)
+      expect(token(themeName, 'identifier')).toBe(p.quoted)
     }
   })
 })

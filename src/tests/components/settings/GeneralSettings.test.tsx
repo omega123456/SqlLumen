@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { GeneralSettings } from '../../../components/settings/GeneralSettings'
 import { SETTINGS_DEFAULTS, useSettingsStore } from '../../../stores/settings-store'
+import { currentTheme } from '../../../lib/theme-tokens'
 import { useThemeStore } from '../../../stores/theme-store'
 import { useZoomStore, ZOOM_LEVELS } from '../../../stores/zoom-store'
 
@@ -17,7 +18,7 @@ describe('GeneralSettings', () => {
     })
     useThemeStore.setState({ theme: 'system', resolvedTheme: 'light', _previewSnapshot: null })
     useZoomStore.setState({ zoomLevel: 100, previewSnapshot: null })
-    document.documentElement.removeAttribute('data-theme')
+    document.documentElement.classList.remove('dark')
   })
 
   it('renders the general settings defaults', () => {
@@ -60,7 +61,7 @@ describe('GeneralSettings', () => {
     expect(useThemeStore.getState().theme).toBe('system')
     expect(useThemeStore.getState().resolvedTheme).toBe('dark')
     expect(useThemeStore.getState()._previewSnapshot).toBe('system')
-    expect(document.documentElement).toHaveAttribute('data-theme', 'dark')
+    expect(currentTheme()).toBe('dark')
   })
 
   it('updates the session restore toggle and numeric defaults', async () => {

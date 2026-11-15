@@ -7,17 +7,25 @@
 
 .monaco-editor .parameter-hints-widget .signature {
   font-family: var(--font-mono);
-  font-size: var(--type-mono-size);
-  font-weight: var(--type-weight-regular);
-  color: var(--token-text);
-  padding: var(--space-xs) var(--space-sm) !important;
-  line-height: var(--type-mono-line);
+  font-size: var(--text-size-mono);
+  font-weight: var(--font-weight-regular);
+  color: var(--color-light-token-text);
+  padding: 4px 8px !important;
+  line-height: var(--text-mono--line-height);
+}
+
+.dark .monaco-editor .parameter-hints-widget .signature {
+  color: var(--color-dark-token-text);
 }
 
 /* Active parameter: semibold in the accent */
 .monaco-editor .parameter-hints-widget .signature .parameter.active {
-  font-weight: var(--type-weight-semibold) !important;
-  color: var(--primary) !important;
+  font-weight: var(--font-weight-semibold) !important;
+  color: var(--color-light-primary) !important;
+}
+
+.dark .monaco-editor .parameter-hints-widget .signature .parameter.active {
+  color: var(--color-dark-primary) !important;
 }
 
 /* ---------------------------------------------------------------------------
@@ -25,9 +33,13 @@
    --------------------------------------------------------------------------- */
 
 .monaco-editor .parameter-hints-widget .docs {
-  color: var(--on-surface-variant);
+  color: var(--color-light-on-surface-variant);
   font-family: var(--font-body);
-  font-size: var(--type-caption-size);
-  padding: var(--space-xs) var(--space-sm) !important;
-  line-height: var(--type-caption-line);
+  font-size: var(--text-size-caption);
+  padding: 4px 8px !important;
+  line-height: var(--text-caption--line-height);
+}
+
+.dark .monaco-editor .parameter-hints-widget .docs {
+  color: var(--color-dark-on-surface-variant);
 }

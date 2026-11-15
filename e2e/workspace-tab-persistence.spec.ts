@@ -12,6 +12,21 @@ import {
 } from './helpers'
 
 const PRIMARY_SESSION_ID = 'session-playwright-1'
+const ANIMATED_PROBE_TEST_ID = 'animated-probe'
+const ANIMATED_PROBE_CLASS_NAME = 'animate-spin-700ms window-blurred:animate-spin-700ms-paused'
+
+async function appendAnimatedProbe(host: Locator): Promise<Locator> {
+  await host.evaluate(
+    (element, probeAttributes) => {
+      const probe = document.createElement('span')
+      probe.setAttribute('data-testid', probeAttributes.testId)
+      probe.className = probeAttributes.className
+      element.append(probe)
+    },
+    { testId: ANIMATED_PROBE_TEST_ID, className: ANIMATED_PROBE_CLASS_NAME }
+  )
+  return host.getByTestId(ANIMATED_PROBE_TEST_ID)
+}
 
 function activePanel(page: Page): Locator {
   return activeConnectionWorkspace(page).locator(
@@ -178,12 +193,16 @@ test.describe('Workspace tab persistence', () => {
   })
 
   test('pauses animations while the application window is unfocused', async ({ page }) => {
+    const animatedProbe = await appendAnimatedProbe(page.locator('body'))
+    await expect(animatedProbe).toHaveCSS('animation-play-state', 'running')
+
     await page.evaluate(() => window.dispatchEvent(new Event('blur')))
     await expect(page.locator('html')).toHaveAttribute('data-window-focused', 'false')
-    await expect(page.locator('body')).toHaveCSS('animation-play-state', 'paused')
+    await expect(animatedProbe).toHaveCSS('animation-play-state', 'paused')
 
     await page.evaluate(() => window.dispatchEvent(new Event('focus')))
     await expect(page.locator('html')).toHaveAttribute('data-window-focused', 'true')
+    await expect(animatedProbe).toHaveCSS('animation-play-state', 'running')
   })
 
   test('retains table-data grid scroll after switching tabs', async ({ page }) => {
@@ -391,7 +410,8 @@ test.describe('Multi-session workspace persistence', () => {
     // The retained inactive workspace still has its panels mounted but inert.
     const inactiveWorkspace = page.getByTestId('inactive-connection-workspace')
     await expect(inactiveWorkspace).toHaveAttribute('aria-hidden', 'true')
-    await expect(inactiveWorkspace).toHaveCSS('animation-play-state', 'paused')
+    const animatedProbe = await appendAnimatedProbe(inactiveWorkspace)
+    await expect(animatedProbe).toHaveCSS('animation-play-state', 'paused')
     await expect(inactiveWorkspace.getByTestId('workspace-panel').first()).toBeAttached()
   })
 
