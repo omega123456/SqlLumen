@@ -1,4 +1,5 @@
-import { setupLanguageFeatures, LanguageIdEnum } from 'monaco-sql-languages'
+import { setupLanguageFeatures } from 'monaco-sql-languages/esm/setupLanguageFeatures.js'
+import { LanguageIdEnum } from 'monaco-sql-languages/esm/common/constants.js'
 import { language as mysqlLanguage } from 'monaco-sql-languages/esm/languages/mysql/mysql.js'
 import { completionService } from './completion-service'
 

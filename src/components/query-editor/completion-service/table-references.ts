@@ -1,5 +1,5 @@
 import type { EntityContext } from 'monaco-sql-languages'
-import { EntityContextType } from 'monaco-sql-languages'
+import { EntityContextType } from 'dt-sql-parser'
 import { stripQuotes } from '../alias-resolver'
 import { isSameTextIgnoringCase } from '../../../lib/value-checks'
 import type { SchemaCache, TableRef } from './completion-types'

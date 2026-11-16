@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { EntityContextType } from 'monaco-sql-languages'
+import { EntityContextType } from 'dt-sql-parser'
 import {
   buildAliasMap,
   buildAliasMapFromText,

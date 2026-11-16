@@ -119,9 +119,11 @@ vi.mock('monaco-editor', () => ({
 
 vi.mock('monaco-sql-languages/esm/languages/mysql/mysql.contribution.js', () => ({}))
 
-vi.mock('monaco-sql-languages', () => ({
+vi.mock('monaco-sql-languages/esm/setupLanguageFeatures.js', () => ({
   setupLanguageFeatures: vi.fn(),
-  LanguageIdEnum: { MYSQL: 'mysql' },
+}))
+
+vi.mock('dt-sql-parser', () => ({
   EntityContextType: {
     CATALOG: 'catalog',
     CATALOG_CREATE: 'catalogCreate',

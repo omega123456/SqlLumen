@@ -13,6 +13,8 @@ const CONSOLE_SINK_FILES = ['src/lib/app-log-commands.ts']
 const MODULE_CSS_IMPORT_PATTERN = '**/*.module.css'
 const MODULE_CSS_MESSAGE =
   'CSS Modules are not allowed; style with Tailwind utilities (see the Styling constraint in CLAUDE.md)'
+const MONACO_SQL_LANGUAGES_ROOT_MESSAGE =
+  'The package root re-exports every dt-sql-parser dialect onto the main thread (+7 MB); import values from monaco-sql-languages/esm/<module>.js, or EntityContextType from dt-sql-parser'
 const localRulesPlugin = {
   rules: { ...namedConditionsPlugin.rules, ...tailwindRulesPlugin.rules },
 }
@@ -160,9 +162,18 @@ export default defineConfig(
         },
       ],
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
-      'no-restricted-imports': [
+      '@typescript-eslint/no-restricted-imports': [
         'error',
-        { patterns: [{ group: [MODULE_CSS_IMPORT_PATTERN], message: MODULE_CSS_MESSAGE }] },
+        {
+          paths: [
+            {
+              name: 'monaco-sql-languages',
+              allowTypeImports: true,
+              message: MONACO_SQL_LANGUAGES_ROOT_MESSAGE,
+            },
+          ],
+          patterns: [{ group: [MODULE_CSS_IMPORT_PATTERN], message: MODULE_CSS_MESSAGE }],
+        },
       ],
     },
   },

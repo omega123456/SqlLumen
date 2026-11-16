@@ -10,10 +10,10 @@ importers:
     dependencies:
       '@glideapps/glide-data-grid':
         specifier: 6.0.3
-        version: 6.0.3(lodash@4.18.1)(marked@14.0.0)(react-dom@19.3.1(react@19.3.1))(react-responsive-carousel@3.2.23)(react@19.3.1)
+        version: 6.0.3(lodash@4.18.1)(marked@4.3.0)(react-dom@19.3.1(react@19.3.1))(react-responsive-carousel@3.2.23)(react@19.3.1)
       '@glideapps/glide-data-grid-cells':
         specifier: 6.0.3
-        version: 6.0.3(@types/react@19.3.0)(lodash@4.18.1)(marked@14.0.0)(react-dom@19.3.1(react@19.3.1))(react-responsive-carousel@3.2.23)(react@19.3.1)
+        version: 6.0.3(@types/react@19.3.0)(lodash@4.18.1)(marked@4.3.0)(react-dom@19.3.1(react@19.3.1))(react-responsive-carousel@3.2.23)(react@19.3.1)
       '@headlessui/react':
         specifier: ^2.2.10
         version: 2.2.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -44,6 +44,9 @@ importers:
       date-fns:
         specifier: ^4.4.0
         version: 4.4.0
+      dt-sql-parser:
+        specifier: 4.6.1
+        version: 4.6.1(antlr4ng-cli@1.0.7)
       fuse.js:
         specifier: ^7.5.0
         version: 7.5.0
@@ -51,8 +54,8 @@ importers:
         specifier: ^0.55.1
         version: 0.55.1
       monaco-sql-languages:
-        specifier: 1.0.0
-        version: 1.0.0(antlr4ng-cli@1.0.7)(monaco-editor@0.55.1)
+        specifier: 1.3.1
+        version: 1.3.1(antlr4ng-cli@1.0.7)(monaco-editor@0.55.1)(sql-formatter@15.9.0)
       react-colorful:
         specifier: ^5.8.1
         version: 5.8.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -1394,8 +1397,8 @@ packages:
   dompurify@3.2.7:
     resolution: {integrity: sha512-WhL/YuveyGXJaerVlMYGWhvQswa7myDG17P7Vu65EWC05o8vfeNbvNf4d/BOvH99+ZW+LlQsc1GDKMa1vNK6dw==}
 
-  dt-sql-parser@4.4.2:
-    resolution: {integrity: sha512-NpfSeCetxDICs5NNOHKO/e/PTQ/EFnGW0QBo11e5nmuWqVRACZkArcBH9/LKnoe1Mdtql45U5h0aU9GOqhBLWg==}
+  dt-sql-parser@4.6.1:
+    resolution: {integrity: sha512-BuwY34bJmG8544QjTFUw24eyM08XlxgQRUDXEnocLH2samvRjQxSGZAC+zkeffJDoc+13di5+tN+/lSQ5G+Azw==}
     engines: {node: '>=18'}
 
   electron-to-chromium@1.5.485:
@@ -1887,6 +1890,11 @@ packages:
     engines: {node: '>= 18'}
     hasBin: true
 
+  marked@4.3.0:
+    resolution: {integrity: sha512-PRsaiG84bK+AMvxziE/lCFss8juXjNaWzVbN5tXAm4XjeaS9NAHhop+PjQxz2A9h8Q4M/xGmzP8vqNwy6JeK0A==}
+    engines: {node: '>= 12'}
+    hasBin: true
+
   mdast-util-find-and-replace@3.0.4:
     resolution: {integrity: sha512-z4B5c6jrnJ1ltOQemhWYPBSAo6y42Z8Gt2yEgfgNTMcLSU59B8bfj8Z8AnAlJrBGLnqkdAUZ7jdDEqQw3KuipQ==}
 
@@ -2040,11 +2048,15 @@ packages:
   monaco-editor@0.55.1:
     resolution: {integrity: sha512-jz4x+TJNFHwHtwuV9vA9rMujcZRb0CEilTEwG2rRSpe/A7Jdkuj8xPKttCgOh+v/lkHy7HsZ64oj+q3xoAFl9A==}
 
-  monaco-sql-languages@1.0.0:
-    resolution: {integrity: sha512-zZPHOYHvhACTc8PdJvHOvi5i1LmW65+1/LgbZMhIhNvgNEbSGp8IVimKHmH0JDAE3QHAbZSLr4HoO8Bvkqf2DQ==}
+  monaco-sql-languages@1.3.1:
+    resolution: {integrity: sha512-Rm/ADhQdwp3DuUyql1v6sSa/h0tPwAwibN8RsWKTFpUyz5Zo9X/xaP06VOCWGuLF2m1b/pWt0m54T1c1EfaXlw==}
     engines: {node: '>=18'}
     peerDependencies:
       monaco-editor: '>=0.37.1'
+      sql-formatter: '>=10.7.2'
+    peerDependenciesMeta:
+      sql-formatter:
+        optional: true
 
   moo-color@1.0.3:
     resolution: {integrity: sha512-i/+ZKXMDf6aqYtBhuOcej71YSlbjT3wCO/4H1j8rPvxDJEifdwgg5MaFyu6iYAT8GBZJg2z0dkgK4YMzvURALQ==}
@@ -3124,9 +3136,9 @@ snapshots:
 
   '@fontsource/jetbrains-mono@5.3.0': {}
 
-  '@glideapps/glide-data-grid-cells@6.0.3(@types/react@19.3.0)(lodash@4.18.1)(marked@14.0.0)(react-dom@19.3.1(react@19.3.1))(react-responsive-carousel@3.2.23)(react@19.3.1)':
+  '@glideapps/glide-data-grid-cells@6.0.3(@types/react@19.3.0)(lodash@4.18.1)(marked@4.3.0)(react-dom@19.3.1(react@19.3.1))(react-responsive-carousel@3.2.23)(react@19.3.1)':
     dependencies:
-      '@glideapps/glide-data-grid': 6.0.3(lodash@4.18.1)(marked@14.0.0)(react-dom@19.3.1(react@19.3.1))(react-responsive-carousel@3.2.23)(react@19.3.1)
+      '@glideapps/glide-data-grid': 6.0.3(lodash@4.18.1)(marked@4.3.0)(react-dom@19.3.1(react@19.3.1))(react-responsive-carousel@3.2.23)(react@19.3.1)
       '@linaria/react': 4.5.4(react@19.3.1)
       '@toast-ui/editor': 3.1.10
       '@toast-ui/react-editor': 3.1.10(react@19.3.1)
@@ -3140,12 +3152,12 @@ snapshots:
       - react-responsive-carousel
       - supports-color
 
-  '@glideapps/glide-data-grid@6.0.3(lodash@4.18.1)(marked@14.0.0)(react-dom@19.3.1(react@19.3.1))(react-responsive-carousel@3.2.23)(react@19.3.1)':
+  '@glideapps/glide-data-grid@6.0.3(lodash@4.18.1)(marked@4.3.0)(react-dom@19.3.1(react@19.3.1))(react-responsive-carousel@3.2.23)(react@19.3.1)':
     dependencies:
       '@linaria/react': 4.5.4(react@19.3.1)
       canvas-hypertxt: 1.0.3
       lodash: 4.18.1
-      marked: 14.0.0
+      marked: 4.3.0
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
       react-number-format: 5.4.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -4005,7 +4017,7 @@ snapshots:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
 
-  dt-sql-parser@4.4.2(antlr4ng-cli@1.0.7):
+  dt-sql-parser@4.6.1(antlr4ng-cli@1.0.7):
     dependencies:
       antlr4-c3: 3.3.7(antlr4ng-cli@1.0.7)
       antlr4ng: 2.0.11(antlr4ng-cli@1.0.7)
@@ -4486,6 +4498,8 @@ snapshots:
 
   marked@14.0.0: {}
 
+  marked@4.3.0: {}
+
   mdast-util-find-and-replace@3.0.4:
     dependencies:
       '@types/mdast': 4.0.4
@@ -4859,10 +4873,12 @@ snapshots:
       dompurify: 3.2.7
       marked: 14.0.0
 
-  monaco-sql-languages@1.0.0(antlr4ng-cli@1.0.7)(monaco-editor@0.55.1):
+  monaco-sql-languages@1.3.1(antlr4ng-cli@1.0.7)(monaco-editor@0.55.1)(sql-formatter@15.9.0):
     dependencies:
-      dt-sql-parser: 4.4.2(antlr4ng-cli@1.0.7)
+      dt-sql-parser: 4.6.1(antlr4ng-cli@1.0.7)
       monaco-editor: 0.55.1
+    optionalDependencies:
+      sql-formatter: 15.9.0
     transitivePeerDependencies:
       - antlr4ng-cli
 

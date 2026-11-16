@@ -1,5 +1,5 @@
 import type { EntityContext } from 'monaco-sql-languages'
-import { EntityContextType } from 'monaco-sql-languages'
+import { EntityContextType } from 'dt-sql-parser'
 import { SQL_RESERVED_WORDS_SET } from './sql-keywords'
 
 const QUOTE_PAIR_LENGTH = 2

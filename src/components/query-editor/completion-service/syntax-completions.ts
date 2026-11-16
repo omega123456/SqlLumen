@@ -1,6 +1,6 @@
 import type { ICompletionItem, CompletionSnippet } from 'monaco-sql-languages'
 import type { Suggestions, EntityContext } from 'monaco-sql-languages'
-import { EntityContextType } from 'monaco-sql-languages'
+import { EntityContextType } from 'dt-sql-parser'
 import {
   getScopedSchemaDatabases,
   hasColumnContext,

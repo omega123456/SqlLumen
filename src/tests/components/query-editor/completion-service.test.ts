@@ -16,7 +16,7 @@ import {
   unregisterModelConnection,
   resetModelConnections,
 } from '../../../components/query-editor/completion-service'
-import { EntityContextType } from 'monaco-sql-languages'
+import { EntityContextType } from 'dt-sql-parser'
 import type { NodeType } from '../../../types/schema'
 
 // ---------------------------------------------------------------------------
