@@ -91,9 +91,9 @@ async fn fetch_table_pk_cached_returns_cached_metadata_without_querying_mysql() 
 mod type_aware_filter_integration {
     use super::*;
     use crate::common::mock_mysql_server::{
-        MockCell, MockColumnDef, MockMySqlServer, MockQueryStep,
+        MockCell, MockColumnDef, MockDateTimeValue, MockMySqlServer, MockQueryStep,
     };
-    use chrono::NaiveDateTime;
+    use jiff::civil;
     use opensrv_mysql::{ColumnFlags, ColumnType};
     use rusqlite::Connection;
     use serde::de::DeserializeOwned;
@@ -352,11 +352,13 @@ mod type_aware_filter_integration {
         ]
     }
 
+    const MOCK_DATETIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
+
     fn datetime_cell(text: &str) -> MockCell {
-        MockCell::DateTime(
-            NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M:%S")
+        MockCell::DateTime(MockDateTimeValue(
+            civil::DateTime::strptime(MOCK_DATETIME_FORMAT, text)
                 .expect("datetime should be valid"),
-        )
+        ))
     }
 
     fn primary_key_step() -> MockQueryStep {

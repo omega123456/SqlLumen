@@ -483,6 +483,16 @@ mod temporals {
     }
 
     #[test]
+    fn binary_microseconds_reaching_a_full_second_render_midnight() {
+        let datetime = precise_column(ColumnType::MYSQL_TYPE_DATETIME, 0);
+        let impossible = Value::Date(2024, 3, 5, 13, 4, 5, 1_000_000);
+        assert_eq!(
+            decode_cell(&impossible, &datetime),
+            temporal("2024-03-05 00:00:00")
+        );
+    }
+
+    #[test]
     fn time_outside_jiff_range_renders_zero() {
         let time = precise_column(ColumnType::MYSQL_TYPE_TIME, 0);
         let impossible = Value::Time(false, u32::MAX, 0, 0, 0, 0);

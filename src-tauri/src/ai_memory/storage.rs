@@ -1,16 +1,9 @@
 use rusqlite::{params, Connection, Result};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::embedding_to_bytes;
 use super::types::{AiMemory, MemoryMove, MemoryOwner, MemoryScope, MemoryVector};
 use crate::schema_index::storage::sanitize_table_name;
-
-fn now_secs() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64
-}
+use crate::timestamps::unix_seconds_now;
 
 pub fn vec_table_name(connection_id: &str) -> String {
     format!("ai_memory_vectors_{}", sanitize_table_name(connection_id))
@@ -39,7 +32,7 @@ pub fn vec_table_for_scope(scope: MemoryScope, owner_id: Option<&str>) -> Result
 pub fn insert_memory(conn: &Connection, connection_id: &str, content: &str) -> Result<i64> {
     conn.execute(
         "INSERT INTO connection_memories (connection_id, content, created_at, source) VALUES (?1, ?2, ?3, 'manual')",
-        params![connection_id, content, now_secs()],
+        params![connection_id, content, unix_seconds_now()],
     )?;
     Ok(conn.last_insert_rowid())
 }
@@ -103,7 +96,7 @@ pub fn get_memory_by_id(conn: &Connection, memory_id: i64) -> Result<Option<AiMe
 pub fn insert_group_memory(conn: &Connection, group_id: &str, content: &str) -> Result<i64> {
     conn.execute(
         "INSERT INTO group_memories (group_id, content, created_at, source) VALUES (?1, ?2, ?3, 'manual')",
-        params![group_id, content, now_secs()],
+        params![group_id, content, unix_seconds_now()],
     )?;
     Ok(conn.last_insert_rowid())
 }
@@ -152,7 +145,7 @@ pub fn get_group_memory_by_id(conn: &Connection, memory_id: i64) -> Result<Optio
 pub fn insert_global_memory(conn: &Connection, content: &str) -> Result<i64> {
     conn.execute(
         "INSERT INTO global_memories (content, created_at, source) VALUES (?1, ?2, 'manual')",
-        params![content, now_secs()],
+        params![content, unix_seconds_now()],
     )?;
     Ok(conn.last_insert_rowid())
 }

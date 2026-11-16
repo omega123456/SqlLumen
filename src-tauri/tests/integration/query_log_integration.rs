@@ -3,10 +3,10 @@
 use crate::common::log_capture::LogCaptureGuard;
 #[cfg(not(coverage))]
 use crate::common::mock_mysql_server::{
-    MockCell, MockColumnDef, MockMySqlServer, MockQueryResponse,
+    MockCell, MockColumnDef, MockDateTimeValue, MockMySqlServer, MockQueryResponse,
 };
 #[cfg(not(coverage))]
-use chrono::NaiveDate;
+use jiff::civil;
 #[cfg(not(coverage))]
 use opensrv_mysql::{ColumnFlags, ColumnType};
 #[cfg(not(coverage))]
@@ -90,18 +90,8 @@ async fn query_log_formats_timestamp_columns_without_decode_errors() {
             plain_column("is_admin", ColumnType::MYSQL_TYPE_VAR_STRING),
         ],
         row: vec![
-            MockCell::DateTime(
-                NaiveDate::from_ymd_opt(2024, 1, 1)
-                    .expect("date should be valid")
-                    .and_hms_opt(0, 0, 0)
-                    .expect("time should be valid"),
-            ),
-            MockCell::DateTime(
-                NaiveDate::from_ymd_opt(2024, 1, 2)
-                    .expect("date should be valid")
-                    .and_hms_opt(3, 4, 5)
-                    .expect("time should be valid"),
-            ),
+            MockCell::DateTime(MockDateTimeValue(civil::date(2024, 1, 1).at(0, 0, 0, 0))),
+            MockCell::DateTime(MockDateTimeValue(civil::date(2024, 1, 2).at(3, 4, 5, 0))),
             MockCell::Bytes(b"false"),
         ],
     };
@@ -150,12 +140,7 @@ async fn query_log_formats_decimal_columns_without_decode_errors() {
             MockCell::Bytes(b"gas"),
             MockCell::Bytes(b"123.45"),
             MockCell::Bytes(b"67.89"),
-            MockCell::DateTime(
-                NaiveDate::from_ymd_opt(2023, 12, 3)
-                    .expect("date should be valid")
-                    .and_hms_opt(0, 0, 0)
-                    .expect("time should be valid"),
-            ),
+            MockCell::DateTime(MockDateTimeValue(civil::date(2023, 12, 3).at(0, 0, 0, 0))),
         ],
     };
 

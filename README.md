@@ -116,7 +116,7 @@ SqlLumen checks GitHub Releases for updates. When one is available, a banner app
 - **Object browser** — browse databases, tables, views, routines, triggers, events, and favourites from one tree. While you scroll a large database, the active database stays pinned at the top
 - **Command palette** — search the active connection's schema, jump to recent objects, and filter by database or object type. On a table data view, the palette can search that table's columns
 - **Workspace tabs** — query, table-data, schema, and designer tabs with inline rename, context-menu actions, and drag-and-drop reordering. Tab groups switch in a rail beside the tab strip
-- **Session snapshots** — capture the open connections and tabs on demand, restore an earlier session, and let SqlLumen save snapshots on close, daily, or weekly
+- **Session snapshots** — capture the open connections and tabs on demand, restore an earlier session, and let SqlLumen save snapshots on close, daily, or weekly (daily and weekly snapshots roll over at local midnight and on local Monday)
 
 **Query editor**
 

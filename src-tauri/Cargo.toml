@@ -44,7 +44,6 @@ tokio-util = { version = "~0.7.20", features = ["rt"] }
 tracing = "~0.1.44"
 tracing-subscriber = { version = "~0.3.23", features = ["env-filter", "fmt", "registry"] }
 tracing-appender = "~0.2.5"
-chrono = { version = "~0.4.45", default-features = false, features = ["clock", "std"] }
 tauri-plugin-mcp-bridge = "~0.13.1"
 tauri-plugin-os = "~2.4.0"
 tauri-plugin-process = "~2.4.0"

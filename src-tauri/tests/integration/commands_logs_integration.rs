@@ -2,10 +2,12 @@
 
 use crate::common;
 
-use chrono::{Duration, TimeZone, Utc};
+use crate::common::utc_timestamps::utc_timestamp;
+use jiff::{civil, SignedDuration, Timestamp};
 use sqllumen_lib::commands::logs::{export_logs_impl, list_logs_impl};
 use sqllumen_lib::db::migrations::run_log_migrations;
 use sqllumen_lib::logging::log_store::{insert_log_entries, NewLogEntry, LOG_PAGE_SIZE};
+use sqllumen_lib::timestamps::{days_before, log_timestamp};
 use tempfile::tempdir;
 
 struct TestLevel<'a> {
@@ -13,9 +15,9 @@ struct TestLevel<'a> {
     num: i64,
 }
 
-fn seed_log(timestamp: chrono::DateTime<Utc>, level: TestLevel<'_>, message: &str) -> NewLogEntry {
+fn seed_log(timestamp: Timestamp, level: TestLevel<'_>, message: &str) -> NewLogEntry {
     NewLogEntry {
-        timestamp: timestamp.to_rfc3339(),
+        timestamp: log_timestamp(timestamp),
         level: level.name.to_string(),
         level_num: level.num,
         target: "sqllumen_lib::tests".to_string(),
@@ -35,11 +37,11 @@ fn prepare_logs_state() -> sqllumen_lib::state::AppState {
 #[test]
 fn list_logs_impl_applies_threshold_and_paging() {
     let state = prepare_logs_state();
-    let now = Utc.with_ymd_and_hms(2026, 6, 6, 12, 0, 0).unwrap();
+    let now = utc_timestamp(civil::date(2026, 6, 6).at(12, 0, 0, 0));
     let mut rows = Vec::new();
 
     for index in 0..130 {
-        let timestamp = now - Duration::minutes(index as i64);
+        let timestamp = now - SignedDuration::from_mins(index);
         let (level, level_num) = if index % 2 == 0 {
             ("ERROR", 50)
         } else {
@@ -102,7 +104,7 @@ fn list_logs_impl_applies_threshold_and_paging() {
 #[test]
 fn export_logs_impl_writes_csv_in_oldest_first_order() {
     let state = prepare_logs_state();
-    let now = Utc.with_ymd_and_hms(2026, 6, 6, 12, 0, 0).unwrap();
+    let now = utc_timestamp(civil::date(2026, 6, 6).at(12, 0, 0, 0));
 
     {
         let mut conn = state.logs_db.lock().expect("lock logs db");
@@ -110,7 +112,7 @@ fn export_logs_impl_writes_csv_in_oldest_first_order() {
             &mut conn,
             &[
                 seed_log(
-                    now - Duration::days(2),
+                    days_before(now, 2),
                     TestLevel {
                         name: "INFO",
                         num: 30,
@@ -118,7 +120,7 @@ fn export_logs_impl_writes_csv_in_oldest_first_order() {
                     "older",
                 ),
                 seed_log(
-                    now - Duration::days(1),
+                    days_before(now, 1),
                     TestLevel {
                         name: "WARN",
                         num: 40,
@@ -166,7 +168,7 @@ fn export_logs_impl_writes_csv_in_oldest_first_order() {
 #[test]
 fn export_logs_impl_sanitizes_formula_like_string_cells() {
     let state = prepare_logs_state();
-    let timestamp = Utc.with_ymd_and_hms(2026, 6, 6, 12, 0, 0).unwrap();
+    let timestamp = utc_timestamp(civil::date(2026, 6, 6).at(12, 0, 0, 0));
 
     {
         let mut conn = state.logs_db.lock().expect("lock logs db");
@@ -216,7 +218,7 @@ fn export_logs_impl_honors_local_day_timestamps_near_utc_boundaries() {
             &mut conn,
             &[
                 seed_log(
-                    Utc.with_ymd_and_hms(2026, 6, 1, 3, 30, 0).unwrap(),
+                    utc_timestamp(civil::date(2026, 6, 1).at(3, 30, 0, 0)),
                     TestLevel {
                         name: "INFO",
                         num: 30,
@@ -224,7 +226,7 @@ fn export_logs_impl_honors_local_day_timestamps_near_utc_boundaries() {
                     "inside-local-day",
                 ),
                 seed_log(
-                    Utc.with_ymd_and_hms(2026, 6, 2, 4, 30, 0).unwrap(),
+                    utc_timestamp(civil::date(2026, 6, 2).at(4, 30, 0, 0)),
                     TestLevel {
                         name: "INFO",
                         num: 30,
@@ -268,7 +270,7 @@ fn export_logs_impl_accepts_seven_inclusive_local_days_for_non_utc_offsets() {
             &mut conn,
             &[
                 seed_log(
-                    Utc.with_ymd_and_hms(2026, 6, 1, 4, 0, 1).unwrap(),
+                    utc_timestamp(civil::date(2026, 6, 1).at(4, 0, 1, 0)),
                     TestLevel {
                         name: "INFO",
                         num: 30,
@@ -276,7 +278,7 @@ fn export_logs_impl_accepts_seven_inclusive_local_days_for_non_utc_offsets() {
                     "range-start",
                 ),
                 seed_log(
-                    Utc.with_ymd_and_hms(2026, 6, 8, 3, 0, 0).unwrap(),
+                    utc_timestamp(civil::date(2026, 6, 8).at(3, 0, 0, 0)),
                     TestLevel {
                         name: "INFO",
                         num: 30,
@@ -417,7 +419,7 @@ fn export_logs_impl_errors_when_output_path_is_unwritable() {
         insert_log_entries(
             &mut conn,
             &[seed_log(
-                Utc.with_ymd_and_hms(2026, 6, 6, 12, 0, 0).unwrap(),
+                utc_timestamp(civil::date(2026, 6, 6).at(12, 0, 0, 0)),
                 TestLevel {
                     name: "INFO",
                     num: 30,

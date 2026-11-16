@@ -1,16 +1,17 @@
+import { milliseconds } from 'date-fns'
 import { logFrontend } from '../../lib/app-log-commands'
 import { showErrorToast } from '../toast-store'
 import { saveSessionState } from '../../lib/session-restore-commands'
 import { hasTauriApis, hasWindow } from '../../lib/tauri-env'
-import { MILLISECONDS_PER_MINUTE } from '../../lib/units'
 import { toErrorMessage } from '../../lib/error-message'
 import { useSessionRestoreStore } from '../session-restore-store'
 import { buildSessionState } from './session-serialization'
 
 const SESSION_AUTOSAVE_INTERVAL_MINUTES = 5
 
-export const SESSION_AUTOSAVE_INTERVAL_MS =
-  SESSION_AUTOSAVE_INTERVAL_MINUTES * MILLISECONDS_PER_MINUTE
+export const SESSION_AUTOSAVE_INTERVAL_MS = milliseconds({
+  minutes: SESSION_AUTOSAVE_INTERVAL_MINUTES,
+})
 
 interface CloseRequestedEvent {
   preventDefault: () => void

@@ -1,5 +1,5 @@
+use crate::timestamps::unix_seconds_now;
 use rusqlite::{params, Connection, OptionalExtension, Result};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn save_schema_cache_snapshot(
     conn: &Connection,
@@ -12,7 +12,7 @@ pub fn save_schema_cache_snapshot(
          ON CONFLICT(connection_id) DO UPDATE SET
            snapshot_json = excluded.snapshot_json,
            updated_at = excluded.updated_at",
-        params![connection_id, snapshot_json, unix_timestamp()],
+        params![connection_id, snapshot_json, unix_seconds_now()],
     )?;
     Ok(())
 }
@@ -27,11 +27,4 @@ pub fn load_schema_cache_snapshot(
         |row| row.get::<_, String>(0),
     )
     .optional()
-}
-
-fn unix_timestamp() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64
 }

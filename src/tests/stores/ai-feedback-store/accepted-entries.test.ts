@@ -4,12 +4,12 @@ import {
   recordAcceptedTables,
   weightedAcceptedTables,
 } from '../../../stores/ai-feedback-store/accepted-entries'
-import { MILLISECONDS_PER_MINUTE } from '../../../lib/units'
+import { milliseconds } from 'date-fns'
 
 const SEEN_AT = 1_700_000_000_000
 const EXPIRY_MINUTES = 30
-const HALF_EXPIRY_MS = (EXPIRY_MINUTES / 2) * MILLISECONDS_PER_MINUTE
-const EXPIRY_MS = EXPIRY_MINUTES * MILLISECONDS_PER_MINUTE
+const EXPIRY_MS = milliseconds({ minutes: EXPIRY_MINUTES })
+const HALF_EXPIRY_MS = EXPIRY_MS / 2
 const HALF_WEIGHT = 0.5
 
 const USERS = { dbName: 'shop', tableName: 'users' }

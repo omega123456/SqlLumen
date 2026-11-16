@@ -1,4 +1,4 @@
-use chrono::Utc;
+use crate::timestamps::stored_timestamp_now;
 use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
@@ -63,7 +63,7 @@ fn ensure_not_cancelled_before_enumeration(context: &BuildContext<'_>) -> Result
     }
     tracing::warn!(
         profile_id = %context.connection_id(),
-        at = %Utc::now().to_rfc3339(),
+        at = %stored_timestamp_now(),
         "schema_index build_index: cancelled before MySQL enumeration"
     );
     Err(BUILD_CANCELLED.to_string())

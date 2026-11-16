@@ -13,7 +13,7 @@ import {
   LIST_ROW_ACTIONS,
   listRowActionButtonClassName,
 } from '../../lib/class-names-list-row'
-import { MILLISECONDS_PER_SECOND } from '../../lib/units'
+import { formatCompactDuration } from '../../lib/elapsed-time'
 
 export interface HistoryRowProps {
   entry: HistoryEntry
@@ -22,8 +22,7 @@ export interface HistoryRowProps {
 
 function formatDuration(ms: number | null): string {
   if (ms == null) return '—'
-  if (ms < MILLISECONDS_PER_SECOND) return `${ms}ms`
-  return `${(ms / MILLISECONDS_PER_SECOND).toFixed(1)}s`
+  return formatCompactDuration(ms)
 }
 
 type StatusBadgeOutcome = 'success' | 'error'

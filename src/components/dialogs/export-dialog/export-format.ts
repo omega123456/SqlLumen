@@ -1,12 +1,8 @@
 import { formatCount } from '../../../lib/format-row-count'
 import type { ResultExportJob, SingleResultState, TabQueryState } from '../../../stores/query-store'
 import type { ExportFormat, ExportOptions } from '../../../types/schema'
-import {
-  BYTES_PER_MEGABYTE,
-  MILLISECONDS_PER_SECOND,
-  SECONDS_PER_MINUTE,
-  TWO_DIGIT_WIDTH,
-} from '../../../lib/units'
+import { BYTES_PER_MEGABYTE, TWO_DIGIT_WIDTH } from '../../../lib/units'
+import { elapsedParts } from '../../../lib/elapsed-time'
 
 const ONE_DECIMAL_BELOW_MEGABYTES = 10
 
@@ -68,10 +64,8 @@ export function ignoredViewMessage(hasSort: boolean, filterCount: number): strin
 }
 
 function formatElapsed(elapsedMs: number): string {
-  const totalSeconds = Math.floor(elapsedMs / MILLISECONDS_PER_SECOND)
-  const minutes = Math.floor(totalSeconds / SECONDS_PER_MINUTE)
-  const seconds = totalSeconds % SECONDS_PER_MINUTE
-  return `${minutes}:${seconds.toString().padStart(TWO_DIGIT_WIDTH, '0')}`
+  const { totalMinutes, secondsOfMinute } = elapsedParts(elapsedMs)
+  return `${totalMinutes}:${secondsOfMinute.toString().padStart(TWO_DIGIT_WIDTH, '0')}`
 }
 
 function formatMegabytes(bytes: number): string {

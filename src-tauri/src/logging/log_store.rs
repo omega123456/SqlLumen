@@ -1,4 +1,5 @@
-use chrono::{DateTime, Duration, Utc};
+use crate::timestamps::{days_before, log_timestamp};
+use jiff::{SignedDuration, Timestamp};
 use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -9,6 +10,7 @@ pub const LOG_DB_FILE_NAME: &str = "sqllumen-logs.db";
 pub const LOG_PAGE_SIZE: i64 = 20;
 pub const LOG_RETENTION_DAYS: i64 = 7;
 pub const LOG_VIEWER_MIN_UNIVERSE: i64 = 1000;
+const LOG_UNIVERSE_WINDOW: SignedDuration = SignedDuration::from_hours(24);
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -100,7 +102,7 @@ pub fn insert_log_entries(conn: &mut Connection, entries: &[NewLogEntry]) -> Res
 pub struct LogPageQuery {
     pub page: i64,
     pub level_num: Option<i64>,
-    pub now: DateTime<Utc>,
+    pub now: Timestamp,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -110,8 +112,8 @@ struct LogWindow {
     offset: i64,
 }
 
-fn log_universe_size(conn: &Connection, now: DateTime<Utc>) -> Result<i64> {
-    let last_24h_cutoff = (now - Duration::hours(24)).to_rfc3339();
+fn log_universe_size(conn: &Connection, now: Timestamp) -> Result<i64> {
+    let last_24h_cutoff = log_timestamp(now - LOG_UNIVERSE_WINDOW);
     let last_24h_count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM log_entries WHERE timestamp >= ?1",
         params![last_24h_cutoff],
@@ -217,8 +219,8 @@ pub fn export_logs_in_range(
     rows.collect::<Result<Vec<_>>>()
 }
 
-pub fn prune_logs(conn: &Connection, now: DateTime<Utc>) -> Result<usize> {
-    let cutoff = (now - Duration::days(LOG_RETENTION_DAYS)).to_rfc3339();
+pub fn prune_logs(conn: &Connection, now: Timestamp) -> Result<usize> {
+    let cutoff = log_timestamp(days_before(now, LOG_RETENTION_DAYS));
     conn.execute(
         "DELETE FROM log_entries WHERE timestamp < ?1",
         params![cutoff],

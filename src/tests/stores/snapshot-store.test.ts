@@ -4,6 +4,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { act } from '@testing-library/react'
+import { getUnixTime } from 'date-fns'
 
 import { ipc } from '../ipc-mock'
 import {
@@ -846,5 +847,82 @@ describe('handleAppClose', () => {
     })
 
     expect(createCalls).toHaveBeenCalledWith('onClose')
+  })
+})
+
+describe('runPeriodicCheck — local calendar boundaries', () => {
+  interface PeriodicScenario {
+    frequency: 'daily' | 'weekly'
+    marker: Date
+    now: Date
+  }
+
+  async function periodicSnapshotCreated(scenario: PeriodicScenario): Promise<boolean> {
+    seedSession()
+    vi.useFakeTimers()
+    vi.setSystemTime(scenario.now)
+    act(() => {
+      useSettingsStore.setState({
+        settings: { 'snapshots.frequency': scenario.frequency, 'snapshots.keep': '10' },
+        pendingChanges: {},
+        isLoading: false,
+        isDirty: false,
+        activeSection: 'general',
+      })
+    })
+    const markerEpochSeconds = String(getUnixTime(scenario.marker))
+    ipc.override('get_setting', () => markerEpochSeconds)
+    ipc.override('set_setting', () => undefined)
+    const createCalls = vi.fn()
+    ipc.override('create_session_snapshot', () => {
+      createCalls()
+      return 1
+    })
+
+    await act(async () => {
+      await useSnapshotStore.getState().runPeriodicCheck()
+    })
+
+    return createCalls.mock.calls.length > 0
+  }
+
+  it('starts a new daily period at local midnight', async () => {
+    const created = await periodicSnapshotCreated({
+      frequency: 'daily',
+      marker: new Date(2026, 5, 5, 23, 59, 0),
+      now: new Date(2026, 5, 6, 0, 1, 0),
+    })
+
+    expect(created).toBe(true)
+  })
+
+  it('stays in the same daily period across a whole local day', async () => {
+    const created = await periodicSnapshotCreated({
+      frequency: 'daily',
+      marker: new Date(2026, 5, 6, 0, 1, 0),
+      now: new Date(2026, 5, 6, 23, 59, 0),
+    })
+
+    expect(created).toBe(false)
+  })
+
+  it('starts a new weekly period on local Monday', async () => {
+    const created = await periodicSnapshotCreated({
+      frequency: 'weekly',
+      marker: new Date(2026, 5, 7, 23, 0, 0),
+      now: new Date(2026, 5, 8, 1, 0, 0),
+    })
+
+    expect(created).toBe(true)
+  })
+
+  it('keeps Monday to Sunday in one weekly period', async () => {
+    const created = await periodicSnapshotCreated({
+      frequency: 'weekly',
+      marker: new Date(2026, 5, 8, 1, 0, 0),
+      now: new Date(2026, 5, 14, 23, 0, 0),
+    })
+
+    expect(created).toBe(false)
   })
 })

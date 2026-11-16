@@ -1,4 +1,4 @@
-use chrono::Utc;
+use crate::timestamps::stored_timestamp_now;
 use std::time::Instant;
 
 use super::super::super::storage;
@@ -117,7 +117,7 @@ fn store_rebuilt_foreign_key_edges(
 fn log_staged_rebuild(context: &BuildContext<'_>, embed_items: &[&PendingChunk]) {
     tracing::info!(
         profile_id = %context.connection_id(),
-        staged_at = %Utc::now().to_rfc3339(),
+        staged_at = %stored_timestamp_now(),
         chunks_to_embed = embed_items.len(),
         staged_table_chunks = count_table_chunks(embed_items),
         staged_fk_chunks = count_foreign_key_chunks(embed_items),
@@ -136,7 +136,7 @@ async fn embed_and_insert_batch(
         batch_start,
         batch_end = batch_start + chunks.len(),
         batch_len = chunks.len(),
-        at = %Utc::now().to_rfc3339(),
+        at = %stored_timestamp_now(),
         "schema_index rebuild_tables: calling embedding API for batch"
     );
     tracing::debug!(
@@ -192,7 +192,7 @@ pub async fn rebuild_tables(
     tracing::info!(
         profile_id = %config.connection_id,
         model_id = %config.model_id,
-        started_at = %Utc::now().to_rfc3339(),
+        started_at = %stored_timestamp_now(),
         table_targets = tables.len(),
         "schema_index rebuild_tables: started (partial table rebuild)"
     );
@@ -210,13 +210,13 @@ pub async fn rebuild_tables(
 
     tracing::info!(
         profile_id = %config.connection_id,
-        at = %Utc::now().to_rfc3339(),
+        at = %stored_timestamp_now(),
         "schema_index rebuild_tables: partial inserts done; running full incremental build_index to restore cross-table FK chunks"
     );
     build_index(config, resources, None).await?;
     tracing::info!(
         profile_id = %config.connection_id,
-        finished_at = %Utc::now().to_rfc3339(),
+        finished_at = %stored_timestamp_now(),
         "schema_index rebuild_tables: finished (including follow-up build_index)"
     );
     Ok(())

@@ -1,6 +1,13 @@
+import {
+  fromUnixTime,
+  getUnixTime,
+  isSameDay,
+  isSameISOWeek,
+  isValid,
+  milliseconds,
+} from 'date-fns'
 import { logFrontend } from '../../lib/app-log-commands'
 import { hasTauriApis, hasWindow } from '../../lib/tauri-env'
-import { MILLISECONDS_PER_DAY, MILLISECONDS_PER_SECOND, TWO_DIGIT_WIDTH } from '../../lib/units'
 import { type SnapshotTrigger } from '../../lib/session-snapshot-commands'
 import { getSetting, setSetting } from '../../lib/tauri-commands'
 import { registerPreCloseHook, useSessionRestoreStore } from '../session-restore-store'
@@ -10,15 +17,7 @@ import type { SnapshotFrequency } from '../snapshot-store'
 
 const LAST_PERIODIC_AT_KEY = 'snapshots.lastPeriodicAt'
 
-const SUNDAY_UTC_DAY = 0
-
-const ISO_SUNDAY_WEEKDAY = 7
-
-const ISO_THURSDAY_WEEKDAY = 4
-
-const DAYS_PER_WEEK = 7
-
-export const SNAPSHOT_CHECK_INTERVAL_MS = 60_000
+export const SNAPSHOT_CHECK_INTERVAL_MS = milliseconds({ minutes: 1 })
 
 const SNAPSHOT_FREQUENCIES: ReadonlySet<string> = new Set<SnapshotFrequency>([
   'off',
@@ -52,25 +51,6 @@ export function isAutoSnapshotSuppressed(
   return !useSessionRestoreStore.getState().canPersistSession()
 }
 
-function isSameUtcDay(left: Date, right: Date): boolean {
-  return (
-    left.getUTCFullYear() === right.getUTCFullYear() &&
-    left.getUTCMonth() === right.getUTCMonth() &&
-    left.getUTCDate() === right.getUTCDate()
-  )
-}
-
-function isoWeekKey(date: Date): string {
-  const thursday = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
-  const utcDay = thursday.getUTCDay()
-  const isoWeekday = utcDay === SUNDAY_UTC_DAY ? ISO_SUNDAY_WEEKDAY : utcDay
-  thursday.setUTCDate(thursday.getUTCDate() + ISO_THURSDAY_WEEKDAY - isoWeekday)
-  const yearStart = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 1))
-  const dayOfYear = (thursday.getTime() - yearStart.getTime()) / MILLISECONDS_PER_DAY + 1
-  const weekNumber = Math.ceil(dayOfYear / DAYS_PER_WEEK)
-  return `${thursday.getUTCFullYear()}-${String(weekNumber).padStart(TWO_DIGIT_WIDTH, '0')}`
-}
-
 function parseEpochSeconds(marker: string | null): Date | null {
   if (!marker) {
     return null
@@ -81,12 +61,12 @@ function parseEpochSeconds(marker: string | null): Date | null {
     return null
   }
 
-  const date = new Date(seconds * MILLISECONDS_PER_SECOND)
-  return Number.isNaN(date.getTime()) ? null : date
+  const date = fromUnixTime(seconds)
+  return isValid(date) ? date : null
 }
 
 function toEpochSeconds(date: Date): string {
-  return String(Math.floor(date.getTime() / MILLISECONDS_PER_SECOND))
+  return String(getUnixTime(date))
 }
 
 interface PeriodicCheckMoment {
@@ -97,9 +77,9 @@ interface PeriodicCheckMoment {
 
 function isNewPeriod({ frequency, lastDate, now }: PeriodicCheckMoment): boolean {
   if (frequency === 'daily') {
-    return !isSameUtcDay(lastDate, now)
+    return !isSameDay(lastDate, now)
   }
-  return isoWeekKey(lastDate) !== isoWeekKey(now)
+  return !isSameISOWeek(lastDate, now)
 }
 
 export async function runPeriodicCheck(): Promise<void> {

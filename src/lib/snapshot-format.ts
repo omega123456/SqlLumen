@@ -1,5 +1,5 @@
+import { format, isValid, parseISO } from 'date-fns'
 import type { SnapshotConnectionSummary, SnapshotTrigger } from './session-snapshot-commands'
-import { TWO_DIGIT_WIDTH } from './units'
 
 const TRIGGER_LABELS: Record<SnapshotTrigger, string> = {
   onClose: 'On close',
@@ -13,32 +13,14 @@ export function formatSnapshotTrigger(trigger: SnapshotTrigger): string {
   return TRIGGER_LABELS[trigger] ?? trigger
 }
 
-const MONTH_NAMES = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-]
+const SNAPSHOT_TIMESTAMP_FORMAT = 'MMM d, yyyy · HH:mm'
 
 export function formatSnapshotTimestamp(createdAt: string): string {
-  const date = new Date(createdAt)
-  if (Number.isNaN(date.getTime())) {
+  const date = parseISO(createdAt)
+  if (!isValid(date)) {
     return createdAt
   }
-  const month = MONTH_NAMES[date.getMonth()]
-  const day = date.getDate()
-  const year = date.getFullYear()
-  const hours = String(date.getHours()).padStart(TWO_DIGIT_WIDTH, '0')
-  const minutes = String(date.getMinutes()).padStart(TWO_DIGIT_WIDTH, '0')
-  return `${month} ${day}, ${year} · ${hours}:${minutes}`
+  return format(date, SNAPSHOT_TIMESTAMP_FORMAT)
 }
 
 export function formatSnapshotCounts(connectionCount: number, tabCount: number): string {

@@ -13,6 +13,7 @@ pub mod mock_session;
 pub mod schema_index_chunks;
 pub mod silent_listener;
 pub mod tls_fixtures;
+pub mod utc_timestamps;
 
 use rusqlite::Connection;
 use sqllumen_lib::commands::connections::SaveConnectionInput;

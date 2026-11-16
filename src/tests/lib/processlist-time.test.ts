@@ -11,13 +11,14 @@ afterEach(() => {
 })
 
 describe('processlist-time', () => {
-  it('uses a fixed UTC timestamp for Playwright runs', async () => {
+  it('uses a fixed local noon timestamp for Playwright runs', async () => {
     vi.stubEnv('VITE_PLAYWRIGHT', 'true')
 
     const { formatProcessListRefreshTime, getProcessListRefreshTimestamp } = await loadModule()
 
-    expect(getProcessListRefreshTimestamp()).toBe(Date.parse('2025-01-01T12:00:00.000Z'))
-    expect(formatProcessListRefreshTime(Date.parse('2025-01-01T12:00:00.000Z'))).toBe('12:00:00')
+    const fixedTimestamp = getProcessListRefreshTimestamp()
+    expect(fixedTimestamp).toBe(new Date(2025, 0, 1, 12, 0, 0).getTime())
+    expect(formatProcessListRefreshTime(fixedTimestamp)).toBe('12:00:00')
   })
 
   it('uses the current clock outside Playwright runs', async () => {
@@ -30,12 +31,12 @@ describe('processlist-time', () => {
     expect(getProcessListRefreshTimestamp()).toBe(Date.parse('2026-02-03T04:05:06.000Z'))
   })
 
-  it('formats non-Playwright refresh times as an HH:mm:ss-style time', async () => {
+  it('formats refresh times as local HH:mm:ss', async () => {
     vi.stubEnv('VITE_PLAYWRIGHT', 'false')
 
     const { formatProcessListRefreshTime } = await loadModule()
-    const formatted = formatProcessListRefreshTime(Date.parse('2025-01-01T12:00:00.000Z'))
 
-    expect(formatted).toMatch(/^\d{2}:\d{2}:\d{2}$/)
+    expect(formatProcessListRefreshTime(new Date(2025, 0, 1, 7, 8, 9).getTime())).toBe('07:08:09')
+    expect(formatProcessListRefreshTime(new Date(2025, 0, 1, 23, 59, 0).getTime())).toBe('23:59:00')
   })
 })

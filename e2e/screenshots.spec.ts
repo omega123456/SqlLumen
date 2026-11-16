@@ -953,7 +953,7 @@ async function openProcessListTab(page: Page) {
     processListStore.setState((state) => ({
       lastRefreshedAtByConnection: {
         ...state.lastRefreshedAtByConnection,
-        'session-playwright-1': Date.UTC(2025, 0, 1, 12, 34, 56),
+        'session-playwright-1': new Date(2025, 0, 1, 12, 34, 56).getTime(),
       },
       isFetchingByConnection: {
         ...state.isFetchingByConnection,

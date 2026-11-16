@@ -12,7 +12,6 @@ const ZERO_DATE_TEXT: &str = "0000-00-00";
 const YEAR_DIGITS: usize = 4;
 const MONTH_AND_DAY_DIGITS: usize = 2;
 const TIME_UNIT_DIGITS: u8 = 2;
-const NANOSECONDS_PER_MICROSECOND: i32 = 1_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BinaryDate {
@@ -113,14 +112,17 @@ fn civil_time(date: &BinaryDate) -> Option<Time> {
     let hour = i8::try_from(date.hour).ok()?;
     let minute = i8::try_from(date.minute).ok()?;
     let second = i8::try_from(date.second).ok()?;
-    let subsecond_nanoseconds = nanoseconds_from_microseconds(date.microsecond)?;
+    let subsecond_nanoseconds = subsecond_nanoseconds(date.microsecond)?;
     Time::new(hour, minute, second, subsecond_nanoseconds).ok()
 }
 
-fn nanoseconds_from_microseconds(microseconds: u32) -> Option<i32> {
-    i32::try_from(microseconds)
-        .ok()?
-        .checked_mul(NANOSECONDS_PER_MICROSECOND)
+fn subsecond_nanoseconds(microseconds: u32) -> Option<i32> {
+    let subsecond = SignedDuration::from_micros(i64::from(microseconds));
+    let reaches_a_full_second = subsecond.as_secs() != 0;
+    if reaches_a_full_second {
+        return None;
+    }
+    Some(subsecond.subsec_nanos())
 }
 
 pub(super) fn time_text(time: &BinaryTime, column: &Column) -> String {

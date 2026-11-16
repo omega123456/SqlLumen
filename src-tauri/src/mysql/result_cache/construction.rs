@@ -43,7 +43,7 @@ impl<V> GenericCache<V>
 where
     V: Clone + Send + Sync + Serialize + DeserializeOwned + std::fmt::Debug + 'static,
 {
-    const DEFAULT_RAM_PRESSURE_MIN_IDLE: Duration = Duration::from_secs(10 * 60);
+    const DEFAULT_RAM_PRESSURE_MIN_IDLE: Duration = Duration::from_mins(10);
 
     pub fn new(ttl_seconds: u64, spill_dir: PathBuf) -> Self {
         Self::new_with_shared_ttl(Arc::new(AtomicU64::new(ttl_seconds)), spill_dir)

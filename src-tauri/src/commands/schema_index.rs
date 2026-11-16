@@ -14,7 +14,7 @@ use crate::schema_index::search::SearchConfigExt;
 #[cfg(not(coverage))]
 use crate::schema_index::{builder, embeddings, rerank, types::BuildConfig};
 #[cfg(not(coverage))]
-use chrono::Utc;
+use crate::timestamps::stored_timestamp_now;
 #[cfg(not(coverage))]
 use tokio_util::sync::CancellationToken;
 

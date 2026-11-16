@@ -1,30 +1,13 @@
-import { TWO_DIGIT_WIDTH } from './units'
+import { format, parseISO } from 'date-fns'
 import { isPlaywrightBuild } from './tauri-env'
 
-const PLAYWRIGHT_FIXED_REFRESH_TIMESTAMP = Date.parse('2025-01-01T12:00:00.000Z')
-
-function padTimeSegment(value: number): string {
-  return String(value).padStart(TWO_DIGIT_WIDTH, '0')
-}
-
-function formatUtcTime(ts: number): string {
-  const date = new Date(ts)
-  return `${padTimeSegment(date.getUTCHours())}:${padTimeSegment(date.getUTCMinutes())}:${padTimeSegment(date.getUTCSeconds())}`
-}
+const PLAYWRIGHT_FIXED_REFRESH_TIMESTAMP = parseISO('2025-01-01T12:00:00').getTime()
+const REFRESH_TIME_FORMAT = 'HH:mm:ss'
 
 export function getProcessListRefreshTimestamp(): number {
   return isPlaywrightBuild() ? PLAYWRIGHT_FIXED_REFRESH_TIMESTAMP : Date.now()
 }
 
 export function formatProcessListRefreshTime(ts: number): string {
-  if (isPlaywrightBuild()) {
-    return formatUtcTime(ts)
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  }).format(new Date(ts))
+  return format(ts, REFRESH_TIME_FORMAT)
 }

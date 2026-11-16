@@ -7,9 +7,10 @@ use crate::common;
 
 use crate::common::log_capture::LogCaptureGuard;
 use crate::common::mock_mysql_server::{
-    MockCell, MockColumnDef, MockMySqlServer, MockQueryResponse, MockQueryStep, MockTimeValue,
+    MockCell, MockColumnDef, MockDateTimeValue, MockMySqlServer, MockQueryResponse, MockQueryStep,
+    MockTimeValue,
 };
-use chrono::NaiveDate;
+use jiff::civil;
 use opensrv_mysql::{ColumnFlags, ColumnType, ErrorKind};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -428,12 +429,7 @@ async fn execute_query_ipc_serializes_mysql_result_values_instead_of_nulls() {
             MockCell::U32(1),
             MockCell::Bytes(b"electric"),
             MockCell::Bytes(b"0.38"),
-            MockCell::DateTime(
-                NaiveDate::from_ymd_opt(2023, 10, 1)
-                    .expect("date should be valid")
-                    .and_hms_opt(0, 0, 0)
-                    .expect("time should be valid"),
-            ),
+            MockCell::DateTime(MockDateTimeValue(civil::date(2023, 10, 1).at(0, 0, 0, 0))),
         ],
     })
     .await;
@@ -497,12 +493,7 @@ async fn execute_query_ipc_logs_decimal_columns_without_decode_errors() {
             MockCell::Bytes(b"gas"),
             MockCell::Bytes(b"123.45"),
             MockCell::Bytes(b"67.89"),
-            MockCell::DateTime(
-                NaiveDate::from_ymd_opt(2023, 12, 3)
-                    .expect("date should be valid")
-                    .and_hms_opt(0, 0, 0)
-                    .expect("time should be valid"),
-            ),
+            MockCell::DateTime(MockDateTimeValue(civil::date(2023, 12, 3).at(0, 0, 0, 0))),
         ],
     })
     .await;
@@ -578,12 +569,12 @@ async fn execute_query_ipc_preserves_fractional_datetime_and_mysql_time_strings(
             },
         ],
         row: vec![
-            MockCell::DateTime(
-                NaiveDate::from_ymd_opt(2023, 10, 1)
-                    .expect("date should be valid")
-                    .and_hms_micro_opt(12, 34, 56, 123_456)
-                    .expect("time should be valid"),
-            ),
+            MockCell::DateTime(MockDateTimeValue(civil::date(2023, 10, 1).at(
+                12,
+                34,
+                56,
+                123_456_000,
+            ))),
             MockCell::Time(MockTimeValue {
                 negative: false,
                 hours: 7,
@@ -622,12 +613,12 @@ async fn execute_query_ipc_serializes_timestamp_and_negative_mysql_time_strings(
             },
         ],
         row: vec![
-            MockCell::DateTime(
-                NaiveDate::from_ymd_opt(2023, 10, 2)
-                    .expect("date should be valid")
-                    .and_hms_micro_opt(1, 2, 3, 654_321)
-                    .expect("time should be valid"),
-            ),
+            MockCell::DateTime(MockDateTimeValue(civil::date(2023, 10, 2).at(
+                1,
+                2,
+                3,
+                654_321_000,
+            ))),
             MockCell::Time(MockTimeValue {
                 negative: true,
                 hours: 27,

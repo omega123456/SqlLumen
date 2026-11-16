@@ -10,7 +10,7 @@ import { SqlSyntaxHighlighter } from '../../lib/sql-syntax-highlighter'
 import { Button } from '../common/Button'
 import type { HistoryEntry } from '../../types/schema'
 import { statusDotClassName } from '../../lib/class-names-status-dot'
-import { MILLISECONDS_PER_SECOND } from '../../lib/units'
+import { formatSpacedDuration } from '../../lib/elapsed-time'
 import { joinClassNames, SCROLLBAR } from '../../lib/class-names'
 import { SQL_HIGHLIGHT_CLASS_NAMES } from '../../lib/sql-highlight-class-names'
 
@@ -24,8 +24,7 @@ export interface HistoryDetailPanelProps {
 
 function formatDuration(ms: number | null): string {
   if (ms == null) return '—'
-  if (ms < MILLISECONDS_PER_SECOND) return `${ms} ms`
-  return `${(ms / MILLISECONDS_PER_SECOND).toFixed(1)} s`
+  return formatSpacedDuration(ms)
 }
 
 function formatRows(entry: HistoryEntry): string {

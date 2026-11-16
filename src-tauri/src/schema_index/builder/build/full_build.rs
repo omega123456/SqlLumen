@@ -1,4 +1,4 @@
-use chrono::Utc;
+use crate::timestamps::stored_timestamp_now;
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
@@ -61,7 +61,7 @@ async fn prepare_index_storage(context: &BuildContext<'_>) -> Result<(), String>
     mark_index_building(context)?;
     tracing::debug!(
         profile_id = %context.connection_id(),
-        status_at = %Utc::now().to_rfc3339(),
+        status_at = %stored_timestamp_now(),
         "schema_index build_index: SQLite index status set to building"
     );
     Ok(())
@@ -155,7 +155,7 @@ fn delete_obsolete_chunks(
     tracing::info!(
         profile_id = %context.connection_id(),
         remove_count = obsolete_keys.len(),
-        at = %Utc::now().to_rfc3339(),
+        at = %stored_timestamp_now(),
         "schema_index build_index: deleting obsolete chunk keys no longer present in schema"
     );
     tracing::debug!(
@@ -202,7 +202,7 @@ fn log_embedding_plan(context: &BuildContext<'_>, plan: &EmbeddingPlan<'_>, tota
     let total_to_embed = chunks_to_embed.len();
     tracing::info!(
         profile_id = %context.connection_id(),
-        staged_at = %Utc::now().to_rfc3339(),
+        staged_at = %stored_timestamp_now(),
         total_chunks_current = total_current,
         staged_for_embedding = total_to_embed,
         staged_table_chunks = count_table_chunks(chunks_to_embed),
@@ -247,7 +247,7 @@ async fn embed_and_store_batch(
     if context.is_cancelled() {
         tracing::warn!(
             profile_id = %context.connection_id(),
-            at = %Utc::now().to_rfc3339(),
+            at = %stored_timestamp_now(),
             progress_chunks = batch_start,
             total_chunks = total_to_embed,
             "schema_index build_index: cancelled during embedding"
@@ -259,7 +259,7 @@ async fn embed_and_store_batch(
         batch_start,
         batch_end = batch_start + chunks.len(),
         batch_len = chunks.len(),
-        at = %Utc::now().to_rfc3339(),
+        at = %stored_timestamp_now(),
         "schema_index build_index: calling embedding API for batch"
     );
     tracing::debug!(
@@ -289,7 +289,7 @@ async fn embed_and_store_batch(
     tracing::debug!(
         profile_id = %context.connection_id(),
         batch_start,
-        at = %Utc::now().to_rfc3339(),
+        at = %stored_timestamp_now(),
         "schema_index build_index: SQLite transaction committed for embedding batch"
     );
     Ok(())
@@ -370,7 +370,7 @@ fn mark_index_ready(context: &BuildContext<'_>) -> Result<(), String> {
         return Ok(());
     };
     meta_update.status = IndexStatus::Ready;
-    meta_update.last_build_at = Some(Utc::now().to_rfc3339());
+    meta_update.last_build_at = Some(stored_timestamp_now());
     storage::upsert_index_meta(&conn, &meta_update)
         .map_err(|error| format!("Failed to update index meta: {error}"))
 }
@@ -396,7 +396,7 @@ pub async fn build_index(
     tracing::info!(
         profile_id = %config.connection_id,
         model_id = %config.model_id,
-        started_at = %Utc::now().to_rfc3339(),
+        started_at = %stored_timestamp_now(),
         "schema_index build_index: started (full / incremental)"
     );
 
@@ -418,7 +418,7 @@ pub async fn build_index(
     let duration_ms = elapsed_millis(start);
     tracing::info!(
         profile_id = %config.connection_id,
-        finished_at = %Utc::now().to_rfc3339(),
+        finished_at = %stored_timestamp_now(),
         tables_indexed = tables_total,
         duration_ms,
         chunks_embedded_this_run = total_to_embed,

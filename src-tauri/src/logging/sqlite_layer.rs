@@ -1,5 +1,6 @@
 use crate::logging::log_store::{insert_log_entries, open_log_database, prune_logs, NewLogEntry};
-use chrono::{SecondsFormat, Utc};
+use crate::timestamps::log_timestamp_now;
+use jiff::Timestamp;
 use std::fmt;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -14,7 +15,7 @@ use tracing_subscriber::layer::{Context, Layer};
 const CHANNEL_CAPACITY: usize = 4096;
 const BATCH_SIZE: usize = 128;
 const FLUSH_INTERVAL: Duration = Duration::from_millis(250);
-const PRUNE_INTERVAL: Duration = Duration::from_secs(60 * 60);
+const PRUNE_INTERVAL: Duration = Duration::from_hours(1);
 pub const SQLITE_LAYER_TARGET: &str = "sqllumen_lib::logging::sqlite_layer";
 
 #[derive(Debug)]
@@ -59,7 +60,7 @@ where
         let message = visitor.finish();
 
         let entry = NewLogEntry {
-            timestamp: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
+            timestamp: log_timestamp_now(),
             level: metadata.level().as_str().to_string(),
             level_num: level_to_num(*metadata.level()),
             target: metadata.target().to_string(),
@@ -98,7 +99,8 @@ pub struct SqliteLogging {
 pub fn init_sqlite_layer(log_db_path: &Path) -> Result<SqliteLogging, String> {
     let mut write_conn =
         open_log_database(log_db_path).map_err(|error| format!("open log database: {error}"))?;
-    prune_logs(&write_conn, Utc::now()).map_err(|error| format!("prune log database: {error}"))?;
+    prune_logs(&write_conn, Timestamp::now())
+        .map_err(|error| format!("prune log database: {error}"))?;
 
     let (sender, receiver) = mpsc::sync_channel(CHANNEL_CAPACITY);
     let join_handle = thread::Builder::new()
@@ -176,7 +178,7 @@ impl LogWriter<'_> {
         if !has_elapsed(self.last_prune, PRUNE_INTERVAL) {
             return;
         }
-        if let Err(error) = prune_logs(self.write_conn, Utc::now()) {
+        if let Err(error) = prune_logs(self.write_conn, Timestamp::now()) {
             tracing::warn!(
                 target: SQLITE_LAYER_TARGET,
                 error = %error,

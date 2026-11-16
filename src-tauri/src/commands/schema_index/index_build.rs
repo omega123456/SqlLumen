@@ -112,7 +112,7 @@ pub(super) fn schedule_index_build(
         session_id = %session_id,
         profile_id = %profile_id,
         model_id = %settings.model,
-        scheduled_at = %Utc::now().to_rfc3339(),
+        scheduled_at = %stored_timestamp_now(),
         "{}: {}",
         kind.log_prefix(),
         kind.scheduling_description()
@@ -145,7 +145,7 @@ pub(super) fn schedule_index_build(
 pub(super) async fn run_index_build_job(job: IndexBuildJob) {
     tracing::info!(
         profile_id = %job.profile_id,
-        task_started_at = %Utc::now().to_rfc3339(),
+        task_started_at = %stored_timestamp_now(),
         "{}: background task started",
         job.kind.log_prefix()
     );
@@ -188,7 +188,7 @@ pub(super) fn report_index_build_success(
 ) {
     tracing::info!(
         profile_id = %job.profile_id,
-        completed_at = %Utc::now().to_rfc3339(),
+        completed_at = %stored_timestamp_now(),
         tables_indexed = build_result.tables_indexed,
         duration_ms = build_result.duration_ms,
         "{}: background task completed successfully",
@@ -202,7 +202,7 @@ pub(super) fn report_index_build_failure(job: &IndexBuildJob, error: String) {
     tracing::error!(
         profile_id = %job.profile_id,
         error = %error,
-        failed_at = %Utc::now().to_rfc3339(),
+        failed_at = %stored_timestamp_now(),
         "{}",
         job.kind.failure_message()
     );
@@ -232,7 +232,7 @@ pub async fn force_rebuild_schema_index_impl(
     if cancel_in_flight_build(state, &profile_id)? {
         tracing::info!(
             profile_id = %profile_id,
-            at = %Utc::now().to_rfc3339(),
+            at = %stored_timestamp_now(),
             "schema_index force_rebuild: cancelled in-flight build for profile before wipe"
         );
     }
@@ -240,7 +240,7 @@ pub async fn force_rebuild_schema_index_impl(
     wipe_profile_chunks(state, &profile_id)?;
     tracing::info!(
         profile_id = %profile_id,
-        at = %Utc::now().to_rfc3339(),
+        at = %stored_timestamp_now(),
         "schema_index force_rebuild: wiped all stored chunks and vectors for profile"
     );
 
@@ -294,7 +294,7 @@ pub async fn build_schema_index_impl(
         tracing::info!(
             session_id = %session_id,
             profile_id = %profile_id,
-            at = %Utc::now().to_rfc3339(),
+            at = %stored_timestamp_now(),
             "schema_index build: request ignored — embedding index build already in progress for profile"
         );
         return Ok(());

@@ -1,4 +1,4 @@
-import { MILLISECONDS_PER_MINUTE } from '../../lib/units'
+import { milliseconds } from 'date-fns'
 
 export interface AcceptedEntry {
   dbName: string
@@ -32,7 +32,7 @@ interface AcceptedEntries {
 }
 
 const EXPIRY_MINUTES = 30
-const EXPIRY_MS = EXPIRY_MINUTES * MILLISECONDS_PER_MINUTE
+const EXPIRY_MS = milliseconds({ minutes: EXPIRY_MINUTES })
 const ENTRY_KEY_SEPARATOR = '\0'
 
 function entryKey(entry: Omit<AcceptedEntry, 'lastSeenAt'>): string {

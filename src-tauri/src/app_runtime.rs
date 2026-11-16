@@ -258,10 +258,7 @@ async fn run_recurring_vacuum(main_db: &SharedConnection, logs_db: &SharedConnec
 }
 
 fn vacuum_locked_database(handle: &SharedConnection, db_label: &'static str) {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let now = u64::try_from(crate::timestamps::unix_seconds_now()).unwrap_or_default();
     let conn = match handle.lock() {
         Ok(conn) => conn,
         Err(error) => {

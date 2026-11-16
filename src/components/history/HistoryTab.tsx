@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { sub, type Duration } from 'date-fns'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useHistoryStore } from '../../stores/history-store'
@@ -10,10 +11,6 @@ import type { TimeRange } from './HistoryFilterPanel'
 import type { HistoryEntry, HistoryTab as HistoryTabType } from '../../types/schema'
 import { joinClassNames } from '../../lib/class-names'
 import { FOCUS_RING } from '../../lib/focus-ring'
-import { MILLISECONDS_PER_DAY } from '../../lib/units'
-
-const DAYS_PER_WEEK = 7
-const DAYS_PER_MONTH_RANGE = 30
 
 const EMPTY_ENTRIES: HistoryEntry[] = []
 
@@ -31,15 +28,15 @@ export interface HistoryTabProps {
   isActive?: boolean
 }
 
-const RANGE_MS: Record<Exclude<TimeRange, 'all'>, number> = {
-  '24h': MILLISECONDS_PER_DAY,
-  '7d': DAYS_PER_WEEK * MILLISECONDS_PER_DAY,
-  '30d': DAYS_PER_MONTH_RANGE * MILLISECONDS_PER_DAY,
+const RANGE_DURATION: Record<Exclude<TimeRange, 'all'>, Duration> = {
+  '24h': { hours: 24 },
+  '7d': { days: 7 },
+  '30d': { days: 30 },
 }
 
 function rangeToSince(range: TimeRange): string | null {
   if (range === 'all') return null
-  return new Date(Date.now() - RANGE_MS[range]).toISOString()
+  return sub(new Date(), RANGE_DURATION[range]).toISOString()
 }
 
 function useHistoryEntries(connectionId: string | null) {

@@ -1,10 +1,12 @@
-use chrono::{Duration, TimeZone, Utc};
+use crate::common::utc_timestamps::utc_timestamp;
+use jiff::{civil, SignedDuration, Timestamp};
 use rusqlite::Connection;
 use sqllumen_lib::db::migrations::run_log_migrations;
 use sqllumen_lib::logging::log_store::{
     export_logs_in_range, initialize_log_database, insert_log_entries, list_logs,
     open_log_database, prune_logs, LogEntry, LOG_PAGE_SIZE,
 };
+use sqllumen_lib::timestamps::{days_before, log_timestamp};
 use tempfile::tempdir;
 
 struct TestLevel<'a> {
@@ -13,12 +15,12 @@ struct TestLevel<'a> {
 }
 
 fn log_entry(
-    timestamp: chrono::DateTime<Utc>,
+    timestamp: Timestamp,
     level: TestLevel<'_>,
     message: &str,
 ) -> sqllumen_lib::logging::log_store::NewLogEntry {
     sqllumen_lib::logging::log_store::NewLogEntry {
-        timestamp: timestamp.to_rfc3339(),
+        timestamp: log_timestamp(timestamp),
         level: level.name.to_string(),
         level_num: level.num,
         target: "test.target".to_string(),
@@ -32,12 +34,12 @@ fn test_conn() -> Connection {
     conn
 }
 
-fn paged_log_timestamp(now: chrono::DateTime<Utc>, index: i64) -> chrono::DateTime<Utc> {
+fn paged_log_timestamp(now: Timestamp, index: i64) -> Timestamp {
     let is_recent = index < 960;
     if is_recent {
-        return now - Duration::hours(1) + Duration::seconds(index);
+        return now - SignedDuration::from_hours(1) + SignedDuration::from_secs(index);
     }
-    now - Duration::hours(48) - Duration::seconds(index - 960)
+    now - SignedDuration::from_hours(48) - SignedDuration::from_secs(index - 960)
 }
 
 fn paged_log_level(index: i64) -> TestLevel<'static> {
@@ -54,9 +56,7 @@ fn paged_log_level(index: i64) -> TestLevel<'static> {
     }
 }
 
-fn paged_log_rows(
-    now: chrono::DateTime<Utc>,
-) -> Vec<sqllumen_lib::logging::log_store::NewLogEntry> {
+fn paged_log_rows(now: Timestamp) -> Vec<sqllumen_lib::logging::log_store::NewLogEntry> {
     (0..1040)
         .map(|index| {
             log_entry(
@@ -79,7 +79,7 @@ fn last_message(page: &sqllumen_lib::logging::log_store::LogPage) -> Option<&str
 #[test]
 fn list_logs_pages_newest_first_with_threshold_and_universe_cap() {
     let mut conn = test_conn();
-    let now = Utc.with_ymd_and_hms(2026, 6, 6, 12, 0, 0).unwrap();
+    let now = utc_timestamp(civil::date(2026, 6, 6).at(12, 0, 0, 0));
     let rows = paged_log_rows(now);
 
     insert_log_entries(&mut conn, &rows).expect("insert log entries");
@@ -139,10 +139,10 @@ fn list_logs_pages_newest_first_with_threshold_and_universe_cap() {
 #[test]
 fn export_logs_returns_oldest_first_in_requested_range() {
     let mut conn = test_conn();
-    let now = Utc.with_ymd_and_hms(2026, 6, 6, 12, 0, 0).unwrap();
+    let now = utc_timestamp(civil::date(2026, 6, 6).at(12, 0, 0, 0));
     let rows = vec![
         log_entry(
-            now - Duration::days(2),
+            days_before(now, 2),
             TestLevel {
                 name: "INFO",
                 num: 30,
@@ -150,7 +150,7 @@ fn export_logs_returns_oldest_first_in_requested_range() {
             "older",
         ),
         log_entry(
-            now - Duration::days(1),
+            days_before(now, 1),
             TestLevel {
                 name: "WARN",
                 num: 40,
@@ -170,8 +170,8 @@ fn export_logs_returns_oldest_first_in_requested_range() {
 
     let exported: Vec<LogEntry> = export_logs_in_range(
         &conn,
-        &(now - Duration::days(2)).to_rfc3339(),
-        &(now - Duration::hours(1)).to_rfc3339(),
+        &log_timestamp(days_before(now, 2)),
+        &log_timestamp(now - SignedDuration::from_hours(1)),
     )
     .expect("export log range");
 
@@ -185,10 +185,10 @@ fn export_logs_returns_oldest_first_in_requested_range() {
 #[test]
 fn prune_logs_removes_rows_older_than_seven_days() {
     let mut conn = test_conn();
-    let now = Utc.with_ymd_and_hms(2026, 6, 6, 12, 0, 0).unwrap();
+    let now = utc_timestamp(civil::date(2026, 6, 6).at(12, 0, 0, 0));
     let rows = vec![
         log_entry(
-            now - Duration::days(8),
+            days_before(now, 8),
             TestLevel {
                 name: "INFO",
                 num: 30,
@@ -196,7 +196,7 @@ fn prune_logs_removes_rows_older_than_seven_days() {
             "stale",
         ),
         log_entry(
-            now - Duration::days(7),
+            days_before(now, 7),
             TestLevel {
                 name: "INFO",
                 num: 30,
@@ -204,7 +204,7 @@ fn prune_logs_removes_rows_older_than_seven_days() {
             "edge",
         ),
         log_entry(
-            now - Duration::days(1),
+            days_before(now, 1),
             TestLevel {
                 name: "INFO",
                 num: 30,
@@ -219,8 +219,8 @@ fn prune_logs_removes_rows_older_than_seven_days() {
 
     let remaining = export_logs_in_range(
         &conn,
-        &(now - Duration::days(10)).to_rfc3339(),
-        &now.to_rfc3339(),
+        &log_timestamp(days_before(now, 10)),
+        &log_timestamp(now),
     )
     .expect("read remaining rows");
     let messages: Vec<_> = remaining
@@ -303,7 +303,7 @@ fn initialize_log_database_preserves_pre_existing_rows() {
             );",
         )
         .expect("create pre-existing schema");
-        let now = Utc.with_ymd_and_hms(2026, 6, 6, 12, 0, 0).unwrap();
+        let now = utc_timestamp(civil::date(2026, 6, 6).at(12, 0, 0, 0));
         insert_log_entries(
             &mut conn,
             &[log_entry(
@@ -334,4 +334,44 @@ fn initialize_log_database_preserves_pre_existing_rows() {
         .query_row("SELECT message FROM log_entries", [], |row| row.get(0))
         .expect("read message");
     assert_eq!(message, "pre-existing");
+}
+
+#[test]
+fn prune_logs_compares_existing_millisecond_rows_with_the_new_cutoff() {
+    let mut conn = test_conn();
+    let now = utc_timestamp(civil::date(2026, 6, 6).at(12, 0, 0, 0));
+    let info = || TestLevel {
+        name: "INFO",
+        num: 30,
+    };
+    let legacy_row =
+        |timestamp: &str, message: &str| sqllumen_lib::logging::log_store::NewLogEntry {
+            timestamp: timestamp.to_string(),
+            level: "INFO".to_string(),
+            level_num: 30,
+            target: "test.target".to_string(),
+            message: message.to_string(),
+        };
+    let rows = vec![
+        legacy_row("2026-05-30T11:59:59.999Z", "legacy just expired"),
+        legacy_row("2026-05-30T12:00:00.000Z", "legacy at cutoff"),
+        log_entry(days_before(now, 8), info(), "new expired"),
+        log_entry(days_before(now, 6), info(), "new fresh"),
+    ];
+    insert_log_entries(&mut conn, &rows).expect("insert log entries");
+
+    let deleted = prune_logs(&conn, now).expect("prune log entries");
+
+    assert_eq!(deleted, 2);
+    let remaining = export_logs_in_range(
+        &conn,
+        &log_timestamp(days_before(now, 10)),
+        &log_timestamp(now),
+    )
+    .expect("read remaining rows");
+    let messages: Vec<_> = remaining
+        .iter()
+        .map(|entry| entry.message.as_str())
+        .collect();
+    assert_eq!(messages, vec!["legacy at cutoff", "new fresh"]);
 }

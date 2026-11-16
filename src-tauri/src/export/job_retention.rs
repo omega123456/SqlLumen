@@ -2,11 +2,9 @@ use crate::state::{CopyJobProgress, DumpJobProgress, ImportJobProgress, ResultEx
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
 
-const SECONDS_PER_MINUTE: u64 = 60;
 const TERMINAL_JOB_RETENTION_MINUTES: u64 = 5;
 
-pub const TERMINAL_JOB_RETENTION: Duration =
-    Duration::from_secs(TERMINAL_JOB_RETENTION_MINUTES * SECONDS_PER_MINUTE);
+pub const TERMINAL_JOB_RETENTION: Duration = Duration::from_mins(TERMINAL_JOB_RETENTION_MINUTES);
 
 pub trait CompletedAt {
     fn completed_at(&self) -> Option<SystemTime>;

@@ -2,10 +2,15 @@
 
 use crate::common;
 
+use crate::common::utc_timestamps::utc_timestamp;
+use jiff::fmt::temporal::DateTimePrinter;
+use jiff::tz::Offset;
+use jiff::{civil, Timestamp};
 use sqllumen_lib::commands::history::{
     clear_history_impl, delete_history_entry_impl, list_history_impl,
 };
 use sqllumen_lib::db::history::{self, NewHistoryEntry};
+use sqllumen_lib::timestamps::{days_before, stored_timestamp};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 fn insert_sample_entries(state: &sqllumen_lib::state::AppState, connection_id: &str, count: usize) {
@@ -786,4 +791,134 @@ fn test_history_page_deserialize_from_json() {
     assert_eq!(page.page_size, 25);
     assert_eq!(page.entries[0].id, 1);
     assert_eq!(page.entries[0].sql_text, "SELECT 1");
+}
+
+const CHRONO_WHOLE_SECOND_PRECISION: u8 = 0;
+const CHRONO_NANOSECOND_PRECISION: u8 = 9;
+
+fn chrono_style_timestamp(timestamp: Timestamp, precision: u8) -> String {
+    DateTimePrinter::new()
+        .precision(Some(precision))
+        .timestamp_with_offset_to_string(&timestamp, Offset::UTC)
+}
+
+fn list_all_p1_entries(
+    state: &sqllumen_lib::state::AppState,
+    since: Option<&str>,
+) -> history::HistoryPage {
+    list_history_impl(
+        state,
+        &sqllumen_lib::commands::history::ListHistoryRequest {
+            connection_id: "p1".to_string(),
+            page: 1,
+            page_size: 50,
+            search: None,
+            since: since.map(str::to_string),
+        },
+    )
+    .expect("list history")
+}
+
+fn sql_texts(page: &history::HistoryPage) -> Vec<&str> {
+    page.entries
+        .iter()
+        .map(|entry| entry.sql_text.as_str())
+        .collect()
+}
+
+#[test]
+fn test_history_orders_chrono_and_jiff_rows_by_time() {
+    let state = common::test_app_state();
+    let at = |nanoseconds: i32| utc_timestamp(civil::date(2025, 5, 29).at(10, 0, 0, nanoseconds));
+    insert_p1_entry_at(&state, "old whole second", "2025-05-29T10:00:00+00:00");
+    insert_p1_entry_at(&state, "old millis", "2025-05-29T10:00:00.123+00:00");
+    insert_p1_entry_at(&state, "old nanos", "2025-05-29T10:00:00.123456789+00:00");
+    insert_p1_entry_at(&state, "new early", &stored_timestamp(at(50_000_000)));
+    insert_p1_entry_at(&state, "new late", &stored_timestamp(at(123_457_000)));
+
+    let page = list_all_p1_entries(&state, None);
+
+    assert_eq!(
+        sql_texts(&page),
+        vec![
+            "new late",
+            "old nanos",
+            "old millis",
+            "new early",
+            "old whole second"
+        ]
+    );
+}
+
+#[test]
+fn test_history_since_in_zulu_format_filters_mixed_rows() {
+    let state = common::test_app_state();
+    let at = |nanoseconds: i32| utc_timestamp(civil::date(2025, 5, 29).at(10, 0, 0, nanoseconds));
+    insert_p1_entry_at(&state, "old whole second", "2025-05-29T10:00:00+00:00");
+    insert_p1_entry_at(&state, "old millis", "2025-05-29T10:00:00.123+00:00");
+    insert_p1_entry_at(&state, "new early", &stored_timestamp(at(50_000_000)));
+    insert_p1_entry_at(&state, "new late", &stored_timestamp(at(123_457_000)));
+
+    let page = list_all_p1_entries(&state, Some("2025-05-29T10:00:00.100Z"));
+
+    assert_eq!(page.total, 2);
+    assert_eq!(sql_texts(&page), vec!["new late", "old millis"]);
+}
+
+#[test]
+fn test_history_since_rejects_unparseable_cutoff() {
+    let state = common::test_app_state();
+
+    let error = list_history_impl(
+        &state,
+        &sqllumen_lib::commands::history::ListHistoryRequest {
+            connection_id: "p1".to_string(),
+            page: 1,
+            page_size: 10,
+            search: None,
+            since: Some("yesterday".to_string()),
+        },
+    )
+    .expect_err("an unparseable since cutoff should fail");
+
+    assert!(
+        error.contains("invalid history since timestamp"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn test_prune_history_removes_expired_rows_in_both_formats() {
+    let state = common::test_app_state();
+    let now = Timestamp::now();
+    let expired = days_before(now, 91);
+    let retained = days_before(now, 89);
+    insert_p1_entry_at(
+        &state,
+        "old expired whole second",
+        &chrono_style_timestamp(expired, CHRONO_WHOLE_SECOND_PRECISION),
+    );
+    insert_p1_entry_at(
+        &state,
+        "old expired nanos",
+        &chrono_style_timestamp(expired, CHRONO_NANOSECOND_PRECISION),
+    );
+    insert_p1_entry_at(&state, "new expired", &stored_timestamp(expired));
+    insert_p1_entry_at(
+        &state,
+        "old retained nanos",
+        &chrono_style_timestamp(retained, CHRONO_NANOSECOND_PRECISION),
+    );
+    insert_p1_entry_at(&state, "new retained", &stored_timestamp(retained));
+
+    let pruned = {
+        let conn = state.db.lock().expect("db lock");
+        history::prune_history_for_connection(&conn, "p1").expect("prune history")
+    };
+
+    assert_eq!(pruned, 3);
+    let page = list_all_p1_entries(&state, None);
+    let mut remaining = sql_texts(&page);
+    remaining.sort_unstable();
+    assert_eq!(remaining, vec!["new retained", "old retained nanos"]);
 }

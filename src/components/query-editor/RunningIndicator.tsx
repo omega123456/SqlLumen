@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
 import { Stop } from '@phosphor-icons/react'
+import { milliseconds } from 'date-fns'
 import { useQueryStore } from '../../stores/query-store'
 import { formatElapsedTime } from '../../lib/elapsed-time'
 import { Button } from '../common/Button'
-import { MILLISECONDS_PER_SECOND } from '../../lib/units'
 import { joinClassNames, PRIMARY_RING_SPINNER } from '../../lib/class-names'
 import { FOCUS_RING } from '../../lib/focus-ring'
+
+const ELAPSED_REFRESH_INTERVAL_MS = milliseconds({ seconds: 1 })
 
 interface RunningIndicatorProps {
   connectionId: string
@@ -56,7 +58,7 @@ export function RunningIndicator({ connectionId, tabId }: RunningIndicatorProps)
     }
 
     const initialTimer = setTimeout(updateElapsed, 0)
-    const interval = setInterval(updateElapsed, MILLISECONDS_PER_SECOND)
+    const interval = setInterval(updateElapsed, ELAPSED_REFRESH_INTERVAL_MS)
 
     return () => {
       clearTimeout(initialTimer)

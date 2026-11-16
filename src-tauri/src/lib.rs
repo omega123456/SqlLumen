@@ -10,6 +10,7 @@ pub mod logging;
 pub mod mysql;
 pub mod schema_index;
 pub mod state;
+pub mod timestamps;
 pub mod window_chrome;
 
 #[cfg(not(any(test, coverage)))]

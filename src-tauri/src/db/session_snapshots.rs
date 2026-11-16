@@ -1,3 +1,4 @@
+use crate::timestamps::stored_timestamp_now;
 use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
 
@@ -29,7 +30,7 @@ pub struct NewSnapshot {
 }
 
 pub fn insert_and_prune(conn: &Connection, snapshot: &NewSnapshot, keep: i64) -> Result<i64> {
-    let now = timestamp_now();
+    let now = stored_timestamp_now();
     let tx = conn.unchecked_transaction()?;
 
     tx.execute(
@@ -100,8 +101,4 @@ pub fn get_state_json(conn: &Connection, id: i64) -> Result<Option<String>> {
 pub fn delete_snapshot(conn: &Connection, id: i64) -> Result<bool> {
     let rows = conn.execute("DELETE FROM session_snapshots WHERE id = ?1", params![id])?;
     Ok(rows > 0)
-}
-
-fn timestamp_now() -> String {
-    chrono::Utc::now().to_rfc3339()
 }

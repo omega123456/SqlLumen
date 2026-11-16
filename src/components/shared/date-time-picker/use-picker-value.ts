@@ -2,11 +2,12 @@ import { useCallback, useState, type ChangeEvent } from 'react'
 import { parseMysqlDate, formatMysqlDate, type TemporalColumnType } from '../../../lib/date-utils'
 import {
   TIME_OF_DAY_COLUMN_TYPES,
-  applyCurrentTimeOfDay,
-  copyTimeOfDay,
   formatTime,
   formatTimeInput,
   parseTimeInput,
+  withCurrentTimeOfDay,
+  withTimeOfDay,
+  withTimeOfDayOf,
 } from './date-time-picker-model'
 
 interface PickerValueInputs {
@@ -49,8 +50,9 @@ export function usePickerValue(inputs: PickerValueInputs) {
         setLocalDate(null)
         return
       }
-      const nextDate = new Date(date)
-      if (showTime) applyCurrentTimeOfDay(nextDate, { localDate: localDate, timeInput: timeInput })
+      const nextDate = showTime
+        ? withCurrentTimeOfDay(date, { localDate: localDate, timeInput: timeInput })
+        : date
       setLocalDate(nextDate)
       applyFormatted(nextDate, columnType, onApply)
     },
@@ -63,9 +65,7 @@ export function usePickerValue(inputs: PickerValueInputs) {
       setTimeInput(nextInput)
       const parsed = parseTimeInput(nextInput)
       if (!parsed) return
-      const newDate = localDate ? new Date(localDate) : new Date()
-      newDate.setHours(parsed.hours, parsed.minutes, parsed.seconds)
-      setLocalDate(newDate)
+      setLocalDate(withTimeOfDay(localDate ?? new Date(), parsed))
     },
     [localDate, setLocalDate, setTimeInput]
   )
@@ -77,12 +77,11 @@ export function usePickerValue(inputs: PickerValueInputs) {
       setTimeInput(formatTime(now))
       return
     }
-    const today = new Date()
     if (!showTime) {
-      setLocalDate(today)
+      setLocalDate(now)
       return
     }
-    if (localDate) copyTimeOfDay(today, localDate)
+    const today = localDate ? withTimeOfDayOf(now, localDate) : now
     setLocalDate(today)
     setTimeInput(formatTime(today))
   }, [columnType, showTime, localDate, setLocalDate, setTimeInput])

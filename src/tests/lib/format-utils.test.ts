@@ -80,6 +80,13 @@ describe('formatShortDate', () => {
   })
 })
 
+describe('invalid date text', () => {
+  it('returns the original text instead of "Invalid Date"', () => {
+    expect(formatTableTimestamp('not-a-date')).toBe('not-a-date')
+    expect(formatShortDate('not-a-date')).toBe('not-a-date')
+  })
+})
+
 describe('formatFromEpochSeconds', () => {
   it('formats a valid epoch-seconds timestamp', () => {
     const result = formatFromEpochSeconds(1750000000)

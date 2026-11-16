@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { formatElapsedTime } from '../../lib/elapsed-time'
+import {
+  elapsedParts,
+  formatCompactDuration,
+  formatElapsedTime,
+  formatSpacedDuration,
+} from '../../lib/elapsed-time'
 
 describe('formatElapsedTime', () => {
   it('returns "0s" for 0ms', () => expect(formatElapsedTime(0)).toBe('0s'))
@@ -11,4 +16,38 @@ describe('formatElapsedTime', () => {
   it('returns "59m 59s" for 3599000ms', () => expect(formatElapsedTime(3599000)).toBe('59m 59s'))
   it('returns "1h 0m 0s" for 3600000ms', () => expect(formatElapsedTime(3600000)).toBe('1h 0m 0s'))
   it('returns "1h 2m 3s" for 3723000ms', () => expect(formatElapsedTime(3723000)).toBe('1h 2m 3s'))
+  it('keeps counting hours past one day', () =>
+    expect(formatElapsedTime(25 * 3600000 + 61000)).toBe('25h 1m 1s'))
+})
+
+describe('elapsedParts', () => {
+  it('splits elapsed time into hours, minutes of the hour and seconds of the minute', () => {
+    expect(elapsedParts(3723999)).toEqual({
+      hours: 1,
+      minutesOfHour: 2,
+      totalMinutes: 62,
+      secondsOfMinute: 3,
+    })
+  })
+
+  it('clamps negative values to zero', () => {
+    expect(elapsedParts(-1)).toEqual({
+      hours: 0,
+      minutesOfHour: 0,
+      totalMinutes: 0,
+      secondsOfMinute: 0,
+    })
+  })
+})
+
+describe('short durations', () => {
+  it('shows milliseconds below one second', () => {
+    expect(formatCompactDuration(999)).toBe('999ms')
+    expect(formatSpacedDuration(999)).toBe('999 ms')
+  })
+
+  it('shows one decimal of seconds from one second up', () => {
+    expect(formatCompactDuration(1000)).toBe('1.0s')
+    expect(formatSpacedDuration(1250)).toBe('1.3 s')
+  })
 })

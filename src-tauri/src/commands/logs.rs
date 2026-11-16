@@ -4,7 +4,11 @@ use crate::commands::run_blocking_with_state;
 use crate::export::csv_writer::write_csv;
 use crate::logging::log_store::{self, LogPage};
 use crate::state::AppState;
-use chrono::{DateTime, NaiveDate, NaiveTime, SecondsFormat, TimeZone, Utc};
+use crate::timestamps::log_timestamp;
+use jiff::civil::{Date, Time};
+use jiff::fmt::temporal::Pieces;
+use jiff::tz::TimeZone;
+use jiff::Timestamp;
 use serde::Deserialize;
 use serde_json::Value;
 use std::fs::File;
@@ -50,7 +54,7 @@ pub fn list_logs_impl(state: &AppState, request: &ListLogsRequest) -> Result<Log
     let query = log_store::LogPageQuery {
         page: request.page,
         level_num: filter.threshold(),
-        now: Utc::now(),
+        now: Timestamp::now(),
     };
     log_store::list_logs(&conn, &query).map_err(|error| error.to_string())
 }
@@ -128,9 +132,11 @@ struct ExportRange {
 }
 
 struct ParsedBoundary {
-    timestamp_utc: DateTime<Utc>,
-    local_date: NaiveDate,
+    timestamp_utc: Timestamp,
+    local_date: Date,
 }
+
+const DATE_ONLY_FORMAT: &str = "%Y-%m-%d";
 
 fn parse_export_range(start_timestamp: &str, end_timestamp: &str) -> Result<ExportRange, String> {
     let start = parse_boundary_date(start_timestamp, true)?;
@@ -140,11 +146,8 @@ fn parse_export_range(start_timestamp: &str, end_timestamp: &str) -> Result<Expo
         return Err("end_timestamp must be on or after start_timestamp".to_string());
     }
 
-    let inclusive_days = end
-        .local_date
-        .signed_duration_since(start.local_date)
-        .num_days()
-        + 1;
+    let days_between = (end.local_date - start.local_date).get_days();
+    let inclusive_days = i64::from(days_between) + 1;
     if inclusive_days > log_store::LOG_RETENTION_DAYS {
         return Err(format!(
             "log export range cannot exceed {} days",
@@ -153,23 +156,24 @@ fn parse_export_range(start_timestamp: &str, end_timestamp: &str) -> Result<Expo
     }
 
     Ok(ExportRange {
-        start_timestamp: start
-            .timestamp_utc
-            .to_rfc3339_opts(SecondsFormat::Millis, true),
-        end_timestamp: end
-            .timestamp_utc
-            .to_rfc3339_opts(SecondsFormat::Millis, true),
+        start_timestamp: log_timestamp(start.timestamp_utc),
+        end_timestamp: log_timestamp(end.timestamp_utc),
     })
 }
 
-fn boundary_day_timestamp(date: NaiveDate, is_start: bool) -> Result<DateTime<Utc>, String> {
+fn boundary_time_of_day(is_start: bool) -> Time {
     if is_start {
-        return Ok(Utc.from_utc_datetime(&date.and_time(NaiveTime::MIN)));
+        return Time::MIN;
     }
-    let end_of_day = date
-        .and_hms_milli_opt(23, 59, 59, 999)
-        .ok_or_else(|| "failed to resolve export end timestamp".to_string())?;
-    Ok(Utc.from_utc_datetime(&end_of_day))
+    Time::MAX
+}
+
+fn boundary_day_timestamp(date: Date, is_start: bool) -> Result<Timestamp, String> {
+    let boundary = date.to_datetime(boundary_time_of_day(is_start));
+    let zoned = boundary
+        .to_zoned_datetime(TimeZone::UTC)
+        .map_err(|error| format!("failed to resolve export boundary timestamp: {error}"))?;
+    Ok(zoned.timestamp())
 }
 
 fn boundary_label(is_start: bool) -> &'static str {
@@ -181,18 +185,21 @@ fn boundary_label(is_start: bool) -> &'static str {
 
 fn parse_boundary_date(value: &str, is_start: bool) -> Result<ParsedBoundary, String> {
     let trimmed = value.trim();
-    if let Ok(date) = NaiveDate::parse_from_str(trimmed, "%Y-%m-%d") {
+    if let Ok(date) = Date::strptime(DATE_ONLY_FORMAT, trimmed) {
         return Ok(ParsedBoundary {
             timestamp_utc: boundary_day_timestamp(date, is_start)?,
             local_date: date,
         });
     }
 
-    let parsed = DateTime::parse_from_rfc3339(trimmed)
-        .map_err(|_| format!("invalid {} timestamp: {trimmed}", boundary_label(is_start)))?;
+    let invalid_timestamp = || format!("invalid {} timestamp: {trimmed}", boundary_label(is_start));
+    let instant = trimmed
+        .parse::<Timestamp>()
+        .map_err(|_| invalid_timestamp())?;
+    let pieces = Pieces::parse(trimmed).map_err(|_| invalid_timestamp())?;
     Ok(ParsedBoundary {
-        timestamp_utc: parsed.with_timezone(&Utc),
-        local_date: parsed.date_naive(),
+        timestamp_utc: instant,
+        local_date: pieces.date(),
     })
 }
 

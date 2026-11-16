@@ -29,7 +29,7 @@ pub(super) struct PartialRebuildJob {
 pub(super) async fn run_partial_rebuild_job(job: PartialRebuildJob) {
     tracing::info!(
         profile_id = %job.profile_id,
-        task_started_at = %Utc::now().to_rfc3339(),
+        task_started_at = %stored_timestamp_now(),
         tables = ?job.tables,
         "schema_index invalidate: background task started"
     );
@@ -43,7 +43,7 @@ pub(super) async fn run_partial_rebuild_job(job: PartialRebuildJob) {
     let Err(error) = builder::rebuild_tables(&job.config, &job.tables, &resources).await else {
         tracing::info!(
             profile_id = %job.profile_id,
-            completed_at = %Utc::now().to_rfc3339(),
+            completed_at = %stored_timestamp_now(),
             tables = ?job.tables,
             "schema_index invalidate: partial rebuild and follow-up incremental build completed"
         );
@@ -52,7 +52,7 @@ pub(super) async fn run_partial_rebuild_job(job: PartialRebuildJob) {
     tracing::error!(
         profile_id = %job.profile_id,
         error = %error,
-        failed_at = %Utc::now().to_rfc3339(),
+        failed_at = %stored_timestamp_now(),
         "Schema index partial rebuild failed"
     );
     let payload = IndexErrorPayload {
@@ -93,7 +93,7 @@ pub async fn invalidate_schema_index_impl(
         model_id = %embedding_model,
         table_targets = parsed_tables.len(),
         targets = ?parsed_tables,
-        scheduled_at = %Utc::now().to_rfc3339(),
+        scheduled_at = %stored_timestamp_now(),
         "schema_index invalidate: scheduling partial embedding index rebuild (background task)"
     );
 

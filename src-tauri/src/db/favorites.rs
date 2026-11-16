@@ -1,3 +1,4 @@
+use crate::timestamps::stored_timestamp_now;
 use rusqlite::{params, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
 
@@ -35,7 +36,7 @@ pub struct UpdateFavoriteInput {
 }
 
 pub fn insert_favorite(conn: &Connection, input: &CreateFavoriteInput) -> Result<i64> {
-    let now = timestamp_now();
+    let now = stored_timestamp_now();
     conn.execute(
         "INSERT INTO favorites (name, sql_text, description, category, connection_id, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -74,7 +75,7 @@ pub fn list_favorites(conn: &Connection, connection_id: &str) -> Result<Vec<Favo
 }
 
 pub fn update_favorite(conn: &Connection, id: i64, input: &UpdateFavoriteInput) -> Result<bool> {
-    let now = timestamp_now();
+    let now = stored_timestamp_now();
     let rows = conn.execute(
         "UPDATE favorites SET name = ?2, sql_text = ?3, description = ?4, category = ?5, connection_id = ?6, updated_at = ?7
          WHERE id = ?1",
@@ -99,8 +100,4 @@ fn map_row(row: &rusqlite::Row) -> Result<FavoriteEntry> {
         created_at: row.get(6)?,
         updated_at: row.get(7)?,
     })
-}
-
-fn timestamp_now() -> String {
-    chrono::Utc::now().to_rfc3339()
 }

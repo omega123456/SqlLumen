@@ -1,6 +1,8 @@
 use rusqlite::{Connection, OptionalExtension, Result};
+use std::time::Duration;
 
-pub const VACUUM_STALENESS_SECS: u64 = 6 * 60 * 60;
+const VACUUM_STALENESS_HOURS: u64 = 6;
+pub const VACUUM_STALENESS_SECS: u64 = Duration::from_hours(VACUUM_STALENESS_HOURS).as_secs();
 
 const LAST_VACUUM_AT_KEY: &str = "last_vacuum_at";
 

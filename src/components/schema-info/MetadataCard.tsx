@@ -1,3 +1,4 @@
+import { isValid, parseISO } from 'date-fns'
 import { formatShortDate } from '../../lib/format-utils'
 import type { TableMetadata } from '../../types/schema'
 import { ElevatedSurface } from '../common/ElevatedSurface'
@@ -9,7 +10,7 @@ export interface MetadataCardProps {
 const MISSING_VALUE_LABEL = '—'
 
 function isInvalidDate(dateText: string): boolean {
-  return Number.isNaN(new Date(dateText).getTime())
+  return !isValid(parseISO(dateText))
 }
 
 function formatDate(dateText: string | null): string {

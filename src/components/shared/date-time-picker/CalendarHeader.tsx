@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react'
+import { format } from 'date-fns'
 import { CaretLeft, CaretRight } from '@phosphor-icons/react'
 import { Button } from '../../common/Button'
 import { FOCUS_RING } from '../../../lib/focus-ring'
 import { joinClassNames } from '../../../lib/class-names'
 
-const MONTH_YEAR_FORMAT: Intl.DateTimeFormatOptions = { month: 'long', year: 'numeric' }
+const MONTH_YEAR_FORMAT = 'MMMM yyyy'
 
 interface NavArrowButtonProps {
   label: string
@@ -43,7 +44,7 @@ export function CalendarHeader({
   increaseMonth,
   onTodayClick,
 }: CalendarHeaderProps) {
-  const monthYear = date.toLocaleDateString('en-US', MONTH_YEAR_FORMAT)
+  const monthYear = format(date, MONTH_YEAR_FORMAT)
 
   return (
     <div className="flex items-center gap-1 pb-2" data-testid="calendar-header">

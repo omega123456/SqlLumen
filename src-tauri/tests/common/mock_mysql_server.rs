@@ -1,6 +1,9 @@
 //! Minimal in-process MySQL protocol mock (opensrv) shared by integration tests.
 
 use async_trait::async_trait;
+use jiff::civil;
+use jiff::fmt::temporal::DateTimePrinter;
+use jiff::SignedDuration;
 use opensrv_mysql::{
     plain_run_with_options, secure_run_with_options, AsyncMysqlIntermediary, AsyncMysqlShim,
     Column, ColumnFlags, ColumnType, ErrorKind, InitWriter, IntermediaryOptions, OkResponse,
@@ -39,9 +42,93 @@ pub enum MockCell {
     I64(i64),
     U64(u64),
     F64(f64),
-    DateTime(chrono::NaiveDateTime),
+    DateTime(MockDateTimeValue),
     Time(MockTimeValue),
     Bytes(&'static [u8]),
+}
+
+const BINARY_DATETIME_LENGTH: u8 = 7;
+const BINARY_DATETIME_WITH_MICROS_LENGTH: u8 = 11;
+const TEXT_DATETIME_SEPARATOR: u8 = b' ';
+const TEXT_DATETIME_MICROSECOND_DIGITS: u8 = 6;
+
+const TEXT_DATETIME_PRINTER: DateTimePrinter = DateTimePrinter::new()
+    .separator(TEXT_DATETIME_SEPARATOR)
+    .precision(Some(0));
+const TEXT_DATETIME_WITH_MICROS_PRINTER: DateTimePrinter = DateTimePrinter::new()
+    .separator(TEXT_DATETIME_SEPARATOR)
+    .precision(Some(TEXT_DATETIME_MICROSECOND_DIGITS));
+
+#[derive(Debug, Clone, Copy)]
+pub struct MockDateTimeValue(pub civil::DateTime);
+
+impl MockDateTimeValue {
+    fn subsec_microseconds(self) -> io::Result<u32> {
+        let subsecond = SignedDuration::from_nanos(i64::from(self.0.subsec_nanosecond()));
+        u32::try_from(subsecond.as_micros()).map_err(invalid_datetime_part)
+    }
+
+    fn text_printer(self) -> io::Result<DateTimePrinter> {
+        if self.subsec_microseconds()? == 0 {
+            return Ok(TEXT_DATETIME_PRINTER);
+        }
+        Ok(TEXT_DATETIME_WITH_MICROS_PRINTER)
+    }
+}
+
+fn invalid_datetime_part(error: impl std::fmt::Display) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidInput, error.to_string())
+}
+
+fn binary_datetime_length(has_fraction: bool) -> u8 {
+    if has_fraction {
+        return BINARY_DATETIME_WITH_MICROS_LENGTH;
+    }
+    BINARY_DATETIME_LENGTH
+}
+
+fn datetime_byte(part: i8) -> io::Result<u8> {
+    u8::try_from(part).map_err(invalid_datetime_part)
+}
+
+impl ToMysqlValue for MockDateTimeValue {
+    fn to_mysql_text<W: Write>(&self, w: &mut W) -> io::Result<()> {
+        let text = self.text_printer()?.datetime_to_string(&self.0);
+        write_lenenc_str(w, text.as_bytes())
+    }
+
+    fn to_mysql_bin<W: Write>(&self, w: &mut W, c: &Column) -> io::Result<()> {
+        let is_datetime_column = matches!(
+            c.coltype,
+            ColumnType::MYSQL_TYPE_DATETIME | ColumnType::MYSQL_TYPE_TIMESTAMP
+        );
+        if !is_datetime_column {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("tried to use {:?} as {:?}", self, c.coltype),
+            ));
+        }
+
+        let microseconds = self.subsec_microseconds()?;
+        let has_fraction = microseconds != 0;
+        let year = u16::try_from(self.0.year()).map_err(invalid_datetime_part)?;
+
+        w.write_all(&[binary_datetime_length(has_fraction)])?;
+        w.write_all(&year.to_le_bytes())?;
+        w.write_all(&[
+            datetime_byte(self.0.month())?,
+            datetime_byte(self.0.day())?,
+            datetime_byte(self.0.hour())?,
+            datetime_byte(self.0.minute())?,
+            datetime_byte(self.0.second())?,
+        ])?;
+
+        if has_fraction {
+            w.write_all(&microseconds.to_le_bytes())?;
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -1,9 +1,9 @@
-import { MILLISECONDS_PER_SECOND } from './units'
+import { fromUnixTime, intlFormat, parseISO } from 'date-fns'
 import { logParseFallback } from './app-log-commands'
 
 export function formatTableTimestamp(iso: string): string {
   try {
-    return new Date(iso).toLocaleString(undefined, {
+    return intlFormat(parseISO(iso), {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
@@ -17,7 +17,7 @@ export function formatTableTimestamp(iso: string): string {
 
 export function formatShortDate(iso: string): string {
   try {
-    return new Date(iso).toLocaleDateString(undefined, {
+    return intlFormat(parseISO(iso), {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -30,7 +30,7 @@ export function formatShortDate(iso: string): string {
 
 export function formatFromEpochSeconds(ts: number): string {
   try {
-    return new Date(ts * MILLISECONDS_PER_SECOND).toLocaleDateString(undefined, {
+    return intlFormat(fromUnixTime(ts), {
       month: 'short',
       day: 'numeric',
       year: 'numeric',

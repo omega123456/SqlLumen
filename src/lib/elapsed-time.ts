@@ -1,12 +1,59 @@
-import { MILLISECONDS_PER_SECOND, SECONDS_PER_HOUR, SECONDS_PER_MINUTE } from './units'
+import {
+  hoursToMinutes,
+  millisecondsToHours,
+  millisecondsToMinutes,
+  millisecondsToSeconds,
+  milliseconds,
+  minutesToSeconds,
+} from 'date-fns'
+
+const ONE_SECOND_MS = milliseconds({ seconds: 1 })
+
+export interface ElapsedParts {
+  hours: number
+  minutesOfHour: number
+  totalMinutes: number
+  secondsOfMinute: number
+}
+
+export function elapsedParts(ms: number): ElapsedParts {
+  const elapsedMs = Math.max(0, ms)
+  const hours = millisecondsToHours(elapsedMs)
+  const totalMinutes = millisecondsToMinutes(elapsedMs)
+  const totalSeconds = millisecondsToSeconds(elapsedMs)
+  return {
+    hours: hours,
+    minutesOfHour: totalMinutes - hoursToMinutes(hours),
+    totalMinutes: totalMinutes,
+    secondsOfMinute: totalSeconds - minutesToSeconds(totalMinutes),
+  }
+}
 
 export function formatElapsedTime(ms: number): string {
-  const totalSeconds = Math.max(0, Math.floor(ms / MILLISECONDS_PER_SECOND))
-  const hours = Math.floor(totalSeconds / SECONDS_PER_HOUR)
-  const minutes = Math.floor((totalSeconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE)
-  const seconds = totalSeconds % SECONDS_PER_MINUTE
+  const { hours, minutesOfHour, secondsOfMinute } = elapsedParts(ms)
 
-  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`
-  if (minutes > 0) return `${minutes}m ${seconds}s`
-  return `${seconds}s`
+  if (hours > 0) return `${hours}h ${minutesOfHour}m ${secondsOfMinute}s`
+  if (minutesOfHour > 0) return `${minutesOfHour}m ${secondsOfMinute}s`
+  return `${secondsOfMinute}s`
+}
+
+interface DurationUnits {
+  milliseconds: string
+  seconds: string
+}
+
+const COMPACT_DURATION_UNITS: DurationUnits = { milliseconds: 'ms', seconds: 's' }
+const SPACED_DURATION_UNITS: DurationUnits = { milliseconds: ' ms', seconds: ' s' }
+
+function formatDurationWithUnits(ms: number, units: DurationUnits): string {
+  if (ms < ONE_SECOND_MS) return `${ms}${units.milliseconds}`
+  return `${(ms / ONE_SECOND_MS).toFixed(1)}${units.seconds}`
+}
+
+export function formatCompactDuration(ms: number): string {
+  return formatDurationWithUnits(ms, COMPACT_DURATION_UNITS)
+}
+
+export function formatSpacedDuration(ms: number): string {
+  return formatDurationWithUnits(ms, SPACED_DURATION_UNITS)
 }

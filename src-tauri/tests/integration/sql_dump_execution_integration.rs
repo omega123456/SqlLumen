@@ -103,7 +103,7 @@ mod against_the_mock_server {
 
     use crate::common;
     use crate::common::mock_mysql_server::{
-        MockCell, MockColumnDef, MockMySqlServer, MockQueryStep, MockTimeValue,
+        MockCell, MockColumnDef, MockDateTimeValue, MockMySqlServer, MockQueryStep, MockTimeValue,
     };
     use crate::common::mock_session::{mock_pool, text_column};
 
@@ -226,9 +226,8 @@ mod against_the_mock_server {
         ]
     }
 
-    fn created_at() -> chrono::NaiveDateTime {
-        chrono::NaiveDateTime::parse_from_str("2025-03-04 05:06:07", "%Y-%m-%d %H:%M:%S")
-            .expect("valid datetime")
+    fn created_at() -> MockDateTimeValue {
+        MockDateTimeValue(jiff::civil::date(2025, 3, 4).at(5, 6, 7, 0))
     }
 
     fn typed_order_row() -> Vec<MockCell> {

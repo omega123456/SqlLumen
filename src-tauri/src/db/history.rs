@@ -1,5 +1,9 @@
+use crate::timestamps::{days_before, stored_timestamp, stored_timestamp_now};
+use jiff::Timestamp;
 use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
+
+const HISTORY_RETENTION_DAYS: i64 = 90;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -38,7 +42,7 @@ pub struct HistoryPage {
 }
 
 pub fn insert_history(conn: &Connection, entry: &NewHistoryEntry) -> Result<i64> {
-    let now = timestamp_now();
+    let now = stored_timestamp_now();
     conn.execute(
         "INSERT INTO query_history (connection_id, database_name, sql_text, timestamp, duration_ms, row_count, affected_rows, success, error_message)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
@@ -59,7 +63,7 @@ pub fn insert_history(conn: &Connection, entry: &NewHistoryEntry) -> Result<i64>
 
 pub fn insert_history_batch(conn: &Connection, entries: &[NewHistoryEntry]) -> Result<()> {
     let tx = conn.unchecked_transaction()?;
-    let now = timestamp_now();
+    let now = stored_timestamp_now();
     {
         let mut stmt = tx.prepare(
             "INSERT INTO query_history (connection_id, database_name, sql_text, timestamp, duration_ms, row_count, affected_rows, success, error_message)
@@ -116,7 +120,7 @@ pub fn list_history(conn: &Connection, query: &HistoryQuery<'_>) -> Result<Histo
     }
     if let Some(cutoff) = since {
         where_clause.push_str(&format!(" AND timestamp >= ?{next_index}"));
-        filter_params.push(Value::Text(cutoff.to_string()));
+        filter_params.push(Value::Text(stored_since_cutoff(cutoff)?));
         next_index += 1;
     }
 
@@ -166,8 +170,7 @@ pub fn clear_history(conn: &Connection, connection_id: &str) -> Result<i64> {
 }
 
 pub fn prune_history_for_connection(conn: &Connection, connection_id: &str) -> Result<i64> {
-    let cutoff = chrono::Utc::now() - chrono::Duration::days(90);
-    let cutoff_str = cutoff.to_rfc3339();
+    let cutoff_str = stored_timestamp(days_before(Timestamp::now(), HISTORY_RETENTION_DAYS));
 
     let age_deleted = conn.execute(
         "DELETE FROM query_history WHERE connection_id = ?1 AND timestamp < ?2",
@@ -219,6 +222,9 @@ fn map_row(row: &rusqlite::Row) -> Result<HistoryEntry> {
     })
 }
 
-fn timestamp_now() -> String {
-    chrono::Utc::now().to_rfc3339()
+fn stored_since_cutoff(since: &str) -> Result<String> {
+    let cutoff = since.parse::<Timestamp>().map_err(|error| {
+        rusqlite::Error::InvalidParameterName(format!("invalid history since timestamp: {error}"))
+    })?;
+    Ok(stored_timestamp(cutoff))
 }
