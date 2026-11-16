@@ -1640,7 +1640,7 @@ describe('completionService — parse fallback statement-aware routine filtering
 
     const items = await callService('CALL ', pos(1, 6), null)
     const schemaLabels = ['app_db', 'analytics_db', 'sp_cleanup']
-    const keywordLabels = ['ASCII']
+    const keywordLabels = ['SELECT']
 
     const schemaItems = items.filter((item: AnyItem) => schemaLabels.includes(getLabel(item)))
     const keywordItems = items.filter((item: AnyItem) => keywordLabels.includes(getLabel(item)))

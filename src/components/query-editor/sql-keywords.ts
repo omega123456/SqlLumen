@@ -1,13 +1,9 @@
 import { BUILTIN_FUNCTION_SIGNATURES } from './builtin-function-signatures'
 import { SQL_RESERVED_WORDS } from './sql-keywords/reserved-words'
-import { STATEMENT_KEYWORDS_A_TO_H } from './sql-keywords/statement-keywords-a-to-h'
-import { STATEMENT_KEYWORDS_I_TO_R } from './sql-keywords/statement-keywords-i-to-r'
-import { STATEMENT_KEYWORDS_S_TO_Z } from './sql-keywords/statement-keywords-s-to-z'
+import { STATEMENT_START_KEYWORDS } from './sql-keywords/statement-start-keywords'
 
 export const SQL_KEYWORDS: readonly string[] = [
-  ...STATEMENT_KEYWORDS_A_TO_H,
-  ...STATEMENT_KEYWORDS_I_TO_R,
-  ...STATEMENT_KEYWORDS_S_TO_Z,
+  ...new Set([...STATEMENT_START_KEYWORDS, ...SQL_RESERVED_WORDS]),
 ]
 
 export const STORED_PROGRAM_BODY_KEYWORDS: readonly string[] = [
