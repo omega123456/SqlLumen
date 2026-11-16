@@ -31,8 +31,8 @@ use sqllumen_lib::state::{AppState, ResultExportJobProgress, ResultExportStatus}
 
 use crate::common;
 use crate::common::editor_session_fixtures::{
-    call_query, connection_id_step, database_step, editor_query, n_column, n_row, n_stream,
-    single_row_step, EDITOR_TAB,
+    call_query, database_step, editor_query, n_column, n_row, n_stream, single_row_step,
+    EDITOR_TAB, KILL_FIRST_EDITOR_SESSION,
 };
 use crate::common::log_capture::LogCaptureGuard;
 use crate::common::mock_mysql_server::{
@@ -57,8 +57,7 @@ fn killable_stream(query: &'static str, rows: usize, pause: Duration) -> MockStr
     }
 }
 
-fn script(mut steps: Vec<MockQueryStep>, stream_steps: Vec<MockStreamStep>) -> MockScript {
-    steps.insert(0, connection_id_step());
+fn script(steps: Vec<MockQueryStep>, stream_steps: Vec<MockStreamStep>) -> MockScript {
     MockScript {
         steps,
         stream_steps,
@@ -437,7 +436,7 @@ async fn cancel_kills_the_rerun_deletes_the_temp_file_and_restores_the_database(
     assert!(done.rows_written < 5_000);
     assert_eq!(server.kill_count(), 1);
     assert!(
-        capture.contents().contains("KILL QUERY 42"),
+        capture.contents().contains(KILL_FIRST_EDITOR_SESSION),
         "the KILL is logged"
     );
     assert!(!temp_path_for(&target).exists());
@@ -674,7 +673,7 @@ async fn closing_the_connection_cancels_a_running_export() {
         1,
         "the KILL was sent before the pool closed"
     );
-    assert!(capture.contents().contains("KILL QUERY 42"));
+    assert!(capture.contents().contains(KILL_FIRST_EDITOR_SESSION));
     assert!(!target.exists());
     assert!(!temp_path_for(&target).exists());
 }

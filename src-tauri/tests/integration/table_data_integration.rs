@@ -701,11 +701,15 @@ mod type_aware_filter_integration {
 mod fetch_cancellation_integration {
     use super::*;
     use crate::common::blob_step_helpers::connect_mock_pool;
+    use crate::common::column_definition_patch::MockColumnOverride;
     use crate::common::mock_mysql_server::{
-        MockCell, MockColumnDef, MockMySqlServer, MockQueryStep,
+        MockCell, MockColumnDef, MockMySqlServer, MockQueryStep, MockScript,
     };
     use opensrv_mysql::{ColumnFlags, ColumnType};
-    use sqllumen_lib::mysql::table_data::fetch_table_data_impl;
+    use sqllumen_lib::mysql::pool::TRANSFER_TIME_ZONE_SQL;
+    use sqllumen_lib::mysql::table_data::{
+        export_table_data_impl, fetch_table_data_impl, ExportTableOptions,
+    };
     use std::collections::HashMap;
 
     const COLUMN_META_SQL: &str = "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT, EXTRA FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION";
@@ -766,20 +770,6 @@ mod fetch_cancellation_integration {
         }
     }
 
-    fn connection_id_step() -> MockQueryStep {
-        MockQueryStep {
-            query: "SELECT CONNECTION_ID()",
-            columns: vec![MockColumnDef {
-                name: "CONNECTION_ID()",
-                coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-                colflags: ColumnFlags::NOT_NULL_FLAG | ColumnFlags::UNSIGNED_FLAG,
-            }],
-            rows: vec![vec![MockCell::U64(987_654)]],
-            error: None,
-            affected_rows: None,
-        }
-    }
-
     fn users_page_step() -> MockQueryStep {
         MockQueryStep {
             query: "SELECT `id`, `name` FROM `app_db`.`users` LIMIT 50 OFFSET 0",
@@ -802,7 +792,6 @@ mod fetch_cancellation_integration {
         let server = MockMySqlServer::start_script(vec![
             users_column_metadata_step(),
             users_primary_key_step(),
-            connection_id_step(),
             users_page_step(),
         ])
         .await;
@@ -902,12 +891,9 @@ mod fetch_cancellation_integration {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn grid_shows_a_tinyint_one_value_of_seven_and_keeps_server_session_defaults() {
-        let server = MockMySqlServer::start_script(vec![
-            flags_column_metadata_step(),
-            connection_id_step(),
-            flags_page_step(),
-        ])
-        .await;
+        let server =
+            MockMySqlServer::start_script(vec![flags_column_metadata_step(), flags_page_step()])
+                .await;
         let pool = connect_mock_pool(&server).await;
         let metadata_cache = MetadataCache::new();
         let running_queries = tokio::sync::RwLock::new(HashMap::new());
@@ -933,8 +919,6 @@ mod fetch_cancellation_integration {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn table_export_writes_a_tinyint_one_value_of_seven() {
-        use sqllumen_lib::mysql::table_data::{export_table_data_impl, ExportTableOptions};
-
         let server =
             MockMySqlServer::start_script(vec![flags_column_metadata_step(), flags_export_step()])
                 .await;
@@ -975,6 +959,157 @@ mod fetch_cancellation_integration {
             .filter(|query| query.sql.to_ascii_lowercase().contains("time_zone"))
             .count();
         assert_eq!(session_changes, 0);
+    }
+
+    const FLAGS_EXPORT_SQL: &str = "SELECT * FROM `app_db`.`flags`";
+    const UTC_HEADER: &str =
+        "/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;\n/*!40103 SET TIME_ZONE='+00:00' */;\n";
+    const TIME_ZONE_RESTORE_FOOTER: &str = "/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;\n";
+    const UTF8MB4_BIN_CHARACTER_SET: u16 = 46;
+
+    fn flags_export_options(format: &str, file_path: &std::path::Path) -> ExportTableOptions {
+        ExportTableOptions {
+            database: "app_db".to_string(),
+            table: "flags".to_string(),
+            format: format.to_string(),
+            file_path: file_path.to_string_lossy().into_owned(),
+            include_headers: true,
+            table_name_for_sql: String::new(),
+            filter_model: vec![],
+            sort: None,
+            page: None,
+            page_size: None,
+        }
+    }
+
+    async fn export_flags(
+        server: &MockMySqlServer,
+        options: &ExportTableOptions,
+    ) -> Result<(), String> {
+        let pool = connect_mock_pool(server).await;
+        let metadata_cache = MetadataCache::new();
+        let context = sqllumen_lib::mysql::table_data::TableDataContext {
+            pool: &pool,
+            connection_id: "conn-1",
+            metadata_cache: &metadata_cache,
+        };
+        let exported = export_table_data_impl(&context, options).await;
+        pool.disconnect().await.expect("pool disconnects");
+        exported
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn sql_insert_export_runs_in_utc_and_brackets_rows_with_the_time_zone_lines() {
+        let server =
+            MockMySqlServer::start_script(vec![flags_column_metadata_step(), flags_export_step()])
+                .await;
+        let dir = tempfile::tempdir().expect("temp dir");
+        let file_path = dir.path().join("flags.sql");
+
+        export_flags(&server, &flags_export_options("sql", &file_path))
+            .await
+            .expect("export should succeed");
+
+        let exported = std::fs::read_to_string(&file_path).expect("export file");
+        assert!(exported.starts_with(UTC_HEADER), "{exported}");
+        assert!(exported.ends_with(TIME_ZONE_RESTORE_FOOTER), "{exported}");
+        let export_connection = server
+            .connection_that_sent(FLAGS_EXPORT_SQL)
+            .expect("the export query was sent");
+        let statements: Vec<String> = server
+            .queries_on_connection(export_connection)
+            .into_iter()
+            .map(|query| query.sql)
+            .collect();
+        let time_zone_position = statements
+            .iter()
+            .position(|sql| sql == TRANSFER_TIME_ZONE_SQL)
+            .expect("the export connection switches to UTC");
+        let export_position = statements
+            .iter()
+            .position(|sql| sql == FLAGS_EXPORT_SQL)
+            .expect("the export query is on that connection");
+        assert!(time_zone_position < export_position, "{statements:?}");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn csv_export_keeps_the_server_time_zone_and_writes_no_time_zone_lines() {
+        let server =
+            MockMySqlServer::start_script(vec![flags_column_metadata_step(), flags_export_step()])
+                .await;
+        let dir = tempfile::tempdir().expect("temp dir");
+        let file_path = dir.path().join("flags.csv");
+
+        export_flags(&server, &flags_export_options("csv", &file_path))
+            .await
+            .expect("export should succeed");
+
+        let exported = std::fs::read_to_string(&file_path).expect("export file");
+        assert!(!exported.contains("TIME_ZONE"), "{exported}");
+        let utc_switches = server
+            .recorded_queries()
+            .into_iter()
+            .filter(|query| query.sql == TRANSFER_TIME_ZONE_SQL)
+            .count();
+        assert_eq!(utc_switches, 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn export_into_a_missing_directory_fails_before_the_query_is_sent() {
+        let server =
+            MockMySqlServer::start_script(vec![flags_column_metadata_step(), flags_export_step()])
+                .await;
+        let dir = tempfile::tempdir().expect("temp dir");
+        let file_path = dir.path().join("missing").join("flags.csv");
+
+        let error = export_flags(&server, &flags_export_options("csv", &file_path))
+            .await
+            .expect_err("the temp file cannot be created");
+
+        assert!(error.contains("Failed to create file"), "{error}");
+        assert_eq!(server.connection_that_sent(FLAGS_EXPORT_SQL), None);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn grid_shows_a_bin_collated_text_column_as_text() {
+        let column_overrides = HashMap::from([(
+            "name",
+            MockColumnOverride {
+                character_set: Some(UTF8MB4_BIN_CHARACTER_SET),
+                decimals: None,
+            },
+        )]);
+        let mut page_step = users_page_step();
+        page_step.columns[1] = varchar("name", ColumnFlags::BINARY_FLAG);
+        let script = MockScript {
+            steps: vec![
+                users_column_metadata_step(),
+                users_primary_key_step(),
+                page_step,
+            ],
+            column_overrides,
+            ..MockScript::default()
+        };
+        let server = MockMySqlServer::start_with(script).await;
+        let pool = connect_mock_pool(&server).await;
+        let metadata_cache = MetadataCache::new();
+        let running_queries = tokio::sync::RwLock::new(HashMap::new());
+        let context = sqllumen_lib::mysql::table_data::TableDataContext {
+            pool: &pool,
+            connection_id: "conn-1",
+            metadata_cache: &metadata_cache,
+        };
+        let users_page = sqllumen_lib::mysql::table_data::TableDataPageQuery {
+            table: "users".to_string(),
+            ..flags_page_query()
+        };
+
+        let result = fetch_table_data_impl(&context, &running_queries, &users_page)
+            .await
+            .expect("fetch should succeed");
+        pool.disconnect().await.expect("pool disconnects");
+
+        assert_eq!(result.rows[0][1], serde_json::json!("alice"));
     }
 }
 

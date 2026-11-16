@@ -8,13 +8,17 @@ use std::sync::Arc;
 use mysql_async::consts::{ColumnFlags, ColumnType};
 use mysql_async::{Column, Value};
 use sqllumen_lib::mysql::cell_values::{
-    cell_json, debug_text, decode_cell, float_as_mysql_prints_it, grid_cell_json, json_from_i64,
-    json_from_u64, minus_sign, CellValue, DecodedRow, GridCellVariant, JS_SAFE_INTEGER_MAX,
+    cell_json, column_type_display_name, debug_text, decode_cell, decode_owned_cell,
+    float_as_mysql_prints_it, grid_cell_json, json_from_i64, json_from_u64, minus_sign, CellValue,
+    DecodedRow, GridCellVariant, JS_SAFE_INTEGER_MAX,
 };
 
 const COLUMN_TYPE_TOKEN: &str = "MYSQL_TYPE_";
 const DECODER_DIRECTORY: &str = "src/mysql/cell_values";
 const TWO_POW_53: i64 = 9_007_199_254_740_992;
+const BINARY_CHARACTER_SET: u16 = 63;
+const UTF8MB4_BIN_CHARACTER_SET: u16 = 46;
+const NOT_FIXED_DECIMALS: u8 = 31;
 
 fn column(column_type: ColumnType) -> Column {
     Column::new(column_type)
@@ -26,6 +30,19 @@ fn flagged_column(column_type: ColumnType, flags: ColumnFlags) -> Column {
 
 fn precise_column(column_type: ColumnType, decimals: u8) -> Column {
     Column::new(column_type).with_decimals(decimals)
+}
+
+fn binary_column(column_type: ColumnType) -> Column {
+    flagged_column(column_type, ColumnFlags::BINARY_FLAG).with_character_set(BINARY_CHARACTER_SET)
+}
+
+fn bin_collated_column(column_type: ColumnType) -> Column {
+    flagged_column(column_type, ColumnFlags::BINARY_FLAG)
+        .with_character_set(UTF8MB4_BIN_CHARACTER_SET)
+}
+
+fn plain_float_column() -> Column {
+    precise_column(ColumnType::MYSQL_TYPE_FLOAT, NOT_FIXED_DECIMALS)
 }
 
 fn text_cell(text: &str, column: &Column) -> CellValue {
@@ -249,7 +266,7 @@ mod floats {
 
     #[test]
     fn binary_float_matches_the_text_protocol_six_significant_digits() {
-        let float = column(ColumnType::MYSQL_TYPE_FLOAT);
+        let float = plain_float_column();
         for case in FLOAT_CASES {
             assert_protocols_agree(case.mysql_text, &Value::Float(case.stored), &float);
         }
@@ -257,6 +274,18 @@ mod floats {
             cell_json(&decode_cell(&Value::Float(1.1), &float)),
             serde_json::json!(1.1)
         );
+    }
+
+    #[test]
+    fn fixed_decimal_float_matches_the_text_protocol_decimals() {
+        let two_decimals = precise_column(ColumnType::MYSQL_TYPE_FLOAT, 2);
+        assert_eq!(
+            decode_cell(&Value::Float(12_345.67), &two_decimals),
+            CellValue::Float(12_345.67)
+        );
+        assert_protocols_agree("12345.67", &Value::Float(12_345.67), &two_decimals);
+        let four_decimals = precise_column(ColumnType::MYSQL_TYPE_FLOAT, 4);
+        assert_protocols_agree("1234.5680", &Value::Float(1_234.568), &four_decimals);
     }
 
     #[test]
@@ -272,7 +301,7 @@ mod floats {
 
     #[test]
     fn non_finite_floats_render_as_null() {
-        let float = column(ColumnType::MYSQL_TYPE_FLOAT);
+        let float = plain_float_column();
         let not_a_number = decode_cell(&Value::Float(f32::NAN), &float);
         assert_eq!(cell_json(&not_a_number), serde_json::Value::Null);
         assert!(float_as_mysql_prints_it(f32::INFINITY).is_infinite());
@@ -501,7 +530,7 @@ mod strings_and_binary {
         ];
         let bytes = vec![0xDE, 0xAD, 0xBE, 0xEF];
         for binary_type in binary_types {
-            let binary = flagged_column(binary_type, ColumnFlags::BINARY_FLAG);
+            let binary = binary_column(binary_type);
             let cell = decode_cell(&Value::Bytes(bytes.clone()), &binary);
             assert_eq!(cell, CellValue::Bytes(bytes.clone()), "{binary_type:?}");
             assert_eq!(cell_json(&cell), serde_json::json!(STANDARD.encode(&bytes)));
@@ -521,6 +550,40 @@ mod strings_and_binary {
     }
 
     #[test]
+    fn bin_collated_text_decodes_as_text_not_bytes() {
+        let text_types = [
+            (ColumnType::MYSQL_TYPE_VAR_STRING, "VARCHAR"),
+            (ColumnType::MYSQL_TYPE_STRING, "CHAR"),
+            (ColumnType::MYSQL_TYPE_BLOB, "TEXT"),
+            (ColumnType::MYSQL_TYPE_LONG_BLOB, "LONGTEXT"),
+        ];
+        for (text_type, display_name) in text_types {
+            let bin_collated = bin_collated_column(text_type);
+            assert_eq!(
+                text_cell("abc", &bin_collated),
+                CellValue::Text("abc".to_string()),
+                "{text_type:?}"
+            );
+            assert_eq!(column_type_display_name(&bin_collated), display_name);
+        }
+        let varbinary = binary_column(ColumnType::MYSQL_TYPE_VAR_STRING);
+        assert_eq!(column_type_display_name(&varbinary), "VARBINARY");
+    }
+
+    #[test]
+    fn owned_decoding_moves_valid_text_and_repairs_invalid_utf8() {
+        let varchar = column(ColumnType::MYSQL_TYPE_VAR_STRING);
+        assert_eq!(
+            decode_owned_cell(Value::Bytes(b"plain".to_vec()), &varchar),
+            CellValue::Text("plain".to_string())
+        );
+        assert_eq!(
+            decode_owned_cell(Value::Bytes(vec![b'a', 0xFF]), &varchar),
+            CellValue::Text("a\u{FFFD}".to_string())
+        );
+    }
+
+    #[test]
     fn invalid_utf8_text_is_decoded_lossily() {
         let varchar = column(ColumnType::MYSQL_TYPE_VAR_STRING);
         let cell = decode_cell(&Value::Bytes(vec![b'a', 0xFF]), &varchar);
@@ -535,21 +598,21 @@ mod renderers {
     fn grid_variants_render_blob_placeholders_and_binary_keys() {
         let length = CellValue::Unsigned(2_048);
         assert_eq!(
-            grid_cell_json(&length, GridCellVariant::BlobPlaceholder),
+            grid_cell_json(length.clone(), GridCellVariant::BlobPlaceholder),
             serde_json::json!("[BLOB - 2 KB]")
         );
         let signed_length = CellValue::Signed(10);
         assert_eq!(
-            grid_cell_json(&signed_length, GridCellVariant::BlobPlaceholder),
+            grid_cell_json(signed_length.clone(), GridCellVariant::BlobPlaceholder),
             serde_json::json!("[BLOB - 10 B]")
         );
         let negative = CellValue::Signed(-1);
         assert_eq!(
-            grid_cell_json(&negative, GridCellVariant::BlobPlaceholder),
+            grid_cell_json(negative.clone(), GridCellVariant::BlobPlaceholder),
             serde_json::Value::Null
         );
         assert_eq!(
-            grid_cell_json(&CellValue::Null, GridCellVariant::BlobPlaceholder),
+            grid_cell_json(CellValue::Null, GridCellVariant::BlobPlaceholder),
             serde_json::Value::Null
         );
     }
@@ -558,20 +621,20 @@ mod renderers {
     fn binary_primary_keys_render_as_upper_hex() {
         let key = CellValue::Bytes(vec![0xDE, 0xAD]);
         assert_eq!(
-            grid_cell_json(&key, GridCellVariant::BinaryPrimaryKey),
+            grid_cell_json(key.clone(), GridCellVariant::BinaryPrimaryKey),
             serde_json::json!("0xDEAD")
         );
         let text_key = CellValue::Text("AB".to_string());
         assert_eq!(
-            grid_cell_json(&text_key, GridCellVariant::BinaryPrimaryKey),
+            grid_cell_json(text_key.clone(), GridCellVariant::BinaryPrimaryKey),
             serde_json::json!("0x4142")
         );
         assert_eq!(
-            grid_cell_json(&CellValue::Null, GridCellVariant::BinaryPrimaryKey),
+            grid_cell_json(CellValue::Null, GridCellVariant::BinaryPrimaryKey),
             serde_json::Value::Null
         );
         assert_eq!(
-            grid_cell_json(&CellValue::Signed(3), GridCellVariant::Value),
+            grid_cell_json(CellValue::Signed(3), GridCellVariant::Value),
             serde_json::json!(3)
         );
     }
@@ -600,8 +663,7 @@ mod accessors {
     fn metadata_row() -> DecodedRow {
         let columns: Arc<[Column]> = Arc::from(vec![
             column(ColumnType::MYSQL_TYPE_VAR_STRING).with_name(b"TABLE_NAME"),
-            flagged_column(ColumnType::MYSQL_TYPE_VAR_STRING, ColumnFlags::BINARY_FLAG)
-                .with_name(b"TABLE_COMMENT"),
+            binary_column(ColumnType::MYSQL_TYPE_VAR_STRING).with_name(b"TABLE_COMMENT"),
             column(ColumnType::MYSQL_TYPE_VAR_STRING).with_name(b"ENGINE"),
             column(ColumnType::MYSQL_TYPE_LONGLONG).with_name(b"TABLE_ROWS"),
             flagged_column(ColumnType::MYSQL_TYPE_LONGLONG, ColumnFlags::UNSIGNED_FLAG)
@@ -614,7 +676,7 @@ mod accessors {
             Value::Bytes(b"-5".to_vec()),
             Value::Bytes(b"18446744073709551615".to_vec()),
         ];
-        DecodedRow::new(columns, &values)
+        DecodedRow::new(columns, values.to_vec())
     }
 
     #[test]
@@ -646,7 +708,7 @@ mod accessors {
         ]);
         let row = DecodedRow::new(
             columns,
-            &[Value::Bytes(b"12".to_vec()), Value::Bytes(vec![1])],
+            vec![Value::Bytes(b"12".to_vec()), Value::Bytes(vec![1])],
         );
         assert_eq!(row.signed(0), Ok(12));
         assert_eq!(row.unsigned(0), Ok(12));
@@ -678,7 +740,7 @@ mod accessors {
             Value::Date(2024, 1, 2, 0, 0, 0, 0),
             Value::Bytes(b"3".to_vec()),
         ];
-        let row = DecodedRow::new(columns, &values);
+        let row = DecodedRow::new(columns, values.to_vec());
         assert_eq!(row.required_text(0), Ok("2.5".to_string()));
         assert_eq!(row.required_text(1), Ok("2024-01-02".to_string()));
         assert_eq!(row.signed(2), Ok(3));
@@ -696,7 +758,7 @@ mod accessors {
     #[test]
     fn optional_bytes_returns_raw_bytes_text_bytes_or_none() {
         let columns: Arc<[Column]> = Arc::from(vec![
-            flagged_column(ColumnType::MYSQL_TYPE_BLOB, ColumnFlags::BINARY_FLAG),
+            binary_column(ColumnType::MYSQL_TYPE_BLOB),
             column(ColumnType::MYSQL_TYPE_VAR_STRING),
             column(ColumnType::MYSQL_TYPE_VAR_STRING),
         ]);
@@ -705,10 +767,36 @@ mod accessors {
             Value::Bytes(b"abc".to_vec()),
             Value::NULL,
         ];
-        let row = DecodedRow::new(columns, &values);
-        assert_eq!(row.optional_bytes(0), Ok(Some(vec![0, 255])));
-        assert_eq!(row.optional_bytes(1), Ok(Some(b"abc".to_vec())));
-        assert_eq!(row.optional_bytes(2), Ok(None));
+        let row = DecodedRow::new(columns, values.to_vec());
+        assert_eq!(row.clone().into_optional_bytes(0), Ok(Some(vec![0, 255])));
+        assert_eq!(
+            row.clone().into_optional_bytes(1),
+            Ok(Some(b"abc".to_vec()))
+        );
+        assert_eq!(row.clone().into_optional_bytes(2), Ok(None));
+    }
+
+    #[test]
+    fn optional_unsigned_reads_values_above_the_signed_range() {
+        let row = metadata_row();
+        assert_eq!(row.optional_unsigned("DATA_LENGTH"), Ok(Some(u64::MAX)));
+        assert_eq!(row.optional_unsigned("ENGINE"), Ok(None));
+        assert!(row.optional_unsigned("TABLE_ROWS").is_err());
+    }
+
+    #[test]
+    fn text_or_empty_reads_null_and_missing_columns_as_empty() {
+        let row = metadata_row();
+        assert_eq!(row.text_or_empty("TABLE_NAME"), "users");
+        assert_eq!(row.text_or_empty("ENGINE"), "");
+        assert_eq!(row.text_or_empty("NOPE"), "");
+    }
+
+    #[test]
+    fn into_cells_hands_over_every_decoded_cell() {
+        let cells = metadata_row().into_cells();
+        assert_eq!(cells.len(), 5);
+        assert_eq!(cells[0], CellValue::Text("users".to_string()));
     }
 
     #[test]

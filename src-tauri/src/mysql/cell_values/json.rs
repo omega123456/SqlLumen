@@ -38,23 +38,27 @@ fn json_from_f64(number: f64) -> serde_json::Value {
 }
 
 pub fn cell_json(cell: &CellValue) -> serde_json::Value {
+    into_cell_json(cell.clone())
+}
+
+pub fn into_cell_json(cell: CellValue) -> serde_json::Value {
     match cell {
         CellValue::Null => serde_json::Value::Null,
-        CellValue::Signed(number) => json_from_i64(*number),
-        CellValue::Unsigned(number) | CellValue::Bit(number) => json_from_u64(*number),
-        CellValue::Float(number) => json_from_f64(*number),
+        CellValue::Signed(number) => json_from_i64(number),
+        CellValue::Unsigned(number) | CellValue::Bit(number) => json_from_u64(number),
+        CellValue::Float(number) => json_from_f64(number),
         CellValue::Decimal(text) | CellValue::Temporal(text) | CellValue::Text(text) => {
-            serde_json::Value::String(text.clone())
+            serde_json::Value::String(text)
         }
         CellValue::Bytes(bytes) => serde_json::Value::String(BASE64_STANDARD.encode(bytes)),
     }
 }
 
-pub fn grid_cell_json(cell: &CellValue, variant: GridCellVariant) -> serde_json::Value {
+pub fn grid_cell_json(cell: CellValue, variant: GridCellVariant) -> serde_json::Value {
     match variant {
-        GridCellVariant::Value => cell_json(cell),
-        GridCellVariant::BlobPlaceholder => blob_placeholder_json(cell),
-        GridCellVariant::BinaryPrimaryKey => binary_primary_key_json(cell),
+        GridCellVariant::Value => into_cell_json(cell),
+        GridCellVariant::BlobPlaceholder => blob_placeholder_json(&cell),
+        GridCellVariant::BinaryPrimaryKey => binary_primary_key_json(&cell),
     }
 }
 
@@ -90,6 +94,10 @@ fn binary_primary_key_json(cell: &CellValue) -> serde_json::Value {
     serde_json::Value::String([BINARY_PRIMARY_KEY_PREFIX, hex_digits.as_str()].concat())
 }
 
-pub fn row_json(row: &mysql_async::Row) -> Vec<serde_json::Value> {
-    super::decode_row(row).iter().map(cell_json).collect()
+pub fn row_json(row: mysql_async::Row) -> Vec<serde_json::Value> {
+    let columns = row.columns();
+    super::decode_owned_values(row.unwrap(), &columns)
+        .into_iter()
+        .map(into_cell_json)
+        .collect()
 }

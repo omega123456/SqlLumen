@@ -52,23 +52,15 @@ async fn fetch_metadata_rows(
 }
 
 #[cfg(not(coverage))]
-fn decode_text(row: &DecodedRow, column_index: usize) -> String {
-    row.optional_text(column_index)
-        .ok()
-        .flatten()
-        .unwrap_or_default()
-}
-
-#[cfg(not(coverage))]
 fn column_meta_from_row(row: &DecodedRow) -> TableDataColumnMeta {
-    let data_type = decode_text(row, 1).to_uppercase();
-    let column_type = decode_text(row, 2);
-    let is_nullable = decode_text(row, 3) == "YES";
-    let column_key = decode_text(row, 4);
+    let data_type = row.text_or_empty(1).to_uppercase();
+    let column_type = row.text_or_empty(2);
+    let is_nullable = row.text_or_empty(3) == "YES";
+    let column_key = row.text_or_empty(4);
     let column_default = row.optional_text(5).ok().flatten();
-    let extra = decode_text(row, 6).to_lowercase();
+    let extra = row.text_or_empty(6).to_lowercase();
     TableDataColumnMeta {
-        name: decode_text(row, 0),
+        name: row.text_or_empty(0),
         is_binary: is_binary_data_type(&data_type),
         is_boolean_alias: is_boolean_alias_column(&data_type, &column_type),
         enum_values: parse_enum_values(&column_type),
@@ -113,8 +105,8 @@ struct UniqueConstraintColumns {
 fn group_unique_constraints(rows: &[DecodedRow]) -> Vec<UniqueConstraintColumns> {
     let mut constraints: Vec<UniqueConstraintColumns> = Vec::new();
     for row in rows {
-        let constraint_name = decode_text(row, 0);
-        let column_name = decode_text(row, 1);
+        let constraint_name = row.text_or_empty(0);
+        let column_name = row.text_or_empty(1);
         match constraints.last_mut() {
             Some(last) if last.name == constraint_name => last.columns.push(column_name),
             _ => constraints.push(UniqueConstraintColumns {
@@ -172,7 +164,7 @@ pub async fn fetch_table_pk_impl(
     .await?;
     let primary_key_columns: Vec<String> = primary_key_rows
         .iter()
-        .map(|row| decode_text(row, 0))
+        .map(|row| row.text_or_empty(0))
         .collect();
     if !primary_key_columns.is_empty() {
         return Ok(key_metadata(columns, primary_key_columns, false));
@@ -251,52 +243,41 @@ async fn fetch_cancellable_page_rows(
     pool: &BackgroundPool,
     fetch: CancellablePageFetch<'_>,
 ) -> Result<Vec<DecodedRow>, String> {
-    use crate::mysql::logged_query::{fetch_decoded, fetch_first};
+    use crate::mysql::logged_query::fetch_decoded;
+    use crate::mysql::pool::connection_thread_id;
 
     let mut conn = pool
         .checkout()
         .await
         .map_err(|error| format!("Failed to acquire connection: {error}"))?;
-    let connection_id_row = fetch_first(&mut conn, LoggedStatement::text("SELECT CONNECTION_ID()"))
+    fetch
+        .running_queries
+        .write()
         .await
-        .ok()
-        .flatten();
-    let thread_id = connection_id_row
-        .as_ref()
-        .map(DecodedRow::from_row)
-        .and_then(|row| row.unsigned(0).ok());
-    if let Some(connection_thread_id) = thread_id {
-        fetch
-            .running_queries
-            .write()
-            .await
-            .insert(fetch.cancel_key.clone(), connection_thread_id);
-    }
+        .insert(fetch.cancel_key.clone(), connection_thread_id(&conn));
 
     let data_result = fetch_decoded(&mut conn, json_bound_statement(fetch.sql, fetch.params)).await;
 
-    if thread_id.is_some() {
-        fetch
-            .running_queries
-            .write()
-            .await
-            .remove(&fetch.cancel_key);
-    }
+    fetch
+        .running_queries
+        .write()
+        .await
+        .remove(&fetch.cancel_key);
 
     data_result.map_err(|error| format!("Data query failed: {error}"))
 }
 
 #[cfg(not(coverage))]
 fn serialize_page_row(
-    row: &DecodedRow,
+    row: DecodedRow,
     columns: &[TableDataColumnMeta],
     primary_key_columns: &std::collections::HashSet<&str>,
 ) -> Vec<serde_json::Value> {
+    let mut cells = row.into_cells().into_iter();
     columns
         .iter()
-        .enumerate()
-        .map(|(column_index, col_meta)| {
-            let Some(cell) = row.cells().get(column_index) else {
+        .map(|col_meta| {
+            let Some(cell) = cells.next() else {
                 return serde_json::Value::Null;
             };
             let encoding = CellEncoding {
@@ -351,7 +332,7 @@ pub async fn fetch_table_data_impl(
     let execution_time_ms = start.elapsed().as_millis() as u64;
 
     let serialized_rows: Vec<Vec<serde_json::Value>> = data_rows
-        .iter()
+        .into_iter()
         .map(|row| serialize_page_row(row, &columns, &primary_key_column_set))
         .collect();
 

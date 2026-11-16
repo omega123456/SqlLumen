@@ -10,6 +10,8 @@ pub use json::*;
 pub use temporal::{BinaryDate, BinaryTime, MAX_FRACTIONAL_SECOND_DIGITS};
 
 const MYSQL_FLOAT_SIGNIFICANT_DIGITS: usize = 6;
+const NOT_FIXED_DECIMALS: u8 = 31;
+const BINARY_CHARACTER_SET_ID: u16 = 63;
 const BITS_PER_BYTE: u32 = 8;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -60,7 +62,7 @@ fn column_kind(column: &Column) -> ColumnKind {
         | MYSQL_TYPE_STRING
         | MYSQL_TYPE_VAR_STRING
         | MYSQL_TYPE_GEOMETRY
-            if has_binary_flag(column) =>
+            if has_binary_character_set(column) =>
         {
             ColumnKind::BinaryString
         }
@@ -68,8 +70,8 @@ fn column_kind(column: &Column) -> ColumnKind {
     }
 }
 
-fn has_binary_flag(column: &Column) -> bool {
-    column.flags().contains(ColumnFlags::BINARY_FLAG)
+fn has_binary_character_set(column: &Column) -> bool {
+    column.character_set() == BINARY_CHARACTER_SET_ID
 }
 
 fn has_unsigned_flag(column: &Column) -> bool {
@@ -84,33 +86,37 @@ fn is_date_only_column(column: &Column) -> bool {
 }
 
 pub fn decode_cell(value: &Value, column: &Column) -> CellValue {
+    decode_owned_cell(value.clone(), column)
+}
+
+pub fn decode_owned_cell(value: Value, column: &Column) -> CellValue {
     match value {
         Value::NULL => CellValue::Null,
         Value::Bytes(bytes) => decode_text_protocol_bytes(bytes, column),
-        Value::Int(number) => CellValue::Signed(*number),
-        Value::UInt(number) => CellValue::Unsigned(*number),
-        Value::Float(number) => CellValue::Float(float_as_mysql_prints_it(*number)),
-        Value::Double(number) => CellValue::Float(*number),
+        Value::Int(number) => CellValue::Signed(number),
+        Value::UInt(number) => CellValue::Unsigned(number),
+        Value::Float(number) => CellValue::Float(float_for_column(number, column)),
+        Value::Double(number) => CellValue::Float(number),
         Value::Date(year, month, day, hour, minute, second, microsecond) => {
             let date = BinaryDate {
-                year: *year,
-                month: *month,
-                day: *day,
-                hour: *hour,
-                minute: *minute,
-                second: *second,
-                microsecond: *microsecond,
+                year,
+                month,
+                day,
+                hour,
+                minute,
+                second,
+                microsecond,
             };
             CellValue::Temporal(temporal::date_text(&date, column))
         }
         Value::Time(is_negative, days, hours, minutes, seconds, microseconds) => {
             let time = BinaryTime {
-                is_negative: *is_negative,
-                days: *days,
-                hours: *hours,
-                minutes: *minutes,
-                seconds: *seconds,
-                microseconds: *microseconds,
+                is_negative,
+                days,
+                hours,
+                minutes,
+                seconds,
+                microseconds,
             };
             CellValue::Temporal(temporal::time_text(&time, column))
         }
@@ -128,20 +134,29 @@ pub fn decode_row(row: &mysql_async::Row) -> Vec<CellValue> {
         .collect()
 }
 
-fn decode_text_protocol_bytes(bytes: &[u8], column: &Column) -> CellValue {
+pub fn decode_owned_values(values: Vec<Value>, columns: &[Column]) -> Vec<CellValue> {
+    values
+        .into_iter()
+        .zip(columns.iter())
+        .map(|(value, column)| decode_owned_cell(value, column))
+        .collect()
+}
+
+fn decode_text_protocol_bytes(bytes: Vec<u8>, column: &Column) -> CellValue {
     match column_kind(column) {
-        ColumnKind::Bit => CellValue::Bit(big_endian_bits(bytes)),
+        ColumnKind::Bit => CellValue::Bit(big_endian_bits(&bytes)),
         ColumnKind::Integer => integer_from_text(bytes, column),
         ColumnKind::Float => float_from_text(bytes),
         ColumnKind::Decimal => CellValue::Decimal(lossy_text(bytes)),
         ColumnKind::Temporal => CellValue::Temporal(lossy_text(bytes)),
-        ColumnKind::BinaryString => CellValue::Bytes(bytes.to_vec()),
+        ColumnKind::BinaryString => CellValue::Bytes(bytes),
         ColumnKind::Text => CellValue::Text(lossy_text(bytes)),
     }
 }
 
-fn lossy_text(bytes: &[u8]) -> String {
-    String::from_utf8_lossy(bytes).into_owned()
+fn lossy_text(bytes: Vec<u8>) -> String {
+    String::from_utf8(bytes)
+        .unwrap_or_else(|invalid| String::from_utf8_lossy(invalid.as_bytes()).into_owned())
 }
 
 fn big_endian_bits(bytes: &[u8]) -> u64 {
@@ -150,7 +165,7 @@ fn big_endian_bits(bytes: &[u8]) -> u64 {
         .fold(0, |value, byte| (value << BITS_PER_BYTE) | u64::from(*byte))
 }
 
-fn integer_from_text(bytes: &[u8], column: &Column) -> CellValue {
+fn integer_from_text(bytes: Vec<u8>, column: &Column) -> CellValue {
     let text = lossy_text(bytes);
     parsed_integer(&text, column).unwrap_or(CellValue::Text(text))
 }
@@ -164,12 +179,26 @@ fn parsed_integer(text: &str, column: &Column) -> Option<CellValue> {
     signed.or(unsigned)
 }
 
-fn float_from_text(bytes: &[u8]) -> CellValue {
+fn float_from_text(bytes: Vec<u8>) -> CellValue {
     let text = lossy_text(bytes);
     match text.parse::<f64>() {
         Ok(number) => CellValue::Float(number),
         Err(_) => CellValue::Text(text),
     }
+}
+
+fn float_for_column(number: f32, column: &Column) -> f64 {
+    let decimals = column.decimals();
+    if decimals < NOT_FIXED_DECIMALS {
+        return float_with_fixed_decimals(number, usize::from(decimals));
+    }
+    float_as_mysql_prints_it(number)
+}
+
+/// MySQL's text protocol prints FLOAT(M,D) with exactly D fractional digits via `my_fcvt`.
+fn float_with_fixed_decimals(number: f32, decimals: usize) -> f64 {
+    let rounded = format!("{number:.decimals$}");
+    rounded.parse().unwrap_or(f64::from(number))
 }
 
 /// MySQL's text protocol prints FLOAT with `FLT_DIG` (6) significant digits via `my_gcvt`.
@@ -203,7 +232,7 @@ pub fn column_type_display_name(column: &Column) -> String {
     use mysql_async::consts::ColumnType::*;
 
     let is_unsigned = has_unsigned_flag(column);
-    let is_binary = has_binary_flag(column);
+    let is_binary = has_binary_character_set(column);
     let column_type = column.column_type();
 
     let name = match column_type {

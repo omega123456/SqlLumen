@@ -173,7 +173,7 @@ pub async fn fetch_blob_value_impl(
     };
     let data_row = lookup.fetch_first_row(data_query).await?;
     let bytes = data_row
-        .optional_bytes("val")
+        .into_optional_bytes("val")
         .map_err(|error| format!("Failed to read blob bytes: {error}"))?;
     Ok(blob_bytes_response(bytes))
 }

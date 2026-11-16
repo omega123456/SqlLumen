@@ -223,7 +223,7 @@ fn serialize_inserted_cell(
                 .contains(column.name.as_str())
         }),
     };
-    let cell = &row.cells()[column_index];
+    let cell = row.cells()[column_index].clone();
     (col_name, serialize_table_value(cell, encoding))
 }
 

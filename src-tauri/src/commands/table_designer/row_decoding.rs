@@ -253,8 +253,7 @@ pub(super) fn designer_foreign_keys_from_rows(
 
 #[cfg(not(coverage))]
 pub(super) fn decode_auto_increment(row: &DecodedRow) -> Result<Option<u64>, String> {
-    let auto_increment = row.optional_signed("AUTO_INCREMENT")?;
-    Ok(auto_increment.and_then(|value| u64::try_from(value).ok()))
+    row.optional_unsigned("AUTO_INCREMENT")
 }
 
 #[cfg(not(coverage))]

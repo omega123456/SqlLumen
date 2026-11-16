@@ -33,17 +33,8 @@ pub fn n_stream(query: &'static str, count: usize) -> MockStreamStep {
     )
 }
 
-pub fn connection_id_step() -> MockQueryStep {
-    MockQueryStep::with_rows(
-        "SELECT CONNECTION_ID()",
-        vec![MockColumnDef {
-            name: "CONNECTION_ID()",
-            coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-            colflags: ColumnFlags::UNSIGNED_FLAG,
-        }],
-        vec![vec![MockCell::U64(42)]],
-    )
-}
+/// Pool validation takes mock connection 1, so the first editor session is connection 2.
+pub const KILL_FIRST_EDITOR_SESSION: &str = "KILL QUERY 2";
 
 pub fn database_step(database: Option<&'static [u8]>) -> MockQueryStep {
     MockQueryStep::with_rows(

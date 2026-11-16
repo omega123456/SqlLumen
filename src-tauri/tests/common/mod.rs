@@ -3,6 +3,7 @@
 // Each integration test binary only uses a subset of helpers; unused items are expected.
 
 pub mod blob_step_helpers;
+pub mod column_definition_patch;
 pub mod editor_session_fixtures;
 pub mod fake_credentials;
 pub mod first_packet_reader;

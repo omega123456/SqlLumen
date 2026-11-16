@@ -6,14 +6,12 @@ use crate::mysql::cell_values::DecodedRow;
 #[cfg(not(coverage))]
 use crate::mysql::health;
 #[cfg(not(coverage))]
-use crate::mysql::logged_query::{fetch_first, fetch_first_decoded_pooled, LoggedStatement};
+use crate::mysql::logged_query::{fetch_first, LoggedStatement};
 use crate::mysql::metadata_cache::evict_metadata_cache_for_connection;
 #[cfg(not(coverage))]
 use crate::mysql::pool;
 #[cfg(coverage)]
 use crate::mysql::pool::create_pool;
-#[cfg(not(coverage))]
-use crate::mysql::pool::BackgroundPool;
 #[cfg(not(coverage))]
 use crate::mysql::pool::{ConnectionParams, SslSettings};
 use crate::mysql::registry::ConnectionStatus;
@@ -90,22 +88,9 @@ fn health_monitor_token(
 
 #[cfg(not(coverage))]
 const SERVER_VERSION_COLUMN: DiagnosticColumn = DiagnosticColumn {
-    sql: "SELECT VERSION()",
+    sql: pool::SERVER_VERSION_SQL,
     column_index: 0,
 };
-
-#[cfg(not(coverage))]
-async fn fetch_server_version(pool: &BackgroundPool) -> String {
-    let statement = LoggedStatement::text(SERVER_VERSION_COLUMN.sql);
-    let version = match fetch_first_decoded_pooled(pool, statement).await {
-        Ok(first_row) => first_row.and_then(|row| row.required_text(0).ok()),
-        Err(error) => {
-            tracing::warn!(?error, "reading the server version failed");
-            None
-        }
-    };
-    version.unwrap_or_else(|| "Unknown".to_string())
-}
 
 #[cfg(not(coverage))]
 fn resolve_test_connection_password(input: &TestConnectionInput) -> Result<String, String> {
@@ -183,7 +168,7 @@ async fn fetch_diagnostic_value(
             return None;
         }
     };
-    DecodedRow::from_row(&first_row)
+    DecodedRow::from_row(first_row)
         .required_text(column.column_index)
         .ok()
 }
@@ -273,11 +258,12 @@ pub async fn open_connection_impl(
 
     let params = stored_params.to_connection_params(password);
 
-    let pool = pool::create_pool(&params)
+    let pool::OpenedPool {
+        pool,
+        server_version,
+    } = pool::create_pool_reading_version(&params)
         .await
         .map_err(|error| format!("Failed to connect: {error}"))?;
-
-    let server_version = fetch_server_version(&pool).await;
 
     let session_id = Uuid::new_v4().to_string();
 
@@ -329,7 +315,7 @@ pub async fn open_connection_impl(
     let session_id = uuid::Uuid::new_v4().to_string();
     Ok(OpenConnectionResult {
         session_id,
-        server_version: "Unknown".to_string(),
+        server_version: crate::mysql::pool::UNKNOWN_SERVER_VERSION.to_string(),
     })
 }
 

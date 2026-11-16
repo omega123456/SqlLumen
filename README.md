@@ -136,7 +136,7 @@ SqlLumen checks GitHub Releases for updates. When one is available, a banner app
 
 - **Copy to Another Host** — copy selected tables, routines, triggers, and events from one database to a different saved host, with progress tracking and cancel support
 - **SQL dump and import** — export a database to SQL and import SQL files, running in the background
-- **Export** — results and table data to CSV, JSON, XLSX, and SQL
+- **Export** — results and table data to CSV, JSON, XLSX, and SQL. Table-data SQL exports are written in UTC and set the time zone at the top of the file, so TIMESTAMP values import unchanged on any server
 - **BLOB viewing and editing** — inspect and edit binary values in place
 
 **Schema and design**

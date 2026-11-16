@@ -4,7 +4,7 @@ use std::sync::Arc;
 use mysql_async::prelude::ColumnIndex;
 use mysql_async::{Column, Value};
 
-use super::{decode_cell, decode_row, CellValue};
+use super::{decode_owned_values, CellValue};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DecodedRow {
@@ -13,24 +13,22 @@ pub struct DecodedRow {
 }
 
 impl DecodedRow {
-    pub fn new(columns: Arc<[Column]>, values: &[Value]) -> Self {
-        let cells = values
-            .iter()
-            .zip(columns.iter())
-            .map(|(value, column)| decode_cell(value, column))
-            .collect();
+    pub fn new(columns: Arc<[Column]>, values: Vec<Value>) -> Self {
+        let cells = decode_owned_values(values, &columns);
         Self { columns, cells }
     }
 
-    pub fn from_row(row: &mysql_async::Row) -> Self {
-        Self {
-            columns: row.columns(),
-            cells: decode_row(row),
-        }
+    pub fn from_row(row: mysql_async::Row) -> Self {
+        let columns = row.columns();
+        Self::new(columns, row.unwrap())
     }
 
     pub fn cells(&self) -> &[CellValue] {
         &self.cells
+    }
+
+    pub fn into_cells(self) -> Vec<CellValue> {
+        self.cells
     }
 
     pub fn columns(&self) -> &[Column] {
@@ -60,11 +58,22 @@ impl DecodedRow {
         Ok(cell_text(self.cell_at(&index)?))
     }
 
-    pub fn optional_bytes<I: ColumnIndex + Debug>(
-        &self,
+    pub fn text_or_empty<I: ColumnIndex + Debug>(&self, index: I) -> String {
+        match self.cell_at(&index) {
+            Ok(cell) => cell_text(cell).unwrap_or_default(),
+            Err(error) => {
+                tracing::warn!(%error, "missing column read as empty text");
+                String::new()
+            }
+        }
+    }
+
+    pub fn into_optional_bytes<I: ColumnIndex + Debug>(
+        mut self,
         index: I,
     ) -> Result<Option<Vec<u8>>, String> {
-        Ok(cell_bytes(self.cell_at(&index)?))
+        let position = self.position_of(&index)?;
+        Ok(cell_bytes(self.cells.swap_remove(position)))
     }
 
     pub fn optional_signed<I: ColumnIndex + Debug>(&self, index: I) -> Result<Option<i64>, String> {
@@ -83,6 +92,19 @@ impl DecodedRow {
             .ok_or_else(|| format!("Column {index:?} is not a signed integer: {cell:?}"))
     }
 
+    pub fn optional_unsigned<I: ColumnIndex + Debug>(
+        &self,
+        index: I,
+    ) -> Result<Option<u64>, String> {
+        let cell = self.cell_at(&index)?;
+        if *cell == CellValue::Null {
+            return Ok(None);
+        }
+        cell_unsigned(cell)
+            .map(Some)
+            .ok_or_else(|| format!("Column {index:?} is not an unsigned integer: {cell:?}"))
+    }
+
     pub fn unsigned<I: ColumnIndex + Debug>(&self, index: I) -> Result<u64, String> {
         let cell = self.cell_at(&index)?;
         cell_unsigned(cell)
@@ -90,9 +112,14 @@ impl DecodedRow {
     }
 
     fn cell_at<I: ColumnIndex + Debug>(&self, index: &I) -> Result<&CellValue, String> {
+        let position = self.position_of(index)?;
+        Ok(&self.cells[position])
+    }
+
+    fn position_of<I: ColumnIndex + Debug>(&self, index: &I) -> Result<usize, String> {
         index
             .idx(&self.columns)
-            .and_then(|position| self.cells.get(position))
+            .filter(|position| *position < self.cells.len())
             .ok_or_else(|| format!("Column {index:?} is not in the result row"))
     }
 }
@@ -110,10 +137,10 @@ fn cell_text(cell: &CellValue) -> Option<String> {
     }
 }
 
-fn cell_bytes(cell: &CellValue) -> Option<Vec<u8>> {
+fn cell_bytes(cell: CellValue) -> Option<Vec<u8>> {
     match cell {
-        CellValue::Bytes(bytes) => Some(bytes.clone()),
-        other => cell_text(other).map(String::into_bytes),
+        CellValue::Bytes(bytes) => Some(bytes),
+        other => cell_text(&other).map(String::into_bytes),
     }
 }
 

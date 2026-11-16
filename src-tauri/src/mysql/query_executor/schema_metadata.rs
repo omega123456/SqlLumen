@@ -12,11 +12,6 @@ fn decode_required_identifier(row: &DecodedRow, index: usize) -> Option<String> 
 }
 
 #[cfg(not(coverage))]
-fn decode_metadata_text(row: &DecodedRow, index: usize) -> String {
-    row.optional_text(index).ok().flatten().unwrap_or_default()
-}
-
-#[cfg(not(coverage))]
 const SYSTEM_DBS: &str = "'information_schema','performance_schema','sys','mysql'";
 
 #[cfg(not(coverage))]
@@ -107,8 +102,8 @@ fn decode_table_row(row: &DecodedRow) -> Option<SchemaTableRow> {
     let name = decode_required_identifier(row, 1)?;
     let table = TableInfo {
         name,
-        engine: decode_metadata_text(row, 2),
-        charset: decode_metadata_text(row, 3),
+        engine: row.text_or_empty(2),
+        charset: row.text_or_empty(3),
         row_count: decode_non_negative_count(row, 4),
         data_size: decode_non_negative_count(row, 5),
     };
@@ -142,7 +137,7 @@ fn decode_column_row(row: &DecodedRow) -> Option<TableColumnRow> {
         table_key: format!("{schema}.{table}"),
         column: ColumnMeta {
             name,
-            data_type: decode_metadata_text(row, 3),
+            data_type: row.text_or_empty(3),
         },
     })
 }
@@ -169,7 +164,7 @@ struct SchemaRoutineRow {
 fn decode_routine_row(row: &DecodedRow) -> Option<SchemaRoutineRow> {
     let schema = decode_required_identifier(row, 0)?;
     let name = decode_required_identifier(row, 1)?;
-    let routine_type = decode_metadata_text(row, 2);
+    let routine_type = row.text_or_empty(2);
     Some(SchemaRoutineRow {
         schema,
         routine: RoutineMeta { name, routine_type },

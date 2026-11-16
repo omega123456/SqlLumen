@@ -644,6 +644,9 @@ mod pool_lifecycle {
     use crate::common::silent_listener::{closed_port, SilentListener};
     use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
     use sqllumen_lib::commands::mysql::{close_connection_impl, open_connection_impl};
+    use sqllumen_lib::mysql::pool::{
+        background_pool_options, IDLE_CONNECTION_TTL, MAX_CONNECTION_LIFETIME,
+    };
     use sqllumen_lib::state::AppState;
     use std::time::{Duration, Instant};
 
@@ -651,6 +654,7 @@ mod pool_lifecycle {
     const TIMEOUT_DEADLINE: Duration = Duration::from_millis(1500);
     const DISCONNECT_DEADLINE: Duration = Duration::from_secs(1);
     const POLL_INTERVAL: Duration = Duration::from_millis(10);
+    const MOCK_SERVER_VERSION: &str = "8.0.36-mock";
 
     struct ProfileTarget<'a> {
         port: u16,
@@ -770,5 +774,35 @@ mod pool_lifecycle {
 
         assert_eq!(server.live_connection_count(), 0);
         assert!(state.registry.get_pool(&session_id).is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn opening_reads_the_server_version_over_its_only_handshake() {
+        let server = MockMySqlServer::start_script(vec![]).await;
+        let state = common::test_app_state();
+        let target = ProfileTarget {
+            port: server.port,
+            username: "root",
+        };
+        let profile_id = save_connection_impl(&state, save_input(target)).expect("profile saves");
+
+        let opened = open_connection_impl(&state, &profile_id)
+            .await
+            .expect("open succeeds");
+
+        assert_eq!(opened.server_version, MOCK_SERVER_VERSION);
+        assert_eq!(server.connection_count(), 1);
+    }
+
+    #[test]
+    fn background_pools_keep_idle_connections_up_to_the_maximum() {
+        const MAX_CONNECTIONS: usize = 10;
+
+        let options = background_pool_options(MAX_CONNECTIONS);
+
+        assert_eq!(options.inactive_connection_ttl(), IDLE_CONNECTION_TTL);
+        assert_eq!(options.abs_conn_ttl(), Some(MAX_CONNECTION_LIFETIME));
+        assert_eq!(options.constraints().max(), MAX_CONNECTIONS);
+        assert!(options.reset_connection());
     }
 }

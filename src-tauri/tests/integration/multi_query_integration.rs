@@ -1221,8 +1221,14 @@ mod serialization_parity {
     use sqllumen_lib::mysql::cell_values::{cell_json, decode_cell, JS_SAFE_INTEGER_MAX};
     use sqllumen_lib::mysql::multi_result::is_call_statement;
 
+    const BINARY_CHARACTER_SET: u16 = 63;
+
     fn column(column_type: ColumnType, flags: ColumnFlags) -> Column {
-        Column::new(column_type).with_flags(flags)
+        let column = Column::new(column_type).with_flags(flags);
+        if flags.contains(ColumnFlags::BINARY_FLAG) {
+            return column.with_character_set(BINARY_CHARACTER_SET);
+        }
+        column
     }
 
     fn serialize_mysql_value(

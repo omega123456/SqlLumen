@@ -70,10 +70,8 @@ pub async fn count_source_rows(
         .map_err(|error| format!("Failed to count rows in '{table}': {error}"))?
         .ok_or_else(|| format!("Failed to count rows in '{table}': no row returned"))?;
 
-    let row_count = row
-        .signed("row_count")
-        .map_err(|error| format!("Failed to decode row count for '{table}': {error}"))?;
-    Ok(row_count.max(0) as u64)
+    row.unsigned("row_count")
+        .map_err(|error| format!("Failed to decode row count for '{table}': {error}"))
 }
 
 pub(super) async fn truncate_target_table(

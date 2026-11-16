@@ -8,6 +8,9 @@ use opensrv_mysql::{
 };
 use opensrv_rustls::ServerConfig;
 
+use crate::common::column_definition_patch::{
+    ColumnDefinitionPatch, ColumnOverrides, MockColumnOverride,
+};
 use crate::common::first_packet_reader::FirstPacketReader;
 use std::collections::{HashMap, HashSet};
 use std::io;
@@ -256,6 +259,7 @@ pub struct MockScript {
     pub kill_hits_next_statement: bool,
     /// Login name the server refuses during authentication (wrong-credentials tests).
     pub rejected_username: Option<&'static str>,
+    pub column_overrides: HashMap<&'static str, MockColumnOverride>,
 }
 
 /// How a recorded statement reached the server.
@@ -334,6 +338,7 @@ struct MockMySqlBackend {
     /// Id of the connection this backend clone serves (assigned on accept).
     connection_id: u32,
     rejected_username: Option<&'static str>,
+    column_overrides: ColumnOverrides,
 }
 
 const VERSION_STATEMENT_ID: u32 = 1;
@@ -370,6 +375,7 @@ impl MockMySqlBackend {
             recorded_queries: Arc::default(),
             connection_id: FIRST_MOCK_CONNECTION_ID,
             rejected_username: None,
+            column_overrides: Arc::default(),
         }
     }
 
@@ -838,6 +844,7 @@ impl MockMySqlServer {
             .hits_next_statement
             .store(script.kill_hits_next_statement, Ordering::SeqCst);
         backend.rejected_username = script.rejected_username;
+        backend.column_overrides = Arc::new(script.column_overrides);
         backend
     }
 
@@ -1076,7 +1083,8 @@ async fn serve_mysql_protocol(
     let options = IntermediaryOptions::default();
     let tls_config = tls.filter(|_| client_wants_tls);
     let Some(tls_config) = tls_config else {
-        return plain_run_with_options(backend, writer, options, handshake).await;
+        let patched_writer = ColumnDefinitionPatch::new(writer, backend.column_overrides.clone());
+        return plain_run_with_options(backend, patched_writer, options, handshake).await;
     };
     secure_run_with_options(backend, writer, options, tls_config, handshake).await
 }

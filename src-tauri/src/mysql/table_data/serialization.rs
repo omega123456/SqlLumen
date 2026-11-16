@@ -120,6 +120,6 @@ fn grid_cell_variant(encoding: CellEncoding) -> GridCellVariant {
 }
 
 #[cfg(not(coverage))]
-pub(super) fn serialize_table_value(cell: &CellValue, encoding: CellEncoding) -> serde_json::Value {
+pub(super) fn serialize_table_value(cell: CellValue, encoding: CellEncoding) -> serde_json::Value {
     grid_cell_json(cell, grid_cell_variant(encoding))
 }

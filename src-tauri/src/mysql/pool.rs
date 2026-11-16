@@ -10,9 +10,13 @@ type TestPoolFactory = fn(&ConnectionParams) -> Result<BackgroundPool, String>;
 
 const MIN_POOL_CONNECTIONS: usize = 1;
 const MAX_POOL_CONNECTIONS: usize = 10;
+pub const IDLE_CONNECTION_TTL: Duration = Duration::from_secs(10 * 60);
+pub const MAX_CONNECTION_LIFETIME: Duration = Duration::from_secs(30 * 60);
 const POOL_RESETS_RETURNED_CONNECTIONS: bool = true;
 const REPORT_MATCHED_ROWS_AS_AFFECTED: bool = true;
 pub const TRANSFER_TIME_ZONE_SQL: &str = "SET time_zone='+00:00'";
+pub const SERVER_VERSION_SQL: &str = "SELECT VERSION()";
+pub const UNKNOWN_SERVER_VERSION: &str = "Unknown";
 
 #[cfg(any(test, feature = "test-utils"))]
 static TEST_POOL_FACTORY: std::sync::Mutex<Option<TestPoolFactory>> = std::sync::Mutex::new(None);
@@ -39,6 +43,11 @@ pub struct ConnectionParams {
 pub struct BackgroundPool {
     pool: mysql_async::Pool,
     connect_timeout: Duration,
+}
+
+pub struct OpenedPool {
+    pub pool: BackgroundPool,
+    pub server_version: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,11 +161,17 @@ pub fn kill_query_sql(thread_id: u64) -> String {
     format!("KILL QUERY {thread_id}")
 }
 
-fn background_pool_options(max_connections: usize) -> PoolOpts {
+pub fn connection_thread_id(conn: &Conn) -> u64 {
+    u64::from(conn.id())
+}
+
+pub fn background_pool_options(max_connections: usize) -> PoolOpts {
     let constraints = PoolConstraints::new(MIN_POOL_CONNECTIONS, max_connections)
         .expect("pool constraints keep the minimum below the maximum");
     PoolOpts::default()
         .with_constraints(constraints)
+        .with_inactive_connection_ttl(IDLE_CONNECTION_TTL)
+        .with_abs_conn_ttl(Some(MAX_CONNECTION_LIFETIME))
         .with_reset_connection(POOL_RESETS_RETURNED_CONNECTIONS)
 }
 
@@ -176,18 +191,69 @@ fn create_test_pool(params: &ConnectionParams) -> Option<Result<BackgroundPool, 
     factory.map(|create| create(params))
 }
 
+fn connect_background_pool(params: &ConnectionParams) -> Result<BackgroundPool, String> {
+    let settings = PoolSettings {
+        connect_timeout: connect_timeout(params),
+        max_connections: MAX_POOL_CONNECTIONS,
+    };
+    Ok(BackgroundPool::connect_lazily(
+        mysql_opts(params)?,
+        settings,
+    ))
+}
+
 pub async fn create_pool(params: &ConnectionParams) -> Result<BackgroundPool, String> {
     #[cfg(any(test, feature = "test-utils"))]
     if let Some(test_pool) = create_test_pool(params) {
         return test_pool;
     }
 
-    let settings = PoolSettings {
-        connect_timeout: connect_timeout(params),
-        max_connections: MAX_POOL_CONNECTIONS,
-    };
-    let pool = BackgroundPool::connect_lazily(mysql_opts(params)?, settings);
+    let pool = connect_background_pool(params)?;
     let validation_checkout = pool.checkout().await.map_err(|error| error.to_string())?;
     drop(validation_checkout);
     Ok(pool)
+}
+
+pub async fn create_pool_reading_version(params: &ConnectionParams) -> Result<OpenedPool, String> {
+    #[cfg(any(test, feature = "test-utils"))]
+    if let Some(test_pool) = create_test_pool(params) {
+        return opened_test_pool(test_pool?).await;
+    }
+
+    let pool = connect_background_pool(params)?;
+    let mut validation_checkout = pool.checkout().await.map_err(|error| error.to_string())?;
+    let server_version = read_server_version(&mut validation_checkout).await;
+    Ok(OpenedPool {
+        pool,
+        server_version,
+    })
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+async fn opened_test_pool(pool: BackgroundPool) -> Result<OpenedPool, String> {
+    let server_version = match pool.checkout().await {
+        Ok(mut conn) => read_server_version(&mut conn).await,
+        Err(error) => {
+            tracing::warn!(?error, "reading the server version failed");
+            UNKNOWN_SERVER_VERSION.to_string()
+        }
+    };
+    Ok(OpenedPool {
+        pool,
+        server_version,
+    })
+}
+
+async fn read_server_version(conn: &mut Conn) -> String {
+    use crate::mysql::logged_query::{fetch_first_decoded, LoggedStatement};
+
+    let statement = LoggedStatement::text(SERVER_VERSION_SQL);
+    let version = match fetch_first_decoded(conn, statement).await {
+        Ok(first_row) => first_row.and_then(|row| row.required_text(0).ok()),
+        Err(error) => {
+            tracing::warn!(?error, "reading the server version failed");
+            None
+        }
+    };
+    version.unwrap_or_else(|| UNKNOWN_SERVER_VERSION.to_string())
 }

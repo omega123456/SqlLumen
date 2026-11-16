@@ -161,6 +161,17 @@ pub async fn stream_text<'a>(
 }
 
 #[cfg(not(coverage))]
+pub async fn query_multi_result<'a>(
+    conn: &'a mut Conn,
+    sql: &str,
+) -> Result<mysql_async::QueryResult<'a, 'static, mysql_async::TextProtocol>, mysql_async::Error> {
+    use mysql_async::prelude::Queryable;
+
+    query_log::log_outgoing_sql(sql);
+    log_failure(conn.query_iter(sql.to_owned()).await)
+}
+
+#[cfg(not(coverage))]
 pub async fn stream_bound<'a>(
     conn: &'a mut Conn,
     statement: BoundStatement<'_>,
@@ -198,7 +209,7 @@ impl LoggedRows<'_> {
 
     pub async fn next_decoded(&mut self) -> Result<Option<DecodedRow>, mysql_async::Error> {
         let next = self.next_row().await?;
-        Ok(next.as_ref().map(DecodedRow::from_row))
+        Ok(next.map(DecodedRow::from_row))
     }
 
     pub fn finish(self) -> usize {
@@ -274,7 +285,7 @@ pub async fn fetch_decoded_pooled(
     statement: LoggedStatement<'_>,
 ) -> Result<Vec<DecodedRow>, mysql_async::Error> {
     let rows = fetch_all_pooled(pool, statement).await?;
-    Ok(rows.iter().map(DecodedRow::from_row).collect())
+    Ok(rows.into_iter().map(DecodedRow::from_row).collect())
 }
 
 pub async fn fetch_first_decoded_pooled(
@@ -282,7 +293,7 @@ pub async fn fetch_first_decoded_pooled(
     statement: LoggedStatement<'_>,
 ) -> Result<Option<DecodedRow>, mysql_async::Error> {
     let first_row = fetch_first_pooled(pool, statement).await?;
-    Ok(first_row.as_ref().map(DecodedRow::from_row))
+    Ok(first_row.map(DecodedRow::from_row))
 }
 
 pub async fn fetch_first_decoded(
@@ -290,7 +301,7 @@ pub async fn fetch_first_decoded(
     statement: LoggedStatement<'_>,
 ) -> Result<Option<DecodedRow>, mysql_async::Error> {
     let first_row = fetch_first(conn, statement).await?;
-    Ok(first_row.as_ref().map(DecodedRow::from_row))
+    Ok(first_row.map(DecodedRow::from_row))
 }
 
 pub async fn fetch_decoded(
@@ -298,7 +309,7 @@ pub async fn fetch_decoded(
     statement: LoggedStatement<'_>,
 ) -> Result<Vec<DecodedRow>, mysql_async::Error> {
     let rows = fetch_all(conn, statement).await?;
-    Ok(rows.iter().map(DecodedRow::from_row).collect())
+    Ok(rows.into_iter().map(DecodedRow::from_row).collect())
 }
 
 #[cfg(coverage)]
@@ -338,6 +349,15 @@ pub async fn stream_text<'a>(
     conn: &'a mut Conn,
     sql: &str,
 ) -> Result<LoggedRowStream<'a, mysql_async::TextProtocol>, mysql_async::Error> {
+    let _ = (conn, sql);
+    Err(unavailable_in_coverage())
+}
+
+#[cfg(coverage)]
+pub async fn query_multi_result<'a>(
+    conn: &'a mut Conn,
+    sql: &str,
+) -> Result<mysql_async::QueryResult<'a, 'static, mysql_async::TextProtocol>, mysql_async::Error> {
     let _ = (conn, sql);
     Err(unavailable_in_coverage())
 }

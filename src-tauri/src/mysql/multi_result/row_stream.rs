@@ -33,7 +33,7 @@ where
             break;
         }
         crate::mysql::query_log::log_mysql_async_row(stored_row_count, &row);
-        serialized_rows.push(serialize_row(&row));
+        serialized_rows.push(serialize_row(row));
     }
     crate::mysql::query_log::log_mysql_async_row_count(serialized_rows.len());
     Ok(DecodedRows {
@@ -51,6 +51,6 @@ where
     }
 }
 
-pub(crate) fn serialize_row(row: &mysql_async::Row) -> crate::mysql::query_executor::SharedRow {
+pub(crate) fn serialize_row(row: mysql_async::Row) -> crate::mysql::query_executor::SharedRow {
     crate::mysql::cell_values::row_json(row).into()
 }

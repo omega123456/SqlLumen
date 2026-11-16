@@ -123,7 +123,7 @@ pub(crate) async fn read_session_database(
     use crate::mysql::logged_query::{fetch_first, LoggedStatement};
 
     match fetch_first(conn, LoggedStatement::text("SELECT DATABASE()")).await {
-        Ok(first_row) => first_row_database(first_row.as_ref()),
+        Ok(first_row) => first_row_database(first_row),
         Err(error) => Err(error.to_string()),
     }
 }
@@ -145,7 +145,7 @@ pub(super) async fn capture_session_database(
 }
 
 fn first_row_database(
-    first_row: Option<&mysql_async::Row>,
+    first_row: Option<mysql_async::Row>,
 ) -> Result<crate::mysql::query_executor::RunDatabase, String> {
     use crate::mysql::query_executor::RunDatabase;
 

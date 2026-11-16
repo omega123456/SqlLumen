@@ -1663,7 +1663,10 @@ mod command_wrapper_integration {
         )
     }
 
-    fn designer_metadata_step() -> MockQueryStep {
+    const NEXT_USER_ID: u64 = 7;
+    const NEXT_ID_ABOVE_SIGNED_RANGE: u64 = 10_000_000_000_000_000_000;
+
+    fn designer_metadata_step(next_auto_increment: u64) -> MockQueryStep {
         MockQueryStep::with_rows(
             sqllumen_lib::mysql::table_designer::load_table_metadata_query(),
             vec![
@@ -1680,7 +1683,7 @@ mod command_wrapper_integration {
             vec![vec![
                 MockCell::Bytes(b"InnoDB"),
                 MockCell::Bytes(b"utf8mb4_unicode_ci"),
-                MockCell::U64(7),
+                MockCell::U64(next_auto_increment),
                 MockCell::Bytes(b"Dynamic"),
                 MockCell::Bytes(b"users table"),
             ]],
@@ -1800,7 +1803,7 @@ mod command_wrapper_integration {
         assert_eq!(schema.properties.engine, "InnoDB");
         assert_eq!(schema.properties.charset, "utf8mb4");
         assert_eq!(schema.properties.collation, "utf8mb4_unicode_ci");
-        assert_eq!(schema.properties.auto_increment, Some(7));
+        assert_eq!(schema.properties.auto_increment, Some(NEXT_USER_ID));
         assert_eq!(schema.properties.row_format, "Dynamic");
         assert_eq!(schema.properties.comment, "users table");
         assert_eq!(schema.indexes.len(), 1);
@@ -1814,7 +1817,7 @@ mod command_wrapper_integration {
         let server = MockMySqlServer::start_script(vec![
             version_step(),
             designer_columns_step(),
-            designer_metadata_step(),
+            designer_metadata_step(NEXT_USER_ID),
             designer_indexes_step(),
             designer_foreign_keys_step(),
         ])
@@ -1835,6 +1838,25 @@ mod command_wrapper_integration {
         assert!(ddl.contains(
             "`tracking_id` CHAR(36) NOT NULL DEFAULT UUID() COMMENT 'tracking identifier'"
         ));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn load_table_for_designer_reads_an_auto_increment_above_the_signed_range() {
+        let server = MockMySqlServer::start_script(vec![
+            version_step(),
+            designer_columns_step(),
+            designer_metadata_step(NEXT_ID_ABOVE_SIGNED_RANGE),
+            designer_indexes_step(),
+            designer_foreign_keys_step(),
+        ])
+        .await;
+
+        let schema = load_users_schema_via_ipc(server.port);
+
+        assert_eq!(
+            schema.properties.auto_increment,
+            Some(NEXT_ID_ABOVE_SIGNED_RANGE)
+        );
     }
 }
 

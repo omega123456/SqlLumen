@@ -1,6 +1,6 @@
 use super::*;
 #[cfg(not(coverage))]
-use crate::mysql::cell_values::cell_json;
+use crate::mysql::cell_values::into_cell_json;
 #[cfg(not(coverage))]
 use crate::mysql::logged_query::fetch_decoded_pooled;
 
@@ -104,8 +104,8 @@ fn row_column_names(row: &DecodedRow) -> Vec<String> {
 }
 
 #[cfg(not(coverage))]
-fn serialized_export_row(row: &DecodedRow) -> Vec<serde_json::Value> {
-    row.cells().iter().map(cell_json).collect()
+fn serialized_export_row(row: DecodedRow) -> Vec<serde_json::Value> {
+    row.into_cells().into_iter().map(into_cell_json).collect()
 }
 
 #[cfg(not(coverage))]
@@ -120,7 +120,7 @@ async fn export_xlsx(
 
     let columns = rows.first().map(row_column_names).unwrap_or_default();
     let serialized_rows: Vec<Vec<serde_json::Value>> =
-        rows.iter().map(serialized_export_row).collect();
+        rows.into_iter().map(serialized_export_row).collect();
 
     let export_options = crate::export::ExportOptions {
         format: crate::export::ExportFormat::Xlsx,
@@ -150,7 +150,7 @@ fn write_csv_record(
 }
 
 #[cfg(not(coverage))]
-fn csv_export_record(row: &DecodedRow) -> Vec<String> {
+fn csv_export_record(row: DecodedRow) -> Vec<String> {
     serialized_export_row(row)
         .iter()
         .map(crate::export::csv_writer::csv_field)
@@ -174,7 +174,7 @@ async fn stream_csv_export(
             write_csv_record(&mut csv_writer, &row_column_names(&row))?;
         }
         headers_written = true;
-        write_csv_record(&mut csv_writer, &csv_export_record(&row))?;
+        write_csv_record(&mut csv_writer, &csv_export_record(row))?;
     }
 
     csv_writer
@@ -184,22 +184,19 @@ async fn stream_csv_export(
 
 #[cfg(not(coverage))]
 fn json_export_object(
-    row: &DecodedRow,
+    row: DecodedRow,
     columns: &[String],
 ) -> serde_json::Map<String, serde_json::Value> {
     let mut object = serde_json::Map::new();
-    for (column_index, column) in columns.iter().enumerate() {
-        object.insert(column.clone(), export_value_or_null(row, column_index));
+    let mut cells = row.into_cells().into_iter();
+    for column in columns {
+        let value = cells
+            .next()
+            .map(into_cell_json)
+            .unwrap_or(serde_json::Value::Null);
+        object.insert(column.clone(), value);
     }
     object
-}
-
-#[cfg(not(coverage))]
-fn export_value_or_null(row: &DecodedRow, column_index: usize) -> serde_json::Value {
-    row.cells()
-        .get(column_index)
-        .map(cell_json)
-        .unwrap_or(serde_json::Value::Null)
 }
 
 #[cfg(not(coverage))]
@@ -236,7 +233,7 @@ async fn stream_json_export(
 
     while let Some(row) = next_export_row(stream).await? {
         let row_columns = columns.get_or_insert_with(|| row_column_names(&row));
-        let indented = indented_json_object(json_export_object(&row, row_columns))?;
+        let indented = indented_json_object(json_export_object(row, row_columns))?;
         let separator = json_row_separator(is_first);
         write!(writer, "{separator}\n{indented}")
             .map_err(|error| format!("Write error: {error}"))?;
@@ -256,18 +253,22 @@ async fn stream_sql_insert_export(
     mut writer: ExportFileWriter,
     table_name: &str,
 ) -> Result<(), String> {
+    use crate::export::sql_dump::{write_time_zone_restore_footer, write_utc_time_zone_header};
     use std::io::Write;
 
+    write_utc_time_zone_header(&mut writer).map_err(|error| format!("SQL write error: {error}"))?;
     let mut columns: Option<Vec<String>> = None;
     while let Some(row) = next_export_row(stream).await? {
         let row_columns = columns.get_or_insert_with(|| row_column_names(&row));
         let single_row = crate::export::ExportRows {
             columns: row_columns,
-            rows: &[serialized_export_row(&row)],
+            rows: &[serialized_export_row(row)],
         };
         crate::export::sql_writer::write_sql(&mut writer, &single_row, table_name)
             .map_err(|error| format!("SQL write error: {error}"))?;
     }
+    write_time_zone_restore_footer(&mut writer)
+        .map_err(|error| format!("SQL write error: {error}"))?;
 
     writer
         .flush()
@@ -282,22 +283,31 @@ struct StreamedExport<'a> {
 }
 
 #[cfg(not(coverage))]
+async fn export_connection(
+    pool: &BackgroundPool,
+    format: &crate::export::ExportFormat,
+) -> Result<mysql_async::Conn, String> {
+    if *format == crate::export::ExportFormat::SqlInsert {
+        return pool.checkout_for_transfer().await;
+    }
+    pool.checkout().await.map_err(|error| error.to_string())
+}
+
+#[cfg(not(coverage))]
 async fn stream_export_to_temp_file(
     context: &TableDataContext<'_>,
     query: &ExportQuery,
     export: StreamedExport<'_>,
 ) -> Result<(), String> {
-    let mut conn = context
-        .pool
-        .checkout()
+    let file = std::fs::File::create(export.temp_path)
+        .map_err(|error| format!("Failed to create file: {error}"))?;
+    let writer = std::io::BufWriter::new(file);
+    let mut conn = export_connection(context.pool, &export.format)
         .await
         .map_err(|error| format!("Export query failed: {error}"))?;
     let mut stream = crate::mysql::logged_query::stream(&mut conn, query.statement())
         .await
         .map_err(|error| format!("Export query failed: {error}"))?;
-    let file = std::fs::File::create(export.temp_path)
-        .map_err(|error| format!("Failed to create file: {error}"))?;
-    let writer = std::io::BufWriter::new(file);
 
     let written = write_streamed_export(&mut stream, writer, &export).await;
     stream.finish();

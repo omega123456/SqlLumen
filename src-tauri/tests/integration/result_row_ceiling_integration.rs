@@ -24,8 +24,8 @@ use sqllumen_lib::state::AppState;
 
 use crate::common;
 use crate::common::editor_session_fixtures::{
-    call_query, connection_id_step, database_step, editor_query, n_column, n_row, n_stream,
-    single_row_step, EDITOR_TAB,
+    call_query, database_step, editor_query, n_column, n_row, n_stream, single_row_step,
+    EDITOR_TAB, KILL_FIRST_EDITOR_SESSION,
 };
 use crate::common::log_capture::LogCaptureGuard;
 use crate::common::mock_mysql_server::{
@@ -48,8 +48,7 @@ fn killable_stream(query: &'static str, rows: usize) -> MockStreamStep {
     }
 }
 
-fn script(mut steps: Vec<MockQueryStep>, stream_steps: Vec<MockStreamStep>) -> MockScript {
-    steps.insert(0, connection_id_step());
+fn script(steps: Vec<MockQueryStep>, stream_steps: Vec<MockStreamStep>) -> MockScript {
     MockScript {
         steps,
         stream_steps,
@@ -152,7 +151,7 @@ async fn select_over_the_ceiling_is_truncated_killed_and_the_session_stays_usabl
     assert_eq!(result.full_export_blocked_reason, None);
     assert_eq!(server.kill_count(), 1);
     assert!(
-        capture.contents().contains("KILL QUERY 42"),
+        capture.contents().contains(KILL_FIRST_EDITOR_SESSION),
         "KILL is logged"
     );
     assert_eq!(count(&server, "SELECT DATABASE()"), 1);
@@ -181,7 +180,7 @@ async fn a_failed_kill_falls_back_to_draining_and_is_still_a_truncated_success()
                         ErrorKind::ER_SPECIFIC_ACCESS_DENIED_ERROR,
                         b"KILL not allowed",
                     )),
-                    ..single_row_step("KILL QUERY 42")
+                    ..single_row_step(KILL_FIRST_EDITOR_SESSION)
                 },
             ],
             vec![n_stream("SELECT n FROM big LIMIT 1000000", 50)],

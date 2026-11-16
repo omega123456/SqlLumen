@@ -109,7 +109,7 @@ mod against_the_fake_server {
     use sqllumen_lib::mysql::connection_options::{connect_within_timeout, mysql_opts};
     use sqllumen_lib::mysql::logged_query::{
         execute, execute_pooled, fetch_all, fetch_all_pooled, fetch_first, fetch_first_pooled,
-        stream_bound, stream_text, LoggedRowStream,
+        query_multi_result, stream_bound, stream_text, LoggedRowStream,
     };
     use sqllumen_lib::mysql::pool::{ConnectionParams, SslSettings};
     use std::time::Duration;
@@ -177,7 +177,7 @@ mod against_the_fake_server {
     async fn streamed_numbers<P: Protocol>(rows: &mut LoggedRowStream<'_, P>) -> Vec<i64> {
         let mut numbers = Vec::new();
         while let Some(row) = rows.next_row().await.expect("rows should stream") {
-            numbers.push(DecodedRow::from_row(&row).signed("n").expect("integer n"));
+            numbers.push(DecodedRow::from_row(row).signed("n").expect("integer n"));
         }
         numbers
     }
@@ -192,7 +192,7 @@ mod against_the_fake_server {
     fn first_numbers(rows: &[mysql_async::Row]) -> Vec<i64> {
         rows.iter()
             .map(|row| {
-                DecodedRow::from_row(row)
+                DecodedRow::from_row(row.clone())
                     .signed(0)
                     .expect("n should be an integer")
             })
@@ -292,6 +292,23 @@ mod against_the_fake_server {
 
         assert!(!error.is_fatal(), "{error}");
         let captured = plain_logs(&logs);
+        assert!(captured.contains("mysql execute error"), "{captured}");
+        assert!(captured.contains("doesn't exist"), "{captured}");
+    }
+
+    #[tokio::test]
+    async fn multi_result_queries_log_their_sql_and_server_errors() {
+        let server = MockMySqlServer::start_with(script()).await;
+        let mut conn = connect(&server).await;
+        let logs = LogCaptureGuard::start();
+
+        let error = query_multi_result(&mut conn, MISSING_TABLE)
+            .await
+            .expect_err("a missing table is a server error");
+
+        assert!(!error.is_fatal(), "{error}");
+        let captured = plain_logs(&logs);
+        assert!(captured.contains(MISSING_TABLE), "{captured}");
         assert!(captured.contains("mysql execute error"), "{captured}");
         assert!(captured.contains("doesn't exist"), "{captured}");
     }

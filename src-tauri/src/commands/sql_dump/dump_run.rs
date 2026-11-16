@@ -302,16 +302,6 @@ impl DumpRun<'_> {
             .update_progress(|progress| progress.mysql_thread_id = thread_id);
     }
 
-    pub(super) async fn connection_thread_id(&mut self) -> Result<u64, String> {
-        let rows = fetch_decoded(self.conn, LoggedStatement::text("SELECT CONNECTION_ID()"))
-            .await
-            .map_err(|error| format!("Failed to get connection ID: {error}"))?;
-        let first_row = rows
-            .first()
-            .ok_or_else(|| "Failed to get connection ID: no row returned".to_string())?;
-        first_row.unsigned(0)
-    }
-
     pub(super) async fn dump_table_rows(
         &mut self,
         file: &mut std::fs::File,
@@ -320,7 +310,7 @@ impl DumpRun<'_> {
         let table_name = &object.entry.name;
         let data_query = format!("SELECT * FROM {}", object.qualified_name());
 
-        let thread_id = self.connection_thread_id().await?;
+        let thread_id = crate::mysql::pool::connection_thread_id(self.conn);
         self.set_running_thread(Some(thread_id));
 
         let job = self.job;

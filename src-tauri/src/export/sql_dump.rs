@@ -80,10 +80,18 @@ pub fn write_header<W: Write>(
         "/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;"
     )?;
     writeln!(writer, "/*!40101 SET NAMES utf8mb4 */;")?;
-    writeln!(writer, "/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;")?;
-    writeln!(writer, "/*!40103 SET TIME_ZONE='+00:00' */;")?;
+    write_utc_time_zone_header(writer)?;
     writeln!(writer)?;
     Ok(())
+}
+
+pub fn write_utc_time_zone_header<W: Write>(writer: &mut W) -> io::Result<()> {
+    writeln!(writer, "/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;")?;
+    writeln!(writer, "/*!40103 SET TIME_ZONE='+00:00' */;")
+}
+
+pub fn write_time_zone_restore_footer<W: Write>(writer: &mut W) -> io::Result<()> {
+    writeln!(writer, "/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;")
 }
 
 pub fn write_footer<W: Write>(writer: &mut W) -> io::Result<()> {
@@ -100,8 +108,7 @@ pub fn write_footer<W: Write>(writer: &mut W) -> io::Result<()> {
         writer,
         "/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;"
     )?;
-    writeln!(writer, "/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;")?;
-    Ok(())
+    write_time_zone_restore_footer(writer)
 }
 
 pub fn dump_object_keyword(is_view: bool) -> &'static str {

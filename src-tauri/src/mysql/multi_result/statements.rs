@@ -51,7 +51,6 @@ pub(super) async fn execute_single_select_statement(
     use crate::mysql::query_executor::{
         sql_with_auto_limit, statement_blocked_reason, StoredResult, StoredResultParts,
     };
-    use mysql_async::prelude::Queryable;
 
     let SelectStatement {
         sql,
@@ -62,9 +61,7 @@ pub(super) async fn execute_single_select_statement(
     let sql_to_execute = sql_with_auto_limit(sql, auto_limit_applied, row_limit_used);
 
     let start = std::time::Instant::now();
-    crate::mysql::query_log::log_outgoing_sql(&sql_to_execute);
-    let mut result = conn
-        .query_iter(&sql_to_execute)
+    let mut result = crate::mysql::logged_query::query_multi_result(conn, &sql_to_execute)
         .await
         .map_err(|error| map_mysql_error(&error))?;
 
@@ -109,12 +106,9 @@ pub(super) async fn execute_single_dml_statement(
     context: &DecodeContext<'_>,
 ) -> Result<StatementOutcome, String> {
     use crate::mysql::query_executor::{StoredResult, StoredResultParts};
-    use mysql_async::prelude::Queryable;
 
     let start = std::time::Instant::now();
-    crate::mysql::query_log::log_outgoing_sql(sql);
-    let mut result = conn
-        .query_iter(sql)
+    let mut result = crate::mysql::logged_query::query_multi_result(conn, sql)
         .await
         .map_err(|error| map_mysql_error(&error))?;
 
@@ -240,12 +234,8 @@ pub(super) async fn execute_call_statement(
     sql: &str,
     context: &DecodeContext<'_>,
 ) -> Result<Vec<StatementOutcome>, String> {
-    use mysql_async::prelude::Queryable;
-
     let start = std::time::Instant::now();
-    crate::mysql::query_log::log_outgoing_sql(sql);
-    let mut result = conn
-        .query_iter(sql)
+    let mut result = crate::mysql::logged_query::query_multi_result(conn, sql)
         .await
         .map_err(|error| map_mysql_error(&error))?;
 

@@ -88,9 +88,7 @@ pub async fn ensure_target_database(
 pub async fn read_max_allowed_packet(target: &mut Conn) -> Option<u64> {
     let statement = LoggedStatement::text("SELECT @@max_allowed_packet");
     match fetch_first_decoded(target, statement).await {
-        Ok(first_row) => first_row
-            .and_then(|row| row.signed(0).ok())
-            .map(|value| value.max(0) as u64),
+        Ok(first_row) => first_row.and_then(|row| row.unsigned(0).ok()),
         Err(error) => {
             tracing::warn!(?error, "reading max_allowed_packet failed");
             None

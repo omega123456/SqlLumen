@@ -259,10 +259,7 @@ mod coverage_cancel {
 #[cfg(not(coverage))]
 mod mock_cancel {
     use super::*;
-    use crate::common::mock_mysql_server::{
-        MockCell, MockColumnDef, MockMySqlServer, MockQueryStep,
-    };
-    use opensrv_mysql::{ColumnFlags, ColumnType};
+    use crate::common::mock_mysql_server::MockMySqlServer;
     use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
     use tokio_util::sync::CancellationToken;
 
@@ -304,23 +301,9 @@ mod mock_cancel {
         state.registry.insert(connection_id.to_string(), entry);
     }
 
-    /// Start a mock MySQL server that responds to `SELECT CONNECTION_ID()` and
-    /// accepts any `KILL QUERY` command (unmatched queries return OK by default).
-    async fn start_mock_with_connection_id(
-        thread_id: u64,
+    async fn start_mock_accepting_kill(
     ) -> (MockMySqlServer, sqllumen_lib::mysql::pool::BackgroundPool) {
-        let server = MockMySqlServer::start_script(vec![MockQueryStep {
-            query: "SELECT CONNECTION_ID()",
-            columns: vec![MockColumnDef {
-                name: "CONNECTION_ID()",
-                coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-                colflags: ColumnFlags::UNSIGNED_FLAG,
-            }],
-            rows: vec![vec![MockCell::U64(thread_id)]],
-            error: None,
-            affected_rows: None,
-        }])
-        .await;
+        let server = MockMySqlServer::start_script(vec![]).await;
 
         let pool = crate::common::mock_session::mock_pool(server.port);
 
@@ -329,7 +312,7 @@ mod mock_cancel {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn cancel_query_issues_kill_when_thread_id_found() {
-        let (server, pool) = start_mock_with_connection_id(12345).await;
+        let (server, pool) = start_mock_accepting_kill().await;
         let state = common::test_app_state();
 
         // Register the mock pool in the state registry so cancel_query_impl can find it

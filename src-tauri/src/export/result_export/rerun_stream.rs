@@ -68,7 +68,7 @@ impl RerunStream<'_, '_> {
             self.stopping = true;
             return;
         }
-        let values = crate::mysql::multi_result::serialize_row(&row);
+        let values = crate::mysql::multi_result::serialize_row(row);
         match self.pipeline.accept_row(&values) {
             Ok(RowWrite::Written) => {}
             Ok(RowWrite::SheetLimitReached) => self.stop_with_kill(SHEET_LIMIT_KILL_PURPOSE).await,

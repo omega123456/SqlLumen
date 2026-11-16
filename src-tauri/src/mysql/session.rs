@@ -9,6 +9,7 @@ pub const QUEUED_RUN_CANCELLED_MESSAGE: &str =
     "Query cancelled while waiting for the editor session";
 
 pub const SESSION_DATABASE_WAIT: std::time::Duration = std::time::Duration::from_millis(250);
+pub const SESSION_DATABASE_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 
 pub struct EditorSession {
     pub conn: mysql_async::Conn,
@@ -125,27 +126,12 @@ pub async fn acquire(state: &AppState, connection_id: &str) -> Result<SessionGua
             .registry
             .get_connection_params(connection_id)
             .ok_or_else(|| format!("Connection '{connection_id}' not found in registry"))?;
-        let mut conn = crate::mysql::multi_result::build_connection(&params).await?;
-        let thread_id = read_connection_id(&mut conn).await?;
+        let conn = crate::mysql::multi_result::build_connection(&params).await?;
+        let thread_id = crate::mysql::pool::connection_thread_id(&conn);
         *guard = Some(EditorSession { conn, thread_id });
     }
 
     Ok(guard)
-}
-
-#[cfg(not(coverage))]
-async fn read_connection_id(conn: &mut mysql_async::Conn) -> Result<u64, String> {
-    use crate::mysql::logged_query::{fetch_first, LoggedStatement};
-
-    let first_row = fetch_first(conn, LoggedStatement::text("SELECT CONNECTION_ID()"))
-        .await
-        .map_err(|error| format!("Failed to get connection ID: {error}"))?;
-    let Some(row) = first_row else {
-        return Err("CONNECTION_ID() returned NULL".to_string());
-    };
-    crate::mysql::cell_values::DecodedRow::from_row(&row)
-        .unsigned(0)
-        .map_err(|error| format!("Failed to get connection ID: {error}"))
 }
 
 #[cfg(not(coverage))]
@@ -205,7 +191,15 @@ pub async fn existing_session_database(state: &AppState, connection_id: &str) ->
         return None;
     };
     let session = guard.as_mut()?;
-    let read = crate::mysql::multi_result::read_session_database(&mut session.conn).await;
+    let reading = crate::mysql::multi_result::read_session_database(&mut session.conn);
+    let Ok(read) = tokio::time::timeout(SESSION_DATABASE_READ_TIMEOUT, reading).await else {
+        tracing::warn!(
+            connection_id,
+            "editor session did not answer SELECT DATABASE(); session discarded, using the registry default"
+        );
+        *guard = None;
+        return None;
+    };
     match read {
         Ok(RunDatabase::Named(database)) => Some(database),
         Ok(RunDatabase::NoDatabase | RunDatabase::NotCaptured) => None,

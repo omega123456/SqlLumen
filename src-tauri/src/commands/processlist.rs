@@ -43,13 +43,6 @@ const RDS_KILL_PROCEDURE_CHECK_SQL: &str = "SELECT ROUTINE_NAME \
       AND ROUTINE_TYPE = 'PROCEDURE' \
     LIMIT 1";
 
-fn text_or_empty(row: &DecodedRow, column_name: &str) -> String {
-    row.optional_text(column_name)
-        .ok()
-        .flatten()
-        .unwrap_or_default()
-}
-
 fn optional_text_or_none(row: &DecodedRow, column_name: &str) -> Option<String> {
     row.optional_text(column_name).ok().flatten()
 }
@@ -60,10 +53,10 @@ fn process_row(row: &DecodedRow) -> Result<ProcessRow, String> {
         .map_err(|error| format!("Failed to read Id column: {error}"))?;
     Ok(ProcessRow {
         id,
-        user: text_or_empty(row, "User"),
-        host: text_or_empty(row, "Host"),
+        user: row.text_or_empty("User"),
+        host: row.text_or_empty("Host"),
         db: optional_text_or_none(row, "db"),
-        command: text_or_empty(row, "Command"),
+        command: row.text_or_empty("Command"),
         time: row.signed("Time").unwrap_or(0),
         state: optional_text_or_none(row, "State"),
         info: optional_text_or_none(row, "Info"),

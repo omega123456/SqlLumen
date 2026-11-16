@@ -43,17 +43,13 @@ pub(super) async fn switch_to_run_database(
 }
 
 async fn read_session_database(conn: &mut mysql_async::Conn) -> Result<Option<String>, String> {
-    use crate::mysql::logged_query::{fetch_first, LoggedStatement};
-
-    let first_row = fetch_first(conn, LoggedStatement::text("SELECT DATABASE()"))
+    let database = crate::mysql::multi_result::read_session_database(conn)
         .await
         .map_err(|error| format!("Couldn't read the session's database: {error}"))?;
-    let Some(row) = first_row else {
-        return Ok(None);
-    };
-    crate::mysql::cell_values::DecodedRow::from_row(&row)
-        .optional_text(0)
-        .map_err(|error| format!("Couldn't read the session's database: {error}"))
+    match database {
+        RunDatabase::Named(name) => Ok(Some(name)),
+        RunDatabase::NoDatabase | RunDatabase::NotCaptured => Ok(None),
+    }
 }
 
 pub(super) async fn restore_database(

@@ -196,18 +196,6 @@ mod against_the_mock_server {
         )
     }
 
-    fn connection_id_step() -> MockQueryStep {
-        MockQueryStep::with_rows(
-            "SELECT CONNECTION_ID()",
-            vec![typed_column(
-                "CONNECTION_ID()",
-                ColumnType::MYSQL_TYPE_LONGLONG,
-                ColumnFlags::UNSIGNED_FLAG,
-            )],
-            vec![vec![MockCell::U64(77)]],
-        )
-    }
-
     fn typed_order_columns() -> Vec<MockColumnDef> {
         vec![
             typed_column("id", ColumnType::MYSQL_TYPE_LONGLONG, ColumnFlags::empty()),
@@ -293,7 +281,6 @@ mod against_the_mock_server {
                 "SHOW CREATE VIEW `app`.`order_totals`",
                 b"CREATE VIEW `order_totals` AS SELECT 1",
             ),
-            connection_id_step(),
             orders_rows_step(),
             empty_audit_rows_step(),
         ]
@@ -412,7 +399,6 @@ mod against_the_mock_server {
                 "SHOW CREATE TABLE `app`.`flags`",
                 b"CREATE TABLE `flags` (`flag` tinyint(1))",
             ),
-            connection_id_step(),
             MockQueryStep::with_rows(
                 "SELECT * FROM `app`.`flags`",
                 vec![typed_column(

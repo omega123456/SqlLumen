@@ -302,21 +302,7 @@ async fn open_mock_connection(
 
 async fn execute_query_via_mock(response: MockQueryResponse) -> ExecuteQueryResultDto {
     let sql = response.query;
-    let server = MockMySqlServer::start_script(vec![
-        MockQueryStep {
-            query: "SELECT CONNECTION_ID()",
-            columns: vec![MockColumnDef {
-                name: "CONNECTION_ID()",
-                coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-                colflags: ColumnFlags::UNSIGNED_FLAG,
-            }],
-            rows: vec![vec![MockCell::U64(42)]],
-            error: None,
-            affected_rows: None,
-        },
-        response.into(),
-    ])
-    .await;
+    let server = MockMySqlServer::start_script(vec![response.into()]).await;
     let (_app, webview) = build_query_commands_app();
     let open_result = open_mock_connection(&webview, server.port).await;
 
@@ -701,17 +687,6 @@ async fn execute_multi_query_ipc_uses_row_limit_and_serializes_rows_without_tota
     let statements = vec!["SELECT 1 AS id", "SELECT 2 AS id"];
     let steps = vec![
         MockQueryStep {
-            query: "SELECT CONNECTION_ID()",
-            columns: vec![MockColumnDef {
-                name: "CONNECTION_ID()",
-                coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-                colflags: ColumnFlags::UNSIGNED_FLAG,
-            }],
-            rows: vec![vec![MockCell::U64(42)]],
-            error: None,
-            affected_rows: None,
-        },
-        MockQueryStep {
             query: "SELECT 1 AS id",
             columns: vec![MockColumnDef {
                 name: "id",
@@ -756,37 +731,24 @@ async fn execute_multi_query_ipc_uses_row_limit_and_serializes_rows_without_tota
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn execute_call_query_ipc_uses_row_limit_and_serializes_rows_without_total_pages() {
     let sql = "CALL sp_list_users()";
-    let steps = vec![
-        MockQueryStep {
-            query: "SELECT CONNECTION_ID()",
-            columns: vec![MockColumnDef {
-                name: "CONNECTION_ID()",
-                coltype: ColumnType::MYSQL_TYPE_LONGLONG,
+    let steps = vec![MockQueryStep {
+        query: sql,
+        columns: vec![
+            MockColumnDef {
+                name: "id",
+                coltype: ColumnType::MYSQL_TYPE_LONG,
                 colflags: ColumnFlags::UNSIGNED_FLAG,
-            }],
-            rows: vec![vec![MockCell::U64(42)]],
-            error: None,
-            affected_rows: None,
-        },
-        MockQueryStep {
-            query: sql,
-            columns: vec![
-                MockColumnDef {
-                    name: "id",
-                    coltype: ColumnType::MYSQL_TYPE_LONG,
-                    colflags: ColumnFlags::UNSIGNED_FLAG,
-                },
-                MockColumnDef {
-                    name: "name",
-                    coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                    colflags: ColumnFlags::empty(),
-                },
-            ],
-            rows: vec![vec![MockCell::U32(1), MockCell::Bytes(b"Alice")]],
-            error: None,
-            affected_rows: None,
-        },
-    ];
+            },
+            MockColumnDef {
+                name: "name",
+                coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
+                colflags: ColumnFlags::empty(),
+            },
+        ],
+        rows: vec![vec![MockCell::U32(1), MockCell::Bytes(b"Alice")]],
+        error: None,
+        affected_rows: None,
+    }];
 
     let (result, request_body) = execute_call_query_via_mock(steps, sql, 654).await;
 
@@ -804,17 +766,6 @@ async fn execute_call_query_ipc_uses_row_limit_and_serializes_rows_without_total
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn reexecute_single_result_ipc_uses_row_limit_and_serializes_rows_without_total_pages() {
     let sql = "SELECT id, name FROM users";
-    let initial_step = MockQueryStep {
-        query: "SELECT CONNECTION_ID()",
-        columns: vec![MockColumnDef {
-            name: "CONNECTION_ID()",
-            coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-            colflags: ColumnFlags::UNSIGNED_FLAG,
-        }],
-        rows: vec![vec![MockCell::U64(42)]],
-        error: None,
-        affected_rows: None,
-    };
     let seeded_query_step = MockQueryStep {
         query: sql,
         columns: vec![
@@ -852,12 +803,8 @@ async fn reexecute_single_result_ipc_uses_row_limit_and_serializes_rows_without_
         affected_rows: None,
     };
 
-    let (result, request_body) = reexecute_single_result_via_mock(
-        vec![initial_step, seeded_query_step, reexecute_step],
-        sql,
-        777,
-    )
-    .await;
+    let (result, request_body) =
+        reexecute_single_result_via_mock(vec![seeded_query_step, reexecute_step], sql, 777).await;
 
     assert_eq!(request_body.get("rowLimit"), Some(&json!(777)));
     let serialized = serde_json::to_value(&result).expect("result should serialize");
@@ -869,17 +816,7 @@ async fn reexecute_single_result_ipc_uses_row_limit_and_serializes_rows_without_
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn execute_query_ipc_runs_start_transaction_without_prepared_statement_protocol() {
     let server = MockMySqlServer::start_script_with_unsupported_prepared_prefixes(
-        vec![MockQueryStep {
-            query: "SELECT CONNECTION_ID()",
-            columns: vec![MockColumnDef {
-                name: "CONNECTION_ID()",
-                coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-                colflags: ColumnFlags::UNSIGNED_FLAG,
-            }],
-            rows: vec![vec![MockCell::U64(42)]],
-            error: None,
-            affected_rows: None,
-        }],
+        vec![],
         vec!["START TRANSACTION"],
     )
     .await;
@@ -901,20 +838,6 @@ async fn execute_query_ipc_runs_start_transaction_without_prepared_statement_pro
     assert_eq!(result.total_rows, 0);
 }
 
-fn connection_id_step() -> MockQueryStep {
-    MockQueryStep {
-        query: "SELECT CONNECTION_ID()",
-        columns: vec![MockColumnDef {
-            name: "CONNECTION_ID()",
-            coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-            colflags: ColumnFlags::UNSIGNED_FLAG,
-        }],
-        rows: vec![vec![MockCell::U64(42)]],
-        error: None,
-        affected_rows: None,
-    }
-}
-
 #[derive(Clone, Copy)]
 struct SingleRun<'a> {
     connection_id: &'a str,
@@ -929,17 +852,21 @@ fn run_single(
     try_run_single(webview, run).expect("execute_query IPC should succeed")
 }
 
-fn session_setup_count(server: &MockMySqlServer) -> usize {
-    server
-        .text_queries()
+const EDITOR_STATEMENT_PREFIX: &str = "SET @";
+
+fn editor_session_count(server: &MockMySqlServer) -> usize {
+    let editor_connections: std::collections::HashSet<u32> = server
+        .recorded_queries()
         .iter()
-        .filter(|q| q.as_str() == "SELECT CONNECTION_ID()")
-        .count()
+        .filter(|query| query.sql.starts_with(EDITOR_STATEMENT_PREFIX))
+        .map(|query| query.connection_id)
+        .collect();
+    editor_connections.len()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn query_editor_windows_share_one_session_per_connection() {
-    let server = MockMySqlServer::start_script(vec![connection_id_step()]).await;
+    let server = MockMySqlServer::start_script(vec![]).await;
     let (_app, webview) = build_query_commands_app();
     let open_result = open_mock_connection(&webview, server.port).await;
     let conn_id = open_result.session_id.as_str();
@@ -975,7 +902,7 @@ async fn query_editor_windows_share_one_session_per_connection() {
 
     assert!(multi.results.iter().all(|r| r.error.is_none()));
     assert_eq!(server.connection_count(), connections_before + 1);
-    assert_eq!(session_setup_count(&server), 1);
+    assert_eq!(editor_session_count(&server), 1);
     let queries = server.text_queries();
     for sql in [
         "SET @region_id = 22",
@@ -992,7 +919,7 @@ async fn query_editor_windows_share_one_session_per_connection() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn query_editor_concurrent_runs_queue_on_the_shared_session() {
-    let server = MockMySqlServer::start_script(vec![connection_id_step()]).await;
+    let server = MockMySqlServer::start_script(vec![]).await;
     let (_app, webview) = build_query_commands_app();
     let open_result = open_mock_connection(&webview, server.port).await;
     let conn_id = open_result.session_id.as_str();
@@ -1001,7 +928,7 @@ async fn query_editor_concurrent_runs_queue_on_the_shared_session() {
     run_set_concurrently_on_tabs(&webview, conn_id, &["tab-1", "tab-2", "tab-3"]);
 
     assert_eq!(server.connection_count(), connections_before + 1);
-    assert_eq!(session_setup_count(&server), 1);
+    assert_eq!(editor_session_count(&server), 1);
 }
 
 fn run_set_concurrently_on_tabs(
@@ -1081,7 +1008,7 @@ fn server_received(server: &MockMySqlServer, sql: &str) -> bool {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cancel_query_cancels_a_run_queued_behind_another_window() {
-    let server = MockMySqlServer::start_script(vec![connection_id_step()]).await;
+    let server = MockMySqlServer::start_script(vec![]).await;
     let (app, webview) = build_query_commands_app();
     let open_result = open_mock_connection(&webview, server.port).await;
     let conn_id = open_result.session_id.as_str();
@@ -1134,7 +1061,7 @@ fn run_queued_then_cancel(
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn close_connection_drops_the_editor_session() {
-    let server = MockMySqlServer::start_script(vec![connection_id_step()]).await;
+    let server = MockMySqlServer::start_script(vec![]).await;
     let (app, webview) = build_query_commands_app();
     let open_result = open_mock_connection(&webview, server.port).await;
     let conn_id = open_result.session_id.as_str();
@@ -1162,7 +1089,7 @@ async fn close_connection_drops_the_editor_session() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn select_database_switches_the_existing_editor_session() {
     set_test_select_database_hook(Some(|_, _| Ok(())));
-    let server = MockMySqlServer::start_script(vec![connection_id_step()]).await;
+    let server = MockMySqlServer::start_script(vec![]).await;
     let (_app, webview) = build_query_commands_app();
     let open_result = open_mock_connection(&webview, server.port).await;
     let conn_id = open_result.session_id.as_str();
@@ -1190,7 +1117,7 @@ async fn select_database_switches_the_existing_editor_session() {
             .any(|q| q.starts_with("USE ") && q.contains("web_content")),
         "session should switch database, got {queries:?}"
     );
-    assert_eq!(session_setup_count(&server), 1);
+    assert_eq!(editor_session_count(&server), 1);
 }
 
 fn registry_default_database(app: &tauri::App<tauri::test::MockRuntime>, conn_id: &str) -> String {
@@ -1205,7 +1132,7 @@ fn registry_default_database(app: &tauri::App<tauri::test::MockRuntime>, conn_id
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn select_database_recovers_when_the_editor_session_died() {
     set_test_select_database_hook(Some(|_, _| Ok(())));
-    let server = MockMySqlServer::start_script(vec![connection_id_step()]).await;
+    let server = MockMySqlServer::start_script(vec![]).await;
     let (app, webview) = build_query_commands_app();
     let open_result = open_mock_connection(&webview, server.port).await;
     let conn_id = open_result.session_id.as_str();
@@ -1238,22 +1165,19 @@ async fn select_database_recovers_when_the_editor_session_died() {
             sql: "SET @y = 1",
         },
     );
-    assert_eq!(session_setup_count(&server), 2, "session should reconnect");
+    assert_eq!(editor_session_count(&server), 2, "session should reconnect");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn select_database_surfaces_server_errors_and_keeps_the_previous_database() {
     set_test_select_database_hook(Some(|_, _| Ok(())));
-    let server = MockMySqlServer::start_script(vec![
-        connection_id_step(),
-        MockQueryStep {
-            query: "USE web_content",
-            columns: vec![],
-            rows: vec![],
-            error: Some((ErrorKind::ER_DBACCESS_DENIED_ERROR, b"Access denied")),
-            affected_rows: None,
-        },
-    ])
+    let server = MockMySqlServer::start_script(vec![MockQueryStep {
+        query: "USE web_content",
+        columns: vec![],
+        rows: vec![],
+        error: Some((ErrorKind::ER_DBACCESS_DENIED_ERROR, b"Access denied")),
+        affected_rows: None,
+    }])
     .await;
     let (app, webview) = build_query_commands_app();
     let open_result = open_mock_connection(&webview, server.port).await;
@@ -1291,50 +1215,47 @@ async fn select_database_surfaces_server_errors_and_keeps_the_previous_database(
             sql: "SET @y = 1",
         },
     );
-    assert_eq!(session_setup_count(&server), 1, "session should be kept");
+    assert_eq!(editor_session_count(&server), 1, "session should be kept");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn execute_multi_query_ipc_streams_nulls_blobs_and_non_utf8_bytes_row_by_row() {
     let sql = "SELECT id, payload, label FROM blobs LIMIT 10";
-    let steps = vec![
-        connection_id_step(),
-        MockQueryStep {
-            query: sql,
-            columns: vec![
-                MockColumnDef {
-                    name: "id",
-                    coltype: ColumnType::MYSQL_TYPE_LONG,
-                    colflags: ColumnFlags::UNSIGNED_FLAG,
-                },
-                MockColumnDef {
-                    name: "payload",
-                    coltype: ColumnType::MYSQL_TYPE_BLOB,
-                    colflags: ColumnFlags::BINARY_FLAG,
-                },
-                MockColumnDef {
-                    name: "label",
-                    coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                    colflags: ColumnFlags::empty(),
-                },
+    let steps = vec![MockQueryStep {
+        query: sql,
+        columns: vec![
+            MockColumnDef {
+                name: "id",
+                coltype: ColumnType::MYSQL_TYPE_LONG,
+                colflags: ColumnFlags::UNSIGNED_FLAG,
+            },
+            MockColumnDef {
+                name: "payload",
+                coltype: ColumnType::MYSQL_TYPE_BLOB,
+                colflags: ColumnFlags::BINARY_FLAG,
+            },
+            MockColumnDef {
+                name: "label",
+                coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
+                colflags: ColumnFlags::empty(),
+            },
+        ],
+        rows: vec![
+            vec![
+                MockCell::U32(1),
+                MockCell::Bytes(b"\x00\x01\xff"),
+                MockCell::Bytes(b"plain"),
             ],
-            rows: vec![
-                vec![
-                    MockCell::U32(1),
-                    MockCell::Bytes(b"\x00\x01\xff"),
-                    MockCell::Bytes(b"plain"),
-                ],
-                vec![MockCell::U32(2), MockCell::Null, MockCell::Null],
-                vec![
-                    MockCell::U32(3),
-                    MockCell::Bytes(b""),
-                    MockCell::Bytes(b"bad\xff\xfeutf8"),
-                ],
+            vec![MockCell::U32(2), MockCell::Null, MockCell::Null],
+            vec![
+                MockCell::U32(3),
+                MockCell::Bytes(b""),
+                MockCell::Bytes(b"bad\xff\xfeutf8"),
             ],
-            error: None,
-            affected_rows: None,
-        },
-    ];
+        ],
+        error: None,
+        affected_rows: None,
+    }];
 
     let (result, _) = execute_multi_query_via_mock(steps, vec![sql], 1000).await;
 
@@ -1358,7 +1279,7 @@ async fn execute_call_query_ipc_drains_column_less_sets_and_streams_row_set() {
 
     let sql = "CALL sp_touch_then_list()";
     let server = MockMySqlServer::start_script_with_multi_results(
-        vec![connection_id_step()],
+        vec![],
         vec![MockMultiResultStep {
             query: sql,
             leading_ok_affected: vec![2, 5],
@@ -1414,7 +1335,6 @@ async fn execute_multi_query_ipc_drains_dml_response_before_next_statement() {
     let update_sql = "UPDATE users SET active = 1";
     let select_sql = "SELECT 7 LIMIT 1";
     let steps = vec![
-        connection_id_step(),
         MockQueryStep::ok_affected(update_sql, 4),
         MockQueryStep {
             query: select_sql,

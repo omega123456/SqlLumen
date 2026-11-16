@@ -13,6 +13,9 @@ pub fn log_outgoing_sql_bound(sql: &str, binds: &[String]) {
 }
 
 pub fn log_outgoing_sql_with_values(sql: &str, values: &[mysql_async::Value]) {
+    if !is_enabled() {
+        return;
+    }
     let binds: Vec<String> = values.iter().map(|value| value.as_sql(false)).collect();
     log_outgoing_sql_bound(sql, &binds);
 }
