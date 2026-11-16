@@ -139,6 +139,7 @@ vi.mock('dt-sql-parser', () => ({
     PROCEDURE_CREATE: 'procedureCreate',
     COLUMN: 'column',
     COLUMN_CREATE: 'columnCreate',
+    QUERY_RESULT: 'queryResult',
   },
 }))
 

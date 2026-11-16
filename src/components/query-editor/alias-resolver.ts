@@ -23,7 +23,10 @@ export function stripQuotes(identifier: string): string {
   return identifier
 }
 
-function parseTableRef(rawText: string, activeDatabase: string | null): AliasResolution | null {
+export function parseTableRef(
+  rawText: string,
+  activeDatabase: string | null
+): AliasResolution | null {
   if (!rawText.includes('.')) {
     const table = stripQuotes(rawText.trim())
     if (!table) return null
@@ -55,6 +58,11 @@ function aliasTextFromMatch(aliasPart: string): string | null {
   return aliasText
 }
 
+export function entitiesInCaretStatement(entities: EntityContext[]): EntityContext[] {
+  const caretEntities = entities.filter((entity) => entity.belongStmt?.isContainCaret)
+  return caretEntities.length > 0 ? caretEntities : entities
+}
+
 export function buildAliasMap(
   entities: EntityContext[] | null,
   activeDatabase: string | null
@@ -69,10 +77,7 @@ export function buildAliasMap(
   )
   if (aliased.length === 0) return map
 
-  const caretEntities = aliased.filter((entity) => entity.belongStmt?.isContainCaret)
-  const working = caretEntities.length > 0 ? caretEntities : aliased
-
-  for (const entity of working) {
+  for (const entity of entitiesInCaretStatement(aliased)) {
     const alias = entity._alias
     if (!alias) continue
 

@@ -2037,6 +2037,68 @@ describe('completionService — alias resolution via dot notation', () => {
   })
 })
 
+describe('completionService — derived-table alias via dot notation', () => {
+  function connectToAppDb() {
+    registerModelConnection({ uri: 'inmemory://model/1', connectionId: 'conn-1' })
+    mockGetCache().mockReturnValue(READY_CACHE)
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: { defaultDatabase: 'app_db' },
+          sessionDatabase: 'app_db',
+          status: 'connected',
+        },
+      },
+    } as never)
+  }
+
+  function cteEntity(columnTexts: string[]) {
+    return {
+      ...buildEntityWithAlias(EntityContextType.TABLE, 'recent', 'r', true),
+      declareType: 1,
+      relatedEntities: [
+        {
+          entityContextType: EntityContextType.QUERY_RESULT,
+          text: columnTexts.join(', '),
+          columns: columnTexts.map((text) => ({ entityContextType: 'column', text: text })),
+          relatedEntities: [buildEntity(EntityContextType.TABLE, 'users')],
+        },
+      ],
+    }
+  }
+
+  it('suggests the CTE select-list columns instead of looking the CTE up in the schema', async () => {
+    connectToAppDb()
+
+    const sql = 'WITH recent AS (SELECT id, email FROM users) SELECT * FROM recent r WHERE r.'
+    const items = await callService(
+      sql,
+      pos(1, sql.length + 1),
+      buildSuggestions(),
+      [cteEntity(['id', 'email'])],
+      '.'
+    )
+
+    expect(items.map(getLabel)).toEqual(['id', 'email'])
+  })
+
+  it('expands a wildcard select list into the source table columns without duplicates', async () => {
+    connectToAppDb()
+
+    const sql = 'WITH recent AS (SELECT id, * FROM users) SELECT * FROM recent r WHERE r.'
+    const items = await callService(
+      sql,
+      pos(1, sql.length + 1),
+      buildSuggestions(),
+      [cteEntity(['id', '*'])],
+      '.'
+    )
+
+    expect(items.map(getLabel)).toEqual(['id', 'email', 'name'])
+  })
+})
+
 describe('completionService — text-based alias fallback (entities null)', () => {
   it('resolves alias from SQL text when entities are null', async () => {
     registerModelConnection({ uri: 'inmemory://model/1', connectionId: 'conn-1' })

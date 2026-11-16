@@ -3,6 +3,7 @@ import type { CompletionService, ICompletionItem, CompletionSnippet } from 'mona
 import type { Suggestions, EntityContext } from 'monaco-sql-languages'
 import { getCache } from './schema-metadata-cache'
 import { buildAliasMap } from './alias-resolver'
+import { buildDerivedTableMap } from './derived-table-resolver'
 import { logParseFallback } from '../../lib/app-log-commands'
 import { useConnectionStore } from '../../stores/connection-store'
 import { parseNodeId, useSchemaStore } from '../../stores/schema-store'
@@ -205,6 +206,7 @@ async function provideCompletions({
       position: position,
       cache: cache,
       aliasMap: aliasMap,
+      derivedTables: buildDerivedTableMap(entities, databases.resolutionDatabase),
       resolutionDatabase: databases.resolutionDatabase,
       caret: caret,
       quoteIdentifiers: quoteIdentifiers,

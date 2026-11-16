@@ -527,6 +527,82 @@ test.describe('Monaco SQL autocomplete', () => {
     await expect(suggestWidget).not.toContainText('fn_calculate_total')
   })
 
+  test('CTE alias: r. suggests the CTE select-list columns', async ({ page }) => {
+    await waitForApp(page)
+    await openQueryEditorTab(page)
+
+    await typeQuery(
+      page,
+      'WITH recent AS (SELECT id, total FROM orders) SELECT * FROM recent r WHERE r.'
+    )
+
+    const suggestWidget = await openAutocomplete(page, 'total')
+    expectAutocomplete(suggestWidget)
+    await expect(suggestWidget).toContainText('id')
+    await expect(suggestWidget).not.toContainText('user_id')
+  })
+
+  test('derived-table alias: d. suggests the subquery columns', async ({ page }) => {
+    await waitForApp(page)
+    await openQueryEditorTab(page)
+
+    await typeQuery(page, 'SELECT * FROM (SELECT id, name AS full_name FROM users) d WHERE d.')
+
+    const suggestWidget = await openAutocomplete(page, 'full_name')
+    expectAutocomplete(suggestWidget)
+    await expect(suggestWidget).toContainText('id')
+    await expect(suggestWidget).not.toContainText('email')
+  })
+
+  test('alias completion after an earlier WHERE condition suggests the aliased table columns', async ({
+    page,
+  }) => {
+    await waitForApp(page)
+    await openQueryEditorTab(page)
+
+    await typeQuery(page, 'SELECT * FROM users t WHERE t.id = 1 AND t.')
+
+    const suggestWidget = await openAutocomplete(page, 'email')
+    expectAutocomplete(suggestWidget)
+    await expect(suggestWidget).toContainText('created_at')
+  })
+
+  test('UPDATE alias completion suggests the aliased table columns', async ({ page }) => {
+    await waitForApp(page)
+    await openQueryEditorTab(page)
+
+    await typeQuery(page, 'UPDATE users t SET t.')
+
+    const suggestWidget = await openAutocomplete(page, 'email')
+    expectAutocomplete(suggestWidget)
+    await expect(suggestWidget).toContainText('created_at')
+  })
+
+  test('WHERE after a complete condition still suggests the FROM table columns', async ({
+    page,
+  }) => {
+    await waitForApp(page)
+    await openQueryEditorTab(page)
+
+    await typeQuery(page, 'SELECT * FROM users WHERE id = 1 AND ')
+
+    const suggestWidget = await openAutocomplete(page, 'email')
+    expectAutocomplete(suggestWidget)
+    await expect(suggestWidget).toContainText('created_at')
+  })
+
+  test('SELECT * suggests clause keywords instead of columns', async ({ page }) => {
+    await waitForApp(page)
+    await openQueryEditorTab(page)
+
+    await typeQuery(page, 'SELECT * ')
+
+    const suggestWidget = await openAutocomplete(page, 'FROM')
+    expectAutocomplete(suggestWidget)
+    await expect(suggestWidget).not.toContainText('email')
+    await expect(suggestWidget).not.toContainText('ecommerce_db')
+  })
+
   // This test runs last: it injects malformed metadata + attaches a console listener,
   // making it the most expensive autocomplete test.  Running it after the simpler tests
   // ensures Vite and Chromium are warm, so the 25s project timeout is not eaten by cold-start.

@@ -2,6 +2,7 @@ import type { languages, editor, Position } from 'monaco-editor'
 import type { ICompletionItem } from 'monaco-sql-languages'
 import { buildAliasMapFromText } from '../alias-resolver'
 import type { AliasMap } from '../alias-resolver'
+import type { DerivedTable, DerivedTableMap } from '../derived-table-resolver'
 import { isSameTextIgnoringCase } from '../../../lib/value-checks'
 import {
   hasDottedPrefixBeforeWord,
@@ -23,6 +24,7 @@ export interface DotNotationRequest {
   position: Position
   cache: SchemaCache
   aliasMap: AliasMap
+  derivedTables: DerivedTableMap
   resolutionDatabase: string | null
   caret: CaretText
   quoteIdentifiers: boolean
@@ -80,11 +82,24 @@ function columnCompletionItems(
   return columns.map((column) => columnItem(column.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
 }
 
+function derivedTableColumnItems(
+  request: DotNotationRequest,
+  derivedTable: DerivedTable
+): ICompletionItem[] {
+  const columnNames = new Set(derivedTable.columnNames)
+  for (const table of derivedTable.wildcardTables) {
+    const columns = request.cache.columns[`${table.database}.${table.table}`] ?? []
+    for (const column of columns) columnNames.add(column.name)
+  }
+  return [...columnNames].map((columnName) =>
+    columnItem(columnName, SORT_PREFIX_NEUTRAL, request.quoteIdentifiers)
+  )
+}
+
 function resolveAliasTarget(
   request: DotNotationRequest,
   prefixLower: string
 ): AliasTarget | undefined {
-  if (isInTableReferenceClause(request.caret.statementPrefix)) return undefined
   const entityAlias = request.aliasMap.get(prefixLower)
   if (entityAlias) return entityAlias
   const textAliasMap = buildAliasMapFromText(
@@ -149,18 +164,28 @@ function tableDotCompletions(
   return null
 }
 
+function aliasColumnItems(
+  request: DotNotationRequest,
+  prefixLower: string
+): ICompletionItem[] | null {
+  if (isInTableReferenceClause(request.caret.statementPrefix)) return null
+  const derivedTable = request.derivedTables.get(prefixLower)
+  if (derivedTable) return derivedTableColumnItems(request, derivedTable)
+  const aliasTarget = resolveAliasTarget(request, prefixLower)
+  if (!aliasTarget) return null
+  const tableKey = `${aliasTarget.database}.${aliasTarget.table}`
+  return columnCompletionItems(request.cache, tableKey, request.quoteIdentifiers)
+}
+
 function handleDotNotation(request: DotNotationRequest): ICompletionItem[] | null {
-  const { cache, quoteIdentifiers } = request
+  const { cache } = request
   if (cache.status !== 'ready') return null
   const dotMatch = matchDotPrefix(request.model, request.position)
   if (!dotMatch) return null
   const target = parseDotTarget(dotMatch)
 
-  const aliasTarget = resolveAliasTarget(request, target.prefixLower)
-  if (aliasTarget) {
-    const tableKey = `${aliasTarget.database}.${aliasTarget.table}`
-    return columnCompletionItems(cache, tableKey, quoteIdentifiers)
-  }
+  const aliasColumns = aliasColumnItems(request, target.prefixLower)
+  if (aliasColumns) return aliasColumns
 
   const matchedDatabase = cache.databases.find((database) =>
     isSameTextIgnoringCase(database, target.prefixLower)
