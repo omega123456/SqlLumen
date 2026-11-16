@@ -1,6 +1,6 @@
 import type { EntityContext } from 'monaco-sql-languages'
 import { EntityContextType } from 'dt-sql-parser'
-import { stripQuotes } from '../alias-resolver'
+import { stripQuotes } from '../../../lib/sql-identifier-quotes'
 import { isSameTextIgnoringCase } from '../../../lib/value-checks'
 import type { SchemaCache, TableRef } from './completion-types'
 

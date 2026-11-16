@@ -61,14 +61,14 @@ export default defineConfig({
     // starve the dev server while Ctrl+Space suggestions are opening (flaky .suggest-widget).
     {
       name: 'monaco-autocomplete',
-      testMatch: '**/query-autocomplete.spec.ts',
+      testMatch: ['**/query-autocomplete.spec.ts', '**/query-semantic-highlighting.spec.ts'],
       // Keep autocomplete serial: multiple Chromium instances still contend on Monaco startup.
       workers: 1,
       use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'chromium',
-      testIgnore: '**/query-autocomplete.spec.ts',
+      testIgnore: ['**/query-autocomplete.spec.ts', '**/query-semantic-highlighting.spec.ts'],
       use: { ...devices['Desktop Chrome'] },
       dependencies: ['monaco-autocomplete'],
     },

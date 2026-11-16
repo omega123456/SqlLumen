@@ -15,6 +15,7 @@ import {
   registerModelConnection,
   unregisterModelConnection,
   resetModelConnections,
+  onModelConnectionChange,
 } from '../../../components/query-editor/completion-service'
 import { EntityContextType } from 'dt-sql-parser'
 import type { NodeType } from '../../../types/schema'
@@ -362,6 +363,18 @@ afterEach(() => {
 })
 
 describe('Model-URI registry', () => {
+  it('notifies listeners when a model connection registers or unregisters', () => {
+    const listener = vi.fn()
+    const unsubscribe = onModelConnectionChange(listener)
+
+    registerModelConnection({ uri: 'inmemory://model/1', connectionId: 'conn-1' })
+    unregisterModelConnection('inmemory://model/1')
+    unsubscribe()
+    registerModelConnection({ uri: 'inmemory://model/2', connectionId: 'conn-1' })
+
+    expect(listener.mock.calls).toEqual([['inmemory://model/1'], ['inmemory://model/1']])
+  })
+
   it('registers and looks up a model-connection mapping', async () => {
     registerModelConnection({ uri: 'inmemory://model/1', connectionId: 'conn-1' })
     mockGetCache().mockReturnValue(READY_CACHE)

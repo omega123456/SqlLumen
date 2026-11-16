@@ -82,14 +82,19 @@ vi.mock('monaco-editor', () => ({
     setModelLanguage: vi.fn(),
     EditorOption: {},
     onDidCreateEditor: vi.fn(() => ({ dispose: vi.fn() })),
+    onWillDisposeModel: vi.fn(() => ({ dispose: vi.fn() })),
+    setModelMarkers: vi.fn(),
     registerCommand: vi.fn(),
   },
+  MarkerSeverity: { Warning: 4 },
   languages: {
     register: vi.fn(),
     setMonarchTokensProvider: vi.fn(),
     registerCompletionItemProvider: vi.fn(() => ({ dispose: vi.fn() })),
     registerSignatureHelpProvider: vi.fn(() => ({ dispose: vi.fn() })),
     registerCodeLensProvider: vi.fn(() => ({ dispose: vi.fn() })),
+    registerDocumentSemanticTokensProvider: vi.fn(() => ({ dispose: vi.fn() })),
+    onLanguage: vi.fn(() => ({ dispose: vi.fn() })),
     CompletionItemKind: {
       Keyword: 14,
       Class: 5,
@@ -114,13 +119,39 @@ vi.mock('monaco-editor', () => ({
 }))
 
 // ---------------------------------------------------------------------------
-// monaco-sql-languages mocks (contribution is a side-effect import)
+// monaco-sql-languages mocks (its fillers import a Monaco path Vitest cannot resolve)
 // ---------------------------------------------------------------------------
 
-vi.mock('monaco-sql-languages/esm/languages/mysql/mysql.contribution.js', () => ({}))
+vi.mock('monaco-sql-languages/esm/_.contribution.js', () => ({
+  registerLanguage: vi.fn(),
+}))
 
-vi.mock('monaco-sql-languages/esm/setupLanguageFeatures.js', () => ({
-  setupLanguageFeatures: vi.fn(),
+vi.mock('monaco-sql-languages/esm/monaco.contribution.js', () => ({
+  LanguageServiceDefaultsImpl: vi.fn().mockImplementation(function (
+    this: Record<string, unknown>,
+    languageId: string,
+    modeConfiguration: unknown
+  ) {
+    this.languageId = languageId
+    this.modeConfiguration = modeConfiguration
+  }),
+  modeConfigurationDefault: {
+    completionItems: { enable: true, snippets: [], triggerCharacters: ['.', ' '] },
+    diagnostics: true,
+    format: { enable: false },
+  },
+}))
+
+vi.mock('monaco-sql-languages/esm/workerManager.js', () => ({
+  WorkerManager: vi.fn().mockImplementation(function (this: Record<string, unknown>) {
+    this.getLanguageServiceWorker = vi.fn()
+    this.dispose = vi.fn()
+  }),
+}))
+
+vi.mock('monaco-sql-languages/esm/languageFeatures.js', () => ({
+  DiagnosticsAdapter: vi.fn(),
+  CompletionAdapter: vi.fn(),
 }))
 
 vi.mock('dt-sql-parser', () => ({

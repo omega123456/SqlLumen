@@ -62,6 +62,9 @@ const PROTOTYPE = {
     string: 'ce9178',
     number: 'b5cea8',
     quoted: '9cdcfe',
+    builtin: 'dcdcaa',
+    table: '4ec9b0',
+    column: '9cdcfe',
     lineNumber: '#6e7681',
     currentLine: '#ffffff0a',
     accent: '#4cc2ff',
@@ -74,6 +77,9 @@ const PROTOTYPE = {
     string: 'a31515',
     number: '098658',
     quoted: '001080',
+    builtin: '795e26',
+    table: '267f99',
+    column: '001080',
     lineNumber: '#8c8c8c',
     currentLine: '#00000009',
     accent: '#0067c0',
@@ -102,6 +108,16 @@ describe('Monaco themes match the Fluent proposal', () => {
       expect(tokenColor(name, 'number.sql')).toBe(p.number)
       expect(tokenColor(name, 'identifier.quote.sql')).toBe(p.quoted)
       expect(MONACO_THEMES[name].rules.every((rule) => rule.fontStyle === undefined)).toBe(true)
+    })
+
+    it(`${name}: semantic identifier colours follow Dark+ / Light+`, () => {
+      expect(tokenColor(name, 'database')).toBe(p.table)
+      expect(tokenColor(name, 'table')).toBe(p.table)
+      expect(tokenColor(name, 'tableAlias')).toBe(p.table)
+      expect(tokenColor(name, 'column')).toBe(p.column)
+      expect(tokenColor(name, 'columnAlias')).toBe(p.column)
+      expect(tokenColor(name, 'function')).toBe(p.builtin)
+      expect(tokenColor(name, 'predefined.sql')).toBe(p.builtin)
     })
 
     it(`${name}: editor surfaces use the well, accent and accent tint`, () => {

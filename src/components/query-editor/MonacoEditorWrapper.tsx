@@ -4,7 +4,6 @@ import type * as MonacoType from 'monaco-editor'
 import { useQueryStore } from '../../stores/query-store'
 import { useShortcutStore } from '../../stores/shortcut-store'
 import type { TabType } from '../../types/schema'
-import 'monaco-sql-languages/esm/languages/mysql/mysql.contribution.js'
 import './mysql-language-setup'
 import './signature-help-provider'
 import './codelens-provider'
@@ -14,6 +13,7 @@ import { useEditorMountHandler } from './monaco-editor-wrapper/use-editor-mount'
 import { useEditorOptions } from './monaco-editor-wrapper/use-editor-options'
 import { useModelConnection } from './monaco-editor-wrapper/use-model-connection'
 import { useMonacoTheme } from './monaco-editor-wrapper/use-monaco-theme'
+import { useSemanticHighlightingStatus } from './monaco-editor-wrapper/use-semantic-highlighting-status'
 import {
   shortcutSignatureOf,
   type MonacoShortcutBindings,
@@ -94,6 +94,8 @@ export function MonacoEditorWrapper({
     { connectionId: connectionId, tabId: tabId, tabType: tabType },
     editorRef
   )
+  const { isSemanticHighlightingReady, captureSemanticHighlightingEditor } =
+    useSemanticHighlightingStatus()
   const shortcutBindings = useMonacoShortcutBindings()
   const editorOptions = useEditorOptions(isReadOnly)
   const handleChange = useEditorChangeHandler(tabId, overrideOnChange)
@@ -105,11 +107,16 @@ export function MonacoEditorWrapper({
     editorRef: editorRef,
     shortcutBindings: shortcutBindings,
     applyThemeOnMount: applyThemeOnMount,
+    captureSemanticHighlightingEditor: captureSemanticHighlightingEditor,
     onMount: onMount,
   })
 
   return (
-    <div className="relative h-full w-full overflow-hidden" data-testid="monaco-editor-wrapper">
+    <div
+      className="relative h-full w-full overflow-hidden"
+      data-testid="monaco-editor-wrapper"
+      data-semantic-highlighting={isSemanticHighlightingReady ? 'ready' : 'pending'}
+    >
       <Editor
         key={shortcutSignatureOf(shortcutBindings)}
         height="100%"

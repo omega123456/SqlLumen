@@ -20,6 +20,8 @@ interface MonacoPalette {
   quotedIdentifier: string
   comment: string
   builtin: string
+  table: string
+  column: string
   lineNumber: string
   currentLine: string
   accent: string
@@ -45,6 +47,8 @@ const DARK: MonacoPalette = {
   quotedIdentifier: '#9cdcfe',
   comment: '#6a9955',
   builtin: '#dcdcaa',
+  table: '#4ec9b0',
+  column: '#9cdcfe',
   lineNumber: '#6e7681',
   currentLine: '#ffffff0a',
   accent: '#4cc2ff',
@@ -70,6 +74,8 @@ const LIGHT: MonacoPalette = {
   quotedIdentifier: '#001080',
   comment: '#008000',
   builtin: '#795e26',
+  table: '#267f99',
+  column: '#001080',
   lineNumber: '#8c8c8c',
   currentLine: '#00000009',
   accent: '#0067c0',
@@ -112,6 +118,12 @@ function tokenRules(palette: MonacoPalette): Monaco.editor.ITokenThemeRule[] {
     { token: 'identifier.quote', foreground: hex(palette.quotedIdentifier) },
     { token: 'identifier.quote.sql', foreground: hex(palette.quotedIdentifier) },
     { token: 'delimiter', foreground: hex(palette.text) },
+    { token: 'database', foreground: hex(palette.table) },
+    { token: 'table', foreground: hex(palette.table) },
+    { token: 'tableAlias', foreground: hex(palette.table) },
+    { token: 'column', foreground: hex(palette.column) },
+    { token: 'columnAlias', foreground: hex(palette.column) },
+    { token: 'function', foreground: hex(palette.builtin) },
   ]
 }
 

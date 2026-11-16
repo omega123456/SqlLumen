@@ -415,3 +415,11 @@ export async function connectToSample(
     await dismissAllToasts(page)
   }
 }
+
+/** Wait until the visible editor's semantic tokens match its current content. */
+export async function waitForSemanticHighlighting(scope: Page | Locator) {
+  const visibleEditor = scope.getByTestId('monaco-editor-wrapper').filter({ visible: true }).first()
+  await expect(visibleEditor).toHaveAttribute('data-semantic-highlighting', 'ready', {
+    timeout: APP_READY_MS,
+  })
+}

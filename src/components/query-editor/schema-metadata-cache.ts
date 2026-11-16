@@ -37,7 +37,27 @@ export interface SchemaCache {
   lastRefreshAt?: number
 }
 
+export type SchemaCacheChangeListener = (connectionId: string) => void
+
 const cacheMap = new Map<string, SchemaCache>()
+
+const cacheChangeListeners = new Set<SchemaCacheChangeListener>()
+
+export function onSchemaCacheChange(listener: SchemaCacheChangeListener): () => void {
+  cacheChangeListeners.add(listener)
+  return () => cacheChangeListeners.delete(listener)
+}
+
+function notifyCacheChange(connectionId: string): void {
+  for (const listener of cacheChangeListeners) {
+    listener(connectionId)
+  }
+}
+
+function storeCache(connectionId: string, cache: SchemaCache): void {
+  cacheMap.set(connectionId, cache)
+  notifyCacheChange(connectionId)
+}
 
 const _pendingLoads = new Map<string, Promise<void>>()
 
@@ -176,7 +196,7 @@ export async function loadCache(connectionId: string): Promise<void> {
     ...emptyCache(),
     status: 'loading',
   }
-  cacheMap.set(connectionId, loadingCache)
+  storeCache(connectionId, loadingCache)
 
   const capturedGeneration = getGeneration(connectionId)
 
@@ -199,7 +219,7 @@ export async function loadCache(connectionId: string): Promise<void> {
         indexes: data.indexes,
         lastRefreshAt: Date.now(),
       }
-      cacheMap.set(connectionId, readyCache)
+      storeCache(connectionId, readyCache)
     } catch (error) {
       if (!isCurrentGeneration(connectionId, capturedGeneration)) {
         return
@@ -210,7 +230,7 @@ export async function loadCache(connectionId: string): Promise<void> {
         status: 'error',
         error: toErrorMessage(error),
       }
-      cacheMap.set(connectionId, errorCache)
+      storeCache(connectionId, errorCache)
     }
   })()
 
@@ -249,7 +269,7 @@ export async function refreshCacheInBackground(connectionId: string): Promise<vo
     indexes: data.indexes,
     lastRefreshAt: Date.now(),
   }
-  cacheMap.set(connectionId, readyCache)
+  storeCache(connectionId, readyCache)
 }
 
 export async function setupSchemaInvalidationListener(): Promise<(() => void) | undefined> {
@@ -279,7 +299,7 @@ export async function setupSchemaInvalidationListener(): Promise<(() => void) | 
 export function hydrateFromSnapshot(snapshotJson: string, connectionId: string): void {
   const parsed = JSON.parse(snapshotJson) as SchemaMetadataFull
   const data = sanitizeSchemaMetadata(parsed)
-  cacheMap.set(connectionId, {
+  storeCache(connectionId, {
     status: 'ready',
     databases: data.databases,
     tables: data.tables,
@@ -312,6 +332,7 @@ export function invalidateCache(connectionId: string): void {
   cacheMap.delete(connectionId)
   _pendingLoads.delete(connectionId)
   incrementGeneration(connectionId)
+  notifyCacheChange(connectionId)
 }
 
 export function filterDatabases(connectionId: string, prefix: string): string[] {

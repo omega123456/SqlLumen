@@ -33,6 +33,7 @@ const STATIC_EDITOR_OPTIONS: MonacoType.editor.IStandaloneEditorConstructionOpti
     showWords: false,
   },
   parameterHints: { enabled: true },
+  'semanticHighlighting.enabled': true,
   quickSuggestions: {
     other: true,
     comments: false,

@@ -33,6 +33,21 @@ interface ModelContext {
 
 const modelConnections = new Map<string, ModelContext>()
 
+export type ModelConnectionChangeListener = (uri: string) => void
+
+const modelConnectionChangeListeners = new Set<ModelConnectionChangeListener>()
+
+export function onModelConnectionChange(listener: ModelConnectionChangeListener): () => void {
+  modelConnectionChangeListeners.add(listener)
+  return () => modelConnectionChangeListeners.delete(listener)
+}
+
+function notifyModelConnectionChange(uri: string): void {
+  for (const listener of modelConnectionChangeListeners) {
+    listener(uri)
+  }
+}
+
 export interface ModelConnectionRegistration {
   uri: string
   connectionId: string
@@ -51,10 +66,12 @@ export function registerModelConnection({
     tabId: tabId ?? '',
     tabType: tabType ?? 'query-editor',
   })
+  notifyModelConnectionChange(uri)
 }
 
 export function unregisterModelConnection(uri: string): void {
   modelConnections.delete(uri)
+  notifyModelConnectionChange(uri)
 }
 
 export function getModelConnectionId(uri: string): string | undefined {
@@ -92,13 +109,13 @@ function resolveActiveDatabase(connectionId: string | undefined): string | null 
   return activeConnection?.sessionDatabase ?? activeConnection?.profile.defaultDatabase ?? null
 }
 
-interface CompletionDatabases {
+export interface CompletionDatabases {
   resolutionDatabase: string | null
   selectedDatabase: string | null
   broadSuggestionDatabase: string | null
 }
 
-function resolveCompletionDatabases(connectionId: string | undefined): CompletionDatabases {
+export function resolveCompletionDatabases(connectionId: string | undefined): CompletionDatabases {
   const activeDatabase = resolveActiveDatabase(connectionId)
   const selectedDatabase = getSelectedDatabase(connectionId)
   return {

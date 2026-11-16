@@ -30,6 +30,7 @@ const mockEditorInstance = {
   onDidDispose: vi.fn(),
   getModel: vi.fn(() => ({
     uri: { toString: () => 'inmemory://model/1' },
+    getVersionId: () => 1,
     getValueInRange: vi.fn(() => ''),
   })),
   getSelection: vi.fn(() => ({

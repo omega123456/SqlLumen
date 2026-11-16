@@ -20,6 +20,7 @@ import {
   sanitizeSchemaMetadata,
   serializeCacheSnapshot,
   getSearchableObjects,
+  onSchemaCacheChange,
   _clearAllCaches,
 } from '../../../components/query-editor/schema-metadata-cache'
 
@@ -837,6 +838,54 @@ describe('schema-metadata-cache', () => {
       })
 
       unlisten?.()
+    })
+  })
+
+  describe('onSchemaCacheChange', () => {
+    it('notifies listeners of the loading and ready writes of a load', async () => {
+      const statuses: string[] = []
+      const unsubscribe = onSchemaCacheChange((connectionId) =>
+        statuses.push(`${connectionId}:${getCache(connectionId).status}`)
+      )
+
+      await loadCache('conn-1')
+
+      expect(statuses).toEqual(['conn-1:loading', 'conn-1:ready'])
+      unsubscribe()
+    })
+
+    it('notifies listeners of a failed load', async () => {
+      mockFetchSchema().mockRejectedValue(new Error('offline'))
+      const listener = vi.fn()
+      const unsubscribe = onSchemaCacheChange(listener)
+
+      await loadCache('conn-1')
+
+      expect(listener).toHaveBeenCalledTimes(2)
+      expect(getCache('conn-1').status).toBe('error')
+      unsubscribe()
+    })
+
+    it('notifies listeners of background refreshes, snapshots and invalidation', async () => {
+      const listener = vi.fn()
+      const unsubscribe = onSchemaCacheChange(listener)
+
+      await refreshCacheInBackground('conn-1')
+      hydrateFromSnapshot(JSON.stringify(mockMetadata({ databases: ['db'] })), 'conn-2')
+      invalidateCache('conn-1')
+
+      expect(listener.mock.calls).toEqual([['conn-1'], ['conn-2'], ['conn-1']])
+      unsubscribe()
+    })
+
+    it('stops notifying a listener once it unsubscribes', () => {
+      const listener = vi.fn()
+      const unsubscribe = onSchemaCacheChange(listener)
+
+      unsubscribe()
+      invalidateCache('conn-1')
+
+      expect(listener).not.toHaveBeenCalled()
     })
   })
 })

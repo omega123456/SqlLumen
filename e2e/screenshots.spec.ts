@@ -8,6 +8,7 @@ import {
   currentTheme,
   dismissAllToasts,
   getColumnIndexByName,
+  waitForSemanticHighlighting,
   getGridCellByColumnName,
   openConnectionManager,
   selectSampleConnection,
@@ -463,6 +464,7 @@ async function openQueryEditorWithMultiResults(page: Page) {
   await expect(page.getByTestId('result-sub-tabs')).toBeVisible({ timeout: APP_READY_MS })
   await expect(page.getByTestId('result-tab-0')).toBeVisible({ timeout: APP_READY_MS })
   await expect(page.getByTestId('result-tab-2')).toBeVisible({ timeout: APP_READY_MS })
+  await waitForSemanticHighlighting(page)
 }
 
 async function openQueryEditorWithMultiResultsInBottomPanel(page: Page) {
@@ -498,6 +500,7 @@ async function openQueryEditorWithMultiResultsInBottomPanel(page: Page) {
   await expect(page.getByTestId('bottom-panel-result-tab-2')).toBeVisible({
     timeout: APP_READY_MS,
   })
+  await waitForSemanticHighlighting(page)
 }
 
 /** Open a query editor tab, set a CALL statement, execute, and wait for stored proc results. */
@@ -543,6 +546,7 @@ async function openQueryEditorWithResults(page: Page) {
   // Wait for results to appear
   await expect(page.getByTestId('result-toolbar')).toBeVisible({ timeout: APP_READY_MS })
   await expect(page.getByTestId('result-grid')).toBeVisible({ timeout: APP_READY_MS })
+  await waitForSemanticHighlighting(page)
 }
 
 async function enableQueryResultEditMode(page: Page) {
@@ -1737,6 +1741,7 @@ for (const theme of themes) {
       await expect(page.getByTestId('object-editor-tab')).toContainText('CREATE PROCEDURE', {
         timeout: APP_READY_MS,
       })
+      await waitForSemanticHighlighting(page.getByTestId('object-editor-tab'))
 
       await resetChromeScrollPositions(page)
       await expect(page.getByTestId('object-editor-tab')).toHaveScreenshot(

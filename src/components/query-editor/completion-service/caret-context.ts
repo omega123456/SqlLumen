@@ -1,7 +1,7 @@
 import type { editor, Position } from 'monaco-editor'
 import type { Suggestions, SyntaxSuggestion } from 'monaco-sql-languages'
 import { EntityContextType } from 'dt-sql-parser'
-import { stripQuotes } from '../alias-resolver'
+import { stripQuotes } from '../../../lib/sql-identifier-quotes'
 import { findStatementAtCursor, splitStatements } from '../sql-parser-utils'
 import { isSameTextIgnoringCase } from '../../../lib/value-checks'
 import type { CaretText, ParseFallbackMode } from './completion-types'

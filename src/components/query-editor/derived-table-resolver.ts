@@ -1,7 +1,8 @@
 import type { EntityContext } from 'monaco-sql-languages'
 import type { ColumnEntityContext, CommonEntityContext } from 'dt-sql-parser'
 import { EntityContextType } from 'dt-sql-parser'
-import { entitiesInCaretStatement, parseTableRef, stripQuotes } from './alias-resolver'
+import { stripQuotes } from '../../lib/sql-identifier-quotes'
+import { entitiesInCaretStatement, parseTableRef } from './alias-resolver'
 import type { AliasResolution } from './alias-resolver'
 
 // dt-sql-parser's TableDeclareType.EXPRESSION; the enum is not exported from the package root

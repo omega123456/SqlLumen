@@ -1,12 +1,14 @@
 import { test, expect, type Page } from '@playwright/test'
 import { APP_READY_MS, connectToSample, waitForApp } from './helpers'
+import {
+  activePanel,
+  focusMonacoEditor,
+  openQueryEditorTab,
+  typeQuery,
+} from './query-editor-helpers'
 
 const EDITOR_CLICK_POSITION = { x: 160, y: 40 } as const
 const EXPECTED_SUGGESTION_ROW_DISPLAY = 'block'
-
-function activePanel(page: Page) {
-  return page.locator('[data-testid="workspace-panel"][data-active="true"]')
-}
 
 function trackSqlParserConsoleErrors(page: Page) {
   const errors: string[] = []
@@ -75,51 +77,6 @@ const MALFORMED_SCHEMA_METADATA = {
   },
 }
 
-async function openQueryEditorTab(page: Page) {
-  // A new connection opens with one blank, active query tab
-  await connectToSample(page)
-  await expect(activePanel(page).getByTestId('query-editor-tab')).toBeAttached({
-    timeout: APP_READY_MS,
-  })
-  await expect(activePanel(page).locator('.monaco-editor').first()).toBeVisible({
-    timeout: APP_READY_MS,
-  })
-}
-
-async function focusMonacoEditor(page: Page, timeout = APP_READY_MS) {
-  const editorSurface = activePanel(page).locator('.monaco-editor').first()
-  await expect(editorSurface).toBeVisible({ timeout })
-  await editorSurface.evaluate((editor) => {
-    const textarea = editor.querySelector<HTMLTextAreaElement>('textarea.inputarea')
-    textarea?.focus()
-  })
-  return editorSurface
-}
-
-async function waitForQueryContent(page: Page, expectedContent: string) {
-  await expect
-    .poll(
-      async () =>
-        page.evaluate((expected) => {
-          const queryStore = (
-            window as unknown as {
-              __queryStore__?: {
-                getState?: () => {
-                  tabs?: Record<string, { content?: string }>
-                }
-              }
-            }
-          ).__queryStore__
-
-          return Object.values(queryStore?.getState?.().tabs ?? {}).some(
-            (tab) => tab?.content === expected
-          )
-        }, expectedContent),
-      { timeout: 5_000, intervals: [100, 200, 300] }
-    )
-    .toBe(true)
-}
-
 /**
  * Wait until the active result's first cell shows `expectedValue`. Result rows
  * are windowed (not kept in the query store), so read the cell through the
@@ -134,25 +91,6 @@ async function waitForActiveResultValue(page: Page, expectedValue: string) {
       intervals: [100, 200, 300],
     })
     .toBe(expectedValue)
-}
-
-async function typeQuery(page: Page, sql: string) {
-  await focusMonacoEditor(page)
-  await page.evaluate((content) => {
-    const workspaceStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
-      getState: () => { activeTabByConnection: Record<string, string | null> }
-    }
-    const queryStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
-      getState: () => { setContent: (id: string, content: string) => void }
-    }
-    const activeTabId = workspaceStore.getState().activeTabByConnection['session-playwright-1']
-    if (!activeTabId) {
-      throw new Error('No active query tab')
-    }
-    queryStore.getState().setContent(activeTabId, content)
-  }, sql)
-  await waitForQueryContent(page, sql)
-  await focusMonacoEditor(page)
 }
 
 async function openAutocomplete(

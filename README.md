@@ -122,6 +122,8 @@ SqlLumen checks GitHub Releases for updates. When one is available, a banner app
 
 - **Monaco SQL editor** — syntax highlighting, completion-oriented tooling, formatting, and find and replace
 - **Schema-aware autocomplete** — databases, tables, columns, routines, and built-in functions, ranked for the clause you are in. Table aliases, CTE names and aliases, and derived-table aliases complete their columns after a `.`
+- **Semantic highlighting** — the editor parses each statement and colours databases, tables, table aliases, columns, column aliases and function calls by their role, not just by word shape. Scripts longer than 200,000 characters keep the plain keyword colouring
+- **Unknown table and column warnings** — while a connection's schema is loaded, a misspelled table (`FROM ordrs`) or database qualifier, or an unknown column of a qualified name (`u.emial`), gets a yellow squiggle with an "Unknown table" or "Unknown column" hover. Unqualified tables resolve against the latest `USE`, then the connection's active database, then the database selected in the object browser. Unqualified columns, CTEs, derived tables, tables the script creates, and the system schemas (`mysql`, `sys`, `information_schema`, `performance_schema`) are never flagged, and nothing is flagged without a connection or before the schema has loaded
 - **Multi-statement execution** — run the statement at the cursor, or every statement in the editor
 - **Shared session per connection** — all query windows of a connection share one MySQL session, so `SET @x`, `USE`, temporary tables, and transactions carry over between runs and windows
 - **AI diff and review** — review generated changes as a diff before you apply them

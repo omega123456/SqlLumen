@@ -22,6 +22,7 @@ export interface EditorMountInputs {
   captureModelOnMount: (editor: StandaloneEditor) => void
   releaseModelOnDispose: () => void
   applyThemeOnMount: (monacoInstance: typeof MonacoType) => void
+  captureSemanticHighlightingEditor: (editor: StandaloneEditor) => void
   onMount?: (editor: StandaloneEditor) => void
 }
 
@@ -63,6 +64,7 @@ export function useEditorMountHandler(inputs: EditorMountInputs) {
   return function handleEditorMount(editor: StandaloneEditor, monacoInstance: typeof MonacoType) {
     inputs.editorRef.current = editor
     inputs.captureModelOnMount(editor)
+    inputs.captureSemanticHighlightingEditor(editor)
     inputs.applyThemeOnMount(monacoInstance)
     if (!inputs.isOverrideMode) restoreCursorPosition(editor, inputs.tabId)
     const disposables = bindEditorEvents(editor, monacoInstance, inputs)

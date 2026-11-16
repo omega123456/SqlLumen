@@ -9,6 +9,10 @@ import { DEFAULT_SHORTCUTS, useShortcutStore } from '../../../stores/shortcut-st
 import * as SchemaMetadataCacheModule from '../../../components/query-editor/schema-metadata-cache'
 import * as CompletionServiceModule from '../../../components/query-editor/completion-service'
 import * as MonacoEditorReactModule from '@monaco-editor/react'
+import {
+  clearSemanticHighlightingStatus,
+  markSemanticHighlightingApplied,
+} from '../../../components/query-editor/semantic-highlighting/semantic-highlighting-status'
 
 // Use vi.spyOn to install per-test mock implementations without vi.mock().
 // Monaco, monaco-sql-languages, and monaco-sql-languages/esm are globally mocked in setup.ts.
@@ -22,6 +26,7 @@ const mockCursorPositionDispose = vi.fn()
 const mockOnDidDispose = vi.fn()
 const registeredDisposeHandlers: Array<() => void> = []
 const mockModelUri = { toString: () => 'inmemory://model/1' }
+let mockModelVersionId = 1
 const mockContentChangeDispose = vi.fn()
 const mockSelectionDispose = vi.fn()
 let capturedContentChangeHandler: (() => void) | null = null
@@ -45,6 +50,7 @@ const mockFindReplaceRun = vi.fn()
 function createMockModel(selectedText = '') {
   return {
     uri: mockModelUri,
+    getVersionId: () => mockModelVersionId,
     getValue: () => 'SELECT 1',
     getValueInRange: () => selectedText,
     getLineCount: () => 1,
@@ -106,44 +112,41 @@ const mockEditorComponent = vi.fn()
 import React from 'react'
 
 function createRichMonacoEditorMock() {
-  return (props: Record<string, unknown>) => {
+  return function RichMonacoEditorMock(props: Record<string, unknown>) {
     mockEditorComponent(props)
-    function MockEditor() {
-      React.useEffect(() => {
-        const onMount = props.onMount as
-          ((editor: typeof mockEditorInstance, monaco: Record<string, unknown>) => void) | undefined
-        onMount?.(mockEditorInstance, {
-          editor: {
-            defineTheme: mockDefineTheme,
-            setTheme: mockSetTheme,
-          },
-          languages: {},
-          KeyCode: {
-            F9: 78,
-            F12: 81,
-            KeyH: 38,
-            KeyN: 49,
-            KeyR: 48,
-            KeyT: 52,
-            Enter: 3,
-            Tab: 2,
-            Comma: 6,
-          },
-          KeyMod: { CtrlCmd: 2048, Shift: 1024, Alt: 512, WinCtrl: 256 },
-        })
-      }, [])
-
-      return React.createElement('textarea', {
-        'data-testid': 'monaco-editor',
-        value: (props.value as string) ?? '',
-        onChange: (e: { target: { value: string } }) => {
-          const fn = props.onChange as ((v: string | undefined) => void) | undefined
-          fn?.(e.target.value)
+    const onMountRef = React.useRef(props.onMount)
+    React.useEffect(() => {
+      const onMount = onMountRef.current as
+        ((editor: typeof mockEditorInstance, monaco: Record<string, unknown>) => void) | undefined
+      onMount?.(mockEditorInstance, {
+        editor: {
+          defineTheme: mockDefineTheme,
+          setTheme: mockSetTheme,
         },
+        languages: {},
+        KeyCode: {
+          F9: 78,
+          F12: 81,
+          KeyH: 38,
+          KeyN: 49,
+          KeyR: 48,
+          KeyT: 52,
+          Enter: 3,
+          Tab: 2,
+          Comma: 6,
+        },
+        KeyMod: { CtrlCmd: 2048, Shift: 1024, Alt: 512, WinCtrl: 256 },
       })
-    }
+    }, [])
 
-    return React.createElement(MockEditor)
+    return React.createElement('textarea', {
+      'data-testid': 'monaco-editor',
+      value: (props.value as string) ?? '',
+      onChange: (e: { target: { value: string } }) => {
+        const fn = props.onChange as ((v: string | undefined) => void) | undefined
+        fn?.(e.target.value)
+      },
+    })
   }
 }
 
@@ -335,6 +338,50 @@ describe('MonacoEditorWrapper', () => {
     expect(mockEditorComponent).toHaveBeenCalled()
     const props = mockEditorComponent.mock.calls[0][0]
     expect(props.language).toBe('mysql')
+  })
+
+  it('enables semantic highlighting', () => {
+    render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+    const lastCall = mockEditorComponent.mock.calls[mockEditorComponent.mock.calls.length - 1]
+    const props = lastCall[0]
+    expect(props.options['semanticHighlighting.enabled']).toBe(true)
+  })
+
+  it('marks the wrapper ready once semantic tokens arrive for its model version', () => {
+    render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+    const wrapper = screen.getByTestId('monaco-editor-wrapper')
+    expect(wrapper).toHaveAttribute('data-semantic-highlighting', 'pending')
+
+    act(() => markSemanticHighlightingApplied({ uri: 'inmemory://model/2', versionId: 1 }))
+    expect(wrapper).toHaveAttribute('data-semantic-highlighting', 'pending')
+
+    act(() => markSemanticHighlightingApplied({ uri: 'inmemory://model/1', versionId: 1 }))
+    expect(wrapper).toHaveAttribute('data-semantic-highlighting', 'ready')
+
+    mockModelVersionId = 2
+    act(() => markSemanticHighlightingApplied({ uri: 'inmemory://model/2', versionId: 2 }))
+    expect(wrapper).toHaveAttribute('data-semantic-highlighting', 'pending')
+
+    act(() => markSemanticHighlightingApplied({ uri: 'inmemory://model/1', versionId: 2 }))
+    expect(wrapper).toHaveAttribute('data-semantic-highlighting', 'ready')
+
+    act(() => clearSemanticHighlightingStatus('inmemory://model/1'))
+    expect(wrapper).toHaveAttribute('data-semantic-highlighting', 'pending')
+    act(() => clearSemanticHighlightingStatus('inmemory://model/1'))
+    expect(wrapper).toHaveAttribute('data-semantic-highlighting', 'pending')
+    clearSemanticHighlightingStatus('inmemory://model/2')
+    mockModelVersionId = 1
+  })
+
+  it('stays pending when the editor has no model', () => {
+    mockEditorInstance.getModel.mockReturnValue(
+      null as unknown as ReturnType<typeof mockEditorInstance.getModel>
+    )
+    render(<MonacoEditorWrapper tabId="tab-1" />)
+    expect(screen.getByTestId('monaco-editor-wrapper')).toHaveAttribute(
+      'data-semantic-highlighting',
+      'pending'
+    )
   })
 
   it('enables fixedOverflowWidgets so suggest popup is not clipped by container', () => {
