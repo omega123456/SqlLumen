@@ -1,6 +1,5 @@
-use super::pool::{ConnectionParams, SslSettings};
+use super::pool::{BackgroundPool, ConnectionParams, SslSettings};
 use crate::db::connections::ConnectionRecord;
-use sqlx::MySqlPool;
 use std::collections::HashMap;
 use std::sync::RwLock;
 use tokio_util::sync::CancellationToken;
@@ -83,7 +82,7 @@ impl StoredConnectionParams {
 }
 
 pub struct RegistryEntry {
-    pub pool: MySqlPool,
+    pub pool: BackgroundPool,
     pub session_id: String,
     pub profile_id: String,
     pub status: ConnectionStatus,
@@ -122,7 +121,7 @@ impl ConnectionRegistry {
         old_entry
     }
 
-    pub fn get_pool(&self, id: &str) -> Option<MySqlPool> {
+    pub fn get_pool(&self, id: &str) -> Option<BackgroundPool> {
         let map = self.entries.read().expect("registry lock poisoned");
         map.get(id).map(|entry| entry.pool.clone())
     }
@@ -139,7 +138,7 @@ impl ConnectionRegistry {
         }
     }
 
-    pub fn replace_pool(&self, id: &str, new_pool: MySqlPool) {
+    pub fn replace_pool(&self, id: &str, new_pool: BackgroundPool) {
         let mut map = self.entries.write().expect("registry lock poisoned");
         if let Some(entry) = map.get_mut(id) {
             entry.pool = new_pool;
@@ -198,7 +197,7 @@ impl ConnectionRegistry {
         sessions
     }
 
-    pub fn get_pool_by_profile(&self, profile_id: &str) -> Option<MySqlPool> {
+    pub fn get_pool_by_profile(&self, profile_id: &str) -> Option<BackgroundPool> {
         let map = self.entries.read().expect("registry lock poisoned");
         map.values()
             .find(|entry| entry.is_reusable_for_profile(profile_id))

@@ -7,7 +7,7 @@ fn main() {
     // target via `rustc-link-arg-bins`.
     //
     // The integration test binary also needs the comctl32 v6 manifest because dependencies
-    // (sqlx, keyring, tokio) cause the linker to pull in tao/wry symbols that reference
+    // (keyring, tokio) cause the linker to pull in tao/wry symbols that reference
     // TaskDialogIndirect. Without the manifest, the test binary crashes with
     // STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139).
     //

@@ -71,7 +71,7 @@ pub(super) fn count_selected_tables(input: &StartDumpInput) -> usize {
 pub async fn start_sql_dump_impl(
     state: &AppState,
     input: StartDumpInput,
-    pool: sqlx::MySqlPool,
+    pool: BackgroundPool,
 ) -> Result<String, String> {
     let dump_jobs = &state.dump_jobs;
     input
@@ -95,7 +95,7 @@ pub async fn start_sql_dump_impl(
             jobs: &dump_jobs_arc,
             job_id: &job_id_clone,
         };
-        let result = execute_dump(&pool, &input, job);
+        let result = run_dump_job(&pool, &input, job);
         job.update_progress(|progress| progress.finish(result));
     });
 
@@ -109,12 +109,14 @@ pub(super) fn dump_object_type(table_type: &str) -> DumpObjectType {
     DumpObjectType::Table
 }
 
+#[cfg(not(coverage))]
 #[derive(Clone, Copy)]
 pub(super) struct DumpObjectRef<'a> {
     db_name: &'a str,
     entry: &'a DumpTableEntry,
 }
 
+#[cfg(not(coverage))]
 impl DumpObjectRef<'_> {
     pub(super) fn is_view(&self) -> bool {
         self.entry.object_type == DumpObjectType::View
@@ -129,13 +131,14 @@ impl DumpObjectRef<'_> {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum DumpLoopOutcome {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DumpLoopOutcome {
     Finished,
     Cancelled,
 }
 
-pub(super) enum DumpStop {
+#[derive(Debug)]
+pub enum DumpStop {
     Cancelled,
     Failed(String),
 }
@@ -146,32 +149,38 @@ impl From<String> for DumpStop {
     }
 }
 
-pub(super) type DumpStep = Result<(), DumpStop>;
+pub type DumpStep = Result<(), DumpStop>;
 
 pub(super) fn write_error(error: std::io::Error) -> String {
     format!("Write error: {error}")
 }
 
+#[cfg(not(coverage))]
 pub(super) struct DumpRun<'a> {
-    pool: &'a sqlx::MySqlPool,
+    conn: &'a mut mysql_async::Conn,
     input: &'a StartDumpInput,
     job: DumpJob<'a>,
     runtime: tokio::runtime::Handle,
-    tables_done: std::cell::Cell<usize>,
+    tables_done: usize,
 }
 
+#[cfg(not(coverage))]
 impl DumpRun<'_> {
-    pub(super) fn server_version(&self) -> Result<String, String> {
-        self.runtime.block_on(async {
-            let row = sqlx::query("SELECT VERSION()")
-                .fetch_one(self.pool)
+    pub(super) fn server_version(&mut self) -> Result<String, String> {
+        let runtime = self.runtime.clone();
+        runtime.block_on(async {
+            let statement = LoggedStatement::text("SELECT VERSION()");
+            let row = fetch_decoded(self.conn, statement)
                 .await
                 .map_err(|error| format!("Failed to get server version: {error}"))?;
-            decode_mysql_text_cell(&row, 0)
+            let first_row = row
+                .first()
+                .ok_or_else(|| "Failed to get server version: no row returned".to_string())?;
+            first_row.required_text(0)
         })
     }
 
-    pub(super) fn write_preamble(&self, file: &mut std::fs::File) -> Result<(), String> {
+    pub(super) fn write_preamble(&mut self, file: &mut std::fs::File) -> Result<(), String> {
         let server_version = self.server_version()?;
         let header_db = self
             .input
@@ -195,14 +204,15 @@ impl DumpRun<'_> {
         Ok(())
     }
 
-    pub(super) fn write_all_databases(&self, file: &mut std::fs::File) -> DumpStep {
-        for db_name in &self.input.databases {
+    pub(super) fn write_all_databases(&mut self, file: &mut std::fs::File) -> DumpStep {
+        let input = self.input;
+        for db_name in &input.databases {
             self.write_database(file, db_name)?;
         }
         Ok(())
     }
 
-    pub(super) fn write_database(&self, file: &mut std::fs::File, db_name: &str) -> DumpStep {
+    pub(super) fn write_database(&mut self, file: &mut std::fs::File, db_name: &str) -> DumpStep {
         let entry_list = self.input.tables.get(db_name).cloned().unwrap_or_default();
         if entry_list.is_empty() {
             return Ok(());
@@ -215,9 +225,9 @@ impl DumpRun<'_> {
         Ok(())
     }
 
-    pub(super) fn record_table_done(&self) {
-        let finished_tables = self.tables_done.get() + 1;
-        self.tables_done.set(finished_tables);
+    pub(super) fn record_table_done(&mut self) {
+        self.tables_done += 1;
+        let finished_tables = self.tables_done;
         self.job.update_progress(|progress| {
             progress.tables_done = finished_tables;
             progress.rows_exported = 0;
@@ -225,7 +235,7 @@ impl DumpRun<'_> {
     }
 
     pub(super) fn write_object(
-        &self,
+        &mut self,
         file: &mut std::fs::File,
         object: DumpObjectRef<'_>,
     ) -> DumpStep {
@@ -239,35 +249,39 @@ impl DumpRun<'_> {
         self.stop_if_cancelled()?;
         let should_dump_rows = self.input.options.include_data && !object.is_view();
         if should_dump_rows {
-            self.runtime.block_on(self.dump_table_rows(file, object))?;
+            let runtime = self.runtime.clone();
+            runtime.block_on(self.dump_table_rows(file, object))?;
         }
         self.record_table_done();
         self.stop_if_cancelled()
     }
 
-    pub(super) fn fetch_create_sql(&self, object: DumpObjectRef<'_>) -> Result<String, String> {
-        self.runtime.block_on(self.fetch_create_sql_async(object))
+    pub(super) fn fetch_create_sql(&mut self, object: DumpObjectRef<'_>) -> Result<String, String> {
+        let runtime = self.runtime.clone();
+        runtime.block_on(self.fetch_create_sql_async(object))
     }
 
     pub(super) async fn fetch_create_sql_async(
-        &self,
+        &mut self,
         object: DumpObjectRef<'_>,
     ) -> Result<String, String> {
         let object_keyword = sql_dump::dump_object_keyword(object.is_view());
         let table_name = &object.entry.name;
         let query = format!("SHOW CREATE {object_keyword} {}", object.qualified_name());
-        let failed = |error: sqlx::Error| {
+        let failed = |error: String| {
             format!("Failed to get CREATE {object_keyword} for '{table_name}': {error}")
         };
-        let row = sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
-            .fetch_one(self.pool)
+        let rows = fetch_decoded(self.conn, LoggedStatement::text(&query))
             .await
-            .map_err(failed)?;
-        decode_mysql_text_cell(&row, 1)
+            .map_err(|error| failed(error.to_string()))?;
+        let first_row = rows
+            .first()
+            .ok_or_else(|| failed("no row returned".to_string()))?;
+        first_row.required_text(1)
     }
 
     pub(super) fn write_object_structure(
-        &self,
+        &mut self,
         file: &mut std::fs::File,
         object: DumpObjectRef<'_>,
     ) -> Result<(), String> {
@@ -288,61 +302,55 @@ impl DumpRun<'_> {
             .update_progress(|progress| progress.mysql_thread_id = thread_id);
     }
 
+    pub(super) async fn connection_thread_id(&mut self) -> Result<u64, String> {
+        let rows = fetch_decoded(self.conn, LoggedStatement::text("SELECT CONNECTION_ID()"))
+            .await
+            .map_err(|error| format!("Failed to get connection ID: {error}"))?;
+        let first_row = rows
+            .first()
+            .ok_or_else(|| "Failed to get connection ID: no row returned".to_string())?;
+        first_row.unsigned(0)
+    }
+
     pub(super) async fn dump_table_rows(
-        &self,
+        &mut self,
         file: &mut std::fs::File,
         object: DumpObjectRef<'_>,
     ) -> Result<(), String> {
         let table_name = &object.entry.name;
         let data_query = format!("SELECT * FROM {}", object.qualified_name());
 
-        let mut conn = self
-            .pool
-            .acquire()
-            .await
-            .map_err(|error| format!("Failed to acquire connection: {error}"))?;
-        let thread_id: u64 = sqlx::query_scalar("SELECT CONNECTION_ID()")
-            .fetch_one(&mut *conn)
-            .await
-            .map_err(|error| format!("Failed to get connection ID: {error}"))?;
+        let thread_id = self.connection_thread_id().await?;
         self.set_running_thread(Some(thread_id));
 
-        let mut stream = sqlx::query(sqlx::AssertSqlSafe(data_query.as_str())).fetch(&mut *conn);
-        let first_row = stream
-            .try_next()
-            .await
-            .map_err(|error| format!("Failed to fetch data from '{table_name}': {error}"))?;
-        let Some(first_row) = first_row else {
-            self.set_running_thread(None);
-            return Ok(());
+        let job = self.job;
+        let streamed = stream(self.conn, LoggedStatement::text(&data_query)).await;
+        let rows = match streamed {
+            Ok(rows) => rows,
+            Err(error) => {
+                job.update_progress(|progress| progress.mysql_thread_id = None);
+                return Err(format!("Failed to fetch data from '{table_name}': {error}"));
+            }
         };
-
-        let columns: Vec<String> = first_row
+        let columns: Vec<String> = rows
             .columns()
             .iter()
-            .map(|column| column.name().to_string())
+            .map(|column| column.name_str().into_owned())
             .collect();
-        let first_row_stream = futures::stream::once(async { Ok(first_row) });
-        let full_stream = Box::pin(first_row_stream.chain(stream));
         let target = DumpTarget {
             file,
             table_name,
             columns: &columns,
-            job: self.job,
+            job,
         };
-        let result = stream_to_dump(full_stream, target, serialize_dump_row).await;
-        self.set_running_thread(None);
+        let row_stream = Box::pin(decoded_row_stream(rows));
+        let result = stream_to_dump(row_stream, target, serialize_dump_row).await;
+        job.update_progress(|progress| progress.mysql_thread_id = None);
         result.map_err(|error| format!("Failed to write data for '{table_name}': {error}"))
     }
 }
 
-pub(super) fn serialize_dump_row(row: &sqlx::mysql::MySqlRow) -> Vec<SqlDumpValue> {
-    (0..row.columns().len())
-        .map(|column_index| serialize_dump_value(row, column_index))
-        .collect()
-}
-
-pub(super) fn finish_dump_file(
+pub fn finish_dump_file(
     file: &mut std::fs::File,
     use_transaction: bool,
     loop_result: DumpStep,
@@ -369,22 +377,41 @@ pub(super) fn finish_dump_file(
     }
 }
 
-pub(super) fn execute_dump(
-    pool: &sqlx::MySqlPool,
+#[cfg(not(coverage))]
+pub(super) fn run_dump_job(
+    pool: &BackgroundPool,
     input: &StartDumpInput,
     job: DumpJob<'_>,
 ) -> Result<u64, String> {
     let runtime = tokio::runtime::Handle::try_current()
         .map_err(|error| format!("No tokio runtime: {error}"))?;
-    let mut file = std::fs::File::create(&input.file_path)
-        .map_err(|error| format!("Failed to create file '{}': {error}", input.file_path))?;
+    let mut conn = runtime.block_on(pool.checkout_for_transfer())?;
     let run = DumpRun {
-        pool,
+        conn: &mut conn,
         input,
         job,
         runtime,
-        tables_done: std::cell::Cell::new(0),
+        tables_done: 0,
     };
+    execute_dump(run)
+}
+
+#[cfg(coverage)]
+pub(super) fn run_dump_job(
+    pool: &BackgroundPool,
+    input: &StartDumpInput,
+    job: DumpJob<'_>,
+) -> Result<u64, String> {
+    let _ = (pool, input, job);
+    Err(crate::mysql::logged_query::UNAVAILABLE_IN_COVERAGE_MESSAGE.to_string())
+}
+
+#[cfg(not(coverage))]
+pub(super) fn execute_dump(mut run: DumpRun<'_>) -> Result<u64, String> {
+    let input = run.input;
+    let job = run.job;
+    let mut file = std::fs::File::create(&input.file_path)
+        .map_err(|error| format!("Failed to create file '{}': {error}", input.file_path))?;
     run.write_preamble(&mut file)?;
 
     let loop_result = run.write_all_databases(&mut file);

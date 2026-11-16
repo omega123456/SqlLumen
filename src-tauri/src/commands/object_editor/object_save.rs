@@ -70,7 +70,7 @@ pub(super) struct SaveAttempt {
 
 #[cfg(not(coverage))]
 impl SaveAttempt {
-    pub(super) fn response<T>(self, outcome: Result<T, sqlx::Error>) -> SaveObjectResponse {
+    pub(super) fn response<T>(self, outcome: Result<T, mysql_async::Error>) -> SaveObjectResponse {
         match outcome {
             Ok(_) => SaveObjectResponse {
                 success: true,
@@ -103,7 +103,7 @@ pub(super) fn save_attempt_failure_prefix(
 
 #[cfg(not(coverage))]
 pub(super) async fn drop_and_recreate_object(
-    conn: &mut sqlx::MySqlConnection,
+    conn: &mut mysql_async::Conn,
     request: &SaveObjectRequest,
     validated: ValidatedSave,
 ) -> Result<SaveObjectResponse, String> {
@@ -135,7 +135,7 @@ pub async fn save_object_impl(
     schema_queries::safe_identifier(&request.object_name)?;
     let validated = validate_save_request(&request)?;
 
-    let mut conn = pool.acquire().await.map_err(|error| error.to_string())?;
+    let mut conn = pool.checkout().await.map_err(|error| error.to_string())?;
 
     let use_sql = format!("USE {safe_db}");
     if let Err(error) = execute_simple_sql(&mut conn, &use_sql).await {
@@ -168,12 +168,17 @@ pub async fn save_object_impl(
     check_not_read_only(state, &request.connection_id)?;
     let _ = schema_queries::safe_identifier(&request.database)?;
     let _ = schema_queries::safe_identifier(&request.object_name)?;
-    let validated = validate_save_request(&request)?;
+    let ValidatedSave {
+        parsed_name,
+        type_keyword,
+        is_view,
+    } = validate_save_request(&request)?;
+    let _ = (type_keyword, is_view);
 
     Ok(SaveObjectResponse {
         success: true,
         error_message: None,
         drop_succeeded: false,
-        saved_object_name: Some(validated.parsed_name),
+        saved_object_name: Some(parsed_name),
     })
 }

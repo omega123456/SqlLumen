@@ -5,10 +5,13 @@
 pub mod blob_step_helpers;
 pub mod editor_session_fixtures;
 pub mod fake_credentials;
+pub mod first_packet_reader;
 pub mod log_capture;
 pub mod mock_mysql_server;
 pub mod mock_session;
 pub mod schema_index_chunks;
+pub mod silent_listener;
+pub mod tls_fixtures;
 
 use rusqlite::Connection;
 use sqllumen_lib::commands::connections::SaveConnectionInput;

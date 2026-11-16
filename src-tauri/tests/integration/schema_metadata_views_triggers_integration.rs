@@ -10,8 +10,6 @@ use sqllumen_lib::mysql::registry::{
 };
 use sqllumen_lib::mysql::table_data_cache::TableDataCache;
 use sqllumen_lib::state::AppState;
-#[cfg(not(coverage))]
-use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
 use std::sync::{Arc, Mutex};
 
 fn test_state() -> AppState {
@@ -66,13 +64,8 @@ fn text_col(name: &'static str) -> MockColumnDef {
 }
 
 #[cfg(not(coverage))]
-fn pool_for(port: u16) -> sqlx::MySqlPool {
-    let opts = MySqlConnectOptions::new()
-        .host("127.0.0.1")
-        .port(port)
-        .username("root")
-        .password("");
-    MySqlPoolOptions::new().connect_lazy_with(opts)
+fn pool_for(port: u16) -> sqllumen_lib::mysql::pool::BackgroundPool {
+    crate::common::mock_session::mock_pool(port)
 }
 
 fn stored_params(profile_id: &str) -> StoredConnectionParams {
@@ -96,16 +89,15 @@ fn stored_params(profile_id: &str) -> StoredConnectionParams {
 }
 
 #[cfg(coverage)]
-fn dummy_lazy_pool() -> sqlx::MySqlPool {
-    let opts = sqlx::mysql::MySqlConnectOptions::new()
-        .host("127.0.0.1")
-        .port(13306)
-        .username("dummy")
-        .password("dummy");
-    sqlx::mysql::MySqlPoolOptions::new().connect_lazy_with(opts)
+fn dummy_lazy_pool() -> sqllumen_lib::mysql::pool::BackgroundPool {
+    crate::common::mock_session::unreachable_pool()
 }
 
-fn register_pool(state: &AppState, connection_id: &str, pool: sqlx::MySqlPool) {
+fn register_pool(
+    state: &AppState,
+    connection_id: &str,
+    pool: sqllumen_lib::mysql::pool::BackgroundPool,
+) {
     let entry = RegistryEntry {
         pool,
         session_id: connection_id.to_string(),

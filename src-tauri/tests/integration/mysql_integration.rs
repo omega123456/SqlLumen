@@ -2,26 +2,25 @@ use crate::common;
 use sqllumen_lib::mysql::pool::SslSettings;
 
 use sqllumen_lib::credentials;
+use sqllumen_lib::mysql::pool::{BackgroundPool, PoolSettings};
 use sqllumen_lib::mysql::registry::{
     ConnectionRegistry, ConnectionStatus, RegistryEntry, StoredConnectionParams,
 };
-#[cfg(not(coverage))]
-use sqllumen_lib::mysql::schema_queries::{
-    decode_mysql_optional_text_cell_for_test, decode_mysql_text_cell_for_test,
-    decode_mysql_text_cell_named_for_test,
-};
-use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
+use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
-// --- Helper: create a lazy (non-connecting) dummy pool for registry tests ---
+const LIVE_POOL_SETTINGS: PoolSettings = PoolSettings {
+    connect_timeout: Duration::from_secs(10),
+    max_connections: 1,
+};
 
-fn dummy_pool() -> sqlx::MySqlPool {
-    let opts = MySqlConnectOptions::new()
-        .host("127.0.0.1")
-        .port(13306)
-        .username("dummy")
-        .password("dummy");
-    MySqlPoolOptions::new().connect_lazy_with(opts)
+fn dummy_pool() -> BackgroundPool {
+    common::mock_session::unreachable_pool()
+}
+
+fn live_pool(url: &str) -> BackgroundPool {
+    let opts = mysql_async::Opts::from_url(url).expect("MYSQL_TEST_URL should parse");
+    BackgroundPool::connect_lazily(opts, LIVE_POOL_SETTINGS)
 }
 
 fn dummy_params() -> StoredConnectionParams {
@@ -82,7 +81,7 @@ fn dummy_entry(id: &str) -> RegistryEntry {
     }
 }
 
-// --- Registry Tests (need tokio context for sqlx pool internals) ---
+// --- Registry Tests ---
 
 #[tokio::test]
 async fn test_registry_insert_and_contains() {
@@ -383,20 +382,18 @@ fn test_pool_creation_with_live_mysql() {
 
     let rt = tokio::runtime::Runtime::new().expect("should create tokio runtime");
     rt.block_on(async {
-        // Use sqlx's built-in URL parsing for simplicity
-        let pool = sqlx::MySqlPool::connect(&url)
-            .await
-            .expect("should connect to MySQL");
+        use sqllumen_lib::mysql::logged_query::{fetch_first_decoded_pooled, LoggedStatement};
 
-        let row = sqlx::query("SELECT VERSION()")
-            .fetch_one(&pool)
+        let pool = live_pool(&url);
+        let row = fetch_first_decoded_pooled(&pool, LoggedStatement::text("SELECT VERSION()"))
             .await
-            .expect("should execute query");
+            .expect("should execute query")
+            .expect("should return a row");
 
-        let version: String = sqlx::Row::get(&row, 0);
+        let version = row.required_text(0).expect("version text");
         assert!(!version.is_empty(), "should return server version");
 
-        pool.close().await;
+        pool.disconnect().await.expect("pool disconnects");
     });
 }
 
@@ -445,77 +442,86 @@ fn test_create_pool_with_live_mysql() {
         };
 
         let pool = create_pool(&params).await.expect("should create pool");
-        pool.close().await;
+        pool.disconnect().await.expect("pool disconnects");
     });
 }
 
-/// `information_schema` identifier columns can be `VARBINARY` (e.g. MariaDB). sqlx cannot use
-/// `row.get::<String>()` on those cells — we must fall back to bytes + UTF-8. This test forces
-/// that path with `CAST(? AS BINARY)` (requires `MYSQL_TEST_URL`).
+#[cfg(not(coverage))]
+async fn fetch_first_live_row(
+    pool: &BackgroundPool,
+    statement: sqllumen_lib::mysql::logged_query::LoggedStatement<'_>,
+) -> sqllumen_lib::mysql::cell_values::DecodedRow {
+    sqllumen_lib::mysql::logged_query::fetch_first_decoded_pooled(pool, statement)
+        .await
+        .expect("query should succeed")
+        .expect("query should return a row")
+}
+
+/// `information_schema` identifier columns can be `VARBINARY` (e.g. MariaDB); the text
+/// accessors must read those cells as UTF-8 text (requires `MYSQL_TEST_URL`).
 #[cfg(not(coverage))]
 #[tokio::test]
 async fn test_schema_text_decode_accepts_varbinary_like_information_schema() {
-    let url = match std::env::var("MYSQL_TEST_URL") {
-        Ok(u) => u,
-        Err(_) => {
-            eprintln!(
-                "Skipping test_schema_text_decode_accepts_varbinary_like_information_schema: MYSQL_TEST_URL not set"
-            );
-            return;
-        }
+    use sqllumen_lib::mysql::cell_values::DecodedRow;
+    use sqllumen_lib::mysql::logged_query::LoggedStatement;
+
+    let Ok(url) = std::env::var("MYSQL_TEST_URL") else {
+        eprintln!(
+            "Skipping test_schema_text_decode_accepts_varbinary_like_information_schema: MYSQL_TEST_URL not set"
+        );
+        return;
     };
+    let pool = live_pool(&url);
 
-    let pool = MySqlPoolOptions::new()
-        .max_connections(1)
-        .connect(&url)
-        .await
-        .expect("should connect to MYSQL_TEST_URL");
-
-    let row_bin = sqlx::query("SELECT CAST(? AS BINARY) AS schema_name")
-        .bind("my_db_τest")
-        .fetch_one(&pool)
-        .await
-        .expect("CAST AS BINARY query");
-
+    let row_bin: DecodedRow = fetch_first_live_row(
+        &pool,
+        LoggedStatement::bound(
+            "SELECT CAST(? AS BINARY) AS schema_name",
+            vec!["my_db_τest".into()],
+        ),
+    )
+    .await;
     assert_eq!(
-        decode_mysql_text_cell_for_test(&row_bin, 0).expect("indexed VARBINARY decode"),
+        row_bin.required_text(0).expect("indexed VARBINARY decode"),
         "my_db_τest"
     );
 
-    let row_named = sqlx::query("SELECT CAST(? AS BINARY) AS Key_name")
-        .bind("named_idx")
-        .fetch_one(&pool)
-        .await
-        .expect("named CAST AS BINARY query");
-
+    let row_named = fetch_first_live_row(
+        &pool,
+        LoggedStatement::bound(
+            "SELECT CAST(? AS BINARY) AS Key_name",
+            vec!["named_idx".into()],
+        ),
+    )
+    .await;
     assert_eq!(
-        decode_mysql_text_cell_named_for_test(&row_named, "Key_name")
+        row_named
+            .required_text("Key_name")
             .expect("named VARBINARY decode"),
         "named_idx"
     );
 
-    let row_txt = sqlx::query("SELECT CAST(? AS CHAR(64) CHARACTER SET utf8mb4) AS plain")
-        .bind("utf8_plain")
-        .fetch_one(&pool)
-        .await
-        .expect("CHAR utf8mb4 query");
-
+    let row_txt = fetch_first_live_row(
+        &pool,
+        LoggedStatement::bound(
+            "SELECT CAST(? AS CHAR(64) CHARACTER SET utf8mb4) AS plain",
+            vec!["utf8_plain".into()],
+        ),
+    )
+    .await;
     assert_eq!(
-        decode_mysql_text_cell_for_test(&row_txt, 0).expect("VARCHAR decode"),
+        row_txt.required_text(0).expect("VARCHAR decode"),
         "utf8_plain"
     );
 
-    let row_null = sqlx::query("SELECT CAST(NULL AS BINARY) AS x")
-        .fetch_one(&pool)
-        .await
-        .expect("NULL binary query");
+    let row_null = fetch_first_live_row(
+        &pool,
+        LoggedStatement::bound("SELECT CAST(NULL AS BINARY) AS x", vec![]),
+    )
+    .await;
+    assert_eq!(row_null.optional_text(0).expect("optional decode"), None);
 
-    assert_eq!(
-        decode_mysql_optional_text_cell_for_test(&row_null, 0).expect("optional decode"),
-        None
-    );
-
-    pool.close().await;
+    pool.disconnect().await.expect("pool disconnects");
 }
 
 /// `insert_table_row_impl` must use the driver's `last_insert_id()` (`u64`). Decoding
@@ -535,11 +541,7 @@ async fn insert_table_row_impl_refetches_unsigned_bigint_autoincrement_pk() {
     use sqllumen_lib::mysql::table_data::{insert_table_row_impl, PrimaryKeyInfo};
     use std::collections::HashMap;
 
-    let pool = MySqlPoolOptions::new()
-        .max_connections(1)
-        .connect(&url)
-        .await
-        .expect("connect MYSQL_TEST_URL");
+    let pool = live_pool(&url);
 
     let table = format!("__ins_unsigned_ai_{}", uuid::Uuid::new_v4().simple());
 
@@ -567,14 +569,14 @@ async fn insert_table_row_impl_refetches_unsigned_bigint_autoincrement_pk() {
     )
     .await;
 
-    let _ = sqlx::query(sqlx::AssertSqlSafe(format!(
-        "DROP TABLE `{}`.`{}`",
-        db_name, table
-    )))
-    .execute(&pool)
+    let drop_sql = format!("DROP TABLE `{}`.`{}`", db_name, table);
+    let _ = sqllumen_lib::mysql::logged_query::execute_pooled(
+        &pool,
+        sqllumen_lib::mysql::logged_query::LoggedStatement::text(&drop_sql),
+    )
     .await;
 
-    pool.close().await;
+    pool.disconnect().await.expect("pool disconnects");
 
     let row_vec =
         insert_outcome.expect("insert should succeed for BIGINT UNSIGNED AUTO_INCREMENT PK");
@@ -587,7 +589,7 @@ async fn insert_table_row_impl_refetches_unsigned_bigint_autoincrement_pk() {
 }
 
 #[cfg(not(coverage))]
-async fn create_unsigned_auto_increment_table(pool: &sqlx::MySqlPool, db_name: &str, table: &str) {
+async fn create_unsigned_auto_increment_table(pool: &BackgroundPool, db_name: &str, table: &str) {
     let create_sql = format!(
         "CREATE TABLE `{}`.`{}` ( \
          `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, \
@@ -596,10 +598,12 @@ async fn create_unsigned_auto_increment_table(pool: &sqlx::MySqlPool, db_name: &
          ) ENGINE=InnoDB",
         db_name, table
     );
-    sqlx::query(sqlx::AssertSqlSafe(create_sql.as_str()))
-        .execute(pool)
-        .await
-        .expect("CREATE TABLE for unsigned AI insert test");
+    sqllumen_lib::mysql::logged_query::execute_pooled(
+        pool,
+        sqllumen_lib::mysql::logged_query::LoggedStatement::text(&create_sql),
+    )
+    .await
+    .expect("CREATE TABLE for unsigned AI insert test");
 }
 
 #[cfg(not(coverage))]
@@ -631,4 +635,140 @@ fn mysql_test_target(test_name: &str) -> Option<MySqlTestTarget> {
         return None;
     }
     Some(MySqlTestTarget { url, database_name })
+}
+
+#[cfg(not(coverage))]
+mod pool_lifecycle {
+    use crate::common;
+    use crate::common::mock_mysql_server::{MockMySqlServer, MockScript};
+    use crate::common::silent_listener::{closed_port, SilentListener};
+    use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
+    use sqllumen_lib::commands::mysql::{close_connection_impl, open_connection_impl};
+    use sqllumen_lib::state::AppState;
+    use std::time::{Duration, Instant};
+
+    const REJECTED_USERNAME: &str = "intruder";
+    const TIMEOUT_DEADLINE: Duration = Duration::from_millis(1500);
+    const DISCONNECT_DEADLINE: Duration = Duration::from_secs(1);
+    const POLL_INTERVAL: Duration = Duration::from_millis(10);
+
+    struct ProfileTarget<'a> {
+        port: u16,
+        username: &'a str,
+    }
+
+    fn save_input(target: ProfileTarget<'_>) -> SaveConnectionInput {
+        SaveConnectionInput {
+            name: "Lifecycle DB".to_string(),
+            host: "127.0.0.1".to_string(),
+            port: target.port.into(),
+            username: target.username.to_string(),
+            password: None,
+            default_database: None,
+            ssl_enabled: false,
+            ssl_ca_path: None,
+            ssl_cert_path: None,
+            ssl_key_path: None,
+            color: None,
+            group_id: None,
+            read_only: false,
+            sort_order: 0,
+            connect_timeout_secs: Some(1),
+            keepalive_interval_secs: Some(60),
+        }
+    }
+
+    async fn open(state: &AppState, target: ProfileTarget<'_>) -> Result<String, String> {
+        let profile_id = save_connection_impl(state, save_input(target)).expect("profile saves");
+        open_connection_impl(state, &profile_id)
+            .await
+            .map(|opened| opened.session_id)
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn opening_with_a_rejected_username_fails_at_open_time() {
+        let script = MockScript {
+            rejected_username: Some(REJECTED_USERNAME),
+            ..MockScript::default()
+        };
+        let server = MockMySqlServer::start_with(script).await;
+        let state = common::test_app_state();
+        let target = ProfileTarget {
+            port: server.port,
+            username: REJECTED_USERNAME,
+        };
+
+        let error = open(&state, target).await.expect_err("login is refused");
+
+        assert!(error.starts_with("Failed to connect:"), "{error}");
+        assert!(state.registry.get_pool(REJECTED_USERNAME).is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn opening_a_closed_port_fails_at_open_time() {
+        let state = common::test_app_state();
+        let target = ProfileTarget {
+            port: closed_port(),
+            username: "root",
+        };
+        let started = Instant::now();
+
+        let error = open(&state, target).await.expect_err("nothing listens");
+
+        assert!(
+            started.elapsed() < TIMEOUT_DEADLINE,
+            "{:?}",
+            started.elapsed()
+        );
+        assert!(error.starts_with("Failed to connect:"), "{error}");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn opening_a_silent_server_fails_within_the_connect_timeout() {
+        let listener = SilentListener::start().await;
+        let state = common::test_app_state();
+        let target = ProfileTarget {
+            port: listener.port,
+            username: "root",
+        };
+        let started = Instant::now();
+
+        let error = open(&state, target)
+            .await
+            .expect_err("no handshake arrives");
+
+        assert!(
+            started.elapsed() < TIMEOUT_DEADLINE,
+            "{:?}",
+            started.elapsed()
+        );
+        assert!(error.contains("timed out"), "{error}");
+    }
+
+    async fn wait_until_no_live_connections(server: &MockMySqlServer) {
+        let deadline = Instant::now() + DISCONNECT_DEADLINE;
+        while server.live_connection_count() > 0 && Instant::now() < deadline {
+            tokio::time::sleep(POLL_INTERVAL).await;
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn closing_a_connection_disconnects_its_pool() {
+        let server = MockMySqlServer::start_script(vec![]).await;
+        let state = common::test_app_state();
+        let target = ProfileTarget {
+            port: server.port,
+            username: "root",
+        };
+        let session_id = open(&state, target).await.expect("open succeeds");
+        assert!(server.live_connection_count() > 0);
+
+        close_connection_impl(&state, &session_id)
+            .await
+            .expect("close succeeds");
+        wait_until_no_live_connections(&server).await;
+
+        assert_eq!(server.live_connection_count(), 0);
+        assert!(state.registry.get_pool(&session_id).is_none());
+    }
 }

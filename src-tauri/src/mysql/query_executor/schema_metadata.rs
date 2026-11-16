@@ -1,26 +1,19 @@
 use super::*;
 
 #[cfg(not(coverage))]
-fn decode_unchecked_string(row: &sqlx::mysql::MySqlRow, column_index: usize) -> Option<String> {
-    if let Ok(value) = row.try_get_unchecked::<Option<String>, _>(column_index) {
-        return value;
-    }
-
-    row.try_get_unchecked::<Option<Vec<u8>>, _>(column_index)
-        .ok()
-        .flatten()
-        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
-}
+use crate::mysql::cell_values::DecodedRow;
 
 #[cfg(not(coverage))]
-fn decode_required_identifier(row: &sqlx::mysql::MySqlRow, index: usize) -> Option<String> {
-    decode_unchecked_string(row, index)
+fn decode_required_identifier(row: &DecodedRow, index: usize) -> Option<String> {
+    row.optional_text(index)
+        .ok()
+        .flatten()
         .filter(|value| !crate::mysql::sql_chars::is_blank_identifier(value))
 }
 
 #[cfg(not(coverage))]
-fn decode_metadata_text(row: &sqlx::mysql::MySqlRow, index: usize) -> String {
-    decode_unchecked_string(row, index).unwrap_or_default()
+fn decode_metadata_text(row: &DecodedRow, index: usize) -> String {
+    row.optional_text(index).ok().flatten().unwrap_or_default()
 }
 
 #[cfg(not(coverage))]
@@ -34,16 +27,14 @@ struct MetadataQuery {
 
 #[cfg(not(coverage))]
 async fn fetch_metadata_rows(
-    pool: &sqlx::MySqlPool,
+    pool: &crate::mysql::pool::BackgroundPool,
     query: MetadataQuery,
-) -> Result<Vec<sqlx::mysql::MySqlRow>, String> {
-    crate::mysql::query_log::log_outgoing_sql(&query.sql);
-    let rows = sqlx::query(sqlx::AssertSqlSafe(query.sql.as_str()))
-        .fetch_all(pool)
+) -> Result<Vec<DecodedRow>, String> {
+    use crate::mysql::logged_query::{fetch_decoded_pooled, LoggedStatement};
+
+    fetch_decoded_pooled(pool, LoggedStatement::text(&query.sql))
         .await
-        .map_err(|error| format!("Failed to fetch {}: {error}", query.label))?;
-    crate::mysql::query_log::log_mysql_rows(&rows);
-    Ok(rows)
+        .map_err(|error| format!("Failed to fetch {}: {error}", query.label))
 }
 
 #[cfg(not(coverage))]
@@ -100,11 +91,8 @@ fn routine_query() -> MetadataQuery {
 }
 
 #[cfg(not(coverage))]
-fn decode_non_negative_count(row: &sqlx::mysql::MySqlRow, index: usize) -> u64 {
-    row.try_get::<Option<i64>, _>(index)
-        .unwrap_or(None)
-        .map(|value| value as u64)
-        .unwrap_or(0)
+fn decode_non_negative_count(row: &DecodedRow, index: usize) -> u64 {
+    row.unsigned(index).unwrap_or(0)
 }
 
 #[cfg(not(coverage))]
@@ -114,7 +102,7 @@ struct SchemaTableRow {
 }
 
 #[cfg(not(coverage))]
-fn decode_table_row(row: &sqlx::mysql::MySqlRow) -> Option<SchemaTableRow> {
+fn decode_table_row(row: &DecodedRow) -> Option<SchemaTableRow> {
     let schema = decode_required_identifier(row, 0)?;
     let name = decode_required_identifier(row, 1)?;
     let table = TableInfo {
@@ -128,7 +116,7 @@ fn decode_table_row(row: &sqlx::mysql::MySqlRow) -> Option<SchemaTableRow> {
 }
 
 #[cfg(not(coverage))]
-fn group_tables(rows: &[sqlx::mysql::MySqlRow]) -> HashMap<String, Vec<TableInfo>> {
+fn group_tables(rows: &[DecodedRow]) -> HashMap<String, Vec<TableInfo>> {
     let mut tables: HashMap<String, Vec<TableInfo>> = HashMap::new();
     for decoded in rows.iter().filter_map(decode_table_row) {
         tables
@@ -146,7 +134,7 @@ struct TableColumnRow {
 }
 
 #[cfg(not(coverage))]
-fn decode_column_row(row: &sqlx::mysql::MySqlRow) -> Option<TableColumnRow> {
+fn decode_column_row(row: &DecodedRow) -> Option<TableColumnRow> {
     let schema = decode_required_identifier(row, 0)?;
     let table = decode_required_identifier(row, 1)?;
     let name = decode_required_identifier(row, 2)?;
@@ -160,7 +148,7 @@ fn decode_column_row(row: &sqlx::mysql::MySqlRow) -> Option<TableColumnRow> {
 }
 
 #[cfg(not(coverage))]
-fn group_columns(rows: &[sqlx::mysql::MySqlRow]) -> HashMap<String, Vec<ColumnMeta>> {
+fn group_columns(rows: &[DecodedRow]) -> HashMap<String, Vec<ColumnMeta>> {
     let mut columns: HashMap<String, Vec<ColumnMeta>> = HashMap::new();
     for decoded in rows.iter().filter_map(decode_column_row) {
         columns
@@ -178,7 +166,7 @@ struct SchemaRoutineRow {
 }
 
 #[cfg(not(coverage))]
-fn decode_routine_row(row: &sqlx::mysql::MySqlRow) -> Option<SchemaRoutineRow> {
+fn decode_routine_row(row: &DecodedRow) -> Option<SchemaRoutineRow> {
     let schema = decode_required_identifier(row, 0)?;
     let name = decode_required_identifier(row, 1)?;
     let routine_type = decode_metadata_text(row, 2);
@@ -189,7 +177,7 @@ fn decode_routine_row(row: &sqlx::mysql::MySqlRow) -> Option<SchemaRoutineRow> {
 }
 
 #[cfg(not(coverage))]
-fn group_routines(rows: &[sqlx::mysql::MySqlRow]) -> HashMap<String, Vec<RoutineMeta>> {
+fn group_routines(rows: &[DecodedRow]) -> HashMap<String, Vec<RoutineMeta>> {
     let mut routines: HashMap<String, Vec<RoutineMeta>> = HashMap::new();
     for decoded in rows.iter().filter_map(decode_routine_row) {
         routines

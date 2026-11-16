@@ -1,6 +1,4 @@
 use serde::{Deserialize, Serialize};
-use sqlx::mysql::MySqlRow;
-use sqlx::Row;
 
 mod batch;
 #[cfg(not(coverage))]
@@ -30,8 +28,8 @@ pub use routines::{
 };
 #[cfg(not(coverage))]
 pub use table_details::{
-    query_ddl, query_foreign_keys, query_full_columns, query_indexes, query_schema_info,
-    query_table_metadata,
+    query_ddl, query_ddl_on_connection, query_foreign_keys, query_full_columns, query_indexes,
+    query_schema_info, query_table_metadata,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -141,64 +139,6 @@ pub fn safe_identifier(name: &str) -> Result<String, String> {
     }
     let escaped = name.replace('`', "``");
     Ok(format!("`{escaped}`"))
-}
-
-pub(crate) fn decode_mysql_text_cell(row: &MySqlRow, index: usize) -> Result<String, String> {
-    match row.try_get::<String, _>(index) {
-        Ok(value) => Ok(value),
-        Err(_) => {
-            let bytes: Vec<u8> = row.try_get(index).map_err(|error| {
-                format!("Failed to decode column index {index} as UTF-8 text: {error}")
-            })?;
-            Ok(String::from_utf8_lossy(&bytes).into_owned())
-        }
-    }
-}
-
-pub(crate) fn decode_mysql_text_cell_named(row: &MySqlRow, column: &str) -> Result<String, String> {
-    match row.try_get::<String, _>(column) {
-        Ok(value) => Ok(value),
-        Err(_) => {
-            let bytes: Vec<u8> = row.try_get(column).map_err(|error| {
-                format!("Failed to decode column '{column}' as UTF-8 text: {error}")
-            })?;
-            Ok(String::from_utf8_lossy(&bytes).into_owned())
-        }
-    }
-}
-
-#[cfg(not(coverage))]
-fn decode_mysql_optional_text_cell(row: &MySqlRow, index: usize) -> Result<Option<String>, String> {
-    match row.try_get::<Option<String>, _>(index) {
-        Ok(value) => Ok(value),
-        Err(_) => match row.try_get::<Option<Vec<u8>>, _>(index) {
-            Ok(opt) => Ok(opt.map(|bytes: Vec<u8>| String::from_utf8_lossy(&bytes).into_owned())),
-            Err(error) => Err(format!(
-                "Failed to decode optional text column index {index}: {error}"
-            )),
-        },
-    }
-}
-
-#[cfg(all(not(coverage), any(test, feature = "test-utils")))]
-pub fn decode_mysql_text_cell_for_test(row: &MySqlRow, index: usize) -> Result<String, String> {
-    decode_mysql_text_cell(row, index)
-}
-
-#[cfg(all(not(coverage), any(test, feature = "test-utils")))]
-pub fn decode_mysql_text_cell_named_for_test(
-    row: &MySqlRow,
-    column: &str,
-) -> Result<String, String> {
-    decode_mysql_text_cell_named(row, column)
-}
-
-#[cfg(all(not(coverage), any(test, feature = "test-utils")))]
-pub fn decode_mysql_optional_text_cell_for_test(
-    row: &MySqlRow,
-    index: usize,
-) -> Result<Option<String>, String> {
-    decode_mysql_optional_text_cell(row, index)
 }
 
 #[derive(Debug, Clone, Copy)]

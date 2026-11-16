@@ -553,14 +553,8 @@ async fn close_connection_does_not_cancel_when_other_sessions_exist() {
 /// Helper to register a lazy pool in the registry for a given session/profile.
 fn register_dummy_session(state: &AppState, session_id: &str, profile_id: &str) {
     use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
-    use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
 
-    let opts = MySqlConnectOptions::new()
-        .host("127.0.0.1")
-        .port(13306)
-        .username("dummy")
-        .password("dummy");
-    let pool = MySqlPoolOptions::new().connect_lazy_with(opts);
+    let pool = crate::common::mock_session::unreachable_pool();
 
     state.registry.insert(
         session_id.to_string(),

@@ -19,7 +19,9 @@ fn test_write_header_includes_database_and_version() {
     assert!(output.contains("Database: test_db"));
     assert!(output.contains("Server version: 8.0.33"));
     assert!(output.contains("SET @OLD_CHARACTER_SET_CLIENT"));
-    assert!(output.contains("SET NAMES utf8mb4"));
+    assert!(output.contains(
+        "/*!40101 SET NAMES utf8mb4 */;\n/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;\n/*!40103 SET TIME_ZONE='+00:00' */;\n"
+    ));
 }
 
 #[test]
@@ -31,6 +33,54 @@ fn test_write_footer_restores_settings() {
     assert!(output.contains("SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT"));
     assert!(output.contains("SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS"));
     assert!(output.contains("SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION"));
+    assert!(output.ends_with(
+        "/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;\n/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;\n"
+    ));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_dump_whose_connection_fails_ends_failed() {
+    use sqllumen_lib::commands::sql_dump::{
+        get_dump_progress_impl, start_sql_dump_impl, DumpObjectType, DumpTableEntry, StartDumpInput,
+    };
+    use std::time::{Duration, Instant};
+
+    const JOB_DEADLINE: Duration = Duration::from_secs(1);
+    const JOB_POLL_INTERVAL: Duration = Duration::from_millis(10);
+
+    let state = common::test_app_state();
+    let dir = tempfile::tempdir().expect("temp dir");
+    let input = StartDumpInput {
+        connection_id: "conn-dump".to_string(),
+        file_path: dir
+            .path()
+            .join("refused.sql")
+            .to_string_lossy()
+            .into_owned(),
+        databases: vec!["app".to_string()],
+        tables: std::collections::HashMap::from([(
+            "app".to_string(),
+            vec![DumpTableEntry {
+                name: "orders".to_string(),
+                object_type: DumpObjectType::Table,
+            }],
+        )]),
+        options: DumpOptions::default(),
+    };
+    let pool = common::mock_session::mock_pool(common::silent_listener::closed_port());
+
+    let job_id = start_sql_dump_impl(&state, input, pool)
+        .await
+        .expect("the job id is returned before any connection is made");
+    let deadline = Instant::now() + JOB_DEADLINE;
+    let mut progress = get_dump_progress_impl(&state, &job_id).expect("job exists");
+    while progress.status == DumpJobStatus::Running && Instant::now() < deadline {
+        tokio::time::sleep(JOB_POLL_INTERVAL).await;
+        progress = get_dump_progress_impl(&state, &job_id).expect("job exists");
+    }
+
+    assert_eq!(progress.status, DumpJobStatus::Failed);
+    assert!(progress.error_message.is_some());
 }
 
 // ── Structure writing ─────────────────────────────────────────────────────
@@ -1214,9 +1264,9 @@ fn test_dump_execution_does_not_use_per_object_type_lookup() {
 }
 
 #[test]
-fn test_listing_uses_query_log_helper() {
-    // Verify that the consolidated listing query path logs through the
-    // shared MySQL query logging helper.
+fn test_listing_uses_logged_query_helper() {
+    // Verify that the consolidated listing query path runs through the
+    // shared logged_query helpers.
     let source = include_str!("../../src/commands/sql_dump/exportable_objects.rs");
     let listing_fn_start = source
         .find("pub async fn list_exportable_objects_impl")
@@ -1229,7 +1279,7 @@ fn test_listing_uses_query_log_helper() {
     let listing_body = &source[listing_fn_start..listing_fn_end];
 
     assert!(
-        listing_body.contains("query_log::log_outgoing_sql"),
-        "list_exportable_objects_impl must log through the shared query_log helper"
+        listing_body.contains("fetch_decoded_pooled("),
+        "list_exportable_objects_impl must run through the logged_query helpers"
     );
 }

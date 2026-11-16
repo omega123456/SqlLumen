@@ -1,44 +1,56 @@
 use super::*;
+#[cfg(not(coverage))]
+use crate::mysql::logged_query::{execute_pooled, fetch_first_decoded_pooled};
 
 #[cfg(not(coverage))]
-pub(super) fn bind_json_number<'q>(
-    query: sqlx::query::Query<'q, sqlx::MySql, sqlx::mysql::MySqlArguments>,
-    number: &serde_json::Number,
-) -> sqlx::query::Query<'q, sqlx::MySql, sqlx::mysql::MySqlArguments> {
+fn bind_value_from_json_number(number: &serde_json::Number) -> mysql_async::Value {
     if let Some(integer) = number.as_i64() {
-        return query.bind(integer);
+        return mysql_async::Value::Int(integer);
     }
     if let Some(unsigned) = number.as_u64() {
-        return query.bind(unsigned);
+        return mysql_async::Value::UInt(unsigned);
     }
     if let Some(float) = number.as_f64() {
-        return query.bind(float);
+        return mysql_async::Value::Double(float);
     }
-    query.bind(number.to_string())
+    mysql_async::Value::from(number.to_string())
 }
 
 #[cfg(not(coverage))]
-pub(super) fn bind_json_value<'q>(
-    query: sqlx::query::Query<'q, sqlx::MySql, sqlx::mysql::MySqlArguments>,
-    value: &serde_json::Value,
-) -> sqlx::query::Query<'q, sqlx::MySql, sqlx::mysql::MySqlArguments> {
-    match value {
-        serde_json::Value::Null => query.bind(Option::<String>::None),
-        serde_json::Value::String(text) => query.bind(text.clone()),
-        serde_json::Value::Number(number) => bind_json_number(query, number),
-        serde_json::Value::Bool(boolean) => query.bind(*boolean as i64),
-        serde_json::Value::Object(_) => match decode_blob_envelope(value) {
-            Some(Ok(BlobBind::Bytes(bytes))) => query.bind(bytes),
-            Some(Ok(BlobBind::Empty)) => query.bind(Vec::<u8>::new()),
-            Some(Ok(BlobBind::Null)) => query.bind(Option::<Vec<u8>>::None),
-            Some(Err(error)) => {
-                tracing::error!(error = %error, "Malformed blob envelope reached bind stage; binding NULL");
-                query.bind(Option::<Vec<u8>>::None)
-            }
-            None => query.bind(value.to_string()),
-        },
-        _ => query.bind(value.to_string()),
+fn bind_value_from_blob_envelope(value: &serde_json::Value) -> mysql_async::Value {
+    match decode_blob_envelope(value) {
+        Some(Ok(BlobBind::Bytes(bytes))) => mysql_async::Value::Bytes(bytes),
+        Some(Ok(BlobBind::Empty)) => mysql_async::Value::Bytes(Vec::new()),
+        Some(Ok(BlobBind::Null)) => mysql_async::Value::NULL,
+        Some(Err(error)) => {
+            tracing::error!(error = %error, "Malformed blob envelope reached bind stage; binding NULL");
+            mysql_async::Value::NULL
+        }
+        None => mysql_async::Value::from(value.to_string()),
     }
+}
+
+#[cfg(not(coverage))]
+pub(super) fn bind_value_from_json(value: &serde_json::Value) -> mysql_async::Value {
+    match value {
+        serde_json::Value::Null => mysql_async::Value::NULL,
+        serde_json::Value::String(text) => mysql_async::Value::from(text.as_str()),
+        serde_json::Value::Number(number) => bind_value_from_json_number(number),
+        serde_json::Value::Bool(boolean) => mysql_async::Value::Int(i64::from(*boolean)),
+        serde_json::Value::Object(_) => bind_value_from_blob_envelope(value),
+        serde_json::Value::Array(_) => mysql_async::Value::from(value.to_string()),
+    }
+}
+
+#[cfg(not(coverage))]
+pub(super) fn json_bound_statement<'a>(
+    sql: &'a str,
+    params: &[serde_json::Value],
+) -> LoggedStatement<'a> {
+    if params.is_empty() {
+        return LoggedStatement::text(sql);
+    }
+    LoggedStatement::bound(sql, params.iter().map(bind_value_from_json).collect())
 }
 
 #[cfg(not(coverage))]
@@ -51,9 +63,9 @@ pub(super) fn is_auto_increment_key_column(
 
 #[cfg(not(coverage))]
 pub(super) fn ensure_single_row_affected(
-    result: &sqlx::mysql::MySqlQueryResult,
+    outcome: &crate::mysql::logged_query::ExecuteOutcome,
 ) -> Result<(), String> {
-    let rows_affected = result.rows_affected();
+    let rows_affected = outcome.affected_rows;
     if rows_affected != 1 {
         return Err(format!("Expected 1 row affected, got {rows_affected}"));
     }
@@ -62,7 +74,7 @@ pub(super) fn ensure_single_row_affected(
 
 #[cfg(not(coverage))]
 pub async fn update_table_row_impl(
-    pool: &sqlx::MySqlPool,
+    pool: &BackgroundPool,
     request: &UpdateTableRowRequest,
 ) -> Result<(), String> {
     let primary_key_columns = &request.primary_key_columns;
@@ -113,41 +125,23 @@ pub async fn update_table_row_impl(
     let mut all_params = set_params;
     all_params.extend(where_params);
 
-    log_table_data_sql(&sql, &all_params);
-    let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
-    for param in &all_params {
-        query = bind_json_value(query, param);
-    }
-
-    let result = query
-        .execute(pool)
+    let outcome = execute_pooled(pool, json_bound_statement(&sql, &all_params))
         .await
         .map_err(|error| format!("Update failed: {error}"))?;
-    crate::mysql::query_log::log_execute_result(&result);
 
-    ensure_single_row_affected(&result)
+    ensure_single_row_affected(&outcome)
 }
 
 #[cfg(coverage)]
 pub async fn update_table_row_impl(
-    _pool: &sqlx::MySqlPool,
+    _pool: &BackgroundPool,
     _request: &UpdateTableRowRequest,
 ) -> Result<(), String> {
     Ok(())
 }
 
 #[cfg(not(coverage))]
-fn bind_json_params<'q>(
-    sql: &'q str,
-    params: &'q [serde_json::Value],
-) -> sqlx::query::Query<'q, sqlx::MySql, sqlx::mysql::MySqlArguments> {
-    params
-        .iter()
-        .fold(sqlx::query(sqlx::AssertSqlSafe(sql)), bind_json_value)
-}
-
-#[cfg(not(coverage))]
-struct BoundStatement {
+struct JsonBoundStatement {
     sql: String,
     params: Vec<serde_json::Value>,
 }
@@ -156,7 +150,7 @@ struct BoundStatement {
 fn build_insert_statement(
     safe_target: &str,
     values: &HashMap<String, serde_json::Value>,
-) -> Result<BoundStatement, String> {
+) -> Result<JsonBoundStatement, String> {
     let mut col_names: Vec<&String> = values.keys().collect();
     col_names.sort();
     if col_names.is_empty() {
@@ -166,12 +160,11 @@ fn build_insert_statement(
         .iter()
         .map(|col| safe_identifier(col))
         .collect::<Result<Vec<_>, String>>()?;
-    let placeholders = vec!["?"; col_names.len()];
-    Ok(BoundStatement {
+    Ok(JsonBoundStatement {
         sql: format!(
             "INSERT INTO {safe_target} ({}) VALUES ({})",
             safe_cols.join(", "),
-            placeholders.join(", ")
+            crate::mysql::logged_query::placeholder_list(col_names.len())
         ),
         params: col_names.iter().map(|col| values[*col].clone()).collect(),
     })
@@ -216,11 +209,11 @@ struct InsertedRowColumns<'a> {
 
 #[cfg(not(coverage))]
 fn serialize_inserted_cell(
-    row: &sqlx::mysql::MySqlRow,
+    row: &DecodedRow,
     column_index: usize,
     row_columns: &InsertedRowColumns<'_>,
 ) -> (String, serde_json::Value) {
-    let col_name = row.column(column_index).name().to_string();
+    let col_name = row.column_name(column_index);
     let col_meta = row_columns.columns.get(column_index);
     let encoding = CellEncoding {
         is_binary: col_meta.is_some_and(|column| column.is_binary),
@@ -230,12 +223,13 @@ fn serialize_inserted_cell(
                 .contains(column.name.as_str())
         }),
     };
-    (col_name, serialize_table_value(row, column_index, encoding))
+    let cell = &row.cells()[column_index];
+    (col_name, serialize_table_value(cell, encoding))
 }
 
 #[cfg(not(coverage))]
 pub async fn insert_table_row_impl(
-    pool: &sqlx::MySqlPool,
+    pool: &BackgroundPool,
     metadata_cache: &MetadataCache,
     request: &InsertTableRowRequest,
 ) -> Result<Vec<(String, serde_json::Value)>, String> {
@@ -260,36 +254,31 @@ pub async fn insert_table_row_impl(
     let projection = build_table_data_projection(&columns, &primary_key_column_set)?;
 
     let insert = build_insert_statement(&format!("{safe_db}.{safe_table}"), values)?;
-    log_table_data_sql(&insert.sql, &insert.params);
-    let insert_result = bind_json_params(&insert.sql, &insert.params)
-        .execute(pool)
+    let insert_outcome = execute_pooled(pool, json_bound_statement(&insert.sql, &insert.params))
         .await
         .map_err(|error| format!("Insert failed: {error}"))?;
-    crate::mysql::query_log::log_execute_result(&insert_result);
 
     let auto_increment_id = primary_key_info
         .has_auto_increment
-        .then_some(insert_result.last_insert_id());
+        .then_some(insert_outcome.last_insert_id.unwrap_or_default());
     let filter = inserted_row_filter(primary_key_info, values, auto_increment_id)?;
     let refetch_sql = format!(
         "SELECT {projection} FROM {safe_db}.{safe_table} WHERE {}",
         filter.where_parts.join(" AND ")
     );
-    log_table_data_sql(&refetch_sql, &filter.params);
-    let refetch_row = bind_json_params(&refetch_sql, &filter.params)
-        .fetch_optional(pool)
-        .await
-        .map_err(|error| format!("Failed to re-fetch inserted row: {error}"))?;
+    let refetch_row =
+        fetch_first_decoded_pooled(pool, json_bound_statement(&refetch_sql, &filter.params))
+            .await
+            .map_err(|error| format!("Failed to re-fetch inserted row: {error}"))?;
     let Some(row) = refetch_row else {
         return Ok(vec![]);
     };
-    crate::mysql::query_log::log_mysql_row(&row);
 
     let row_columns = InsertedRowColumns {
         columns: &columns,
         primary_key_column_set: &primary_key_column_set,
     };
-    Ok((0..row.columns().len())
+    Ok((0..row.cells().len())
         .map(|column_index| serialize_inserted_cell(&row, column_index, &row_columns))
         .collect())
 }
@@ -310,7 +299,7 @@ pub(super) fn inserted_primary_key_value(
 
 #[cfg(coverage)]
 pub async fn insert_table_row_impl(
-    _pool: &sqlx::MySqlPool,
+    _pool: &BackgroundPool,
     _metadata_cache: &MetadataCache,
     _request: &InsertTableRowRequest,
 ) -> Result<Vec<(String, serde_json::Value)>, String> {
@@ -319,7 +308,7 @@ pub async fn insert_table_row_impl(
 
 #[cfg(not(coverage))]
 pub async fn delete_table_row_impl(
-    pool: &sqlx::MySqlPool,
+    pool: &BackgroundPool,
     request: &DeleteTableRowRequest,
 ) -> Result<(), String> {
     let primary_key_columns = &request.primary_key_columns;
@@ -350,24 +339,16 @@ pub async fn delete_table_row_impl(
         where_parts.join(" AND ")
     );
 
-    log_table_data_sql(&sql, &params);
-    let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
-    for param in &params {
-        query = bind_json_value(query, param);
-    }
-
-    let result = query
-        .execute(pool)
+    let outcome = execute_pooled(pool, json_bound_statement(&sql, &params))
         .await
         .map_err(|error| format!("Delete failed: {error}"))?;
-    crate::mysql::query_log::log_execute_result(&result);
 
-    ensure_single_row_affected(&result)
+    ensure_single_row_affected(&outcome)
 }
 
 #[cfg(coverage)]
 pub async fn delete_table_row_impl(
-    _pool: &sqlx::MySqlPool,
+    _pool: &BackgroundPool,
     _request: &DeleteTableRowRequest,
 ) -> Result<(), String> {
     Ok(())

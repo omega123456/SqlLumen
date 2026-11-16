@@ -92,7 +92,7 @@ pub async fn stream_to_dump<R, S, F, W>(
     serialize: F,
 ) -> Result<(), String>
 where
-    S: futures::TryStream<Ok = R, Error = sqlx::Error> + Unpin,
+    S: futures::TryStream<Ok = R, Error = mysql_async::Error> + Unpin,
     F: Fn(&R) -> Vec<SqlDumpValue>,
     W: Write + Seek,
 {
@@ -132,7 +132,7 @@ pub(super) async fn write_stream_rows<R, S, F, W>(
     output: RowOutput<'_, W, F>,
 ) -> Result<(), String>
 where
-    S: futures::TryStream<Ok = R, Error = sqlx::Error> + Unpin,
+    S: futures::TryStream<Ok = R, Error = mysql_async::Error> + Unpin,
     F: Fn(&R) -> Vec<SqlDumpValue>,
     W: Write + Seek,
 {

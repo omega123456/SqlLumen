@@ -1,20 +1,20 @@
+use crate::mysql::cell_values::DecodedRow;
 #[cfg(not(coverage))]
-use crate::mysql::query_log;
+use crate::mysql::logged_query::{
+    fetch_decoded_pooled, fetch_first_decoded_pooled, LoggedStatement,
+};
 #[cfg(not(coverage))]
-use sqlx::MySqlPool;
-use sqlx::Row;
+use crate::mysql::pool::BackgroundPool;
 use std::collections::HashMap;
 
-#[cfg(not(coverage))]
-use super::decode_mysql_optional_text_cell;
 use super::{
-    decode_mysql_text_cell, decode_mysql_text_cell_named, safe_identifier, ColumnInfo,
-    ForeignKeyInfo, IndexInfo, SchemaInfoResponse, SchemaObjectRef, TableMetadata,
+    safe_identifier, ColumnInfo, ForeignKeyInfo, IndexInfo, SchemaInfoResponse, SchemaObjectRef,
+    TableMetadata,
 };
 
 #[cfg(not(coverage))]
 pub async fn query_full_columns(
-    pool: &MySqlPool,
+    pool: &BackgroundPool,
     database: &str,
     table: &str,
 ) -> Result<Vec<ColumnInfo>, String> {
@@ -23,26 +23,24 @@ pub async fn query_full_columns(
          FROM information_schema.COLUMNS \
          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? \
          ORDER BY ORDINAL_POSITION";
-    query_log::log_outgoing_sql_bound(sql, &[database.to_string(), table.to_string()]);
-    let rows = sqlx::query(sql)
-        .bind(database)
-        .bind(table)
-        .fetch_all(pool)
-        .await
-        .map_err(|error| format!("Failed to get column details: {error}"))?;
-    query_log::log_mysql_rows(&rows);
+    let rows = fetch_decoded_pooled(
+        pool,
+        LoggedStatement::bound(sql, vec![database.into(), table.into()]),
+    )
+    .await
+    .map_err(|error| format!("Failed to get column details: {error}"))?;
 
     let mut columns = Vec::with_capacity(rows.len());
     for row in &rows {
-        let nullable_str = decode_mysql_text_cell(row, 2).unwrap_or_default();
-        let ordinal: i64 = row.try_get(6).unwrap_or(0);
+        let nullable_str = row.required_text(2).unwrap_or_default();
+        let ordinal = row.signed(6).unwrap_or(0);
         columns.push(ColumnInfo {
-            name: decode_mysql_text_cell(row, 0)?,
-            data_type: decode_mysql_text_cell(row, 1)?,
+            name: row.required_text(0)?,
+            data_type: row.required_text(1)?,
             nullable: nullable_str == "YES",
-            column_key: decode_mysql_text_cell(row, 3).unwrap_or_default(),
-            default_value: decode_mysql_optional_text_cell(row, 4)?,
-            extra: decode_mysql_text_cell(row, 5).unwrap_or_default(),
+            column_key: row.required_text(3).unwrap_or_default(),
+            default_value: row.optional_text(4)?,
+            extra: row.required_text(5).unwrap_or_default(),
             ordinal_position: ordinal as u32,
         });
     }
@@ -51,33 +49,29 @@ pub async fn query_full_columns(
 
 #[cfg(not(coverage))]
 pub async fn query_indexes(
-    pool: &MySqlPool,
+    pool: &BackgroundPool,
     database: &str,
     table: &str,
 ) -> Result<Vec<IndexInfo>, String> {
     let safe_db = safe_identifier(database)?;
     let safe_table = safe_identifier(table)?;
     let sql = format!("SHOW INDEX FROM {safe_db}.{safe_table}");
-    query_log::log_outgoing_sql(&sql);
-    let rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
-        .fetch_all(pool)
+    let rows = fetch_decoded_pooled(pool, LoggedStatement::text(&sql))
         .await
         .map_err(|error| format!("Failed to get indexes: {error}"))?;
-    query_log::log_mysql_rows(&rows);
 
     let mut index_map: HashMap<String, IndexInfo> = HashMap::new();
     let mut index_order: Vec<String> = Vec::new();
 
     for row in &rows {
-        let key_name: String = decode_mysql_text_cell_named(row, "Key_name").unwrap_or_default();
-        let column_name: String =
-            decode_mysql_text_cell_named(row, "Column_name").unwrap_or_default();
-        let non_unique: i64 = row.try_get("Non_unique").unwrap_or(0);
-        let index_type: String =
-            decode_mysql_text_cell_named(row, "Index_type").unwrap_or_default();
-        let cardinality: Option<i64> = row.try_get("Cardinality").ok();
+        let key_name: String = row.required_text("Key_name").unwrap_or_default();
+        let column_name: String = row.required_text("Column_name").unwrap_or_default();
+        let non_unique = row.signed("Non_unique").unwrap_or(0);
+        let index_type: String = row.required_text("Index_type").unwrap_or_default();
+        let cardinality = row.signed("Cardinality").ok();
 
-        let is_visible = decode_mysql_text_cell_named(row, "Visible")
+        let is_visible = row
+            .required_text("Visible")
             .map(|value| value == "YES")
             .unwrap_or(true);
 
@@ -109,7 +103,7 @@ pub async fn query_indexes(
 
 #[cfg(not(coverage))]
 pub async fn query_foreign_keys(
-    pool: &MySqlPool,
+    pool: &BackgroundPool,
     database: &str,
     table: &str,
 ) -> Result<Vec<ForeignKeyInfo>, String> {
@@ -125,25 +119,23 @@ pub async fn query_foreign_keys(
          WHERE kcu.TABLE_SCHEMA = ? AND kcu.TABLE_NAME = ? \
              AND kcu.REFERENCED_TABLE_NAME IS NOT NULL \
          ORDER BY kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION";
-    query_log::log_outgoing_sql_bound(sql, &[database.to_string(), table.to_string()]);
-    let rows = sqlx::query(sql)
-        .bind(database)
-        .bind(table)
-        .fetch_all(pool)
-        .await
-        .map_err(|error| format!("Failed to get foreign keys: {error}"))?;
-    query_log::log_mysql_rows(&rows);
+    let rows = fetch_decoded_pooled(
+        pool,
+        LoggedStatement::bound(sql, vec![database.into(), table.into()]),
+    )
+    .await
+    .map_err(|error| format!("Failed to get foreign keys: {error}"))?;
 
     let mut out = Vec::with_capacity(rows.len());
     for row in &rows {
         out.push(ForeignKeyInfo {
-            name: decode_mysql_text_cell(row, 0).unwrap_or_default(),
-            column_name: decode_mysql_text_cell(row, 1).unwrap_or_default(),
-            referenced_database: decode_mysql_text_cell(row, 2).unwrap_or_default(),
-            referenced_table: decode_mysql_text_cell(row, 3).unwrap_or_default(),
-            referenced_column: decode_mysql_text_cell(row, 4).unwrap_or_default(),
-            on_delete: decode_mysql_text_cell(row, 5).unwrap_or_default(),
-            on_update: decode_mysql_text_cell(row, 6).unwrap_or_default(),
+            name: row.required_text(0).unwrap_or_default(),
+            column_name: row.required_text(1).unwrap_or_default(),
+            referenced_database: row.required_text(2).unwrap_or_default(),
+            referenced_table: row.required_text(3).unwrap_or_default(),
+            referenced_column: row.required_text(4).unwrap_or_default(),
+            on_delete: row.required_text(5).unwrap_or_default(),
+            on_update: row.required_text(6).unwrap_or_default(),
         });
     }
     Ok(out)
@@ -151,7 +143,7 @@ pub async fn query_foreign_keys(
 
 #[cfg(not(coverage))]
 pub async fn query_table_metadata(
-    pool: &MySqlPool,
+    pool: &BackgroundPool,
     database: &str,
     table: &str,
 ) -> Result<TableMetadata, String> {
@@ -163,71 +155,105 @@ pub async fn query_table_metadata(
              CAST(INDEX_LENGTH AS SIGNED) \
          FROM information_schema.TABLES \
          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?";
-    query_log::log_outgoing_sql_bound(sql, &[database.to_string(), table.to_string()]);
-    let row = sqlx::query(sql)
-        .bind(database)
-        .bind(table)
-        .fetch_optional(pool)
-        .await
-        .map_err(|error| format!("Failed to get table metadata: {error}"))?
-        .ok_or_else(|| format!("Table '{database}'.'{table}' not found"))?;
-    query_log::log_mysql_rows(std::slice::from_ref(&row));
+    let row = fetch_first_decoded_pooled(
+        pool,
+        LoggedStatement::bound(sql, vec![database.into(), table.into()]),
+    )
+    .await
+    .map_err(|error| format!("Failed to get table metadata: {error}"))?
+    .ok_or_else(|| format!("Table '{database}'.'{table}' not found"))?;
 
-    let create_time: Option<String> = decode_mysql_optional_text_cell(&row, 3)?;
+    let create_time: Option<String> = row.optional_text(3)?;
 
     Ok(TableMetadata {
-        engine: decode_mysql_text_cell(&row, 0).unwrap_or_default(),
-        collation: decode_mysql_text_cell(&row, 1).unwrap_or_default(),
-        auto_increment: row.try_get(2).ok().flatten(),
+        engine: row.required_text(0).unwrap_or_default(),
+        collation: row.required_text(1).unwrap_or_default(),
+        auto_increment: row.signed(2).ok(),
         create_time,
-        table_rows: row.try_get(4).unwrap_or(0),
-        data_length: row.try_get(5).unwrap_or(0),
-        index_length: row.try_get(6).unwrap_or(0),
+        table_rows: row.signed(4).unwrap_or(0),
+        data_length: row.signed(5).unwrap_or(0),
+        index_length: row.signed(6).unwrap_or(0),
     })
 }
 
-#[cfg(not(coverage))]
-pub async fn query_ddl(pool: &MySqlPool, object: SchemaObjectRef<'_>) -> Result<String, String> {
+struct DdlStatement {
+    sql: String,
+    ddl_column_index: usize,
+}
+
+const TABLE_OR_VIEW_DDL_COLUMN: usize = 1;
+const ROUTINE_OR_TRIGGER_DDL_COLUMN: usize = 2;
+const EVENT_DDL_COLUMN: usize = 3;
+
+fn ddl_statement(object: SchemaObjectRef<'_>) -> Result<DdlStatement, String> {
+    let safe_db = safe_identifier(object.database)?;
+    let safe_name = safe_identifier(object.object_name)?;
+    let (keyword, ddl_column_index) = match object.object_type {
+        "table" => ("TABLE", TABLE_OR_VIEW_DDL_COLUMN),
+        "view" => ("VIEW", TABLE_OR_VIEW_DDL_COLUMN),
+        "procedure" => ("PROCEDURE", ROUTINE_OR_TRIGGER_DDL_COLUMN),
+        "function" => ("FUNCTION", ROUTINE_OR_TRIGGER_DDL_COLUMN),
+        "trigger" => ("TRIGGER", ROUTINE_OR_TRIGGER_DDL_COLUMN),
+        "event" => ("EVENT", EVENT_DDL_COLUMN),
+        object_type => return Err(format!("Unknown object type: '{object_type}'")),
+    };
+    Ok(DdlStatement {
+        sql: format!("SHOW CREATE {keyword} {safe_db}.{safe_name}"),
+        ddl_column_index,
+    })
+}
+
+fn ddl_query_failure(object: SchemaObjectRef<'_>, error: mysql_async::Error) -> String {
+    let SchemaObjectRef {
+        object_name,
+        object_type,
+        ..
+    } = object;
+    format!("Failed to get DDL for {object_type} '{object_name}': {error}")
+}
+
+fn ddl_from_first_row(
+    first_row: Option<DecodedRow>,
+    object: SchemaObjectRef<'_>,
+    ddl_column_index: usize,
+) -> Result<String, String> {
     let SchemaObjectRef {
         database,
         object_name,
         object_type,
     } = object;
-    let safe_db = safe_identifier(database)?;
-    let safe_name = safe_identifier(object_name)?;
-
-    let (sql, ddl_col_index) = match object_type {
-        "table" => (format!("SHOW CREATE TABLE {safe_db}.{safe_name}"), 1usize),
-        "view" => (format!("SHOW CREATE VIEW {safe_db}.{safe_name}"), 1usize),
-        "procedure" => (
-            format!("SHOW CREATE PROCEDURE {safe_db}.{safe_name}"),
-            2usize,
-        ),
-        "function" => (
-            format!("SHOW CREATE FUNCTION {safe_db}.{safe_name}"),
-            2usize,
-        ),
-        "trigger" => (format!("SHOW CREATE TRIGGER {safe_db}.{safe_name}"), 2usize),
-        "event" => (format!("SHOW CREATE EVENT {safe_db}.{safe_name}"), 3usize),
-        _ => return Err(format!("Unknown object type: '{object_type}'")),
-    };
-
-    query_log::log_outgoing_sql(&sql);
-    let row = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
-        .fetch_optional(pool)
-        .await
-        .map_err(|error| format!("Failed to get DDL for {object_type} '{object_name}': {error}"))?
+    let row = first_row
         .ok_or_else(|| format!("{object_type} '{object_name}' not found in '{database}'"))?;
-    query_log::log_mysql_rows(std::slice::from_ref(&row));
+    Ok(row.optional_text(ddl_column_index)?.unwrap_or_default())
+}
 
-    let ddl: String = decode_mysql_optional_text_cell(&row, ddl_col_index)?.unwrap_or_default();
+pub async fn query_ddl(
+    pool: &BackgroundPool,
+    object: SchemaObjectRef<'_>,
+) -> Result<String, String> {
+    let statement = ddl_statement(object)?;
+    let first_row = fetch_first_decoded_pooled(pool, LoggedStatement::text(&statement.sql))
+        .await
+        .map_err(|error| ddl_query_failure(object, error))?;
+    ddl_from_first_row(first_row, object, statement.ddl_column_index)
+}
 
-    Ok(ddl)
+pub async fn query_ddl_on_connection(
+    conn: &mut mysql_async::Conn,
+    object: SchemaObjectRef<'_>,
+) -> Result<String, String> {
+    use crate::mysql::logged_query::fetch_first_decoded;
+
+    let statement = ddl_statement(object)?;
+    let first_row = fetch_first_decoded(conn, LoggedStatement::text(&statement.sql))
+        .await
+        .map_err(|error| ddl_query_failure(object, error))?;
+    ddl_from_first_row(first_row, object, statement.ddl_column_index)
 }
 
 #[cfg(not(coverage))]
 pub async fn query_schema_info(
-    pool: &MySqlPool,
+    pool: &BackgroundPool,
     object: SchemaObjectRef<'_>,
 ) -> Result<SchemaInfoResponse, String> {
     let SchemaObjectRef {

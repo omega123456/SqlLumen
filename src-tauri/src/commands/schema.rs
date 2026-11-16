@@ -7,7 +7,7 @@ use crate::mysql::metadata_cache::{
     evict_metadata_cache_for_tables, TableEviction,
 };
 #[cfg(not(coverage))]
-use crate::mysql::query_log;
+use crate::mysql::pool::BackgroundPool;
 use crate::mysql::schema_queries::{
     self, CharsetInfo, CollationInfo, ColumnInfo, DatabaseDetails, ForeignKeyInfo,
     SchemaInfoResponse,
@@ -79,7 +79,7 @@ fn encoding_history_sql(statement_prefix: &str, request: &DatabaseEncodingReques
 }
 
 #[cfg(not(coverage))]
-fn get_pool(state: &AppState, connection_id: &str) -> Result<sqlx::MySqlPool, String> {
+fn get_pool(state: &AppState, connection_id: &str) -> Result<BackgroundPool, String> {
     state
         .registry
         .get_pool(connection_id)
@@ -95,7 +95,7 @@ fn check_not_read_only(state: &AppState, connection_id: &str) -> Result<(), Stri
 
 #[cfg(not(coverage))]
 async fn build_encoding_clause(
-    pool: &sqlx::MySqlPool,
+    pool: &BackgroundPool,
     request: &DatabaseEncodingRequest,
 ) -> Result<String, String> {
     let charset = request.charset.as_deref();

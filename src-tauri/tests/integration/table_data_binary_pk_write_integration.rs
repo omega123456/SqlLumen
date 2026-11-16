@@ -69,7 +69,7 @@ mod binary_pk_write_integration {
         )
         .await;
 
-        pool.close().await;
+        pool.disconnect().await.expect("mock pool disconnects");
 
         result.expect("update with enveloped binary PK should succeed");
     }
@@ -105,7 +105,7 @@ mod binary_pk_write_integration {
         )
         .await;
 
-        pool.close().await;
+        pool.disconnect().await.expect("mock pool disconnects");
 
         result.expect("composite-key update with enveloped binary PK should succeed");
     }
@@ -136,7 +136,7 @@ mod binary_pk_write_integration {
         )
         .await;
 
-        pool.close().await;
+        pool.disconnect().await.expect("mock pool disconnects");
 
         result.expect("delete with enveloped binary PK should succeed");
     }
@@ -166,7 +166,7 @@ mod binary_pk_write_integration {
         )
         .await;
 
-        pool.close().await;
+        pool.disconnect().await.expect("mock pool disconnects");
 
         result.expect("composite-key delete with enveloped binary PK should succeed");
     }
@@ -201,7 +201,7 @@ mod binary_pk_write_integration {
         .await
         .expect("blob fetch with enveloped binary PK should succeed");
 
-        pool.close().await;
+        pool.disconnect().await.expect("mock pool disconnects");
 
         assert_eq!(resp.base64, Some(B64.encode(raw)));
         assert_eq!(resp.byte_length, raw.len() as u64);
@@ -238,7 +238,7 @@ mod binary_pk_write_integration {
         .await
         .expect("composite-key blob fetch with enveloped binary PK should succeed");
 
-        pool.close().await;
+        pool.disconnect().await.expect("mock pool disconnects");
 
         assert_eq!(resp.base64, Some(B64.encode(raw)));
         assert_eq!(resp.byte_length, raw.len() as u64);

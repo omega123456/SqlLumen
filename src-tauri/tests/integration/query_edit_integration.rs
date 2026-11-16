@@ -452,3 +452,100 @@ fn update_result_cell_refuses_a_save_for_a_replaced_query() {
     assert!(Arc::ptr_eq(&before, &after), "the new result is untouched");
     assert_eq!(after[1][1], serde_json::json!("Yan"));
 }
+
+#[cfg(not(coverage))]
+mod edit_analysis_database {
+    use crate::common::editor_session_fixtures::{connection_id_step, database_step};
+    use crate::common::mock_mysql_server::MockMySqlServer;
+    use crate::common::mock_session::{
+        mock_connection_params, mock_pool, register_mock_connection,
+    };
+    use sqllumen_lib::mysql::query_executor::{
+        analyze_query_for_edit_impl, AnalyzeQueryForEditRequest, QueryTableEditInfo,
+    };
+    use sqllumen_lib::state::AppState;
+    use std::time::{Duration, Instant};
+
+    const CONNECTION_ID: &str = "conn-edit";
+    const REGISTRY_DATABASE: &str = "registry_db";
+    const SESSION_DATABASE: &[u8] = b"session_db";
+    const BUSY_SESSION_DEADLINE: Duration = Duration::from_secs(1);
+
+    async fn open_connection() -> (MockMySqlServer, AppState) {
+        let server = MockMySqlServer::start_script(vec![
+            connection_id_step(),
+            database_step(Some(SESSION_DATABASE)),
+        ])
+        .await;
+        let state = crate::common::test_app_state();
+        let mut params = mock_connection_params(CONNECTION_ID, server.port);
+        params.default_database = Some(REGISTRY_DATABASE.to_string());
+        register_mock_connection(&state, mock_pool(server.port), params);
+        (server, state)
+    }
+
+    async fn analyze_unqualified_select(state: &AppState) -> Vec<QueryTableEditInfo> {
+        let request = AnalyzeQueryForEditRequest {
+            connection_id: CONNECTION_ID.to_string(),
+            sql: "SELECT * FROM orders".to_string(),
+        };
+        analyze_query_for_edit_impl(state, &request)
+            .await
+            .expect("analysis succeeds")
+    }
+
+    fn analysed_database(tables: &[QueryTableEditInfo]) -> &str {
+        tables
+            .first()
+            .map(|table| table.database.as_str())
+            .expect("one table was analysed")
+    }
+
+    fn session_was_opened(server: &MockMySqlServer) -> bool {
+        server
+            .connection_that_sent("SELECT CONNECTION_ID()")
+            .is_some()
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_free_editor_session_supplies_its_current_database() {
+        let (_server, state) = open_connection().await;
+        let session = sqllumen_lib::mysql::session::acquire(&state, CONNECTION_ID)
+            .await
+            .expect("editor session opens");
+        drop(session);
+
+        let tables = analyze_unqualified_select(&state).await;
+
+        assert_eq!(analysed_database(&tables), "session_db");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn without_an_editor_session_the_registry_default_is_used_and_no_session_is_opened() {
+        let (server, state) = open_connection().await;
+
+        let tables = analyze_unqualified_select(&state).await;
+
+        assert_eq!(analysed_database(&tables), REGISTRY_DATABASE);
+        assert!(!session_was_opened(&server));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_busy_editor_session_falls_back_to_the_registry_default_quickly() {
+        let (_server, state) = open_connection().await;
+        let held_session = sqllumen_lib::mysql::session::acquire(&state, CONNECTION_ID)
+            .await
+            .expect("editor session opens");
+        let started = Instant::now();
+
+        let tables = analyze_unqualified_select(&state).await;
+
+        assert!(
+            started.elapsed() < BUSY_SESSION_DEADLINE,
+            "{:?}",
+            started.elapsed()
+        );
+        assert_eq!(analysed_database(&tables), REGISTRY_DATABASE);
+        drop(held_session);
+    }
+}

@@ -3,7 +3,7 @@
 //! Covers the object-enumeration shaping helpers (grouping into five categories,
 //! view exclusion, system-schema exclusion, routine splitting), the `_impl`
 //! error paths, the `CopyJobProgress` camelCase serialization, and source-level
-//! structural guarantees (every query path logs through `query_log`, no views or
+//! structural guarantees (every query path runs through `logged_query`, no views or
 //! system schemas are ever enumerated).
 
 use crate::common;
@@ -20,7 +20,6 @@ use sqllumen_lib::export::copy_to_host::{
 };
 use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
 use sqllumen_lib::state::{AppState, CopyJobProgress, CopyJobStatus};
-use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
 use tokio_util::sync::CancellationToken;
 
 // ── Pure shaping helpers: tables ──────────────────────────────────────────
@@ -273,11 +272,11 @@ fn test_enumeration_excludes_system_schemas_in_source() {
 }
 
 #[test]
-fn test_enumeration_logs_through_query_log_helper() {
+fn test_enumeration_runs_through_logged_query_helper() {
     let source = include_str!("../../src/commands/copy_to_host/object_listing.rs");
     assert!(
-        source.contains("query_log::log_outgoing_sql(query.sql)"),
-        "the shared enumeration fetch must log via query_log"
+        source.contains("fetch_decoded_pooled(self.pool, statement)"),
+        "the shared enumeration fetch must run through the logged_query helpers"
     );
     let enumeration_queries = source
         .matches(": SchemaObjectQuery = SchemaObjectQuery {")
@@ -309,13 +308,8 @@ fn test_is_same_host_is_case_and_whitespace_insensitive() {
 /// A lazy MySQL pool that never actually connects — sufficient for registry
 /// entries whose host is read for validation but whose pool is never used by the
 /// command `_impl` paths under test.
-fn dummy_lazy_pool(host: &str) -> sqlx::MySqlPool {
-    let opts = MySqlConnectOptions::new()
-        .host(host)
-        .port(3306)
-        .username("dummy")
-        .password("dummy");
-    MySqlPoolOptions::new().connect_lazy_with(opts)
+fn dummy_lazy_pool() -> sqllumen_lib::mysql::pool::BackgroundPool {
+    crate::common::mock_session::unreachable_pool()
 }
 
 fn dummy_stored_params(profile_id: &str, host: &str) -> StoredConnectionParams {
@@ -341,7 +335,7 @@ fn dummy_stored_params(profile_id: &str, host: &str) -> StoredConnectionParams {
 /// Register a source session in the registry bound to `host`.
 fn register_source(state: &AppState, session_id: &str, host: &str) {
     let entry = RegistryEntry {
-        pool: dummy_lazy_pool(host),
+        pool: dummy_lazy_pool(),
         session_id: session_id.to_string(),
         profile_id: format!("{session_id}-profile"),
         status: ConnectionStatus::Connected,

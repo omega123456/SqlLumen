@@ -11,10 +11,6 @@ pub(super) fn row_capacity_hint(auto_limit_applied: bool, row_limit_used: usize)
 
 pub(super) async fn stream_serialized_rows<P>(
     result: &mut mysql_async::QueryResult<'_, '_, P>,
-    col_types: &[(
-        mysql_async::consts::ColumnType,
-        mysql_async::consts::ColumnFlags,
-    )],
     limits: RowBufferLimits,
 ) -> Result<DecodedRows, String>
 where
@@ -37,7 +33,7 @@ where
             break;
         }
         crate::mysql::query_log::log_mysql_async_row(stored_row_count, &row);
-        serialized_rows.push(serialize_row(&row, col_types));
+        serialized_rows.push(serialize_row(&row));
     }
     crate::mysql::query_log::log_mysql_async_row_count(serialized_rows.len());
     Ok(DecodedRows {
@@ -55,21 +51,6 @@ where
     }
 }
 
-pub(crate) fn serialize_row(
-    row: &mysql_async::Row,
-    col_types: &[(
-        mysql_async::consts::ColumnType,
-        mysql_async::consts::ColumnFlags,
-    )],
-) -> crate::mysql::query_executor::SharedRow {
-    col_types
-        .iter()
-        .enumerate()
-        .map(
-            |(column_index, &(col_type, flags))| match row.as_ref(column_index) {
-                Some(value) => serialize_mysql_value(value, col_type, flags),
-                None => serde_json::Value::Null,
-            },
-        )
-        .collect()
+pub(crate) fn serialize_row(row: &mysql_async::Row) -> crate::mysql::query_executor::SharedRow {
+    crate::mysql::cell_values::row_json(row).into()
 }

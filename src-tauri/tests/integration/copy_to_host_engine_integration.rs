@@ -787,3 +787,142 @@ fn test_copy_engine_fully_qualifies_target_table_statements() {
     assert!(source.contains("{safe_target_db}.{safe_target_table}"));
     assert!(source.contains("qualify_table_ddl_schema(ddl, target_database, name)"));
 }
+
+#[test]
+fn test_copy_engine_holds_utc_checkouts_and_disconnects_owned_target_pools() {
+    let copy_run_source = include_str!("../../src/export/copy_to_host/engine/copy_run.rs");
+    assert_eq!(
+        copy_run_source.matches(".checkout_for_transfer()").count(),
+        2
+    );
+    let engine_source = include_str!("../../src/export/copy_to_host/engine.rs");
+    assert!(engine_source.contains(".disconnect_in_background(\"copy-to-host target pool\")"));
+}
+
+#[cfg(not(coverage))]
+mod copy_run_sessions {
+    use crate::common::mock_mysql_server::{
+        MockCell, MockColumnDef, MockMySqlServer, MockQueryStep,
+    };
+    use crate::common::mock_session::{
+        integer_column, mock_connection_params, mock_pool, register_mock_connection, text_column,
+    };
+    use opensrv_mysql::{ColumnFlags, ColumnType};
+    use sqllumen_lib::export::copy_to_host::{
+        new_running_progress, run_copy, CopyJob, CopyOptions, CopySelection, CopyToHostParams,
+        InsertMode,
+    };
+    use sqllumen_lib::state::CopyJobStatus;
+    use std::collections::HashMap;
+    use std::sync::{Arc, RwLock};
+
+    const CONNECTION_ID: &str = "copy-conn";
+    const JOB_ID: &str = "copy-job";
+    const TRANSFER_TIME_ZONE_SQL: &str = "SET time_zone='+00:00'";
+    const SOURCE_DATA_SQL: &str = "SELECT * FROM `shop`.`flags`";
+
+    fn copy_steps() -> Vec<MockQueryStep> {
+        vec![
+            MockQueryStep::with_rows(
+                "SELECT 1 FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?",
+                vec![integer_column("1")],
+                vec![vec![MockCell::I64(1)]],
+            ),
+            MockQueryStep::with_rows(
+                "SELECT COUNT(*) AS row_count FROM `shop`.`flags`",
+                vec![integer_column("row_count")],
+                vec![vec![MockCell::I64(1)]],
+            ),
+            MockQueryStep::with_rows(
+                "SHOW CREATE TABLE `shop`.`flags`",
+                vec![text_column("Table"), text_column("Create Table")],
+                vec![vec![
+                    MockCell::Bytes(b"flags"),
+                    MockCell::Bytes(b"CREATE TABLE `flags` (`flag` tinyint(1))"),
+                ]],
+            ),
+            MockQueryStep::with_rows(
+                SOURCE_DATA_SQL,
+                vec![MockColumnDef {
+                    name: "flag",
+                    coltype: ColumnType::MYSQL_TYPE_TINY,
+                    colflags: ColumnFlags::empty(),
+                }],
+                vec![vec![MockCell::I8(7)]],
+            ),
+        ]
+    }
+
+    fn copy_params() -> CopyToHostParams {
+        CopyToHostParams {
+            source_connection_id: CONNECTION_ID.to_string(),
+            source_database: "shop".to_string(),
+            target_connection_id: CONNECTION_ID.to_string(),
+            target_database: "shop_copy".to_string(),
+            objects: CopySelection {
+                tables: vec!["flags".to_string()],
+                procedures: vec![],
+                functions: vec![],
+                triggers: vec![],
+                events: vec![],
+            },
+            options: CopyOptions {
+                copy_structure: true,
+                copy_data: true,
+                drop_if_exists: false,
+                create_if_not_exists: false,
+                truncate_before_insert: false,
+                insert_mode: InsertMode::Insert,
+                ignore_definer: true,
+            },
+        }
+    }
+
+    fn statements_on(server: &MockMySqlServer, connection_id: u32) -> Vec<String> {
+        server
+            .queries_on_connection(connection_id)
+            .into_iter()
+            .map(|query| query.sql)
+            .collect()
+    }
+
+    fn assert_utc_precedes(statements: &[String], data_statement: &str) {
+        let position_of = |sql: &str| statements.iter().position(|statement| statement == sql);
+        let utc_position = position_of(TRANSFER_TIME_ZONE_SQL).expect("UTC was set");
+        let data_position = position_of(data_statement).expect("data statement was sent");
+        assert!(utc_position < data_position, "{statements:?}");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn source_and_target_checkouts_both_run_in_utc() {
+        let server = MockMySqlServer::start_script(copy_steps()).await;
+        let state = crate::common::test_app_state();
+        let params = mock_connection_params(CONNECTION_ID, server.port);
+        register_mock_connection(&state, mock_pool(server.port), params);
+        let jobs = Arc::new(RwLock::new(HashMap::from([(
+            JOB_ID.to_string(),
+            new_running_progress(JOB_ID.to_string(), 1),
+        )])));
+        let job = CopyJob {
+            jobs: Arc::clone(&jobs),
+            job_id: JOB_ID.to_string(),
+        };
+
+        run_copy(&state, copy_params(), job).await;
+
+        let progress = jobs.read().expect("jobs lock")[JOB_ID].clone();
+        assert_eq!(progress.status, CopyJobStatus::Completed, "{progress:?}");
+        let source_connection = server
+            .connection_that_sent(SOURCE_DATA_SQL)
+            .expect("source rows were read");
+        assert_utc_precedes(&statements_on(&server, source_connection), SOURCE_DATA_SQL);
+        let insert = server
+            .recorded_queries()
+            .into_iter()
+            .find(|query| query.sql.starts_with("INSERT INTO `shop_copy`.`flags`"))
+            .expect("target rows were written");
+        assert!(insert.sql.ends_with("(7)"), "{insert:?}");
+        assert_ne!(insert.connection_id, source_connection);
+        assert_utc_precedes(&statements_on(&server, insert.connection_id), &insert.sql);
+    }
+}

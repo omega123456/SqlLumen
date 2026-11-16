@@ -1,9 +1,9 @@
 #[cfg(any(not(coverage), test, feature = "test-utils"))]
 use crate::credentials;
+#[cfg(not(coverage))]
+use crate::mysql::logged_query::{execute_pooled, LoggedStatement};
 #[cfg(any(not(coverage), test, feature = "test-utils"))]
 use crate::mysql::pool;
-#[cfg(not(coverage))]
-use crate::mysql::query_log;
 #[cfg(any(not(coverage), test, feature = "test-utils"))]
 use crate::mysql::registry::ConnectionStatus;
 #[cfg(any(not(coverage), test, feature = "test-utils"))]
@@ -124,19 +124,14 @@ async fn health_loop<R: Runtime>(
             }
         };
 
-        query_log::log_outgoing_sql("SELECT 1");
-        let ping_result = sqlx::query("SELECT 1").execute(&pool).await;
-        if let Ok(ref result) = ping_result {
-            query_log::log_execute_result(result);
-        }
-
-        if ping_result.is_ok() {
+        let Err(ping_error) = execute_pooled(&pool, LoggedStatement::text("SELECT 1")).await else {
             continue;
-        }
+        };
 
-        let ping_error = ping_result.unwrap_err().to_string();
-
-        monitor.update_and_emit(ConnectionStatus::Disconnected, Some(&ping_error));
+        monitor.update_and_emit(
+            ConnectionStatus::Disconnected,
+            Some(&ping_error.to_string()),
+        );
 
         let reconnected = reconnect_loop(monitor, token).await;
 

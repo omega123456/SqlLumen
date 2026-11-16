@@ -68,9 +68,8 @@ pub fn validate_blob_envelopes(values: &HashMap<String, serde_json::Value>) -> R
 
 #[cfg(not(coverage))]
 struct BlobRowLookup<'a> {
-    pool: &'a sqlx::MySqlPool,
+    pool: &'a BackgroundPool,
     request: &'a FetchBlobValueRequest,
-    binds: Vec<String>,
 }
 
 #[cfg(not(coverage))]
@@ -81,22 +80,19 @@ struct BlobRowQuery<'a> {
 
 #[cfg(not(coverage))]
 impl BlobRowLookup<'_> {
-    async fn fetch_first_row(
-        &self,
-        query: BlobRowQuery<'_>,
-    ) -> Result<sqlx::mysql::MySqlRow, String> {
-        crate::mysql::query_log::log_outgoing_sql_bound(&query.sql, &self.binds);
-        let mut sql_query = sqlx::query(sqlx::AssertSqlSafe(query.sql.as_str()));
-        for (_, value) in &self.request.primary_key_pairs {
-            sql_query = bind_json_value(sql_query, value);
-        }
-        let rows = sql_query
-            .fetch_all(self.pool)
+    async fn fetch_first_row(&self, query: BlobRowQuery<'_>) -> Result<DecodedRow, String> {
+        use crate::mysql::logged_query::fetch_first_decoded_pooled;
+
+        let primary_key_values: Vec<serde_json::Value> = self
+            .request
+            .primary_key_pairs
+            .iter()
+            .map(|(_, value)| value.clone())
+            .collect();
+        let statement = json_bound_statement(&query.sql, &primary_key_values);
+        fetch_first_decoded_pooled(self.pool, statement)
             .await
-            .map_err(|error| format!("{} failed: {error}", query.failure_label))?;
-        crate::mysql::query_log::log_mysql_rows(&rows);
-        rows.into_iter()
-            .next()
+            .map_err(|error| format!("{} failed: {error}", query.failure_label))?
             .ok_or_else(|| "No row matched the supplied primary key".to_string())
     }
 }
@@ -128,7 +124,10 @@ fn blob_bytes_response(bytes: Option<Vec<u8>>) -> BlobValueResponse {
         return empty_blob_response(0, false);
     };
     BlobValueResponse {
-        base64: Some(BASE64_STANDARD.encode(&bytes)),
+        base64: Some(base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            &bytes,
+        )),
         byte_length: bytes.len() as u64,
         too_large: false,
     }
@@ -136,7 +135,7 @@ fn blob_bytes_response(bytes: Option<Vec<u8>>) -> BlobValueResponse {
 
 #[cfg(not(coverage))]
 pub async fn fetch_blob_value_impl(
-    pool: &sqlx::MySqlPool,
+    pool: &BackgroundPool,
     request: &FetchBlobValueRequest,
 ) -> Result<BlobValueResponse, String> {
     if request.primary_key_pairs.is_empty() {
@@ -146,15 +145,7 @@ pub async fn fetch_blob_value_impl(
     let safe_table = safe_identifier(&request.table)?;
     let safe_col = safe_identifier(&request.column)?;
     let where_sql = primary_key_where_clause(request)?;
-    let lookup = BlobRowLookup {
-        pool,
-        request,
-        binds: request
-            .primary_key_pairs
-            .iter()
-            .map(|(_, value)| value.to_string())
-            .collect(),
-    };
+    let lookup = BlobRowLookup { pool, request };
 
     let length_query = BlobRowQuery {
         sql: format!(
@@ -163,8 +154,8 @@ pub async fn fetch_blob_value_impl(
         failure_label: "Blob length query",
     };
     let len_row = lookup.fetch_first_row(length_query).await?;
-    let stored_len: Option<i64> = len_row
-        .try_get::<Option<i64>, _>("len")
+    let stored_len = len_row
+        .optional_signed("len")
         .map_err(|error| format!("Failed to read blob length: {error}"))?;
     let Some(stored_len) = stored_len else {
         return Ok(empty_blob_response(0, false));
@@ -181,15 +172,15 @@ pub async fn fetch_blob_value_impl(
         failure_label: "Blob fetch query",
     };
     let data_row = lookup.fetch_first_row(data_query).await?;
-    let bytes: Option<Vec<u8>> = data_row
-        .try_get::<Option<Vec<u8>>, _>("val")
+    let bytes = data_row
+        .optional_bytes("val")
         .map_err(|error| format!("Failed to read blob bytes: {error}"))?;
     Ok(blob_bytes_response(bytes))
 }
 
 #[cfg(coverage)]
 pub async fn fetch_blob_value_impl(
-    _pool: &sqlx::MySqlPool,
+    _pool: &BackgroundPool,
     _request: &FetchBlobValueRequest,
 ) -> Result<BlobValueResponse, String> {
     Ok(BlobValueResponse {

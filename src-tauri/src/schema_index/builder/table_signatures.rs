@@ -2,6 +2,10 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::time::Instant;
 
+use crate::mysql::cell_values::DecodedRow;
+use crate::mysql::logged_query::{fetch_decoded_pooled, LoggedStatement};
+use crate::mysql::pool::BackgroundPool;
+
 use super::mysql_fetch::{decode_number, decode_string, is_system_schema, TableKey};
 
 const SYSTEM_SCHEMA_FILTER: &str =
@@ -115,10 +119,7 @@ fn foreign_key_signature_query() -> SignatureQuery {
     }
 }
 
-fn signature_fields(
-    row: &sqlx::mysql::MySqlRow,
-    kinds: &[SignatureFieldKind],
-) -> Vec<SignatureField> {
+fn signature_fields(row: &DecodedRow, kinds: &[SignatureFieldKind]) -> Vec<SignatureField> {
     kinds
         .iter()
         .enumerate()
@@ -150,7 +151,7 @@ fn update_signature(hasher: &mut Sha256, tag: &[u8], fields: &[SignatureField]) 
 
 fn record_signature_rows(
     hashers: &mut HashMap<TableKey, Sha256>,
-    rows: &[sqlx::mysql::MySqlRow],
+    rows: &[DecodedRow],
     query: &SignatureQuery,
 ) -> Result<(), String> {
     for row in rows {
@@ -166,13 +167,12 @@ fn record_signature_rows(
 }
 
 async fn hash_signature_query(
-    pool: &sqlx::MySqlPool,
+    pool: &BackgroundPool,
     hashers: &mut HashMap<TableKey, Sha256>,
     query: SignatureQuery,
 ) -> Result<(), String> {
     let started = Instant::now();
-    let rows = sqlx::query(sqlx::AssertSqlSafe(query.sql.as_str()))
-        .fetch_all(pool)
+    let rows = fetch_decoded_pooled(pool, LoggedStatement::text(&query.sql))
         .await
         .map_err(|error| {
             format!(
@@ -191,7 +191,7 @@ async fn hash_signature_query(
 }
 
 pub(super) async fn fetch_all_table_signatures(
-    pool: &sqlx::MySqlPool,
+    pool: &BackgroundPool,
 ) -> Result<HashMap<TableKey, String>, String> {
     let mut hashers: HashMap<TableKey, Sha256> = HashMap::new();
     hash_signature_query(pool, &mut hashers, column_signature_query()).await?;

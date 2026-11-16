@@ -1,5 +1,5 @@
 //! Query IPC against the in-process mock MySQL server. Omitted from `cargo sqllumen-llvm-cov`:
-//! instrumented builds hit sqlx pool acquire timeouts against the mock; `pnpm test:rust` runs this suite.
+//! instrumented builds replace the database-executing functions with coverage stubs; `pnpm test:rust` runs this suite.
 
 #![cfg(not(coverage))]
 

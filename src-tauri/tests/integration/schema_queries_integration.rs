@@ -14,16 +14,8 @@ use sqllumen_lib::mysql::schema_queries::{
 };
 
 #[cfg(not(coverage))]
-use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
-
-#[cfg(not(coverage))]
-fn pool_for(port: u16) -> sqlx::MySqlPool {
-    let opts = MySqlConnectOptions::new()
-        .host("127.0.0.1")
-        .port(port)
-        .username("root")
-        .password("");
-    MySqlPoolOptions::new().connect_lazy_with(opts)
+fn pool_for(port: u16) -> sqllumen_lib::mysql::pool::BackgroundPool {
+    crate::common::mock_session::mock_pool(port)
 }
 
 #[cfg(not(coverage))]
@@ -492,7 +484,7 @@ async fn schema_queries_cover_success_and_error_paths() {
 }
 
 #[cfg(not(coverage))]
-async fn assert_listing_queries(pool: &sqlx::MySqlPool) {
+async fn assert_listing_queries(pool: &sqllumen_lib::mysql::pool::BackgroundPool) {
     let databases = query_list_databases(pool).await.expect("list databases");
     assert_eq!(databases, vec!["analytics".to_string(), "app".to_string()]);
 
@@ -525,7 +517,7 @@ async fn assert_listing_queries(pool: &sqlx::MySqlPool) {
 }
 
 #[cfg(not(coverage))]
-async fn assert_table_detail_queries(pool: &sqlx::MySqlPool) {
+async fn assert_table_detail_queries(pool: &sqllumen_lib::mysql::pool::BackgroundPool) {
     let full_columns = query_full_columns(pool, "app", "users")
         .await
         .expect("full columns");
@@ -550,7 +542,7 @@ async fn assert_table_detail_queries(pool: &sqlx::MySqlPool) {
 }
 
 #[cfg(not(coverage))]
-async fn assert_schema_info_and_rename_checks(pool: &sqlx::MySqlPool) {
+async fn assert_schema_info_and_rename_checks(pool: &sqllumen_lib::mysql::pool::BackgroundPool) {
     let schema_info = query_schema_info(
         pool,
         sqllumen_lib::mysql::schema_queries::SchemaObjectRef {
@@ -594,7 +586,7 @@ async fn assert_schema_info_and_rename_checks(pool: &sqlx::MySqlPool) {
 }
 
 #[cfg(not(coverage))]
-async fn assert_routine_and_bulk_queries(pool: &sqlx::MySqlPool) {
+async fn assert_routine_and_bulk_queries(pool: &sqllumen_lib::mysql::pool::BackgroundPool) {
     let routine_params = query_routine_parameters(
         pool,
         sqllumen_lib::mysql::schema_queries::RoutineRef {

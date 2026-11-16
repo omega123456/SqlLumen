@@ -1,14 +1,12 @@
 #[cfg(not(coverage))]
-use crate::mysql::query_log;
+use crate::mysql::logged_query::{
+    fetch_decoded_pooled, fetch_first_decoded_pooled, LoggedStatement,
+};
 #[cfg(not(coverage))]
-use sqlx::MySqlPool;
-#[cfg(not(coverage))]
-use sqlx::Row;
+use crate::mysql::pool::BackgroundPool;
 
 #[cfg(not(coverage))]
-use super::decode_mysql_optional_text_cell;
-#[cfg(not(coverage))]
-use super::{decode_mysql_text_cell, RoutineRef};
+use super::RoutineRef;
 
 #[derive(Debug)]
 pub struct RoutineParameterRow {
@@ -28,7 +26,7 @@ fn routine_parameter_ordinal_filter(include_return_type: bool) -> &'static str {
 
 #[cfg(not(coverage))]
 pub(crate) async fn query_routine_parameters_inner(
-    pool: &MySqlPool,
+    pool: &BackgroundPool,
     routine: RoutineRef<'_>,
     include_return_type: bool,
 ) -> Result<Vec<RoutineParameterRow>, String> {
@@ -47,30 +45,23 @@ pub(crate) async fn query_routine_parameters_inner(
         AND ROUTINE_TYPE = ? AND {ordinal_filter} \
         ORDER BY ORDINAL_POSITION"
     );
-    query_log::log_outgoing_sql_bound(
-        &sql,
-        &[
-            database.to_string(),
-            routine_name.to_string(),
-            routine_type.to_string(),
-        ],
-    );
-    let rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
-        .bind(database)
-        .bind(routine_name)
-        .bind(routine_type)
-        .fetch_all(pool)
-        .await
-        .map_err(|error| format!("Failed to get routine parameters: {error}"))?;
-    query_log::log_mysql_rows(&rows);
+    let rows = fetch_decoded_pooled(
+        pool,
+        LoggedStatement::bound(
+            &sql,
+            vec![database.into(), routine_name.into(), routine_type.into()],
+        ),
+    )
+    .await
+    .map_err(|error| format!("Failed to get routine parameters: {error}"))?;
 
     let mut params = Vec::with_capacity(rows.len());
     for row in &rows {
         params.push(RoutineParameterRow {
-            name: decode_mysql_optional_text_cell(row, 0)?.unwrap_or_default(),
-            data_type: decode_mysql_text_cell(row, 1)?,
-            mode: decode_mysql_optional_text_cell(row, 2)?.unwrap_or_default(),
-            ordinal_position: row.try_get::<i64, _>(3).unwrap_or(0) as i32,
+            name: row.optional_text(0)?.unwrap_or_default(),
+            data_type: row.required_text(1)?,
+            mode: row.optional_text(2)?.unwrap_or_default(),
+            ordinal_position: row.signed(3).unwrap_or(0) as i32,
         });
     }
     Ok(params)
@@ -78,7 +69,7 @@ pub(crate) async fn query_routine_parameters_inner(
 
 #[cfg(not(coverage))]
 pub async fn query_routine_parameters(
-    pool: &MySqlPool,
+    pool: &BackgroundPool,
     routine: RoutineRef<'_>,
 ) -> Result<Vec<RoutineParameterRow>, String> {
     query_routine_parameters_inner(pool, routine, false).await
@@ -86,7 +77,7 @@ pub async fn query_routine_parameters(
 
 #[cfg(not(coverage))]
 pub async fn query_routine_parameters_with_return_type(
-    pool: &MySqlPool,
+    pool: &BackgroundPool,
     routine: RoutineRef<'_>,
 ) -> Result<Vec<RoutineParameterRow>, String> {
     query_routine_parameters_inner(pool, routine, true).await
@@ -94,7 +85,7 @@ pub async fn query_routine_parameters_with_return_type(
 
 #[cfg(not(coverage))]
 pub async fn query_routine_exists(
-    pool: &MySqlPool,
+    pool: &BackgroundPool,
     routine: RoutineRef<'_>,
 ) -> Result<bool, String> {
     let RoutineRef {
@@ -104,22 +95,15 @@ pub async fn query_routine_exists(
     } = routine;
     let sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.ROUTINES \
                WHERE ROUTINE_SCHEMA = ? AND ROUTINE_NAME = ? AND ROUTINE_TYPE = ?";
-    query_log::log_outgoing_sql_bound(
-        sql,
-        &[
-            database.to_string(),
-            routine_name.to_string(),
-            routine_type.to_string(),
-        ],
-    );
-    let row = sqlx::query(sql)
-        .bind(database)
-        .bind(routine_name)
-        .bind(routine_type)
-        .fetch_one(pool)
-        .await
-        .map_err(|error| format!("Failed to check routine existence: {error}"))?;
-    query_log::log_mysql_rows(std::slice::from_ref(&row));
-    let count: i64 = row.try_get(0).unwrap_or(0);
+    let first_row = fetch_first_decoded_pooled(
+        pool,
+        LoggedStatement::bound(
+            sql,
+            vec![database.into(), routine_name.into(), routine_type.into()],
+        ),
+    )
+    .await
+    .map_err(|error| format!("Failed to check routine existence: {error}"))?;
+    let count = first_row.map(|row| row.signed(0).unwrap_or(0)).unwrap_or(0);
     Ok(count > 0)
 }

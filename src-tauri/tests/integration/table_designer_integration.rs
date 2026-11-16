@@ -1847,16 +1847,10 @@ mod coverage_stubs {
     };
     use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
     use sqllumen_lib::state::AppState;
-    use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
     use tokio_util::sync::CancellationToken;
 
-    fn dummy_lazy_pool() -> sqlx::MySqlPool {
-        let opts = MySqlConnectOptions::new()
-            .host("127.0.0.1")
-            .port(13306)
-            .username("dummy")
-            .password("dummy");
-        MySqlPoolOptions::new().connect_lazy_with(opts)
+    fn dummy_lazy_pool() -> sqllumen_lib::mysql::pool::BackgroundPool {
+        crate::common::mock_session::unreachable_pool()
     }
 
     fn register_lazy_pool(state: &AppState, connection_id: &str, read_only: bool) {

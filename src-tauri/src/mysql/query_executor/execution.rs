@@ -99,6 +99,9 @@ pub fn evict_results_impl(state: &AppState, request: &ConnectionTabRequest) {
 }
 
 #[cfg(not(coverage))]
+const CANCEL_KILL_ACQUIRE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+#[cfg(not(coverage))]
 pub async fn cancel_query_impl(
     state: &AppState,
     request: &ConnectionTabRequest,
@@ -122,24 +125,19 @@ pub async fn cancel_query_impl(
         .get_pool(connection_id)
         .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
 
-    let mut conn = tokio::time::timeout(std::time::Duration::from_secs(5), pool.acquire())
-        .await
-        .map_err(|_| "Cancel timed out waiting for a pool connection".to_string())?
-        .map_err(|error| error.to_string())?;
-
-    let kill_sql = format!("KILL QUERY {}", thread_id);
     tracing::debug!(
         connection_id,
         tab_id,
         thread_id,
         "cancel_query: issuing KILL QUERY"
     );
-    crate::mysql::query_log::log_outgoing_sql(&kill_sql);
-    let result = sqlx::query(sqlx::AssertSqlSafe(kill_sql.as_str()))
-        .execute(&mut *conn)
+    let kill = crate::mysql::pool::KillQuery {
+        thread_id,
+        checkout_timeout: CANCEL_KILL_ACQUIRE_TIMEOUT,
+    };
+    pool.kill_query(kill)
         .await
-        .map_err(|error| format!("Failed to cancel query: {error}"))?;
-    crate::mysql::query_log::log_execute_result(&result);
+        .map_err(|failure| format!("Failed to cancel query: {failure}"))?;
 
     Ok(true)
 }
@@ -168,7 +166,7 @@ pub async fn cancel_query_impl(
         .get_pool(connection_id)
         .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
 
-    let _kill_sql = format!("KILL QUERY {}", thread_id);
+    let _kill_sql = crate::mysql::pool::kill_query_sql(thread_id);
 
     Ok(true)
 }

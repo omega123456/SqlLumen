@@ -11,17 +11,10 @@ use sqllumen_lib::mysql::schema_queries::{
     query_all_foreign_keys_batch, query_all_indexes_batch, query_all_triggers_batch,
     query_all_views_batch,
 };
-#[cfg(not(coverage))]
-use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
 
 #[cfg(not(coverage))]
-fn pool_for(port: u16) -> sqlx::MySqlPool {
-    let opts = MySqlConnectOptions::new()
-        .host("127.0.0.1")
-        .port(port)
-        .username("root")
-        .password("");
-    MySqlPoolOptions::new().connect_lazy_with(opts)
+fn pool_for(port: u16) -> sqllumen_lib::mysql::pool::BackgroundPool {
+    crate::common::mock_session::mock_pool(port)
 }
 
 #[cfg(not(coverage))]
@@ -164,12 +157,7 @@ async fn fk_batch_empty_input() {
     // No mock server needed — empty input returns immediately
     #[cfg(not(coverage))]
     {
-        let opts = MySqlConnectOptions::new()
-            .host("127.0.0.1")
-            .port(19999)
-            .username("root")
-            .password("");
-        let pool = MySqlPoolOptions::new().connect_lazy_with(opts);
+        let pool = crate::common::mock_session::unreachable_pool();
         let result = query_all_foreign_keys_batch(&pool, &[])
             .await
             .expect("empty input should return Ok");
@@ -344,12 +332,7 @@ async fn index_batch_single_database() {
 async fn index_batch_empty_input() {
     #[cfg(not(coverage))]
     {
-        let opts = MySqlConnectOptions::new()
-            .host("127.0.0.1")
-            .port(19999)
-            .username("root")
-            .password("");
-        let pool = MySqlPoolOptions::new().connect_lazy_with(opts);
+        let pool = crate::common::mock_session::unreachable_pool();
         let result = query_all_indexes_batch(&pool, &[])
             .await
             .expect("empty input should return Ok");

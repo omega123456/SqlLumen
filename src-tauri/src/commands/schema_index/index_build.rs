@@ -80,7 +80,7 @@ pub(super) struct IndexBuildJob {
     db: std::sync::Arc<Mutex<rusqlite::Connection>>,
     http_client: reqwest::Client,
     build_tokens: std::sync::Arc<Mutex<std::collections::HashMap<String, CancellationToken>>>,
-    pool: sqlx::MySqlPool,
+    pool: crate::mysql::pool::BackgroundPool,
     token: CancellationToken,
 }
 

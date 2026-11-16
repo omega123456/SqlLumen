@@ -1,6 +1,9 @@
 pub mod cache_status;
+pub mod cell_values;
+pub mod connection_options;
 pub mod ddl_detector;
 pub mod health;
+pub mod logged_query;
 pub mod metadata_cache;
 pub mod multi_result;
 pub mod pool;
@@ -13,7 +16,6 @@ pub mod schema_queries;
 pub mod session;
 pub mod sql_chars;
 pub mod sql_table_parser;
-pub mod sqlx_type_names;
 pub mod table_data;
 pub mod table_data_cache;
 pub mod table_designer;

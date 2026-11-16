@@ -36,20 +36,13 @@ pub(super) fn rerun_start_failure(error: &mysql_async::Error, cancel_requested: 
     }
 }
 
-pub(super) type ColumnTypeAndFlags = (
-    mysql_async::consts::ColumnType,
-    mysql_async::consts::ColumnFlags,
-);
-
 pub(super) struct RerunStream<'a, 'b> {
     pub(super) rerun: &'a RerunContext<'b>,
     pub(super) pipeline: &'a mut ExportPipeline,
-    pub(super) col_types: Vec<ColumnTypeAndFlags>,
     pub(super) failure: Option<String>,
     pub(super) stopping: bool,
     pub(super) interrupted: bool,
     pub(super) own_kill_sent: bool,
-    pub(super) row_index: usize,
 }
 
 impl RerunStream<'_, '_> {
@@ -75,9 +68,7 @@ impl RerunStream<'_, '_> {
             self.stopping = true;
             return;
         }
-        crate::mysql::query_log::log_mysql_async_row(self.row_index, &row);
-        self.row_index += 1;
-        let values = crate::mysql::multi_result::serialize_row(&row, &self.col_types);
+        let values = crate::mysql::multi_result::serialize_row(&row);
         match self.pipeline.accept_row(&values) {
             Ok(RowWrite::Written) => {}
             Ok(RowWrite::SheetLimitReached) => self.stop_with_kill(SHEET_LIMIT_KILL_PURPOSE).await,
@@ -90,7 +81,6 @@ impl RerunStream<'_, '_> {
 
         let cancel_requested = || self.cancel_requested();
         if is_interrupted_by_own_kill(error, self.stopping, cancel_requested) {
-            crate::mysql::query_log::log_mysql_async_error(error);
             self.interrupted = true;
             return;
         }
@@ -120,41 +110,32 @@ pub(super) async fn stream_rerun(
     conn: &mut mysql_async::Conn,
     pipeline: &mut ExportPipeline,
 ) -> StreamEnd {
-    use mysql_async::prelude::Queryable;
-
     let prepared = rerun.prepared;
     let cancel_requested = || prepared.cancel.requested.load(Ordering::Relaxed);
-    crate::mysql::query_log::log_outgoing_sql(&prepared.source_sql);
-    let mut result = match conn.query_iter(prepared.source_sql.as_str()).await {
-        Ok(result) => result,
+    let mut rows = match crate::mysql::logged_query::stream_text(conn, &prepared.source_sql).await {
+        Ok(rows) => rows,
         Err(error) => return rerun_start_failure(&error, cancel_requested()),
     };
 
-    let columns: Vec<String> = result
-        .columns_ref()
+    let columns: Vec<String> = rows
+        .columns()
         .iter()
         .map(|column| column.name_str().to_string())
         .collect();
     let mut stream = RerunStream {
         rerun,
         pipeline,
-        col_types: result
-            .columns_ref()
-            .iter()
-            .map(|column| (column.column_type(), column.flags()))
-            .collect(),
         failure: None,
         stopping: false,
         interrupted: false,
         own_kill_sent: false,
-        row_index: 0,
     };
     if let Err(error) = stream.pipeline.open(&columns) {
         stream.fail_writing(error).await;
     }
 
     loop {
-        match result.next().await {
+        match rows.next_row().await {
             Ok(Some(row)) => stream.accept_row(row).await,
             Ok(None) => break,
             Err(error) => {
@@ -163,7 +144,6 @@ pub(super) async fn stream_rerun(
             }
         }
     }
-    crate::mysql::query_log::log_mysql_async_row_count(stream.row_index);
-    drop(result);
+    rows.finish();
     stream.end()
 }

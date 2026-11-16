@@ -114,16 +114,10 @@ mod coverage_cancel {
     use super::*;
     use sqllumen_lib::mysql::query_executor::execute_query_impl;
     use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
-    use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
     use tokio_util::sync::CancellationToken;
 
-    fn dummy_lazy_pool() -> sqlx::MySqlPool {
-        let opts = MySqlConnectOptions::new()
-            .host("127.0.0.1")
-            .port(13306)
-            .username("dummy")
-            .password("dummy");
-        MySqlPoolOptions::new().connect_lazy_with(opts)
+    fn dummy_lazy_pool() -> sqllumen_lib::mysql::pool::BackgroundPool {
+        crate::common::mock_session::unreachable_pool()
     }
 
     fn dummy_stored_params(profile_id: &str) -> StoredConnectionParams {
@@ -270,7 +264,6 @@ mod mock_cancel {
     };
     use opensrv_mysql::{ColumnFlags, ColumnType};
     use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
-    use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
     use tokio_util::sync::CancellationToken;
 
     fn dummy_stored_params(profile_id: &str) -> StoredConnectionParams {
@@ -293,7 +286,11 @@ mod mock_cancel {
         }
     }
 
-    fn register_pool(state: &AppState, connection_id: &str, pool: sqlx::MySqlPool) {
+    fn register_pool(
+        state: &AppState,
+        connection_id: &str,
+        pool: sqllumen_lib::mysql::pool::BackgroundPool,
+    ) {
         let entry = RegistryEntry {
             pool,
             session_id: connection_id.to_string(),
@@ -309,7 +306,9 @@ mod mock_cancel {
 
     /// Start a mock MySQL server that responds to `SELECT CONNECTION_ID()` and
     /// accepts any `KILL QUERY` command (unmatched queries return OK by default).
-    async fn start_mock_with_connection_id(thread_id: u64) -> (MockMySqlServer, sqlx::MySqlPool) {
+    async fn start_mock_with_connection_id(
+        thread_id: u64,
+    ) -> (MockMySqlServer, sqllumen_lib::mysql::pool::BackgroundPool) {
         let server = MockMySqlServer::start_script(vec![MockQueryStep {
             query: "SELECT CONNECTION_ID()",
             columns: vec![MockColumnDef {
@@ -323,21 +322,14 @@ mod mock_cancel {
         }])
         .await;
 
-        let opts = MySqlConnectOptions::new()
-            .host("127.0.0.1")
-            .port(server.port)
-            .username("root")
-            .password("");
-        let pool = MySqlPoolOptions::new()
-            .max_connections(5)
-            .connect_lazy_with(opts);
+        let pool = crate::common::mock_session::mock_pool(server.port);
 
         (server, pool)
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn cancel_query_issues_kill_when_thread_id_found() {
-        let (_server, pool) = start_mock_with_connection_id(12345).await;
+        let (server, pool) = start_mock_with_connection_id(12345).await;
         let state = common::test_app_state();
 
         // Register the mock pool in the state registry so cancel_query_impl can find it
@@ -364,6 +356,14 @@ mod mock_cancel {
             result,
             Ok(true),
             "should return Ok(true) after issuing KILL QUERY"
+        );
+        assert_eq!(server.killed_thread_ids(), vec![12345]);
+        let kill_was_text_query = server
+            .text_queries()
+            .contains(&"KILL QUERY 12345".to_string());
+        assert!(
+            kill_was_text_query,
+            "KILL QUERY should arrive as a text query"
         );
     }
 }

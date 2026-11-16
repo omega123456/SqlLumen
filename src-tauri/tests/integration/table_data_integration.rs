@@ -34,15 +34,7 @@ fn format_bytes_matches_frontend_units() {
 #[cfg(not(coverage))]
 #[tokio::test]
 async fn fetch_table_pk_cached_returns_cached_metadata_without_querying_mysql() {
-    use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
-
-    let pool = MySqlPoolOptions::new().connect_lazy_with(
-        MySqlConnectOptions::new()
-            .host("127.0.0.1")
-            .port(13306)
-            .username("dummy")
-            .password("dummy"),
-    );
+    let pool = crate::common::mock_session::unreachable_pool();
 
     let metadata_cache = MetadataCache::new();
     let cached_pk = Some(PrimaryKeyInfo {
@@ -92,7 +84,7 @@ async fn fetch_table_pk_cached_returns_cached_metadata_without_querying_mysql() 
     assert_eq!(result.primary_key, cached_pk);
     assert_eq!(result.columns, cached_columns);
 
-    pool.close().await;
+    pool.disconnect().await.expect("pool disconnects");
 }
 
 #[cfg(not(coverage))]
@@ -839,7 +831,7 @@ mod fetch_cancellation_integration {
         .await
         .expect("fetch should succeed");
 
-        pool.close().await;
+        pool.disconnect().await.expect("pool disconnects");
 
         assert_eq!(result.rows.len(), 1);
         assert_eq!(result.rows[0][0], serde_json::json!(1));
@@ -853,6 +845,137 @@ mod fetch_cancellation_integration {
             "running_queries must be cleaned up after a successful fetch"
         );
     }
+
+    fn flags_column_metadata_step() -> MockQueryStep {
+        MockQueryStep {
+            query: COLUMN_META_SQL,
+            columns: users_column_metadata_step().columns,
+            rows: vec![vec![
+                MockCell::Bytes(b"flag"),
+                MockCell::Bytes(b"tinyint"),
+                MockCell::Bytes(b"tinyint(1)"),
+                MockCell::Bytes(b"YES"),
+                MockCell::Bytes(b""),
+                MockCell::Null,
+                MockCell::Bytes(b""),
+            ]],
+            error: None,
+            affected_rows: None,
+        }
+    }
+
+    fn tinyint_flag_column() -> MockColumnDef {
+        MockColumnDef {
+            name: "flag",
+            coltype: ColumnType::MYSQL_TYPE_TINY,
+            colflags: ColumnFlags::empty(),
+        }
+    }
+
+    fn flags_page_step() -> MockQueryStep {
+        MockQueryStep::with_rows(
+            "SELECT `flag` FROM `app_db`.`flags` LIMIT 50 OFFSET 0",
+            vec![tinyint_flag_column()],
+            vec![vec![MockCell::I8(7)]],
+        )
+    }
+
+    fn flags_export_step() -> MockQueryStep {
+        MockQueryStep::with_rows(
+            "SELECT * FROM `app_db`.`flags`",
+            vec![tinyint_flag_column()],
+            vec![vec![MockCell::I8(7)]],
+        )
+    }
+
+    fn flags_page_query() -> sqllumen_lib::mysql::table_data::TableDataPageQuery {
+        sqllumen_lib::mysql::table_data::TableDataPageQuery {
+            tab_id: "tab-1".to_string(),
+            database: "app_db".to_string(),
+            table: "flags".to_string(),
+            page: 1,
+            page_size: 50,
+            sort: None,
+            filter_model: vec![],
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn grid_shows_a_tinyint_one_value_of_seven_and_keeps_server_session_defaults() {
+        let server = MockMySqlServer::start_script(vec![
+            flags_column_metadata_step(),
+            connection_id_step(),
+            flags_page_step(),
+        ])
+        .await;
+        let pool = connect_mock_pool(&server).await;
+        let metadata_cache = MetadataCache::new();
+        let running_queries = tokio::sync::RwLock::new(HashMap::new());
+        let context = sqllumen_lib::mysql::table_data::TableDataContext {
+            pool: &pool,
+            connection_id: "conn-1",
+            metadata_cache: &metadata_cache,
+        };
+
+        let result = fetch_table_data_impl(&context, &running_queries, &flags_page_query())
+            .await
+            .expect("fetch should succeed");
+        pool.disconnect().await.expect("pool disconnects");
+
+        assert_eq!(result.rows[0][0], serde_json::json!(7));
+        let session_changes: Vec<_> = server
+            .recorded_queries()
+            .into_iter()
+            .filter(|query| query.sql.to_ascii_lowercase().contains("time_zone"))
+            .collect();
+        assert!(session_changes.is_empty(), "{session_changes:?}");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn table_export_writes_a_tinyint_one_value_of_seven() {
+        use sqllumen_lib::mysql::table_data::{export_table_data_impl, ExportTableOptions};
+
+        let server =
+            MockMySqlServer::start_script(vec![flags_column_metadata_step(), flags_export_step()])
+                .await;
+        let pool = connect_mock_pool(&server).await;
+        let metadata_cache = MetadataCache::new();
+        let context = sqllumen_lib::mysql::table_data::TableDataContext {
+            pool: &pool,
+            connection_id: "conn-1",
+            metadata_cache: &metadata_cache,
+        };
+        let dir = tempfile::tempdir().expect("temp dir");
+        let file_path = dir.path().join("flags.json");
+        let options = ExportTableOptions {
+            database: "app_db".to_string(),
+            table: "flags".to_string(),
+            format: "json".to_string(),
+            file_path: file_path.to_string_lossy().into_owned(),
+            include_headers: true,
+            table_name_for_sql: String::new(),
+            filter_model: vec![],
+            sort: None,
+            page: None,
+            page_size: None,
+        };
+
+        export_table_data_impl(&context, &options)
+            .await
+            .expect("export should succeed");
+        pool.disconnect().await.expect("pool disconnects");
+
+        let exported: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&file_path).expect("export file"))
+                .expect("export is JSON");
+        assert_eq!(exported, serde_json::json!([{ "flag": 7 }]));
+        let session_changes = server
+            .recorded_queries()
+            .into_iter()
+            .filter(|query| query.sql.to_ascii_lowercase().contains("time_zone"))
+            .count();
+        assert_eq!(session_changes, 0);
+    }
 }
 
 #[cfg(coverage)]
@@ -864,19 +987,13 @@ mod command_wrapper_coverage {
     use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
     use sqllumen_lib::mysql::table_data::{PrimaryKeyInfo, TableDataColumnMeta, TableDataResponse};
     use sqllumen_lib::state::AppState;
-    use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
     use tauri::ipc::{CallbackFn, InvokeBody};
     use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
     use tauri::webview::InvokeRequest;
     use tokio_util::sync::CancellationToken;
 
-    fn dummy_pool() -> sqlx::MySqlPool {
-        let opts = MySqlConnectOptions::new()
-            .host("127.0.0.1")
-            .port(13306)
-            .username("dummy")
-            .password("dummy");
-        MySqlPoolOptions::new().connect_lazy_with(opts)
+    fn dummy_pool() -> sqllumen_lib::mysql::pool::BackgroundPool {
+        crate::common::mock_session::unreachable_pool()
     }
 
     fn register_connection(state: &AppState, connection_id: &str, read_only: bool) {
@@ -2844,16 +2961,10 @@ mod coverage_stubs {
         delete_table_row_impl, export_table_data_impl, fetch_table_data_impl,
         insert_table_row_impl, update_table_row_impl,
     };
-    use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
     use std::collections::HashMap;
 
-    fn dummy_lazy_pool() -> sqlx::MySqlPool {
-        let opts = MySqlConnectOptions::new()
-            .host("127.0.0.1")
-            .port(13306)
-            .username("dummy")
-            .password("dummy");
-        MySqlPoolOptions::new().connect_lazy_with(opts)
+    fn dummy_lazy_pool() -> sqllumen_lib::mysql::pool::BackgroundPool {
+        crate::common::mock_session::unreachable_pool()
     }
 
     #[tokio::test]

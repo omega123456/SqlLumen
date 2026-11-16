@@ -1,35 +1,17 @@
 use crate::mysql::cache_status::{cache_status_json, CacheStatus};
+#[cfg(not(coverage))]
+use crate::mysql::cell_values::{grid_cell_json, CellValue, DecodedRow, GridCellVariant};
+#[cfg(not(coverage))]
+use crate::mysql::logged_query::LoggedStatement;
 use crate::mysql::metadata_cache::{MetadataCache, MetadataTableKey, TableKeyMetadata};
+use crate::mysql::pool::BackgroundPool;
 use crate::mysql::result_cache::{CacheKey, VersionedValue};
 use crate::mysql::schema_queries::safe_identifier;
-#[cfg(not(coverage))]
-use crate::mysql::sqlx_type_names::{
-    is_sqlx_binary_type_name, is_sqlx_decimal_type_name, is_sqlx_float_type_name,
-    is_sqlx_integer_type_name,
-};
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock as TokioRwLock;
-
-#[cfg(not(coverage))]
-use sqlx::mysql::types::MySqlTime;
-#[cfg(not(coverage))]
-use sqlx::mysql::MySqlValueRef;
-#[cfg(not(coverage))]
-use sqlx::Column;
-#[cfg(not(coverage))]
-use sqlx::Row;
-#[cfg(not(coverage))]
-use sqlx::TypeInfo;
-#[cfg(not(coverage))]
-use sqlx::Value;
-#[cfg(not(coverage))]
-use sqlx::ValueRef;
-
-#[cfg(not(coverage))]
-use crate::mysql::multi_result::{json_from_i64, json_from_u64};
 
 mod blob_values;
 mod cache_sync;
@@ -228,7 +210,7 @@ pub struct WriteFileBytesRequest {
 }
 
 pub struct TableDataContext<'a> {
-    pub pool: &'a sqlx::MySqlPool,
+    pub pool: &'a BackgroundPool,
     pub connection_id: &'a str,
     pub metadata_cache: &'a MetadataCache,
 }
@@ -265,6 +247,3 @@ pub struct ExportTableOptions {
     pub page: Option<u32>,
     pub page_size: Option<u32>,
 }
-
-#[cfg(not(coverage))]
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};

@@ -44,7 +44,7 @@ pub(super) async fn run_copy_inner(
         target: &resolved.pool,
     };
     let outcome = run_copy_with_pools(params, job, &pools).await;
-    resolved.dispose().await;
+    resolved.dispose();
     outcome
 }
 
@@ -53,31 +53,38 @@ pub(super) async fn run_copy_with_pools(
     job: &CopyJob,
     pools: &CopyPools<'_>,
 ) -> Result<bool, String> {
-    let source = pools.source;
     validate_cross_database_non_table_copy(
         &params.objects,
         &params.source_database,
         &params.target_database,
     )?;
 
-    let mut conn = pools
+    let mut source = pools
+        .source
+        .checkout_for_transfer()
+        .await
+        .map_err(|error| format!("Failed to acquire source connection: {error}"))?;
+    let mut target = pools
         .target
-        .acquire()
+        .checkout_for_transfer()
         .await
         .map_err(|error| format!("Failed to acquire target connection: {error}"))?;
+    let mut connections = CopyConnections {
+        source: &mut source,
+        target: &mut target,
+    };
 
-    ensure_target_database(source, &mut conn, params).await?;
+    ensure_target_database(&mut connections, params).await?;
 
     let run = CopyRun {
         params,
         job,
-        source,
-        byte_budget: batch_byte_budget(read_max_allowed_packet(&mut conn).await),
+        byte_budget: batch_byte_budget(read_max_allowed_packet(connections.target).await),
     };
 
-    run_target_statement(&mut conn, FK_CHECKS_DISABLE).await?;
-    let body = copy_objects(&run, &mut conn).await;
-    let restore = run_target_statement(&mut conn, FK_CHECKS_ENABLE).await;
+    run_target_statement(connections.target, FK_CHECKS_DISABLE).await?;
+    let body = copy_objects(&run, &mut connections).await;
+    let restore = run_target_statement(connections.target, FK_CHECKS_ENABLE).await;
 
     match body {
         Ok(outcome) => restore.map(|()| outcome),
@@ -114,7 +121,7 @@ pub(super) fn begin_object_unless_cancelled(
 
 pub(super) async fn copy_one_object(
     run: &CopyRun<'_>,
-    target: &mut MySqlConnection,
+    connections: &mut CopyConnections<'_>,
     object: CopyObject<'_>,
 ) -> Result<bool, String> {
     let params = run.params;
@@ -123,8 +130,11 @@ pub(super) async fn copy_one_object(
     let copies_table_data = is_table && opts.copy_data;
     let mut rows_total = None;
     if copies_table_data {
-        rows_total =
-            Some(count_source_rows(run.source, &params.source_database, object.name).await?);
+        let source_table = SourceTable {
+            database: &params.source_database,
+            table: object.name,
+        };
+        rows_total = Some(count_source_rows(connections.source, source_table).await?);
     }
 
     if !begin_object_unless_cancelled(run.job, object, rows_total)? {
@@ -133,11 +143,11 @@ pub(super) async fn copy_one_object(
 
     let do_structure = opts.copy_structure || !is_table;
     if do_structure {
-        copy_object_structure(run, &mut *target, object).await?;
+        copy_object_structure(run, connections, object).await?;
     }
 
     let completed_data =
-        !copies_table_data || copy_table_data(run, &mut *target, object.name).await?;
+        !copies_table_data || copy_table_data(run, connections, object.name).await?;
     if !completed_data {
         run.job
             .update_progress(|progress| progress.mark_cancelled());
@@ -149,14 +159,14 @@ pub(super) async fn copy_one_object(
 
 pub(super) async fn copy_objects(
     run: &CopyRun<'_>,
-    target: &mut MySqlConnection,
+    connections: &mut CopyConnections<'_>,
 ) -> Result<bool, String> {
     for (object_type, name) in run.params.objects.work_list() {
         let object = CopyObject {
             object_type,
             name: &name,
         };
-        if !copy_one_object(run, &mut *target, object).await? {
+        if !copy_one_object(run, connections, object).await? {
             return Ok(false);
         }
     }

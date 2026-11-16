@@ -10,15 +10,17 @@ use serde::Deserialize;
 
 use crate::commands::query_history_bridge::{run_with_history, HistoryStatement};
 #[cfg(not(coverage))]
-use crate::mysql::query_log;
+use crate::mysql::cell_values::DecodedRow;
+#[cfg(not(coverage))]
+use crate::mysql::logged_query::{
+    execute_pooled, fetch_decoded_pooled, fetch_first_decoded_pooled, LoggedStatement,
+};
+#[cfg(not(coverage))]
+use crate::mysql::pool::BackgroundPool;
 #[cfg(not(coverage))]
 use crate::mysql::table_designer::{
     DefaultValueModel, DesignerColumnDef, DesignerForeignKeyDef, DesignerIndexDef,
 };
-#[cfg(not(coverage))]
-use sqlx::mysql::MySqlRow;
-#[cfg(not(coverage))]
-use sqlx::Row;
 #[cfg(not(coverage))]
 use tauri::State;
 
@@ -67,7 +69,7 @@ fn check_not_read_only(state: &AppState, connection_id: &str) -> Result<(), Stri
 }
 
 #[cfg(not(coverage))]
-fn get_pool(state: &AppState, connection_id: &str) -> Result<sqlx::MySqlPool, String> {
+fn get_pool(state: &AppState, connection_id: &str) -> Result<BackgroundPool, String> {
     state
         .registry
         .get_pool(connection_id)
@@ -217,12 +219,9 @@ pub async fn apply_table_ddl_impl(
     let pool = get_pool(state, &request.connection_id)?;
     let ddl = request.ddl.as_str();
 
-    query_log::log_outgoing_sql(ddl);
-    let result = sqlx::query(sqlx::AssertSqlSafe(ddl))
-        .execute(&pool)
+    execute_pooled(&pool, LoggedStatement::text(ddl))
         .await
         .map_err(|error| error.to_string())?;
-    query_log::log_execute_result(&result);
 
     Ok(())
 }

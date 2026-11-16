@@ -1,6 +1,3 @@
-use sqlx::mysql::MySqlRow;
-use sqlx::{Column, Row, TypeInfo, Value, ValueRef};
-
 pub const TARGET: &str = "mysql_traffic";
 
 pub fn is_enabled() -> bool {
@@ -15,206 +12,34 @@ pub fn log_outgoing_sql_bound(sql: &str, binds: &[String]) {
     tracing::debug!(target: TARGET, %sql, ?binds, "mysql outgoing query (bound)");
 }
 
-pub fn log_sqlx_describe(sql: &str) {
-    tracing::debug!(target: TARGET, %sql, "mysql sqlx describe (column metadata)");
-}
-
-fn format_cell(row: &MySqlRow, column_index: usize) -> String {
-    let type_name = row.column(column_index).type_info().name().to_uppercase();
-    let raw_value = match row.try_get_raw(column_index) {
-        Ok(value) => value,
-        Err(error) => return format!("<decode_error: {error}>"),
-    };
-
-    if raw_value.is_null() {
-        return "None".to_string();
-    }
-
-    if crate::mysql::sqlx_type_names::is_sqlx_integer_type_name(&type_name) {
-        if let Ok(value) = row.try_get::<Option<i64>, _>(column_index) {
-            return format!("{value:?}");
-        }
-        if let Ok(value) = row.try_get::<Option<u64>, _>(column_index) {
-            return format!("{value:?}");
-        }
-        if let Ok(value) = row.try_get::<Option<String>, _>(column_index) {
-            return format!("{value:?}");
-        }
-    }
-
-    if crate::mysql::sqlx_type_names::is_sqlx_float_type_name(&type_name) {
-        if let Ok(value) = row.try_get::<Option<f64>, _>(column_index) {
-            return format!("{value:?}");
-        }
-    }
-
-    if crate::mysql::sqlx_type_names::is_sqlx_decimal_type_name(&type_name) {
-        if let Ok(value) = row.try_get::<Option<String>, _>(column_index) {
-            return format!("{value:?}");
-        }
-        if let Some(value) = decode_unchecked_string(row, column_index)
-            .or_else(|| decode_raw_string(raw_value.clone()))
-        {
-            return format!("Some({value:?})");
-        }
-    }
-
-    if matches!(
-        type_name.as_str(),
-        "DATE" | "DATETIME" | "TIMESTAMP" | "TIME" | "NEWDATE"
-    ) {
-        if let Some(value) = decode_temporal_debug_value(raw_value) {
-            return format!("Some({value:?})");
-        }
-    }
-
-    if crate::mysql::sqlx_type_names::is_sqlx_binary_type_name(&type_name) {
-        if let Ok(value) = row.try_get::<Option<Vec<u8>>, _>(column_index) {
-            return format!(
-                "bytes(len={})",
-                value.as_ref().map(|bytes| bytes.len()).unwrap_or(0)
-            );
-        }
-    }
-
-    match row.try_get::<Option<String>, _>(column_index) {
-        Ok(value) => format!("{value:?}"),
-        Err(error) => format!("<decode_error: {error}>"),
-    }
-}
-
-fn decode_unchecked_string(row: &MySqlRow, column_index: usize) -> Option<String> {
-    if let Ok(value) = row.try_get_unchecked::<Option<String>, _>(column_index) {
-        return value;
-    }
-
-    row.try_get_unchecked::<Option<Vec<u8>>, _>(column_index)
-        .ok()
-        .flatten()
-        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
-}
-
-fn decode_raw_string(value: sqlx::mysql::MySqlValueRef<'_>) -> Option<String> {
-    let owned = sqlx::ValueRef::to_owned(&value);
-    if let Ok(text) = owned.try_decode::<String>() {
-        return Some(text);
-    }
-
-    sqlx::ValueRef::to_owned(&value)
-        .try_decode::<Vec<u8>>()
-        .ok()
-        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
-}
-
-fn decode_temporal_debug_value(value: sqlx::mysql::MySqlValueRef<'_>) -> Option<String> {
-    use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
-    use sqlx::mysql::types::MySqlTime;
-
-    let owned = sqlx::ValueRef::to_owned(&value);
-    if let Ok(value) = owned.try_decode::<NaiveDateTime>() {
-        return Some(value.to_string());
-    }
-
-    let owned = sqlx::ValueRef::to_owned(&value);
-    if let Ok(value) = owned.try_decode::<DateTime<Utc>>() {
-        return Some(value.naive_utc().to_string());
-    }
-
-    let owned = sqlx::ValueRef::to_owned(&value);
-    if let Ok(value) = owned.try_decode::<NaiveDate>() {
-        return Some(value.to_string());
-    }
-
-    let owned = sqlx::ValueRef::to_owned(&value);
-    if let Ok(value) = owned.try_decode::<MySqlTime>() {
-        return Some(format_mysql_time(value));
-    }
-
-    sqlx::ValueRef::to_owned(&value).try_decode::<String>().ok()
-}
-
-pub(crate) fn format_mysql_time(value: sqlx::mysql::types::MySqlTime) -> String {
-    let sign = crate::mysql::multi_result::minus_sign(value.sign().is_negative());
-    let hours = value.hours();
-
-    let microseconds = value.microseconds();
-    if microseconds == 0 {
-        return format!(
-            "{sign}{hours:02}:{:02}:{:02}",
-            value.minutes(),
-            value.seconds()
-        );
-    }
-    format!(
-        "{sign}{hours:02}:{:02}:{:02}.{microseconds:06}",
-        value.minutes(),
-        value.seconds()
-    )
-}
-
-fn format_mysql_row(row: &MySqlRow) -> String {
-    let mut parts = Vec::new();
-    for column_index in 0..row.len() {
-        let name = row.column(column_index).name();
-        let value = format_cell(row, column_index);
-        parts.push(format!("{name}={value}"));
-    }
-    parts.join(", ")
-}
-
-pub fn log_mysql_rows(rows: &[MySqlRow]) {
-    if !is_enabled() {
-        return;
-    }
-    tracing::debug!(target: TARGET, row_count = rows.len(), "mysql result rows (pre-serialize)");
-    for (row_index, row) in rows.iter().enumerate() {
-        let formatted = format_mysql_row(row);
-        tracing::debug!(target: TARGET, row_index = row_index, row = %formatted, "mysql row");
-    }
-}
-
-pub fn log_mysql_row(row: &MySqlRow) {
-    log_mysql_rows(std::slice::from_ref(row));
-}
-
-pub fn log_execute_result(result: &sqlx::mysql::MySqlQueryResult) {
-    tracing::debug!(
-        target: TARGET,
-        rows_affected = result.rows_affected(),
-        last_insert_id = result.last_insert_id(),
-        "mysql execute result",
-    );
-}
-
-pub fn log_execute_error(error: &sqlx::Error) {
-    tracing::debug!(
-        target: TARGET,
-        error = %error,
-        "mysql execute error",
-    );
+pub fn log_outgoing_sql_with_values(sql: &str, values: &[mysql_async::Value]) {
+    let binds: Vec<String> = values.iter().map(|value| value.as_sql(false)).collect();
+    log_outgoing_sql_bound(sql, &binds);
 }
 
 pub fn log_mysql_async_row(row_index: usize, row: &mysql_async::Row) {
     if !is_enabled() {
         return;
     }
+    let cells = crate::mysql::cell_values::decode_row(row);
     let formatted = row
         .columns_ref()
         .iter()
-        .enumerate()
-        .map(|(index, col)| {
-            let formatted_value = match row.as_ref(index) {
-                None | Some(mysql_async::Value::NULL) => "None".to_string(),
-                Some(mysql_async::Value::Bytes(bytes)) => {
-                    format!("Some({:?})", String::from_utf8_lossy(bytes))
-                }
-                Some(value) => format!("Some({value:?})"),
-            };
-            format!("{}={formatted_value}", col.name_str())
+        .zip(cells.iter())
+        .map(|(column, cell)| {
+            let value_text = crate::mysql::cell_values::debug_text(cell);
+            format!("{}={value_text}", column.name_str())
         })
         .collect::<Vec<_>>()
         .join(", ");
     tracing::debug!(target: TARGET, row_index, row = %formatted, "mysql row");
+}
+
+pub fn log_mysql_async_rows(rows: &[mysql_async::Row]) {
+    log_mysql_async_row_count(rows.len());
+    for (row_index, row) in rows.iter().enumerate() {
+        log_mysql_async_row(row_index, row);
+    }
 }
 
 pub fn log_mysql_async_row_count(row_count: usize) {

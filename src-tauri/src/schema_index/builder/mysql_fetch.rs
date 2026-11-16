@@ -2,6 +2,12 @@ use std::collections::HashMap;
 use std::time::Instant;
 use tokio_util::sync::CancellationToken;
 
+use crate::mysql::cell_values::DecodedRow;
+use crate::mysql::logged_query::{
+    fetch_decoded_pooled, fetch_first_decoded_pooled, LoggedStatement,
+};
+use crate::mysql::pool::BackgroundPool;
+
 use super::super::types::{BuildPhase, BuildProgress, ProgressCallback, TableDdlInput};
 use super::SHOW_CREATE_TABLE_CONCURRENCY;
 
@@ -11,7 +17,7 @@ pub(super) type TableKey = (String, String);
 
 #[derive(Clone, Copy)]
 pub(super) struct DdlSource<'a> {
-    pub(super) pool: &'a sqlx::MySqlPool,
+    pub(super) pool: &'a BackgroundPool,
     pub(super) cancellation: &'a CancellationToken,
 }
 
@@ -27,11 +33,8 @@ pub(super) fn is_system_schema(schema: &str) -> bool {
     SYSTEM_SCHEMAS.contains(&schema.to_lowercase().as_str())
 }
 
-pub(super) fn decode_number(row: &sqlx::mysql::MySqlRow, index: usize) -> i64 {
-    use sqlx::Row;
-    row.try_get::<i64, _>(index)
-        .or_else(|_| row.try_get::<u64, _>(index).map(|value| value as i64))
-        .unwrap_or(0)
+pub(super) fn decode_number(row: &DecodedRow, index: usize) -> i64 {
+    row.signed(index).unwrap_or(0)
 }
 
 fn show_create_routine_keyword(routine_type: &str) -> &'static str {
@@ -42,17 +45,15 @@ fn show_create_routine_keyword(routine_type: &str) -> &'static str {
     "FUNCTION"
 }
 
-pub(super) async fn fetch_all_user_tables(pool: &sqlx::MySqlPool) -> Result<Vec<TableKey>, String> {
-    let rows = sqlx::query(
-        "SELECT TABLE_SCHEMA, TABLE_NAME \
+pub(super) async fn fetch_all_user_tables(pool: &BackgroundPool) -> Result<Vec<TableKey>, String> {
+    let sql = "SELECT TABLE_SCHEMA, TABLE_NAME \
          FROM information_schema.TABLES \
          WHERE TABLE_TYPE = 'BASE TABLE' \
            AND TABLE_SCHEMA NOT IN ('information_schema','mysql','performance_schema','sys') \
-         ORDER BY TABLE_SCHEMA, TABLE_NAME",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|error| format!("Failed to enumerate user tables: {error}"))?;
+         ORDER BY TABLE_SCHEMA, TABLE_NAME";
+    let rows = fetch_decoded_pooled(pool, LoggedStatement::text(sql))
+        .await
+        .map_err(|error| format!("Failed to enumerate user tables: {error}"))?;
 
     let mut out = Vec::with_capacity(rows.len());
     for row in &rows {
@@ -66,29 +67,20 @@ pub(super) async fn fetch_all_user_tables(pool: &sqlx::MySqlPool) -> Result<Vec<
     Ok(out)
 }
 
-pub(super) fn decode_string(
-    row: &sqlx::mysql::MySqlRow,
-    index: usize,
-) -> Result<String, sqlx::Error> {
-    use sqlx::Row;
-    row.try_get::<String, _>(index).or_else(|_| {
-        row.try_get::<Vec<u8>, _>(index)
-            .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
-    })
+pub(super) fn decode_string(row: &DecodedRow, index: usize) -> Result<String, String> {
+    row.required_text(index)
 }
 
 pub(super) async fn fetch_row_counts(
-    pool: &sqlx::MySqlPool,
+    pool: &BackgroundPool,
 ) -> Result<HashMap<(String, String), i64>, String> {
-    let rows = sqlx::query(
-        "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_ROWS \
+    let sql = "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_ROWS \
          FROM information_schema.TABLES \
          WHERE TABLE_SCHEMA NOT IN ('information_schema','mysql','performance_schema','sys') \
-           AND TABLE_TYPE = 'BASE TABLE'",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|error| format!("Failed to fetch row counts: {error}"))?;
+           AND TABLE_TYPE = 'BASE TABLE'";
+    let rows = fetch_decoded_pooled(pool, LoggedStatement::text(sql))
+        .await
+        .map_err(|error| format!("Failed to fetch row counts: {error}"))?;
 
     let mut out = HashMap::with_capacity(rows.len());
     for row in &rows {
@@ -103,20 +95,18 @@ pub(super) async fn fetch_row_counts(
 }
 
 pub(super) async fn fetch_all_user_views(
-    pool: &sqlx::MySqlPool,
+    pool: &BackgroundPool,
 ) -> Result<Vec<(String, String, String)>, String> {
     use crate::mysql::schema_queries::safe_identifier;
 
-    let rows = sqlx::query(
-        "SELECT TABLE_SCHEMA, TABLE_NAME \
+    let sql = "SELECT TABLE_SCHEMA, TABLE_NAME \
          FROM information_schema.TABLES \
          WHERE TABLE_TYPE = 'VIEW' \
            AND TABLE_SCHEMA NOT IN ('information_schema','mysql','performance_schema','sys') \
-         ORDER BY TABLE_SCHEMA, TABLE_NAME",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|error| format!("Failed to enumerate user views: {error}"))?;
+         ORDER BY TABLE_SCHEMA, TABLE_NAME";
+    let rows = fetch_decoded_pooled(pool, LoggedStatement::text(sql))
+        .await
+        .map_err(|error| format!("Failed to enumerate user views: {error}"))?;
 
     let mut out = Vec::with_capacity(rows.len());
     for row in &rows {
@@ -132,10 +122,7 @@ pub(super) async fn fetch_all_user_views(
             .map_err(|error| format!("Invalid view name {view_name}: {error}"))?;
         let sql = format!("SHOW CREATE VIEW {safe_db}.{safe_view}");
 
-        match sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
-            .fetch_optional(pool)
-            .await
-        {
+        match fetch_first_decoded_pooled(pool, LoggedStatement::text(&sql)).await {
             Ok(Some(ddl_row)) => {
                 let ddl = decode_string(&ddl_row, 1).unwrap_or_default();
                 out.push((schema, view_name, ddl));
@@ -161,19 +148,17 @@ pub(super) async fn fetch_all_user_views(
 }
 
 pub(super) async fn fetch_all_user_routines(
-    pool: &sqlx::MySqlPool,
+    pool: &BackgroundPool,
 ) -> Result<Vec<(String, String, String, String)>, String> {
     use crate::mysql::schema_queries::safe_identifier;
 
-    let rows = sqlx::query(
-        "SELECT ROUTINE_SCHEMA, ROUTINE_NAME, ROUTINE_TYPE \
+    let sql = "SELECT ROUTINE_SCHEMA, ROUTINE_NAME, ROUTINE_TYPE \
          FROM information_schema.ROUTINES \
          WHERE ROUTINE_SCHEMA NOT IN ('information_schema','mysql','performance_schema','sys') \
-         ORDER BY ROUTINE_SCHEMA, ROUTINE_NAME",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|error| format!("Failed to enumerate user routines: {error}"))?;
+         ORDER BY ROUTINE_SCHEMA, ROUTINE_NAME";
+    let rows = fetch_decoded_pooled(pool, LoggedStatement::text(sql))
+        .await
+        .map_err(|error| format!("Failed to enumerate user routines: {error}"))?;
 
     let mut out = Vec::with_capacity(rows.len());
     for row in &rows {
@@ -192,10 +177,7 @@ pub(super) async fn fetch_all_user_routines(
         let show_keyword = show_create_routine_keyword(&routine_type);
         let show_cmd = format!("SHOW CREATE {show_keyword} {safe_db}.{safe_name}");
 
-        match sqlx::query(sqlx::AssertSqlSafe(show_cmd.as_str()))
-            .fetch_optional(pool)
-            .await
-        {
+        match fetch_first_decoded_pooled(pool, LoggedStatement::text(&show_cmd)).await {
             Ok(Some(ddl_row)) => {
                 let ddl = decode_string(&ddl_row, 2).unwrap_or_default();
                 out.push((schema, routine_name, routine_type.to_uppercase(), ddl));
@@ -221,7 +203,7 @@ pub(super) async fn fetch_all_user_routines(
 }
 
 pub(super) async fn fetch_create_table(
-    pool: &sqlx::MySqlPool,
+    pool: &BackgroundPool,
     database: &str,
     table: &str,
 ) -> Result<String, String> {
@@ -230,8 +212,7 @@ pub(super) async fn fetch_create_table(
     let safe_db = safe_identifier(database)?;
     let safe_table = safe_identifier(table)?;
     let sql = format!("SHOW CREATE TABLE {safe_db}.{safe_table}");
-    let row = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
-        .fetch_optional(pool)
+    let row = fetch_first_decoded_pooled(pool, LoggedStatement::text(&sql))
         .await
         .map_err(|error| format!("SHOW CREATE TABLE {database}.{table} failed: {error}"))?
         .ok_or_else(|| format!("Table {database}.{table} not found"))?;
@@ -251,7 +232,7 @@ struct FetchCounter<'a> {
 }
 
 async fn fetch_counted_create_table(
-    pool: &sqlx::MySqlPool,
+    pool: &BackgroundPool,
     target: TableKey,
     counter: FetchCounter<'_>,
 ) -> Result<TableDdlInput, String> {

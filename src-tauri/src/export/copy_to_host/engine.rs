@@ -1,12 +1,11 @@
 use super::*;
-use crate::mysql::pool;
-use crate::mysql::query_log;
+use crate::mysql::cell_values::DecodedRow;
+use crate::mysql::logged_query::{execute, fetch_first_decoded, stream, LoggedStatement};
+use crate::mysql::pool::{self, BackgroundPool};
 use crate::mysql::registry::StoredConnectionParams;
-use crate::mysql::schema_queries::{query_ddl, safe_identifier};
+use crate::mysql::schema_queries::{query_ddl_on_connection, safe_identifier};
 use crate::state::AppState;
-use futures::StreamExt;
-use sqlx::mysql::MySqlPool;
-use sqlx::{Column, MySqlConnection, Row};
+use mysql_async::Conn;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::RwLock;
@@ -55,14 +54,18 @@ pub struct DatabaseEncoding {
 }
 
 struct CopyPools<'a> {
-    source: &'a MySqlPool,
-    target: &'a MySqlPool,
+    source: &'a BackgroundPool,
+    target: &'a BackgroundPool,
+}
+
+pub struct CopyConnections<'a> {
+    pub source: &'a mut Conn,
+    pub target: &'a mut Conn,
 }
 
 struct CopyRun<'a> {
     params: &'a CopyToHostParams,
     job: &'a CopyJob,
-    source: &'a MySqlPool,
     byte_budget: u64,
 }
 
@@ -73,14 +76,15 @@ struct PendingInsert<'a> {
 }
 
 pub struct ResolvedTargetPool {
-    pub pool: MySqlPool,
+    pub pool: BackgroundPool,
     pub owned: bool,
 }
 
 impl ResolvedTargetPool {
-    pub async fn dispose(self) {
+    pub fn dispose(self) {
         if self.owned {
-            self.pool.close().await;
+            self.pool
+                .disconnect_in_background("copy-to-host target pool");
         }
     }
 }

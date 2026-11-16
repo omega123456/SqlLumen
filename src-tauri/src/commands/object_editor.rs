@@ -7,11 +7,11 @@ use crate::commands::query_history_bridge::{
 };
 use crate::commands::requests::{RoutineRequest, SchemaObjectRequest};
 #[cfg(not(coverage))]
-use crate::mysql::query_log;
+use crate::mysql::logged_query::{execute, ExecuteOutcome, LoggedStatement};
+#[cfg(not(coverage))]
+use crate::mysql::pool::BackgroundPool;
 use crate::mysql::schema_queries;
 use crate::state::AppState;
-#[cfg(not(coverage))]
-use sqlx::Executor;
 use std::time::Instant;
 #[cfg(not(coverage))]
 use tauri::State;
@@ -64,7 +64,7 @@ pub struct SaveObjectResponse {
 }
 
 #[cfg(not(coverage))]
-fn get_pool(state: &AppState, connection_id: &str) -> Result<sqlx::MySqlPool, String> {
+fn get_pool(state: &AppState, connection_id: &str) -> Result<BackgroundPool, String> {
     state
         .registry
         .get_pool(connection_id)
@@ -73,20 +73,10 @@ fn get_pool(state: &AppState, connection_id: &str) -> Result<sqlx::MySqlPool, St
 
 #[cfg(not(coverage))]
 async fn execute_simple_sql(
-    conn: &mut sqlx::MySqlConnection,
+    conn: &mut mysql_async::Conn,
     sql: &str,
-) -> Result<sqlx::mysql::MySqlQueryResult, sqlx::Error> {
-    query_log::log_outgoing_sql(sql);
-    match conn.execute(sqlx::AssertSqlSafe(sql)).await {
-        Ok(result) => {
-            query_log::log_execute_result(&result);
-            Ok(result)
-        }
-        Err(error) => {
-            query_log::log_execute_error(&error);
-            Err(error)
-        }
-    }
+) -> Result<ExecuteOutcome, mysql_async::Error> {
+    execute(conn, LoggedStatement::text(sql)).await
 }
 
 fn check_not_read_only(state: &AppState, connection_id: &str) -> Result<(), String> {

@@ -23,8 +23,10 @@ pub struct LoggingInit {
     pub rust_log_env_set: bool,
 }
 
+const SUPPORTED_LOG_LEVELS: [&str; 5] = ["trace", "debug", "info", "warn", "error"];
+
 fn default_env_filter() -> EnvFilter {
-    EnvFilter::try_new("info,sqlx=warn").unwrap_or_else(|_| EnvFilter::new("info"))
+    EnvFilter::new("info")
 }
 
 fn env_filter_from_rust_log() -> Option<EnvFilter> {
@@ -36,15 +38,10 @@ fn env_filter_from_rust_log() -> Option<EnvFilter> {
 
 pub fn parse_log_level_setting(setting: &str) -> Option<EnvFilter> {
     let level = setting.trim().to_lowercase();
-    let directive = match level.as_str() {
-        "trace" => "trace,sqlx=warn",
-        "debug" => "debug,sqlx=warn",
-        "info" => "info,sqlx=warn",
-        "warn" => "warn,sqlx=warn",
-        "error" => "error,sqlx=warn",
-        _ => return None,
-    };
-    EnvFilter::try_new(directive).ok()
+    if !SUPPORTED_LOG_LEVELS.contains(&level.as_str()) {
+        return None;
+    }
+    EnvFilter::try_new(level).ok()
 }
 
 pub fn apply_log_level_from_settings(conn: &rusqlite::Connection, handle: &LogFilterReloadHandle) {

@@ -10,16 +10,10 @@ use sqllumen_lib::commands::schema::{create_database_impl, list_databases_impl};
 use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
 use sqllumen_lib::mysql::schema_queries::safe_identifier;
 use sqllumen_lib::state::AppState;
-use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
 use tokio_util::sync::CancellationToken;
 
-fn dummy_lazy_pool() -> sqlx::MySqlPool {
-    let opts = MySqlConnectOptions::new()
-        .host("127.0.0.1")
-        .port(13306)
-        .username("dummy")
-        .password("dummy");
-    MySqlPoolOptions::new().connect_lazy_with(opts)
+fn dummy_lazy_pool() -> sqllumen_lib::mysql::pool::BackgroundPool {
+    crate::common::mock_session::unreachable_pool()
 }
 
 fn dummy_stored_params() -> StoredConnectionParams {

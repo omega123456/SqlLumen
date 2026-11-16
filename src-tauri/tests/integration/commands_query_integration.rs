@@ -908,16 +908,10 @@ mod coverage_stubs {
     use super::*;
     use sqllumen_lib::mysql::query_executor::{execute_query_impl, fetch_schema_metadata_impl};
     use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
-    use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
     use tokio_util::sync::CancellationToken;
 
-    fn dummy_lazy_pool() -> sqlx::MySqlPool {
-        let opts = MySqlConnectOptions::new()
-            .host("127.0.0.1")
-            .port(13306)
-            .username("dummy")
-            .password("dummy");
-        MySqlPoolOptions::new().connect_lazy_with(opts)
+    fn dummy_lazy_pool() -> sqllumen_lib::mysql::pool::BackgroundPool {
+        crate::common::mock_session::unreachable_pool()
     }
 
     fn dummy_stored_params(profile_id: &str) -> StoredConnectionParams {

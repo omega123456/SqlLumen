@@ -765,7 +765,7 @@ mod binary_projection_integration {
         .await
         .expect("insert with binary primary key should succeed");
 
-        pool.close().await;
+        pool.disconnect().await.expect("mock pool disconnects");
 
         assert_eq!(
             inserted,
@@ -867,7 +867,7 @@ mod binary_projection_integration {
         .await
         .expect("insert with projected binary payload should succeed");
 
-        pool.close().await;
+        pool.disconnect().await.expect("mock pool disconnects");
 
         assert_eq!(
             inserted,

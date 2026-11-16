@@ -2,16 +2,20 @@ use crate::commands::helpers::lock_db;
 use crate::credentials;
 use crate::db::connections;
 #[cfg(not(coverage))]
+use crate::mysql::cell_values::DecodedRow;
+#[cfg(not(coverage))]
 use crate::mysql::health;
+#[cfg(not(coverage))]
+use crate::mysql::logged_query::{fetch_first, fetch_first_decoded_pooled, LoggedStatement};
 use crate::mysql::metadata_cache::evict_metadata_cache_for_connection;
 #[cfg(not(coverage))]
 use crate::mysql::pool;
 #[cfg(coverage)]
 use crate::mysql::pool::create_pool;
 #[cfg(not(coverage))]
-use crate::mysql::pool::{ConnectionParams, SslSettings};
+use crate::mysql::pool::BackgroundPool;
 #[cfg(not(coverage))]
-use crate::mysql::query_log;
+use crate::mysql::pool::{ConnectionParams, SslSettings};
 use crate::mysql::registry::ConnectionStatus;
 use crate::mysql::registry::OpenConnectionSession;
 #[cfg(not(coverage))]
@@ -22,8 +26,6 @@ use crate::state::AppState;
 #[cfg(not(coverage))]
 const DEFAULT_TEST_CONNECT_TIMEOUT_SECS: u64 = 10;
 use serde::{Deserialize, Serialize};
-#[cfg(not(coverage))]
-use sqlx::Row;
 #[cfg(not(coverage))]
 use std::time::Instant;
 #[cfg(not(coverage))]
@@ -93,15 +95,16 @@ const SERVER_VERSION_COLUMN: DiagnosticColumn = DiagnosticColumn {
 };
 
 #[cfg(not(coverage))]
-async fn fetch_server_version(pool: &sqlx::MySqlPool) -> String {
-    fetch_diagnostic_value(pool, SERVER_VERSION_COLUMN)
-        .await
-        .unwrap_or_else(|| "Unknown".to_string())
-}
-
-#[cfg(not(coverage))]
-async fn close_pool(pool: sqlx::MySqlPool) {
-    pool.close().await;
+async fn fetch_server_version(pool: &BackgroundPool) -> String {
+    let statement = LoggedStatement::text(SERVER_VERSION_COLUMN.sql);
+    let version = match fetch_first_decoded_pooled(pool, statement).await {
+        Ok(first_row) => first_row.and_then(|row| row.required_text(0).ok()),
+        Err(error) => {
+            tracing::warn!(?error, "reading the server version failed");
+            None
+        }
+    };
+    version.unwrap_or_else(|| "Unknown".to_string())
 }
 
 #[cfg(not(coverage))]
@@ -165,13 +168,33 @@ struct DiagnosticColumn {
 
 #[cfg(not(coverage))]
 async fn fetch_diagnostic_value(
-    pool: &sqlx::MySqlPool,
+    conn: &mut mysql_async::Conn,
     column: DiagnosticColumn,
 ) -> Option<String> {
-    query_log::log_outgoing_sql(column.sql);
-    let row = sqlx::query(column.sql).fetch_one(pool).await.ok()?;
-    query_log::log_mysql_rows(std::slice::from_ref(&row));
-    row.try_get::<String, _>(column.column_index).ok()
+    let fetched = fetch_first(conn, LoggedStatement::text(column.sql)).await;
+    let first_row = match fetched {
+        Ok(first_row) => first_row?,
+        Err(error) => {
+            tracing::warn!(
+                sql = column.sql,
+                ?error,
+                "test connection diagnostic failed"
+            );
+            return None;
+        }
+    };
+    DecodedRow::from_row(&first_row)
+        .required_text(column.column_index)
+        .ok()
+}
+
+#[cfg(not(coverage))]
+async fn open_test_connection(params: &ConnectionParams) -> Result<mysql_async::Conn, String> {
+    use crate::mysql::connection_options::{connect_timeout, connect_within_timeout, mysql_opts};
+
+    connect_within_timeout(mysql_opts(params)?, connect_timeout(params))
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[cfg(not(coverage))]
@@ -183,27 +206,29 @@ pub async fn test_connection_impl(input: TestConnectionInput) -> TestConnectionR
     let params = test_connection_params(input, password);
 
     let start = Instant::now();
-    let pool = match pool::create_pool(&params).await {
-        Ok(created_pool) => created_pool,
+    let mut conn = match open_test_connection(&params).await {
+        Ok(opened_connection) => opened_connection,
         Err(error) => return failed_test_connection(format!("Connection failed: {error}")),
     };
     let connection_time_ms = start.elapsed().as_millis() as u64;
 
-    let server_version = fetch_diagnostic_value(&pool, SERVER_VERSION_COLUMN).await;
+    let server_version = fetch_diagnostic_value(&mut conn, SERVER_VERSION_COLUMN).await;
     let ssl_cipher_column = DiagnosticColumn {
         sql: "SHOW STATUS LIKE 'Ssl_cipher'",
         column_index: 1,
     };
-    let ssl_status = fetch_diagnostic_value(&pool, ssl_cipher_column)
+    let ssl_status = fetch_diagnostic_value(&mut conn, ssl_cipher_column)
         .await
         .map(ssl_status_label);
     let current_user_column = DiagnosticColumn {
         sql: "SELECT CURRENT_USER()",
         column_index: 0,
     };
-    let auth_method = fetch_diagnostic_value(&pool, current_user_column).await;
+    let auth_method = fetch_diagnostic_value(&mut conn, current_user_column).await;
 
-    pool.close().await;
+    if let Err(error) = conn.disconnect().await {
+        tracing::warn!(?error, "test connection disconnect failed");
+    }
 
     TestConnectionResult {
         success: true,
@@ -268,9 +293,8 @@ pub async fn open_connection_impl(
         connection_params: stored_params,
         read_only: record.read_only,
     };
-    if let Some(old_entry) = state.registry.insert(session_id.clone(), entry) {
-        close_pool(old_entry.pool).await;
-    }
+    let replaced_entry = state.registry.insert(session_id.clone(), entry);
+    drop(replaced_entry);
 
     Ok(OpenConnectionResult {
         session_id,
@@ -297,11 +321,10 @@ pub async fn open_connection_impl(
     let params = StoredConnectionParams::from_connection_record(profile_id, &record)
         .to_connection_params(password);
 
-    let pool = create_pool(&params)
+    let validated_pool = create_pool(&params)
         .await
         .map_err(|error| format!("Failed to connect: {error}"))?;
-
-    pool.close().await;
+    drop(validated_pool);
 
     let session_id = uuid::Uuid::new_v4().to_string();
     Ok(OpenConnectionResult {
@@ -389,7 +412,7 @@ pub async fn close_connection_impl(state: &AppState, connection_id: &str) -> Res
     evict_metadata_cache_for_connection(state, connection_id);
     crate::mysql::session::close(state, connection_id).await;
 
-    close_pool(entry.pool).await;
+    entry.pool.disconnect_in_background("connection close");
     Ok(())
 }
 

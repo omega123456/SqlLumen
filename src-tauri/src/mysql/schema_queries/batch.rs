@@ -1,27 +1,53 @@
+#[cfg(not(coverage))]
+use crate::mysql::cell_values::DecodedRow;
+#[cfg(not(coverage))]
+use crate::mysql::logged_query::{
+    fetch_decoded_pooled, placeholder_list, text_values, LoggedStatement,
+};
+#[cfg(not(coverage))]
+use crate::mysql::pool::BackgroundPool;
 use crate::mysql::query_executor::{TriggerMeta, ViewMeta};
-#[cfg(not(coverage))]
-use crate::mysql::query_log;
-#[cfg(not(coverage))]
-use sqlx::MySqlPool;
 use std::collections::HashMap;
 
 #[cfg(not(coverage))]
 use super::connection_keys::{aggregate_index_rows, IndexRowColumns};
-#[cfg(not(coverage))]
-use super::decode_mysql_text_cell;
 use super::{ForeignKeyInfo, IndexInfo};
 
 #[cfg(not(coverage))]
+struct DatabaseListQuery<'a> {
+    sql_before_list: &'a str,
+    sql_after_list: &'a str,
+    failure_label: &'a str,
+}
+
+#[cfg(not(coverage))]
+async fn fetch_rows_for_databases(
+    pool: &BackgroundPool,
+    query: DatabaseListQuery<'_>,
+    databases: &[String],
+) -> Result<Vec<DecodedRow>, String> {
+    let sql = [
+        query.sql_before_list,
+        placeholder_list(databases.len()).as_str(),
+        query.sql_after_list,
+    ]
+    .concat();
+    fetch_decoded_pooled(pool, LoggedStatement::bound(&sql, text_values(databases)))
+        .await
+        .map_err(|error| format!("Failed to get batch {}: {error}", query.failure_label))
+}
+
+#[cfg(not(coverage))]
 pub async fn query_all_foreign_keys_batch(
-    pool: &MySqlPool,
+    pool: &BackgroundPool,
     databases: &[String],
 ) -> Result<HashMap<String, Vec<ForeignKeyInfo>>, String> {
     if databases.is_empty() {
         return Ok(HashMap::new());
     }
 
-    let mut qb: sqlx::QueryBuilder<sqlx::MySql> = sqlx::QueryBuilder::new(
-        "SELECT \
+    let query = DatabaseListQuery {
+        sql_before_list: "SELECT \
              kcu.TABLE_SCHEMA, \
              kcu.TABLE_NAME, \
              kcu.CONSTRAINT_NAME, \
@@ -36,38 +62,25 @@ pub async fn query_all_foreign_keys_batch(
              ON kcu.CONSTRAINT_NAME = rc.CONSTRAINT_NAME \
              AND kcu.TABLE_SCHEMA = rc.CONSTRAINT_SCHEMA \
          WHERE kcu.TABLE_SCHEMA IN (",
-    );
-    let mut sep = qb.separated(", ");
-    for db in databases {
-        sep.push_bind(db.clone());
-    }
-    sep.push_unseparated(
-        ") AND kcu.REFERENCED_TABLE_NAME IS NOT NULL \
+        sql_after_list: ") AND kcu.REFERENCED_TABLE_NAME IS NOT NULL \
          ORDER BY kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION",
-    );
-
-    let sql = qb.sql();
-    query_log::log_outgoing_sql_bound(sql.as_str(), databases);
-    let rows = qb
-        .build()
-        .fetch_all(pool)
-        .await
-        .map_err(|error| format!("Failed to get batch foreign keys: {error}"))?;
-    query_log::log_mysql_rows(&rows);
+        failure_label: "foreign keys",
+    };
+    let rows = fetch_rows_for_databases(pool, query, databases).await?;
 
     let mut result: HashMap<String, Vec<ForeignKeyInfo>> = HashMap::new();
     for row in &rows {
-        let schema = decode_mysql_text_cell(row, 0).unwrap_or_default();
-        let table_name = decode_mysql_text_cell(row, 1).unwrap_or_default();
+        let schema = row.required_text(0).unwrap_or_default();
+        let table_name = row.required_text(1).unwrap_or_default();
         let key = format!("{schema}.{table_name}");
         let foreign_key = ForeignKeyInfo {
-            name: decode_mysql_text_cell(row, 2).unwrap_or_default(),
-            column_name: decode_mysql_text_cell(row, 3).unwrap_or_default(),
-            referenced_database: decode_mysql_text_cell(row, 4).unwrap_or_default(),
-            referenced_table: decode_mysql_text_cell(row, 5).unwrap_or_default(),
-            referenced_column: decode_mysql_text_cell(row, 6).unwrap_or_default(),
-            on_delete: decode_mysql_text_cell(row, 7).unwrap_or_default(),
-            on_update: decode_mysql_text_cell(row, 8).unwrap_or_default(),
+            name: row.required_text(2).unwrap_or_default(),
+            column_name: row.required_text(3).unwrap_or_default(),
+            referenced_database: row.required_text(4).unwrap_or_default(),
+            referenced_table: row.required_text(5).unwrap_or_default(),
+            referenced_column: row.required_text(6).unwrap_or_default(),
+            on_delete: row.required_text(7).unwrap_or_default(),
+            on_update: row.required_text(8).unwrap_or_default(),
         };
         result.entry(key).or_default().push(foreign_key);
     }
@@ -84,40 +97,27 @@ pub async fn query_all_foreign_keys_batch(
 
 #[cfg(not(coverage))]
 pub async fn query_all_views_batch(
-    pool: &MySqlPool,
+    pool: &BackgroundPool,
     databases: &[String],
 ) -> Result<HashMap<String, Vec<ViewMeta>>, String> {
     if databases.is_empty() {
         return Ok(HashMap::new());
     }
 
-    let mut qb: sqlx::QueryBuilder<sqlx::MySql> = sqlx::QueryBuilder::new(
-        "SELECT TABLE_SCHEMA, TABLE_NAME \
+    let query = DatabaseListQuery {
+        sql_before_list: "SELECT TABLE_SCHEMA, TABLE_NAME \
          FROM information_schema.VIEWS \
          WHERE TABLE_SCHEMA IN (",
-    );
-    let mut sep = qb.separated(", ");
-    for db in databases {
-        sep.push_bind(db.as_str());
-    }
-    sep.push_unseparated(
-        ") AND TABLE_SCHEMA NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys') \
+        sql_after_list: ") AND TABLE_SCHEMA NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys') \
          ORDER BY TABLE_SCHEMA, TABLE_NAME",
-    );
-
-    let sql = qb.sql();
-    query_log::log_outgoing_sql_bound(sql.as_str(), databases);
-    let rows = qb
-        .build()
-        .fetch_all(pool)
-        .await
-        .map_err(|error| format!("Failed to get batch views: {error}"))?;
-    query_log::log_mysql_rows(&rows);
+        failure_label: "views",
+    };
+    let rows = fetch_rows_for_databases(pool, query, databases).await?;
 
     let mut result: HashMap<String, Vec<ViewMeta>> = HashMap::new();
     for row in &rows {
-        let schema = decode_mysql_text_cell(row, 0).unwrap_or_default();
-        let name = decode_mysql_text_cell(row, 1).unwrap_or_default();
+        let schema = row.required_text(0).unwrap_or_default();
+        let name = row.required_text(1).unwrap_or_default();
         result.entry(schema).or_default().push(ViewMeta { name });
     }
     Ok(result)
@@ -133,40 +133,27 @@ pub async fn query_all_views_batch(
 
 #[cfg(not(coverage))]
 pub async fn query_all_triggers_batch(
-    pool: &MySqlPool,
+    pool: &BackgroundPool,
     databases: &[String],
 ) -> Result<HashMap<String, Vec<TriggerMeta>>, String> {
     if databases.is_empty() {
         return Ok(HashMap::new());
     }
 
-    let mut qb: sqlx::QueryBuilder<sqlx::MySql> = sqlx::QueryBuilder::new(
-        "SELECT TRIGGER_SCHEMA, TRIGGER_NAME \
+    let query = DatabaseListQuery {
+        sql_before_list: "SELECT TRIGGER_SCHEMA, TRIGGER_NAME \
          FROM information_schema.TRIGGERS \
          WHERE TRIGGER_SCHEMA IN (",
-    );
-    let mut sep = qb.separated(", ");
-    for db in databases {
-        sep.push_bind(db.as_str());
-    }
-    sep.push_unseparated(
-        ") AND TRIGGER_SCHEMA NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys') \
+        sql_after_list: ") AND TRIGGER_SCHEMA NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys') \
          ORDER BY TRIGGER_SCHEMA, TRIGGER_NAME",
-    );
-
-    let sql = qb.sql();
-    query_log::log_outgoing_sql_bound(sql.as_str(), databases);
-    let rows = qb
-        .build()
-        .fetch_all(pool)
-        .await
-        .map_err(|error| format!("Failed to get batch triggers: {error}"))?;
-    query_log::log_mysql_rows(&rows);
+        failure_label: "triggers",
+    };
+    let rows = fetch_rows_for_databases(pool, query, databases).await?;
 
     let mut result: HashMap<String, Vec<TriggerMeta>> = HashMap::new();
     for row in &rows {
-        let schema = decode_mysql_text_cell(row, 0).unwrap_or_default();
-        let name = decode_mysql_text_cell(row, 1).unwrap_or_default();
+        let schema = row.required_text(0).unwrap_or_default();
+        let name = row.required_text(1).unwrap_or_default();
         result.entry(schema).or_default().push(TriggerMeta { name });
     }
     Ok(result)
@@ -182,15 +169,15 @@ pub async fn query_all_triggers_batch(
 
 #[cfg(not(coverage))]
 pub async fn query_all_indexes_batch(
-    pool: &MySqlPool,
+    pool: &BackgroundPool,
     databases: &[String],
 ) -> Result<HashMap<String, Vec<IndexInfo>>, String> {
     if databases.is_empty() {
         return Ok(HashMap::new());
     }
 
-    let mut qb: sqlx::QueryBuilder<sqlx::MySql> = sqlx::QueryBuilder::new(
-        "SELECT \
+    let query = DatabaseListQuery {
+        sql_before_list: "SELECT \
              TABLE_SCHEMA, \
              TABLE_NAME, \
              INDEX_NAME, \
@@ -200,27 +187,16 @@ pub async fn query_all_indexes_batch(
              CARDINALITY \
          FROM information_schema.STATISTICS \
          WHERE TABLE_SCHEMA IN (",
-    );
-    let mut sep = qb.separated(", ");
-    for db in databases {
-        sep.push_bind(db.as_str());
-    }
-    sep.push_unseparated(") ORDER BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX");
-
-    let sql = qb.sql();
-    query_log::log_outgoing_sql_bound(sql.as_str(), databases);
-    let rows = qb
-        .build()
-        .fetch_all(pool)
-        .await
-        .map_err(|error| format!("Failed to get batch indexes: {error}"))?;
-    query_log::log_mysql_rows(&rows);
+        sql_after_list: ") ORDER BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX",
+        failure_label: "indexes",
+    };
+    let rows = fetch_rows_for_databases(pool, query, databases).await?;
 
     Ok(aggregate_index_rows(
         &rows,
         |row| {
-            let schema = decode_mysql_text_cell(row, 0).unwrap_or_default();
-            let table_name = decode_mysql_text_cell(row, 1).unwrap_or_default();
+            let schema = row.required_text(0).unwrap_or_default();
+            let table_name = row.required_text(1).unwrap_or_default();
             format!("{schema}.{table_name}")
         },
         &IndexRowColumns {

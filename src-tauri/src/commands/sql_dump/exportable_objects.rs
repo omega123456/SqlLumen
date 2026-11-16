@@ -17,10 +17,7 @@ pub async fn list_exportable_objects_impl(
         WHERE s.SCHEMA_NAME NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys') \
         ORDER BY s.SCHEMA_NAME, t.TABLE_NAME";
 
-    crate::mysql::query_log::log_outgoing_sql(metadata_query);
-
-    let rows = sqlx::query(metadata_query)
-        .fetch_all(&pool)
+    let rows = fetch_decoded_pooled(&pool, LoggedStatement::text(metadata_query))
         .await
         .map_err(|error| format!("Failed to list exportable objects: {error}"))?;
 
@@ -36,13 +33,13 @@ pub(super) fn starts_new_database(databases: &[ExportableDatabase], schema_name:
     databases.last().map(|database| database.name.as_str()) != Some(schema_name)
 }
 
-pub(super) fn exportable_table_from_row(row: &sqlx::mysql::MySqlRow) -> Option<ExportableTable> {
-    let name = decode_mysql_text_cell_named(row, "TABLE_NAME").ok()?;
+pub(super) fn exportable_table_from_row(row: &DecodedRow) -> Option<ExportableTable> {
+    let name = row.required_text("TABLE_NAME").ok()?;
     if name.is_empty() {
         return None;
     }
-    let table_type: String = decode_mysql_text_cell_named(row, "TABLE_TYPE").unwrap_or_default();
-    let estimated_rows: i64 = row.try_get("TABLE_ROWS").unwrap_or(0);
+    let table_type: String = row.required_text("TABLE_TYPE").unwrap_or_default();
+    let estimated_rows = row.signed("TABLE_ROWS").unwrap_or(0);
     Some(ExportableTable {
         name,
         object_type: dump_object_type(&table_type),
@@ -50,11 +47,8 @@ pub(super) fn exportable_table_from_row(row: &sqlx::mysql::MySqlRow) -> Option<E
     })
 }
 
-pub(super) fn append_exportable_row(
-    databases: &mut Vec<ExportableDatabase>,
-    row: &sqlx::mysql::MySqlRow,
-) {
-    let schema_name: String = decode_mysql_text_cell_named(row, "SCHEMA_NAME").unwrap_or_default();
+pub(super) fn append_exportable_row(databases: &mut Vec<ExportableDatabase>, row: &DecodedRow) {
+    let schema_name: String = row.required_text("SCHEMA_NAME").unwrap_or_default();
     if starts_new_database(databases, &schema_name) {
         databases.push(ExportableDatabase {
             name: schema_name,

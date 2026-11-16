@@ -1,20 +1,16 @@
 #[cfg(not(coverage))]
-use crate::mysql::query_log;
+use crate::mysql::cell_values::DecodedRow;
 #[cfg(not(coverage))]
-use sqlx::mysql::MySqlRow;
+use crate::mysql::logged_query::{fetch_decoded_pooled, LoggedStatement};
 #[cfg(not(coverage))]
-use sqlx::MySqlPool;
-#[cfg(not(coverage))]
-use sqlx::Row;
+use crate::mysql::pool::BackgroundPool;
 use std::collections::HashMap;
 
-#[cfg(not(coverage))]
-use super::decode_mysql_text_cell;
 use super::{ForeignKeyInfo, IndexInfo};
 
 #[cfg(not(coverage))]
 pub async fn query_all_foreign_keys(
-    pool: &MySqlPool,
+    pool: &BackgroundPool,
     database: &str,
 ) -> Result<HashMap<String, Vec<ForeignKeyInfo>>, String> {
     let sql = "SELECT \
@@ -33,25 +29,21 @@ pub async fn query_all_foreign_keys(
          WHERE kcu.TABLE_SCHEMA = ? \
              AND kcu.REFERENCED_TABLE_NAME IS NOT NULL \
          ORDER BY kcu.TABLE_NAME, kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION";
-    query_log::log_outgoing_sql_bound(sql, &[database.to_string()]);
-    let rows = sqlx::query(sql)
-        .bind(database)
-        .fetch_all(pool)
+    let rows = fetch_decoded_pooled(pool, LoggedStatement::bound(sql, vec![database.into()]))
         .await
         .map_err(|error| format!("Failed to get all foreign keys: {error}"))?;
-    query_log::log_mysql_rows(&rows);
 
     let mut result: HashMap<String, Vec<ForeignKeyInfo>> = HashMap::new();
     for row in &rows {
-        let table_name = decode_mysql_text_cell(row, 0).unwrap_or_default();
+        let table_name = row.required_text(0).unwrap_or_default();
         let foreign_key = ForeignKeyInfo {
-            name: decode_mysql_text_cell(row, 1).unwrap_or_default(),
-            column_name: decode_mysql_text_cell(row, 2).unwrap_or_default(),
-            referenced_database: decode_mysql_text_cell(row, 3).unwrap_or_default(),
-            referenced_table: decode_mysql_text_cell(row, 4).unwrap_or_default(),
-            referenced_column: decode_mysql_text_cell(row, 5).unwrap_or_default(),
-            on_delete: decode_mysql_text_cell(row, 6).unwrap_or_default(),
-            on_update: decode_mysql_text_cell(row, 7).unwrap_or_default(),
+            name: row.required_text(1).unwrap_or_default(),
+            column_name: row.required_text(2).unwrap_or_default(),
+            referenced_database: row.required_text(3).unwrap_or_default(),
+            referenced_table: row.required_text(4).unwrap_or_default(),
+            referenced_column: row.required_text(5).unwrap_or_default(),
+            on_delete: row.required_text(6).unwrap_or_default(),
+            on_update: row.required_text(7).unwrap_or_default(),
         };
         result.entry(table_name).or_default().push(foreign_key);
     }
@@ -77,8 +69,8 @@ pub(super) struct IndexRowColumns {
 
 #[cfg(not(coverage))]
 pub(super) fn aggregate_index_rows(
-    rows: &[MySqlRow],
-    key_fn: impl Fn(&MySqlRow) -> String,
+    rows: &[DecodedRow],
+    key_fn: impl Fn(&DecodedRow) -> String,
     columns: &IndexRowColumns,
 ) -> HashMap<String, Vec<IndexInfo>> {
     let mut composite_index_map: HashMap<String, HashMap<String, IndexInfo>> = HashMap::new();
@@ -86,11 +78,11 @@ pub(super) fn aggregate_index_rows(
 
     for row in rows {
         let key = key_fn(row);
-        let index_name = decode_mysql_text_cell(row, columns.index_name).unwrap_or_default();
-        let non_unique: i64 = row.try_get(columns.non_unique).unwrap_or(0);
-        let index_type = decode_mysql_text_cell(row, columns.index_type).unwrap_or_default();
-        let column_name = decode_mysql_text_cell(row, columns.column_name).unwrap_or_default();
-        let cardinality: Option<i64> = row.try_get(columns.cardinality).ok();
+        let index_name = row.required_text(columns.index_name).unwrap_or_default();
+        let non_unique = row.signed(columns.non_unique).unwrap_or(0);
+        let index_type = row.required_text(columns.index_type).unwrap_or_default();
+        let column_name = row.required_text(columns.column_name).unwrap_or_default();
+        let cardinality = row.signed(columns.cardinality).ok();
 
         let index_map = composite_index_map.entry(key.clone()).or_default();
         let order = composite_index_order.entry(key).or_default();
@@ -129,7 +121,7 @@ pub(super) fn aggregate_index_rows(
 
 #[cfg(not(coverage))]
 pub async fn query_all_indexes(
-    pool: &MySqlPool,
+    pool: &BackgroundPool,
     database: &str,
 ) -> Result<HashMap<String, Vec<IndexInfo>>, String> {
     let sql = "SELECT \
@@ -142,17 +134,13 @@ pub async fn query_all_indexes(
          FROM information_schema.STATISTICS \
          WHERE TABLE_SCHEMA = ? \
          ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX";
-    query_log::log_outgoing_sql_bound(sql, &[database.to_string()]);
-    let rows = sqlx::query(sql)
-        .bind(database)
-        .fetch_all(pool)
+    let rows = fetch_decoded_pooled(pool, LoggedStatement::bound(sql, vec![database.into()]))
         .await
         .map_err(|error| format!("Failed to get all indexes: {error}"))?;
-    query_log::log_mysql_rows(&rows);
 
     Ok(aggregate_index_rows(
         &rows,
-        |row| decode_mysql_text_cell(row, 0).unwrap_or_default(),
+        |row| row.required_text(0).unwrap_or_default(),
         &IndexRowColumns {
             index_name: 1,
             non_unique: 2,

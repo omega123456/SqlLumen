@@ -21,7 +21,7 @@ const BUILD_CANCELLED: &str = "Build cancelled";
 #[derive(Clone, Copy)]
 pub struct IndexBuildResources<'a> {
     pub sqlite_conn: &'a Mutex<rusqlite::Connection>,
-    pub mysql_pool: &'a sqlx::MySqlPool,
+    pub mysql_pool: &'a crate::mysql::pool::BackgroundPool,
     pub http_client: &'a reqwest::Client,
     pub cancellation: &'a CancellationToken,
 }

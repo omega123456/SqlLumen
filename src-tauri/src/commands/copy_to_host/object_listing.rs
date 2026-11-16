@@ -90,7 +90,7 @@ pub(super) const EVENT_NAMES: SchemaObjectQuery = SchemaObjectQuery {
 };
 
 pub(super) struct SchemaObjects<'a> {
-    pub(super) pool: &'a sqlx::MySqlPool,
+    pub(super) pool: &'a BackgroundPool,
     pub(super) database: &'a str,
 }
 
@@ -98,16 +98,11 @@ impl SchemaObjects<'_> {
     pub(super) async fn fetch_rows(
         &self,
         query: &SchemaObjectQuery,
-    ) -> Result<Vec<sqlx::mysql::MySqlRow>, String> {
-        query_log::log_outgoing_sql(query.sql);
-        sqlx::query(query.sql)
-            .bind(self.database)
-            .fetch_all(self.pool)
+    ) -> Result<Vec<DecodedRow>, String> {
+        let statement = LoggedStatement::bound(query.sql, vec![self.database.into()]);
+        fetch_decoded_pooled(self.pool, statement)
             .await
-            .map_err(|error| {
-                query_log::log_execute_error(&error);
-                format!("Failed to list {}: {error}", query.label)
-            })
+            .map_err(|error| format!("Failed to list {}: {error}", query.label))
     }
 
     pub(super) async fn decoded_tables(&self) -> Result<Vec<(String, String, i64)>, String> {
@@ -115,11 +110,11 @@ impl SchemaObjects<'_> {
         let decoded = rows
             .iter()
             .map(|row| {
-                let name = decode_mysql_text_cell_named(row, TABLE_OBJECTS.name_column)
+                let name = row
+                    .required_text(TABLE_OBJECTS.name_column)
                     .unwrap_or_default();
-                let table_type =
-                    decode_mysql_text_cell_named(row, "TABLE_TYPE").unwrap_or_default();
-                let estimated_rows: i64 = sqlx::Row::try_get(row, "TABLE_ROWS").unwrap_or(0);
+                let table_type = row.required_text("TABLE_TYPE").unwrap_or_default();
+                let estimated_rows = row.signed("TABLE_ROWS").unwrap_or(0);
                 (name, table_type, estimated_rows)
             })
             .collect();
@@ -131,10 +126,10 @@ impl SchemaObjects<'_> {
         let decoded = rows
             .iter()
             .map(|row| {
-                let name = decode_mysql_text_cell_named(row, ROUTINE_OBJECTS.name_column)
+                let name = row
+                    .required_text(ROUTINE_OBJECTS.name_column)
                     .unwrap_or_default();
-                let routine_type =
-                    decode_mysql_text_cell_named(row, "ROUTINE_TYPE").unwrap_or_default();
+                let routine_type = row.required_text("ROUTINE_TYPE").unwrap_or_default();
                 (name, routine_type)
             })
             .collect();
@@ -148,7 +143,7 @@ impl SchemaObjects<'_> {
         let rows = self.fetch_rows(&query).await?;
         let decoded = rows
             .iter()
-            .map(|row| decode_mysql_text_cell_named(row, query.name_column).unwrap_or_default())
+            .map(|row| row.required_text(query.name_column).unwrap_or_default())
             .collect();
         Ok(decoded)
     }

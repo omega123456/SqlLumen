@@ -360,16 +360,10 @@ mod coverage_reexecute {
     use super::*;
     use sqllumen_lib::mysql::query_executor::reexecute_single_result_impl;
     use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
-    use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
     use tokio_util::sync::CancellationToken;
 
-    fn dummy_lazy_pool() -> sqlx::MySqlPool {
-        let opts = MySqlConnectOptions::new()
-            .host("127.0.0.1")
-            .port(13306)
-            .username("dummy")
-            .password("dummy");
-        MySqlPoolOptions::new().connect_lazy_with(opts)
+    fn dummy_lazy_pool() -> sqllumen_lib::mysql::pool::BackgroundPool {
+        crate::common::mock_session::unreachable_pool()
     }
 
     fn dummy_stored_params(profile_id: &str) -> StoredConnectionParams {
@@ -570,16 +564,10 @@ mod coverage_multi_query {
     use super::*;
     use sqllumen_lib::mysql::query_executor::execute_multi_query_impl;
     use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
-    use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
     use tokio_util::sync::CancellationToken;
 
-    fn dummy_lazy_pool() -> sqlx::MySqlPool {
-        let opts = MySqlConnectOptions::new()
-            .host("127.0.0.1")
-            .port(13306)
-            .username("dummy")
-            .password("dummy");
-        MySqlPoolOptions::new().connect_lazy_with(opts)
+    fn dummy_lazy_pool() -> sqllumen_lib::mysql::pool::BackgroundPool {
+        crate::common::mock_session::unreachable_pool()
     }
 
     fn dummy_stored_params(profile_id: &str) -> StoredConnectionParams {
@@ -1112,16 +1100,10 @@ mod coverage_call_query {
     use super::*;
     use sqllumen_lib::mysql::query_executor::execute_call_query_impl;
     use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
-    use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
     use tokio_util::sync::CancellationToken;
 
-    fn dummy_lazy_pool() -> sqlx::MySqlPool {
-        let opts = MySqlConnectOptions::new()
-            .host("127.0.0.1")
-            .port(13306)
-            .username("dummy")
-            .password("dummy");
-        MySqlPoolOptions::new().connect_lazy_with(opts)
+    fn dummy_lazy_pool() -> sqllumen_lib::mysql::pool::BackgroundPool {
+        crate::common::mock_session::unreachable_pool()
     }
 
     fn dummy_stored_params(profile_id: &str) -> StoredConnectionParams {
@@ -1235,10 +1217,38 @@ mod coverage_call_query {
 
 mod serialization_parity {
     use mysql_async::consts::{ColumnFlags, ColumnType};
-    use sqllumen_lib::mysql::multi_result::{
-        column_type_display_name, is_call_statement, serialize_bytes_value, serialize_mysql_value,
-        JS_SAFE_INTEGER_MAX,
-    };
+    use mysql_async::Column;
+    use sqllumen_lib::mysql::cell_values::{cell_json, decode_cell, JS_SAFE_INTEGER_MAX};
+    use sqllumen_lib::mysql::multi_result::is_call_statement;
+
+    fn column(column_type: ColumnType, flags: ColumnFlags) -> Column {
+        Column::new(column_type).with_flags(flags)
+    }
+
+    fn serialize_mysql_value(
+        value: &mysql_async::Value,
+        column_type: ColumnType,
+        flags: ColumnFlags,
+    ) -> serde_json::Value {
+        cell_json(&decode_cell(value, &column(column_type, flags)))
+    }
+
+    fn serialize_bytes_value(
+        bytes: &[u8],
+        column_type: ColumnType,
+        flags: ColumnFlags,
+    ) -> serde_json::Value {
+        let value = mysql_async::Value::Bytes(bytes.to_vec());
+        serialize_mysql_value(&value, column_type, flags)
+    }
+
+    fn column_type_display_name(column_type: ColumnType, flags: ColumnFlags) -> String {
+        sqllumen_lib::mysql::cell_values::column_type_display_name(&column(column_type, flags))
+    }
+
+    fn microsecond_column(column_type: ColumnType) -> Column {
+        Column::new(column_type).with_decimals(6)
+    }
 
     // ── TINYINT / SMALLINT / INT / BIGINT ────────────────────────────────
 
@@ -1355,8 +1365,10 @@ mod serialization_parity {
     #[test]
     fn datetime_with_microseconds() {
         let val = mysql_async::Value::Date(2025, 1, 15, 10, 30, 45, 123456);
-        let result =
-            serialize_mysql_value(&val, ColumnType::MYSQL_TYPE_TIMESTAMP, ColumnFlags::empty());
+        let result = cell_json(&decode_cell(
+            &val,
+            &microsecond_column(ColumnType::MYSQL_TYPE_TIMESTAMP),
+        ));
         assert_eq!(result, serde_json::json!("2025-01-15 10:30:45.123456"));
     }
 
@@ -1379,7 +1391,10 @@ mod serialization_parity {
 
         // Time with microseconds
         let val = mysql_async::Value::Time(false, 0, 1, 2, 3, 456789);
-        let result = serialize_mysql_value(&val, ColumnType::MYSQL_TYPE_TIME, ColumnFlags::empty());
+        let result = cell_json(&decode_cell(
+            &val,
+            &microsecond_column(ColumnType::MYSQL_TYPE_TIME),
+        ));
         assert_eq!(result, serde_json::json!("01:02:03.456789"));
     }
 

@@ -5,7 +5,7 @@
 //! results, and `close_connection` cancelling a running export.
 //!
 //! Omitted from `cargo sqllumen-llvm-cov`, like the other mock-server suites:
-//! instrumented builds hit sqlx pool-acquire timeouts against the mock. The
+//! instrumented builds replace the database-executing functions with coverage stubs. The
 //! job bookkeeping is covered by `result_export_job_integration.rs`.
 
 #![cfg(not(coverage))]

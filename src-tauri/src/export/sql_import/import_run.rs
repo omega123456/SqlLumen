@@ -20,7 +20,7 @@ pub(super) struct ExecutedStatement<'a> {
     pub(super) index: usize,
     pub(super) sql: &'a str,
     pub(super) elapsed_ms: i64,
-    pub(super) result: Result<sqlx::mysql::MySqlQueryResult, sqlx::Error>,
+    pub(super) result: Result<ExecuteOutcome, mysql_async::Error>,
 }
 
 pub(super) struct StatementFailure<'a> {
@@ -29,7 +29,7 @@ pub(super) struct StatementFailure<'a> {
 }
 
 pub(super) struct SqlImportRun<'a> {
-    pub(super) pool: &'a sqlx::MySqlPool,
+    pub(super) conn: &'a mut mysql_async::Conn,
     pub(super) job: &'a SqlImportJob<'a>,
     pub(super) runtime: tokio::runtime::Handle,
     pub(super) start_time: std::time::Instant,
@@ -79,9 +79,8 @@ impl SqlImportRun<'_> {
             "Executing import statement"
         );
         let statement_start = std::time::Instant::now();
-        let result = self
-            .runtime
-            .block_on(sqlx::query(sqlx::AssertSqlSafe(sql)).execute(self.pool));
+        let runtime = self.runtime.clone();
+        let result = runtime.block_on(execute(self.conn, LoggedStatement::text(sql)));
         let statement = ExecutedStatement {
             index,
             sql,
@@ -104,7 +103,7 @@ impl SqlImportRun<'_> {
         self.tally.statements_executed += 1;
         match &statement.result {
             Ok(query_result) => {
-                self.record_success(&statement, query_result.rows_affected());
+                self.record_success(&statement, query_result.affected_rows);
                 None
             }
             Err(error) => {
@@ -218,8 +217,18 @@ impl SqlImportRun<'_> {
     }
 }
 
+pub fn run_sql_import_job(
+    pool: &BackgroundPool,
+    import_job: &SqlImportJob<'_>,
+) -> Result<(), String> {
+    let runtime = tokio::runtime::Handle::try_current()
+        .map_err(|error| format!("No tokio runtime: {error}"))?;
+    let mut conn = runtime.block_on(pool.checkout_for_transfer())?;
+    execute_sql_import(&mut conn, import_job)
+}
+
 pub fn execute_sql_import(
-    pool: &sqlx::MySqlPool,
+    conn: &mut mysql_async::Conn,
     import_job: &SqlImportJob<'_>,
 ) -> Result<(), String> {
     let file_path = import_job.file_path;
@@ -243,7 +252,7 @@ pub fn execute_sql_import(
     );
 
     let mut run = SqlImportRun {
-        pool,
+        conn,
         job: import_job,
         runtime,
         start_time,

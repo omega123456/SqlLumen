@@ -10,8 +10,11 @@ use crate::common::mock_session::{integer_column, mock_pool, register_mock_pool,
 
 const CONNECTION_ID: &str = "conn-copy";
 const TABLES_QUERY: &str = "SELECT TABLE_NAME, TABLE_TYPE, CAST(TABLE_ROWS AS SIGNED) AS TABLE_ROWS FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_SCHEMA NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys') AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME";
+#[cfg(not(coverage))]
 const ROUTINES_QUERY: &str = "SELECT ROUTINE_NAME, ROUTINE_TYPE FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = ? AND ROUTINE_SCHEMA NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys') ORDER BY ROUTINE_NAME";
+#[cfg(not(coverage))]
 const TRIGGERS_QUERY: &str = "SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = ? AND TRIGGER_SCHEMA NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys') ORDER BY TRIGGER_NAME";
+#[cfg(not(coverage))]
 const EVENTS_QUERY: &str = "SELECT EVENT_NAME FROM information_schema.EVENTS WHERE EVENT_SCHEMA = ? AND EVENT_SCHEMA NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys') ORDER BY EVENT_NAME";
 
 fn tables_step() -> MockQueryStep {
@@ -30,6 +33,7 @@ fn tables_step() -> MockQueryStep {
     )
 }
 
+#[cfg(not(coverage))]
 fn routines_step() -> MockQueryStep {
     MockQueryStep::with_rows(
         ROUTINES_QUERY,
@@ -41,6 +45,7 @@ fn routines_step() -> MockQueryStep {
     )
 }
 
+#[cfg(not(coverage))]
 fn single_name_step(
     query: &'static str,
     column: &'static str,
@@ -60,6 +65,7 @@ fn database_request(database: &str) -> DatabaseRequest {
     }
 }
 
+#[cfg(not(coverage))]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn listing_collects_tables_routines_triggers_and_events() {
     let server = MockMySqlServer::start_script(vec![

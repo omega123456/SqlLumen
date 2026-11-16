@@ -6,7 +6,9 @@ use sqllumen_lib::commands::sql_dump::{
 use sqllumen_lib::state::{AppState, DumpJobProgress, DumpJobStatus};
 
 use crate::common;
+#[cfg(not(coverage))]
 use crate::common::mock_mysql_server::MockMySqlServer;
+#[cfg(not(coverage))]
 use crate::common::mock_session::{mock_pool, register_mock_pool};
 
 const CONNECTION_ID: &str = "conn-dump";
@@ -43,6 +45,7 @@ fn cancel_request(connection_id: &str) -> CancelDumpRequest {
     }
 }
 
+#[cfg(not(coverage))]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cancelling_a_fetching_dump_kills_its_thread() {
     let server = MockMySqlServer::start_script(vec![]).await;
@@ -57,6 +60,26 @@ async fn cancelling_a_fetching_dump_kills_its_thread() {
     let progress = get_dump_progress_impl(&state, JOB_ID).expect("job");
     assert!(progress.cancel_requested);
     assert_eq!(server.kill_count(), 1);
+}
+
+#[tokio::test]
+async fn a_kill_that_cannot_reach_the_server_still_flags_the_job() {
+    let state = common::test_app_state();
+    register_unreachable_pool(&state);
+    insert_job(&state, running_job(Some(42)));
+
+    cancel_dump_impl(&state, &cancel_request(CONNECTION_ID))
+        .await
+        .expect("a failed KILL is logged, not returned");
+
+    let progress = get_dump_progress_impl(&state, JOB_ID).expect("job");
+    assert!(progress.cancel_requested);
+}
+
+fn register_unreachable_pool(state: &AppState) {
+    use crate::common::mock_session::unreachable_pool;
+
+    crate::common::mock_session::register_mock_pool(state, CONNECTION_ID, unreachable_pool());
 }
 
 #[tokio::test]

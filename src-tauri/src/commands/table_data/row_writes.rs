@@ -62,7 +62,7 @@ pub(super) async fn run_row_write_with_history<T>(
 pub(super) fn writable_pool(
     state: &AppState,
     connection_id: &str,
-) -> Result<sqlx::MySqlPool, String> {
+) -> Result<crate::mysql::pool::BackgroundPool, String> {
     if state.registry.is_read_only(connection_id) {
         return Err("Connection is read-only".to_string());
     }
@@ -72,7 +72,7 @@ pub(super) fn writable_pool(
 pub(super) fn connection_pool(
     state: &AppState,
     connection_id: &str,
-) -> Result<sqlx::MySqlPool, String> {
+) -> Result<crate::mysql::pool::BackgroundPool, String> {
     state
         .registry
         .get_pool(connection_id)

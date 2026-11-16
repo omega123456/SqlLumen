@@ -16,44 +16,21 @@ pub async fn kill_export_query(state: &AppState, kill: &ExportKill<'_>) -> bool 
         );
         return false;
     };
-    let mut conn = match tokio::time::timeout(EXPORT_KILL_ACQUIRE_TIMEOUT, pool.acquire()).await {
-        Ok(Ok(conn)) => conn,
-        Ok(Err(error)) => {
-            tracing::warn!(connection_id, thread_id, purpose, %error, "result export: no pool connection for KILL QUERY");
-            return false;
-        }
-        Err(_) => {
-            tracing::warn!(
-                connection_id,
-                thread_id,
-                purpose,
-                "result export: no pool connection for KILL QUERY within 1 s"
-            );
-            return false;
-        }
-    };
-    let kill_sql = format!("KILL QUERY {thread_id}");
     tracing::debug!(
         connection_id,
         thread_id,
         purpose,
         "result export: issuing KILL QUERY"
     );
-    crate::mysql::query_log::log_outgoing_sql(&kill_sql);
-    match sqlx::query(sqlx::AssertSqlSafe(kill_sql.as_str()))
-        .execute(&mut *conn)
-        .await
-    {
-        Ok(result) => {
-            crate::mysql::query_log::log_execute_result(&result);
-            true
-        }
-        Err(error) => {
-            crate::mysql::query_log::log_execute_error(&error);
-            tracing::warn!(connection_id, thread_id, purpose, %error, "result export: KILL QUERY failed");
-            false
-        }
-    }
+    let pool_kill = crate::mysql::pool::KillQuery {
+        thread_id,
+        checkout_timeout: EXPORT_KILL_ACQUIRE_TIMEOUT,
+    };
+    let Err(failure) = pool.kill_query(pool_kill).await else {
+        return true;
+    };
+    tracing::warn!(connection_id, thread_id, purpose, %failure, "result export: KILL QUERY not sent");
+    false
 }
 
 #[cfg(coverage)]

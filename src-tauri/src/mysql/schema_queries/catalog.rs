@@ -1,31 +1,29 @@
 #[cfg(not(coverage))]
-use crate::mysql::query_log;
+use crate::mysql::logged_query::{
+    fetch_decoded_pooled, fetch_first_decoded_pooled, LoggedStatement,
+};
 #[cfg(not(coverage))]
-use sqlx::MySqlPool;
-use sqlx::Row;
+use crate::mysql::pool::BackgroundPool;
 
-use super::{decode_mysql_text_cell, CharsetInfo, CollationInfo, ColumnInfo, DatabaseDetails};
+use super::{CharsetInfo, CollationInfo, ColumnInfo, DatabaseDetails};
 
 #[cfg(not(coverage))]
-pub async fn query_list_databases(pool: &MySqlPool) -> Result<Vec<String>, String> {
+pub async fn query_list_databases(pool: &BackgroundPool) -> Result<Vec<String>, String> {
     let sql = "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME";
-    query_log::log_outgoing_sql(sql);
-    let rows = sqlx::query(sql)
-        .fetch_all(pool)
+    let rows = fetch_decoded_pooled(pool, LoggedStatement::text(sql))
         .await
         .map_err(|error| format!("Failed to list databases: {error}"))?;
-    query_log::log_mysql_rows(&rows);
 
     let mut names = Vec::with_capacity(rows.len());
     for row in &rows {
-        names.push(decode_mysql_text_cell(row, 0)?);
+        names.push(row.required_text(0)?);
     }
     Ok(names)
 }
 
 #[cfg(not(coverage))]
 pub async fn query_list_schema_objects(
-    pool: &MySqlPool,
+    pool: &BackgroundPool,
     database: &str,
     object_type: &str,
 ) -> Result<Vec<String>, String> {
@@ -60,24 +58,20 @@ pub async fn query_list_schema_objects(
         _ => return Err(format!("Unknown object type: '{object_type}'")),
     };
 
-    query_log::log_outgoing_sql_bound(sql, &[database.to_string()]);
-    let rows = sqlx::query(sql)
-        .bind(database)
-        .fetch_all(pool)
+    let rows = fetch_decoded_pooled(pool, LoggedStatement::bound(sql, vec![database.into()]))
         .await
         .map_err(|error| format!("Failed to list {object_type}s: {error}"))?;
-    query_log::log_mysql_rows(&rows);
 
     let mut names = Vec::with_capacity(rows.len());
     for row in &rows {
-        names.push(decode_mysql_text_cell(row, 0)?);
+        names.push(row.required_text(0)?);
     }
     Ok(names)
 }
 
 #[cfg(not(coverage))]
 pub async fn query_list_columns(
-    pool: &MySqlPool,
+    pool: &BackgroundPool,
     database: &str,
     table: &str,
 ) -> Result<Vec<ColumnInfo>, String> {
@@ -85,20 +79,18 @@ pub async fn query_list_columns(
          FROM information_schema.COLUMNS \
          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? \
          ORDER BY ORDINAL_POSITION";
-    query_log::log_outgoing_sql_bound(sql, &[database.to_string(), table.to_string()]);
-    let rows = sqlx::query(sql)
-        .bind(database)
-        .bind(table)
-        .fetch_all(pool)
-        .await
-        .map_err(|error| format!("Failed to list columns: {error}"))?;
-    query_log::log_mysql_rows(&rows);
+    let rows = fetch_decoded_pooled(
+        pool,
+        LoggedStatement::bound(sql, vec![database.into(), table.into()]),
+    )
+    .await
+    .map_err(|error| format!("Failed to list columns: {error}"))?;
 
     let mut columns = Vec::with_capacity(rows.len());
     for (row_index, row) in rows.iter().enumerate() {
         columns.push(ColumnInfo {
-            name: decode_mysql_text_cell(row, 0)?,
-            data_type: decode_mysql_text_cell(row, 1)?,
+            name: row.required_text(0)?,
+            data_type: row.required_text(1)?,
             nullable: false,
             column_key: String::new(),
             default_value: None,
@@ -111,44 +103,37 @@ pub async fn query_list_columns(
 
 #[cfg(not(coverage))]
 pub async fn query_database_details(
-    pool: &MySqlPool,
+    pool: &BackgroundPool,
     database: &str,
 ) -> Result<DatabaseDetails, String> {
     let sql = "SELECT SCHEMA_NAME, DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME \
          FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?";
-    query_log::log_outgoing_sql_bound(sql, &[database.to_string()]);
-    let row = sqlx::query(sql)
-        .bind(database)
-        .fetch_optional(pool)
+    let row = fetch_first_decoded_pooled(pool, LoggedStatement::bound(sql, vec![database.into()]))
         .await
         .map_err(|error| format!("Failed to get database details: {error}"))?
         .ok_or_else(|| format!("Database '{database}' not found"))?;
-    query_log::log_mysql_rows(std::slice::from_ref(&row));
 
     Ok(DatabaseDetails {
-        name: decode_mysql_text_cell(&row, 0)?,
-        default_character_set: decode_mysql_text_cell(&row, 1)?,
-        default_collation: decode_mysql_text_cell(&row, 2)?,
+        name: row.required_text(0)?,
+        default_character_set: row.required_text(1)?,
+        default_collation: row.required_text(2)?,
     })
 }
 
 #[cfg(not(coverage))]
-pub async fn query_list_charsets(pool: &MySqlPool) -> Result<Vec<CharsetInfo>, String> {
+pub async fn query_list_charsets(pool: &BackgroundPool) -> Result<Vec<CharsetInfo>, String> {
     let sql = "SHOW CHARACTER SET";
-    query_log::log_outgoing_sql(sql);
-    let rows = sqlx::query(sql)
-        .fetch_all(pool)
+    let rows = fetch_decoded_pooled(pool, LoggedStatement::text(sql))
         .await
         .map_err(|error| format!("Failed to list character sets: {error}"))?;
-    query_log::log_mysql_rows(&rows);
 
     let mut out = Vec::with_capacity(rows.len());
     for row in &rows {
-        let max_len: i64 = row.try_get(3).unwrap_or(1);
+        let max_len = row.signed(3).unwrap_or(1);
         out.push(CharsetInfo {
-            charset: decode_mysql_text_cell(row, 0)?,
-            description: decode_mysql_text_cell(row, 1)?,
-            default_collation: decode_mysql_text_cell(row, 2)?,
+            charset: row.required_text(0)?,
+            description: row.required_text(1)?,
+            default_collation: row.required_text(2)?,
             max_length: max_len as u32,
         });
     }
@@ -156,21 +141,18 @@ pub async fn query_list_charsets(pool: &MySqlPool) -> Result<Vec<CharsetInfo>, S
 }
 
 #[cfg(not(coverage))]
-pub async fn query_list_collations(pool: &MySqlPool) -> Result<Vec<CollationInfo>, String> {
+pub async fn query_list_collations(pool: &BackgroundPool) -> Result<Vec<CollationInfo>, String> {
     let sql = "SHOW COLLATION";
-    query_log::log_outgoing_sql(sql);
-    let rows = sqlx::query(sql)
-        .fetch_all(pool)
+    let rows = fetch_decoded_pooled(pool, LoggedStatement::text(sql))
         .await
         .map_err(|error| format!("Failed to list collations: {error}"))?;
-    query_log::log_mysql_rows(&rows);
 
     let mut out = Vec::with_capacity(rows.len());
     for row in &rows {
-        let default_value = decode_mysql_text_cell(row, 3).unwrap_or_default();
+        let default_value = row.required_text(3).unwrap_or_default();
         out.push(CollationInfo {
-            name: decode_mysql_text_cell(row, 0)?,
-            charset: decode_mysql_text_cell(row, 1)?,
+            name: row.required_text(0)?,
+            charset: row.required_text(1)?,
             is_default: default_value == "Yes",
         });
     }
@@ -178,7 +160,7 @@ pub async fn query_list_collations(pool: &MySqlPool) -> Result<Vec<CollationInfo
 }
 
 #[cfg(not(coverage))]
-pub async fn validate_charset(pool: &MySqlPool, charset: &str) -> Result<(), String> {
+pub async fn validate_charset(pool: &BackgroundPool, charset: &str) -> Result<(), String> {
     let charsets = query_list_charsets(pool).await?;
     let is_known_charset = charsets
         .iter()
@@ -201,7 +183,7 @@ fn is_collation_in_charset(
 
 #[cfg(not(coverage))]
 pub async fn validate_collation(
-    pool: &MySqlPool,
+    pool: &BackgroundPool,
     collation: &str,
     charset: Option<&str>,
 ) -> Result<(), String> {
@@ -223,8 +205,10 @@ pub async fn validate_collation(
     Ok(())
 }
 
+const RENAME_BLOCKER_QUERY_COUNT: usize = 5;
+
 #[cfg(not(coverage))]
-pub async fn check_rename_safe(pool: &MySqlPool, database: &str) -> Result<(), String> {
+pub async fn check_rename_safe(pool: &BackgroundPool, database: &str) -> Result<(), String> {
     let sql = "\
         SELECT object_type FROM (\
           (SELECT 'view'      AS object_type FROM information_schema.VIEWS \
@@ -243,21 +227,19 @@ pub async fn check_rename_safe(pool: &MySqlPool, database: &str) -> Result<(), S
            WHERE EVENT_SCHEMA = ? LIMIT 1) \
         ) blockers";
 
-    query_log::log_outgoing_sql_bound(sql, &vec![database.to_string(); 5]);
-    let rows = sqlx::query(sql)
-        .bind(database)
-        .bind(database)
-        .bind(database)
-        .bind(database)
-        .bind(database)
-        .fetch_all(pool)
-        .await
-        .map_err(|error| format!("Query failed: {error}"))?;
-    query_log::log_mysql_rows(&rows);
+    let rows = fetch_decoded_pooled(
+        pool,
+        LoggedStatement::bound(
+            sql,
+            vec![mysql_async::Value::from(database); RENAME_BLOCKER_QUERY_COUNT],
+        ),
+    )
+    .await
+    .map_err(|error| format!("Query failed: {error}"))?;
 
     let blockers: Vec<String> = rows
         .iter()
-        .filter_map(|row| row.try_get::<String, _>(0).ok())
+        .filter_map(|row| row.required_text(0).ok())
         .map(|object_type| format!("{object_type}s"))
         .collect();
 
@@ -273,6 +255,9 @@ pub async fn check_rename_safe(pool: &MySqlPool, database: &str) -> Result<(), S
 }
 
 #[cfg(not(coverage))]
-pub async fn query_table_names(pool: &MySqlPool, database: &str) -> Result<Vec<String>, String> {
+pub async fn query_table_names(
+    pool: &BackgroundPool,
+    database: &str,
+) -> Result<Vec<String>, String> {
     query_list_schema_objects(pool, database, "table").await
 }

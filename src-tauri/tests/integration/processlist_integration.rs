@@ -7,19 +7,25 @@
 //! This matches the pattern used in `table_data_integration.rs`.
 
 use crate::common;
-use sqllumen_lib::mysql::pool::SslSettings;
+use sqllumen_lib::commands::processlist::{get_processlist_impl, kill_queries_impl};
 
+#[cfg(not(coverage))]
 use crate::common::mock_mysql_server::{MockCell, MockColumnDef, MockMySqlServer, MockQueryStep};
+#[cfg(not(coverage))]
 use opensrv_mysql::{ColumnFlags, ColumnType, ErrorKind};
 #[cfg(not(coverage))]
 use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
+#[cfg(not(coverage))]
 use sqllumen_lib::commands::history::list_history_impl;
 #[cfg(not(coverage))]
 use sqllumen_lib::commands::mysql::open_connection_impl;
-use sqllumen_lib::commands::processlist::{get_processlist_impl, kill_queries_impl};
+#[cfg(not(coverage))]
+use sqllumen_lib::mysql::pool::SslSettings;
+#[cfg(not(coverage))]
 use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
+#[cfg(not(coverage))]
 use sqllumen_lib::state::AppState;
-use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
+#[cfg(not(coverage))]
 use tokio_util::sync::CancellationToken;
 
 #[cfg(not(coverage))]
@@ -52,6 +58,7 @@ fn save_input_read_only(port: u16) -> SaveConnectionInput {
     }
 }
 
+#[cfg(not(coverage))]
 fn processlist_steps() -> Vec<MockQueryStep> {
     vec![MockQueryStep {
         query: "SHOW FULL PROCESSLIST",
@@ -126,6 +133,7 @@ async fn open_session(state: &AppState, port: u16, read_only: bool) -> String {
     result.session_id
 }
 
+#[cfg(not(coverage))]
 fn processlist_steps_with_kill_error() -> Vec<MockQueryStep> {
     let mut steps = processlist_steps();
     steps.push(MockQueryStep {
@@ -138,6 +146,7 @@ fn processlist_steps_with_kill_error() -> Vec<MockQueryStep> {
     steps
 }
 
+#[cfg(not(coverage))]
 fn processlist_steps_with_rds_kill_error() -> Vec<MockQueryStep> {
     let mut steps = processlist_steps();
     steps.extend([
@@ -163,6 +172,7 @@ fn processlist_steps_with_rds_kill_error() -> Vec<MockQueryStep> {
     steps
 }
 
+#[cfg(not(coverage))]
 fn processlist_steps_with_signed_id_and_null_fields() -> Vec<MockQueryStep> {
     vec![MockQueryStep {
         query: "SHOW FULL PROCESSLIST",
@@ -223,25 +233,21 @@ fn processlist_steps_with_signed_id_and_null_fields() -> Vec<MockQueryStep> {
     }]
 }
 
+#[cfg(not(coverage))]
 struct MockSession<'a> {
     session_id: &'a str,
     port: u16,
     read_only: bool,
 }
 
+#[cfg(not(coverage))]
 fn register_mock_session(state: &AppState, session: MockSession<'_>) {
     let MockSession {
         session_id,
         port,
         read_only,
     } = session;
-    let pool = MySqlPoolOptions::new().connect_lazy_with(
-        MySqlConnectOptions::new()
-            .host("127.0.0.1")
-            .port(port)
-            .username("root")
-            .password(""),
-    );
+    let pool = crate::common::mock_session::mock_pool(port);
 
     state.registry.insert(
         session_id.to_string(),
@@ -306,6 +312,7 @@ async fn test_get_processlist_invalid_session() {
     assert!(result.unwrap_err().contains("not found"));
 }
 
+#[cfg(not(coverage))]
 #[tokio::test]
 async fn test_get_processlist_returns_rows_with_registered_mock_session() {
     common::ensure_fake_backend_once();
@@ -330,6 +337,7 @@ async fn test_get_processlist_returns_rows_with_registered_mock_session() {
     assert_eq!(rows[0].state.as_deref(), Some("executing"));
 }
 
+#[cfg(not(coverage))]
 #[tokio::test]
 async fn test_get_processlist_handles_signed_ids_and_null_fields() {
     common::ensure_fake_backend_once();
@@ -398,6 +406,7 @@ async fn test_kill_queries_invalid_session() {
     assert!(result.unwrap_err().contains("not found"));
 }
 
+#[cfg(not(coverage))]
 #[tokio::test]
 async fn test_kill_queries_allows_read_only_registered_mock_session() {
     common::ensure_fake_backend_once();
@@ -425,6 +434,7 @@ async fn test_kill_queries_allows_read_only_registered_mock_session() {
     assert!(results[0].success);
 }
 
+#[cfg(not(coverage))]
 #[tokio::test]
 async fn test_kill_queries_uses_rds_stored_procedure() {
     common::ensure_fake_backend_once();
@@ -484,6 +494,7 @@ async fn test_kill_queries_uses_rds_stored_procedure() {
     assert!(!page.entries[0].success);
 }
 
+#[cfg(not(coverage))]
 #[tokio::test]
 async fn test_kill_queries_returns_results_with_registered_mock_session() {
     common::ensure_fake_backend_once();
@@ -513,6 +524,7 @@ async fn test_kill_queries_returns_results_with_registered_mock_session() {
     assert!(results.iter().all(|result| result.success));
 }
 
+#[cfg(not(coverage))]
 #[tokio::test]
 async fn test_kill_queries_returns_per_id_failures() {
     common::ensure_fake_backend_once();

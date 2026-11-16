@@ -12,7 +12,6 @@ use sqllumen_lib::commands::table_data::{
 use sqllumen_lib::mysql::pool::SslSettings;
 use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
 use sqllumen_lib::state::AppState;
-use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
 use std::sync::{Arc, Mutex};
 use tokio_util::sync::CancellationToken;
 
@@ -21,13 +20,8 @@ const PROFILE_ID: &str = "history-profile";
 const MISSING_SESSION_ID: &str = "missing";
 const UNREACHABLE_MYSQL_PORT: u16 = 13306;
 
-fn dummy_lazy_pool() -> sqlx::MySqlPool {
-    let options = MySqlConnectOptions::new()
-        .host("127.0.0.1")
-        .port(UNREACHABLE_MYSQL_PORT)
-        .username("dummy")
-        .password("dummy");
-    MySqlPoolOptions::new().connect_lazy_with(options)
+fn dummy_lazy_pool() -> sqllumen_lib::mysql::pool::BackgroundPool {
+    crate::common::mock_session::unreachable_pool()
 }
 
 fn dummy_stored_params() -> StoredConnectionParams {

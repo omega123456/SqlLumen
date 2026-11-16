@@ -1,17 +1,18 @@
-#[cfg(not(coverage))]
-use sqlx::mysql::MySqlPoolOptions;
-use sqlx::mysql::{MySqlConnectOptions, MySqlSslMode};
-use sqlx::MySqlPool;
-#[cfg(not(coverage))]
+use std::fmt;
 use std::time::Duration;
 
-#[cfg(any(test, feature = "test-utils"))]
-type TestPoolFactory = fn(&ConnectionParams) -> Result<MySqlPool, sqlx::Error>;
+use mysql_async::{Conn, Opts, OptsBuilder, PoolConstraints, PoolOpts};
 
-#[cfg(not(coverage))]
-const MIN_POOL_CONNECTIONS: u32 = 1;
-#[cfg(not(coverage))]
-const MAX_POOL_CONNECTIONS: u32 = 10;
+use crate::mysql::connection_options::{checkout_within_timeout, connect_timeout, mysql_opts};
+
+#[cfg(any(test, feature = "test-utils"))]
+type TestPoolFactory = fn(&ConnectionParams) -> Result<BackgroundPool, String>;
+
+const MIN_POOL_CONNECTIONS: usize = 1;
+const MAX_POOL_CONNECTIONS: usize = 10;
+const POOL_RESETS_RETURNED_CONNECTIONS: bool = true;
+const REPORT_MATCHED_ROWS_AS_AFFECTED: bool = true;
+pub const TRANSFER_TIME_ZONE_SQL: &str = "SET time_zone='+00:00'";
 
 #[cfg(any(test, feature = "test-utils"))]
 static TEST_POOL_FACTORY: std::sync::Mutex<Option<TestPoolFactory>> = std::sync::Mutex::new(None);
@@ -34,41 +35,129 @@ pub struct ConnectionParams {
     pub connect_timeout_secs: u64,
 }
 
-fn apply_ssl_settings(opts: MySqlConnectOptions, ssl: &SslSettings) -> MySqlConnectOptions {
-    if !ssl.enabled {
-        return opts.ssl_mode(MySqlSslMode::Disabled);
-    }
-    let mut opts = match ssl.ca_path {
-        Some(ref ca_path) => opts.ssl_mode(MySqlSslMode::VerifyCa).ssl_ca(ca_path),
-        None => opts.ssl_mode(MySqlSslMode::Required),
-    };
-    if let Some(ref cert_path) = ssl.cert_path {
-        opts = opts.ssl_client_cert(cert_path);
-    }
-    if let Some(ref key_path) = ssl.key_path {
-        opts = opts.ssl_client_key(key_path);
-    }
-    opts
+#[derive(Debug, Clone)]
+pub struct BackgroundPool {
+    pool: mysql_async::Pool,
+    connect_timeout: Duration,
 }
 
-pub fn build_connect_options(params: &ConnectionParams) -> MySqlConnectOptions {
-    let mut opts = MySqlConnectOptions::new()
-        .host(&params.host)
-        .port(params.port)
-        .username(&params.username);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KillQuery {
+    pub thread_id: u64,
+    pub checkout_timeout: Duration,
+}
 
-    let has_password = !params.password.is_empty();
-    if has_password {
-        opts = opts.password(&params.password);
+#[derive(Debug)]
+pub enum KillQueryFailure {
+    Checkout(mysql_async::Error),
+    Kill(mysql_async::Error),
+}
+
+impl fmt::Display for KillQueryFailure {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Checkout(error) => {
+                write!(formatter, "no pool connection for KILL QUERY: {error}")
+            }
+            Self::Kill(error) => write!(formatter, "KILL QUERY failed: {error}"),
+        }
     }
+}
 
-    if let Some(ref db) = params.default_database {
-        if !db.is_empty() {
-            opts = opts.database(db);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PoolSettings {
+    pub connect_timeout: Duration,
+    pub max_connections: usize,
+}
+
+impl BackgroundPool {
+    pub fn new(pool: mysql_async::Pool, connect_timeout: Duration) -> Self {
+        Self {
+            pool,
+            connect_timeout,
         }
     }
 
-    apply_ssl_settings(opts, &params.ssl)
+    pub fn connect_lazily(opts: Opts, settings: PoolSettings) -> Self {
+        let pool_opts = OptsBuilder::from_opts(opts)
+            .client_found_rows(REPORT_MATCHED_ROWS_AS_AFFECTED)
+            .pool_opts(background_pool_options(settings.max_connections));
+        Self::new(mysql_async::Pool::new(pool_opts), settings.connect_timeout)
+    }
+
+    pub fn connect_timeout(&self) -> Duration {
+        self.connect_timeout
+    }
+
+    pub async fn checkout(&self) -> Result<Conn, mysql_async::Error> {
+        checkout_within_timeout(&self.pool, self.connect_timeout).await
+    }
+
+    pub async fn disconnect(self) -> Result<(), mysql_async::Error> {
+        self.pool.disconnect().await
+    }
+
+    pub fn disconnect_in_background(self, purpose: &'static str) {
+        tokio::spawn(self.disconnect_logging_failure(purpose));
+    }
+
+    async fn disconnect_logging_failure(self, purpose: &'static str) {
+        let Err(error) = self.disconnect().await else {
+            return;
+        };
+        tracing::warn!(purpose, ?error, "background pool disconnect failed");
+    }
+
+    #[cfg(not(coverage))]
+    pub async fn checkout_for_transfer(&self) -> Result<Conn, String> {
+        use crate::mysql::logged_query::{execute, LoggedStatement};
+
+        let mut conn = self.checkout().await.map_err(|error| error.to_string())?;
+        execute(&mut conn, LoggedStatement::text(TRANSFER_TIME_ZONE_SQL))
+            .await
+            .map_err(|error| format!("Failed to set the transfer time zone: {error}"))?;
+        Ok(conn)
+    }
+
+    #[cfg(coverage)]
+    pub async fn checkout_for_transfer(&self) -> Result<Conn, String> {
+        let _ = TRANSFER_TIME_ZONE_SQL;
+        self.checkout().await.map_err(|error| error.to_string())
+    }
+
+    #[cfg(not(coverage))]
+    pub async fn kill_query(&self, kill: KillQuery) -> Result<(), KillQueryFailure> {
+        use crate::mysql::logged_query::{execute, LoggedStatement};
+
+        let mut conn = checkout_within_timeout(&self.pool, kill.checkout_timeout)
+            .await
+            .map_err(KillQueryFailure::Checkout)?;
+        let kill_sql = kill_query_sql(kill.thread_id);
+        execute(&mut conn, LoggedStatement::text(&kill_sql))
+            .await
+            .map_err(KillQueryFailure::Kill)?;
+        Ok(())
+    }
+
+    #[cfg(coverage)]
+    pub async fn kill_query(&self, kill: KillQuery) -> Result<(), KillQueryFailure> {
+        let _ = kill_query_sql(kill.thread_id);
+        let checkout_failure =
+            crate::mysql::connection_options::connect_timed_out_error(kill.checkout_timeout);
+        Err(KillQueryFailure::Checkout(checkout_failure))
+    }
+}
+
+pub fn kill_query_sql(thread_id: u64) -> String {
+    format!("KILL QUERY {thread_id}")
+}
+
+fn background_pool_options(max_connections: usize) -> PoolOpts {
+    let constraints = PoolConstraints::new(MIN_POOL_CONNECTIONS, max_connections)
+        .expect("pool constraints keep the minimum below the maximum");
+    PoolOpts::default()
+        .with_constraints(constraints)
+        .with_reset_connection(POOL_RESETS_RETURNED_CONNECTIONS)
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -80,37 +169,25 @@ pub fn set_test_pool_factory(factory: Option<TestPoolFactory>) {
 }
 
 #[cfg(any(test, feature = "test-utils"))]
-fn create_test_pool(params: &ConnectionParams) -> Option<Result<MySqlPool, sqlx::Error>> {
+fn create_test_pool(params: &ConnectionParams) -> Option<Result<BackgroundPool, String>> {
     let factory = *TEST_POOL_FACTORY
         .lock()
         .expect("test pool factory lock poisoned");
     factory.map(|create| create(params))
 }
 
-#[cfg(not(coverage))]
-pub async fn create_pool(params: &ConnectionParams) -> Result<MySqlPool, sqlx::Error> {
+pub async fn create_pool(params: &ConnectionParams) -> Result<BackgroundPool, String> {
     #[cfg(any(test, feature = "test-utils"))]
     if let Some(test_pool) = create_test_pool(params) {
         return test_pool;
     }
 
-    let opts = build_connect_options(params);
-
-    MySqlPoolOptions::new()
-        .min_connections(MIN_POOL_CONNECTIONS)
-        .max_connections(MAX_POOL_CONNECTIONS)
-        .acquire_timeout(Duration::from_secs(params.connect_timeout_secs))
-        .connect_with(opts)
-        .await
-}
-
-#[cfg(coverage)]
-pub async fn create_pool(params: &ConnectionParams) -> Result<MySqlPool, sqlx::Error> {
-    #[cfg(any(test, feature = "test-utils"))]
-    if let Some(test_pool) = create_test_pool(params) {
-        return test_pool;
-    }
-
-    let _ = build_connect_options(params);
-    Err(sqlx::Error::PoolTimedOut)
+    let settings = PoolSettings {
+        connect_timeout: connect_timeout(params),
+        max_connections: MAX_POOL_CONNECTIONS,
+    };
+    let pool = BackgroundPool::connect_lazily(mysql_opts(params)?, settings);
+    let validation_checkout = pool.checkout().await.map_err(|error| error.to_string())?;
+    drop(validation_checkout);
+    Ok(pool)
 }

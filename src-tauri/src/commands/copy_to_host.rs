@@ -4,8 +4,9 @@ use crate::export::copy_to_host::{
     new_running_progress, validate_selection_for_options, CopyToHostParams,
 };
 use crate::export::job_retention::cleanup_terminal_jobs;
-use crate::mysql::query_log;
-use crate::mysql::schema_queries::decode_mysql_text_cell_named;
+use crate::mysql::cell_values::DecodedRow;
+use crate::mysql::logged_query::{fetch_decoded_pooled, LoggedStatement};
+use crate::mysql::pool::BackgroundPool;
 use crate::state::{AppState, CopyJobProgress};
 
 mod copy_jobs;

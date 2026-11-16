@@ -4,7 +4,7 @@ pub(super) async fn use_database_on(
     conn: &mut mysql_async::Conn,
     database: &str,
 ) -> Result<(), mysql_async::Error> {
-    use mysql_async::prelude::Queryable;
+    use crate::mysql::logged_query::{execute, LoggedStatement};
 
     let sql = match crate::mysql::schema_queries::safe_identifier(database) {
         Ok(identifier) => format!("USE {identifier}"),
@@ -12,10 +12,7 @@ pub(super) async fn use_database_on(
             return Err(mysql_async::Error::Other(message.into()));
         }
     };
-    crate::mysql::query_log::log_outgoing_sql(&sql);
-    conn.query_drop(&sql).await.inspect_err(|error| {
-        crate::mysql::query_log::log_mysql_async_error(error);
-    })
+    execute(conn, LoggedStatement::text(&sql)).await.map(|_| ())
 }
 
 pub(super) fn is_other_database(current: Option<&str>, database: &str) -> bool {
@@ -26,18 +23,7 @@ pub(super) async fn switch_to_run_database(
     conn: &mut mysql_async::Conn,
     prepared: &PreparedResultExport,
 ) -> Result<Option<Option<String>>, String> {
-    use mysql_async::prelude::Queryable;
-
-    let sql = "SELECT DATABASE()";
-    crate::mysql::query_log::log_outgoing_sql(sql);
-    let current: Option<String> = conn
-        .query_first::<Option<String>, _>(sql)
-        .await
-        .map_err(|error| {
-            crate::mysql::query_log::log_mysql_async_error(&error);
-            format!("Couldn't read the session's database: {error}")
-        })?
-        .flatten();
+    let current = read_session_database(conn).await?;
 
     match &prepared.run_database {
         RunDatabase::Named(database) if is_other_database(current.as_deref(), database) => {
@@ -54,6 +40,20 @@ pub(super) async fn switch_to_run_database(
         }
         _ => Ok(None),
     }
+}
+
+async fn read_session_database(conn: &mut mysql_async::Conn) -> Result<Option<String>, String> {
+    use crate::mysql::logged_query::{fetch_first, LoggedStatement};
+
+    let first_row = fetch_first(conn, LoggedStatement::text("SELECT DATABASE()"))
+        .await
+        .map_err(|error| format!("Couldn't read the session's database: {error}"))?;
+    let Some(row) = first_row else {
+        return Ok(None);
+    };
+    crate::mysql::cell_values::DecodedRow::from_row(&row)
+        .optional_text(0)
+        .map_err(|error| format!("Couldn't read the session's database: {error}"))
 }
 
 pub(super) async fn restore_database(

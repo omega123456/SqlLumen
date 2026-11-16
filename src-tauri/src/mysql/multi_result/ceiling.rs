@@ -2,7 +2,7 @@ pub struct DecodeContext<'a> {
     pub ceiling: usize,
     pub connection_id: &'a str,
     pub thread_id: u64,
-    pub pool: Option<sqlx::MySqlPool>,
+    pub pool: Option<crate::mysql::pool::BackgroundPool>,
 }
 
 pub(super) const CEILING_KILL_ACQUIRE_TIMEOUT: std::time::Duration =
@@ -40,53 +40,26 @@ pub(super) async fn kill_for_ceiling(context: &DecodeContext<'_>) -> bool {
         );
         return false;
     };
-    let mut conn = match tokio::time::timeout(CEILING_KILL_ACQUIRE_TIMEOUT, pool.acquire()).await {
-        Ok(Ok(conn)) => conn,
-        Ok(Err(error)) => {
-            tracing::warn!(
-                connection_id = context.connection_id,
-                thread_id = context.thread_id,
-                %error,
-                "row ceiling reached but a pool connection for KILL QUERY failed; draining instead"
-            );
-            return false;
-        }
-        Err(_) => {
-            tracing::warn!(
-                connection_id = context.connection_id,
-                thread_id = context.thread_id,
-                "row ceiling reached but no pool connection for KILL QUERY within 1 s; draining instead"
-            );
-            return false;
-        }
-    };
-    let kill_sql = format!("KILL QUERY {}", context.thread_id);
     tracing::debug!(
         connection_id = context.connection_id,
         thread_id = context.thread_id,
         ceiling = context.ceiling,
         "row ceiling reached: issuing KILL QUERY"
     );
-    crate::mysql::query_log::log_outgoing_sql(&kill_sql);
-    match sqlx::query(sqlx::AssertSqlSafe(kill_sql.as_str()))
-        .execute(&mut *conn)
-        .await
-    {
-        Ok(result) => {
-            crate::mysql::query_log::log_execute_result(&result);
-            true
-        }
-        Err(error) => {
-            crate::mysql::query_log::log_execute_error(&error);
-            tracing::warn!(
-                connection_id = context.connection_id,
-                thread_id = context.thread_id,
-                %error,
-                "row ceiling KILL QUERY failed; draining the rest of the result instead"
-            );
-            false
-        }
-    }
+    let kill = crate::mysql::pool::KillQuery {
+        thread_id: context.thread_id,
+        checkout_timeout: CEILING_KILL_ACQUIRE_TIMEOUT,
+    };
+    let Err(failure) = pool.kill_query(kill).await else {
+        return true;
+    };
+    tracing::warn!(
+        connection_id = context.connection_id,
+        thread_id = context.thread_id,
+        %failure,
+        "row ceiling KILL QUERY failed; draining the rest of the result instead"
+    );
+    false
 }
 
 pub(super) async fn drain_after_ceiling<P>(
@@ -120,13 +93,14 @@ where
     }
 }
 
-pub(crate) async fn absorb_late_kill(conn: &mut mysql_async::Conn, connection_id: &str) {
-    use mysql_async::prelude::Queryable;
+const LATE_KILL_ABSORBING_SQL: &str = "DO 0";
 
-    let sql = "DO 0";
-    crate::mysql::query_log::log_outgoing_sql(sql);
-    match conn.query_drop(sql).await {
-        Ok(()) => {}
+pub(crate) async fn absorb_late_kill(conn: &mut mysql_async::Conn, connection_id: &str) {
+    use crate::mysql::logged_query::{execute, LoggedStatement};
+
+    let absorbing_statement = LoggedStatement::text(LATE_KILL_ABSORBING_SQL);
+    match execute(conn, absorbing_statement).await {
+        Ok(_) => {}
         Err(error) if is_query_interrupted(&error) => {
             tracing::debug!(
                 connection_id,
@@ -134,7 +108,6 @@ pub(crate) async fn absorb_late_kill(conn: &mut mysql_async::Conn, connection_id
             );
         }
         Err(error) => {
-            crate::mysql::query_log::log_mysql_async_error(&error);
             tracing::warn!(
                 connection_id,
                 ?error,
@@ -144,26 +117,41 @@ pub(crate) async fn absorb_late_kill(conn: &mut mysql_async::Conn, connection_id
     }
 }
 
+pub(crate) async fn read_session_database(
+    conn: &mut mysql_async::Conn,
+) -> Result<crate::mysql::query_executor::RunDatabase, String> {
+    use crate::mysql::logged_query::{fetch_first, LoggedStatement};
+
+    match fetch_first(conn, LoggedStatement::text("SELECT DATABASE()")).await {
+        Ok(first_row) => first_row_database(first_row.as_ref()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
 pub(super) async fn capture_session_database(
     conn: &mut mysql_async::Conn,
     connection_id: &str,
 ) -> Option<crate::mysql::query_executor::RunDatabase> {
-    use crate::mysql::query_executor::RunDatabase;
-    use mysql_async::prelude::Queryable;
-
-    let sql = "SELECT DATABASE()";
-    crate::mysql::query_log::log_outgoing_sql(sql);
-    match conn.query_first::<Option<String>, _>(sql).await {
-        Ok(Some(Some(database))) => Some(RunDatabase::Named(database)),
-        Ok(_) => Some(RunDatabase::NoDatabase),
-        Err(error) => {
-            crate::mysql::query_log::log_mysql_async_error(&error);
+    read_session_database(conn)
+        .await
+        .inspect_err(|error| {
             tracing::warn!(
                 connection_id,
-                ?error,
+                %error,
                 "could not record the database of a truncated result; full export disabled for it"
             );
-            None
-        }
-    }
+        })
+        .ok()
+}
+
+fn first_row_database(
+    first_row: Option<&mysql_async::Row>,
+) -> Result<crate::mysql::query_executor::RunDatabase, String> {
+    use crate::mysql::query_executor::RunDatabase;
+
+    let Some(row) = first_row else {
+        return Ok(RunDatabase::NoDatabase);
+    };
+    let database = crate::mysql::cell_values::DecodedRow::from_row(row).optional_text(0)?;
+    Ok(database.map_or(RunDatabase::NoDatabase, RunDatabase::Named))
 }

@@ -4,10 +4,9 @@ use sqllumen_lib::mysql::pool::SslSettings;
 use sqllumen_lib::commands::session::select_database_impl;
 use sqllumen_lib::commands::session::set_test_select_database_hook;
 use sqllumen_lib::credentials;
-use sqllumen_lib::mysql::pool::{set_test_pool_factory, ConnectionParams};
+use sqllumen_lib::mysql::pool::{set_test_pool_factory, BackgroundPool, ConnectionParams};
 use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
 use sqllumen_lib::state::AppState;
-use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
 use std::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
@@ -21,13 +20,8 @@ fn retrieve_password_prefix() -> String {
     )
 }
 
-fn dummy_pool() -> sqlx::MySqlPool {
-    let opts = MySqlConnectOptions::new()
-        .host("127.0.0.1")
-        .port(13306)
-        .username("dummy")
-        .password("dummy");
-    MySqlPoolOptions::new().connect_lazy_with(opts)
+fn dummy_pool() -> BackgroundPool {
+    common::mock_session::unreachable_pool()
 }
 
 fn test_state() -> AppState {
@@ -109,7 +103,7 @@ impl Drop for PoolFactoryGuard {
 }
 
 fn install_test_pool_factory(
-    factory: fn(&ConnectionParams) -> Result<sqlx::MySqlPool, sqlx::Error>,
+    factory: fn(&ConnectionParams) -> Result<BackgroundPool, String>,
 ) -> PoolFactoryGuard {
     let guard = POOL_FACTORY_LOCK
         .lock()
@@ -118,12 +112,12 @@ fn install_test_pool_factory(
     PoolFactoryGuard { _guard: guard }
 }
 
-fn forced_pool_success(_: &ConnectionParams) -> Result<sqlx::MySqlPool, sqlx::Error> {
+fn forced_pool_success(_: &ConnectionParams) -> Result<BackgroundPool, String> {
     Ok(dummy_pool())
 }
 
-fn forced_pool_error(_: &ConnectionParams) -> Result<sqlx::MySqlPool, sqlx::Error> {
-    Err(sqlx::Error::PoolTimedOut)
+fn forced_pool_error(_: &ConnectionParams) -> Result<BackgroundPool, String> {
+    Err("connecting to MySQL timed out after 1 s".to_string())
 }
 
 #[tokio::test]
@@ -309,5 +303,92 @@ struct HookGuard {
 impl Drop for HookGuard {
     fn drop(&mut self) {
         set_test_select_database_hook(None);
+    }
+}
+
+#[cfg(not(coverage))]
+mod pool_swap {
+    use super::*;
+    use crate::common::mock_mysql_server::{MockMySqlServer, MockQueryKind};
+    use crate::common::mock_session::{
+        mock_connection_params, mock_pool, register_mock_connection,
+    };
+    use sqllumen_lib::mysql::health::attempt_reconnect_once_for_test;
+    use sqllumen_lib::mysql::logged_query::{fetch_first, LoggedStatement};
+
+    const SWAP_CONNECTION_ID: &str = "conn-swap";
+
+    async fn open_mock_connection() -> (MockMySqlServer, AppState) {
+        let server = MockMySqlServer::start_script(vec![]).await;
+        let state = test_state();
+        let params = mock_connection_params(SWAP_CONNECTION_ID, server.port);
+        register_mock_connection(&state, mock_pool(server.port), params);
+        (server, state)
+    }
+
+    async fn checkout_from_current_pool(state: &AppState) -> mysql_async::Conn {
+        state
+            .registry
+            .get_pool(SWAP_CONNECTION_ID)
+            .expect("pool registered")
+            .checkout()
+            .await
+            .expect("checkout from the current pool")
+    }
+
+    async fn run_probe(conn: &mut mysql_async::Conn) {
+        fetch_first(conn, LoggedStatement::text("SELECT 1"))
+            .await
+            .expect("the held checkout still runs queries");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn select_database_swaps_in_a_new_pool_while_an_old_checkout_keeps_working() {
+        set_test_pool_factory(None);
+        let (server, state) = open_mock_connection().await;
+        let mut old_checkout = checkout_from_current_pool(&state).await;
+
+        select_database_impl(
+            &state,
+            &sqllumen_lib::commands::session::SelectDatabaseRequest {
+                connection_id: SWAP_CONNECTION_ID.to_string(),
+                database_name: "analytics_db".to_string(),
+            },
+        )
+        .await
+        .expect("select database succeeds");
+
+        run_probe(&mut old_checkout).await;
+        let new_pool_connected_with_database = server
+            .recorded_queries()
+            .iter()
+            .any(|query| query.kind == MockQueryKind::InitDb && query.sql == "USE analytics_db");
+        assert!(
+            new_pool_connected_with_database,
+            "{:?}",
+            server.recorded_queries()
+        );
+        let params = state
+            .registry
+            .get_connection_params(SWAP_CONNECTION_ID)
+            .expect("connection params");
+        assert_eq!(params.default_database.as_deref(), Some("analytics_db"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn health_reconnect_swaps_in_a_new_pool_while_an_old_checkout_keeps_working() {
+        set_test_pool_factory(None);
+        let (server, state) = open_mock_connection().await;
+        let mut old_checkout = checkout_from_current_pool(&state).await;
+        let connections_before = server.connection_count();
+
+        attempt_reconnect_once_for_test(&state, SWAP_CONNECTION_ID)
+            .await
+            .expect("reconnect succeeds");
+
+        run_probe(&mut old_checkout).await;
+        assert!(server.connection_count() > connections_before);
+        let mut new_checkout = checkout_from_current_pool(&state).await;
+        run_probe(&mut new_checkout).await;
     }
 }

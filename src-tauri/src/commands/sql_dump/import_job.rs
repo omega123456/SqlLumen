@@ -11,7 +11,7 @@ pub struct StartImportInput {
 pub async fn start_sql_import_impl(
     state: &AppState,
     input: StartImportInput,
-    pool: sqlx::MySqlPool,
+    pool: BackgroundPool,
 ) -> Result<String, String> {
     let import_jobs = &state.import_jobs;
     let job_id = uuid::Uuid::new_v4().to_string();
@@ -54,7 +54,7 @@ pub async fn start_sql_import_impl(
             history_db: &db,
             connection_id: &connection_id,
         };
-        let result = sql_import::execute_sql_import(&pool, &import_job);
+        let result = sql_import::run_sql_import_job(&pool, &import_job);
 
         if let Err(error) = result {
             fail_import_job(&import_jobs_arc, &job_id_clone, error);

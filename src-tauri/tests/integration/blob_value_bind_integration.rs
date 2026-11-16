@@ -1,6 +1,6 @@
 //! Unit tests for blob-envelope decoding used by the table-data value binder.
 //!
-//! `bind_json_value` is MySQL-specific (`Query<'q, sqlx::MySql, ...>`), so the
+//! Binding JSON values to a prepared statement needs a MySQL server, so the
 //! envelope-binding decision cannot be exercised through in-memory SQLite. The
 //! envelope detection/decode logic is factored into the pure, DB-free helpers
 //! `decode_blob_envelope` and `validate_blob_envelopes`, which are tested here.

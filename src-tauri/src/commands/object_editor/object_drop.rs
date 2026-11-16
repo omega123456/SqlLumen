@@ -13,7 +13,7 @@ pub async fn drop_object_impl(
     let safe_name = schema_queries::safe_identifier(object_name)?;
     let type_keyword = object_type_keyword(object_type)?;
     let sql = format!("DROP {type_keyword} IF EXISTS {safe_db}.{safe_name}");
-    let mut conn = pool.acquire().await.map_err(|error| error.to_string())?;
+    let mut conn = pool.checkout().await.map_err(|error| error.to_string())?;
     match execute_simple_sql(&mut conn, &sql).await {
         Ok(_) => Ok(()),
         Err(error) => Err(format!(

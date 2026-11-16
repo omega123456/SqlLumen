@@ -2,19 +2,24 @@
 
 use async_trait::async_trait;
 use opensrv_mysql::{
-    AsyncMysqlIntermediary, AsyncMysqlShim, Column, ColumnFlags, ColumnType, ErrorKind, InitWriter,
-    OkResponse, ParamParser, QueryResultWriter, RowWriter, StatementMetaWriter, StatusFlags,
-    ToMysqlValue,
+    plain_run_with_options, secure_run_with_options, AsyncMysqlIntermediary, AsyncMysqlShim,
+    Column, ColumnFlags, ColumnType, ErrorKind, InitWriter, IntermediaryOptions, OkResponse,
+    ParamParser, QueryResultWriter, RowWriter, StatementMetaWriter, StatusFlags, ToMysqlValue,
 };
+use opensrv_rustls::ServerConfig;
+
+use crate::common::first_packet_reader::FirstPacketReader;
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::io::BufWriter;
-use tokio::net::tcp::OwnedWriteHalf;
+use tokio::io::{AsyncWrite, BufWriter};
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{TcpListener, TcpStream};
+
+const MOCK_SERVER_VERSION: &str = "8.0.36-mock";
 
 #[derive(Debug, Clone)]
 pub struct MockColumnDef {
@@ -249,6 +254,24 @@ pub struct MockScript {
     /// pending and makes the **next** text query on any connection fail with
     /// 1317 (reproduces a late ceiling KILL landing on the next statement).
     pub kill_hits_next_statement: bool,
+    /// Login name the server refuses during authentication (wrong-credentials tests).
+    pub rejected_username: Option<&'static str>,
+}
+
+/// How a recorded statement reached the server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MockQueryKind {
+    Text,
+    Prepared,
+    InitDb,
+}
+
+/// One statement received by the server, tagged with the connection that sent it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordedQuery {
+    pub connection_id: u32,
+    pub kind: MockQueryKind,
+    pub sql: String,
 }
 
 /// Kill-hook state shared by every connection of one mock server. Every mock
@@ -259,7 +282,34 @@ struct MockKillState {
     pending: AtomicBool,
     hits_next_statement: AtomicBool,
     received: AtomicUsize,
+    killed_thread_ids: Mutex<Vec<u64>>,
 }
+
+impl MockKillState {
+    fn record_kill(&self, kill_sql: &str) {
+        self.received.fetch_add(1, Ordering::SeqCst);
+        self.pending.store(true, Ordering::SeqCst);
+        let thread_id = kill_sql
+            .split_whitespace()
+            .last()
+            .and_then(|last_word| last_word.parse::<u64>().ok());
+        if let Some(thread_id) = thread_id {
+            self.killed_thread_ids
+                .lock()
+                .expect("killed thread ids lock poisoned")
+                .push(thread_id);
+        }
+    }
+}
+
+fn is_kill_query(normalized_sql: &str) -> bool {
+    normalized_sql
+        .to_ascii_uppercase()
+        .starts_with(KILL_QUERY_PREFIX)
+}
+
+const KILL_QUERY_PREFIX: &str = "KILL QUERY";
+const FIRST_MOCK_CONNECTION_ID: u32 = 1;
 
 const QUERY_INTERRUPTED_MESSAGE: &[u8] = b"Query execution was interrupted";
 
@@ -279,6 +329,11 @@ struct MockMySqlBackend {
     kill: Arc<MockKillState>,
     /// Prepared statement ids (this connection) that are `KILL QUERY`s.
     kill_statement_ids: HashSet<u32>,
+    /// Every statement received across all connections, tagged by connection.
+    recorded_queries: Arc<Mutex<Vec<RecordedQuery>>>,
+    /// Id of the connection this backend clone serves (assigned on accept).
+    connection_id: u32,
+    rejected_username: Option<&'static str>,
 }
 
 const VERSION_STATEMENT_ID: u32 = 1;
@@ -312,7 +367,28 @@ impl MockMySqlBackend {
             stream_steps: Arc::default(),
             kill: Arc::default(),
             kill_statement_ids: HashSet::new(),
+            recorded_queries: Arc::default(),
+            connection_id: FIRST_MOCK_CONNECTION_ID,
+            rejected_username: None,
         }
+    }
+
+    fn record(&self, kind: MockQueryKind, sql: &str) {
+        self.recorded_queries
+            .lock()
+            .expect("recorded queries lock poisoned")
+            .push(RecordedQuery {
+                connection_id: self.connection_id,
+                kind,
+                sql: sql.to_string(),
+            });
+    }
+
+    fn record_text(&self, sql: &str) {
+        self.text_queries
+            .lock()
+            .expect("text queries lock poisoned")
+            .push(sql.to_string());
     }
 
     fn find_stream_step(&self, query: &str) -> Option<&(MockStreamStep, Vec<Column>)> {
@@ -322,10 +398,10 @@ impl MockMySqlBackend {
             .find(|(step, _)| Self::normalize_query(step.query).eq_ignore_ascii_case(&normalized))
     }
 
-    async fn write_stream_step<'a>(
+    async fn write_stream_step<'a, W: AsyncWrite + Send + Unpin>(
         prepared: &'a (MockStreamStep, Vec<Column>),
         kill: &MockKillState,
-        mut results: QueryResultWriter<'a, BufWriter<OwnedWriteHalf>>,
+        mut results: QueryResultWriter<'a, W>,
     ) -> io::Result<()> {
         let (step, columns) = prepared;
         for &affected_rows in &step.leading_ok_affected {
@@ -373,7 +449,7 @@ impl MockMySqlBackend {
             .join(" ")
     }
 
-    /// sqlx 0.9 rejects prepare replies whose parameter count differs from the bound arguments,
+    /// mysql_async rejects prepare replies whose parameter count differs from the bound values,
     /// so declare one parameter per `?` placeholder outside quoted strings and identifiers.
     fn placeholder_params(query: &str) -> Vec<Column> {
         let mut quote: Option<char> = None;
@@ -440,9 +516,9 @@ impl MockMySqlBackend {
             .collect()
     }
 
-    async fn write_step(
+    async fn write_step<W: AsyncWrite + Send + Unpin>(
         step: &MockQueryStep,
-        results: QueryResultWriter<'_, BufWriter<OwnedWriteHalf>>,
+        results: QueryResultWriter<'_, W>,
     ) -> io::Result<()> {
         if let Some((kind, message)) = step.error {
             return results.error(kind, message).await;
@@ -464,8 +540,8 @@ impl MockMySqlBackend {
         writer.finish().await
     }
 
-    async fn write_rows(
-        writer: &mut RowWriter<'_, BufWriter<OwnedWriteHalf>>,
+    async fn write_rows<W: AsyncWrite + Send + Unpin>(
+        writer: &mut RowWriter<'_, W>,
         rows: &[Vec<MockCell>],
     ) -> io::Result<()> {
         for row in rows {
@@ -475,8 +551,8 @@ impl MockMySqlBackend {
         Ok(())
     }
 
-    fn write_row_cells(
-        writer: &mut RowWriter<'_, BufWriter<OwnedWriteHalf>>,
+    fn write_row_cells<W: AsyncWrite + Send + Unpin>(
+        writer: &mut RowWriter<'_, W>,
         row: &[MockCell],
     ) -> io::Result<()> {
         for cell in row {
@@ -495,10 +571,10 @@ impl MockMySqlBackend {
         Ok(())
     }
 
-    async fn write_multi_result_step<'a>(
+    async fn write_multi_result_step<'a, W: AsyncWrite + Send + Unpin>(
         step: &'a MockMultiResultStep,
         columns: &'a [Column],
-        mut results: QueryResultWriter<'a, BufWriter<OwnedWriteHalf>>,
+        mut results: QueryResultWriter<'a, W>,
     ) -> io::Result<()> {
         for &affected_rows in &step.leading_ok_affected {
             results = results
@@ -516,15 +592,35 @@ impl MockMySqlBackend {
 }
 
 #[async_trait]
-impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
+impl<W: AsyncWrite + Send + Unpin> AsyncMysqlShim<W> for MockMySqlBackend {
     type Error = io::Error;
+
+    fn version(&self) -> String {
+        MOCK_SERVER_VERSION.to_string()
+    }
+
+    fn connect_id(&self) -> u32 {
+        self.connection_id
+    }
+
+    async fn authenticate(
+        &self,
+        _auth_plugin: &str,
+        username: &[u8],
+        _salt: &[u8],
+        _auth_data: &[u8],
+    ) -> bool {
+        let rejected = self.rejected_username.map(str::as_bytes);
+        rejected != Some(username)
+    }
 
     async fn on_prepare<'a>(
         &'a mut self,
         query: &'a str,
-        info: StatementMetaWriter<'a, BufWriter<OwnedWriteHalf>>,
+        info: StatementMetaWriter<'a, W>,
     ) -> Result<(), Self::Error> {
         let normalized = Self::normalize_query(query);
+        self.record(MockQueryKind::Prepared, &normalized);
 
         if normalized.eq_ignore_ascii_case("SELECT VERSION()") {
             let columns = vec![Column {
@@ -545,8 +641,8 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
                 .await;
         }
 
-        // Every statement gets its own id: sqlx caches prepared statements per SQL text, and
-        // opensrv parses each execute using the parameter count declared for that id.
+        // Every statement gets its own id: mysql_async caches prepared statements per connection,
+        // and opensrv parses each execute using the parameter count declared for that id.
         let statement_id = self.next_statement_id;
         self.next_statement_id += 1;
         let params = Self::placeholder_params(query);
@@ -557,10 +653,10 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
             return info.reply(statement_id, &params, &columns).await;
         }
 
-        // KILL arrives through sqlx's prepare/execute, and execute only sees the
-        // statement id, so remember which ids are KILLs. A scripted step for the
-        // KILL (e.g. an error) takes precedence above.
-        if normalized.to_ascii_uppercase().starts_with("KILL QUERY") {
+        // A prepared KILL is only recognised on execute, which sees just the statement
+        // id, so remember which ids are KILLs. A scripted step for the KILL (e.g. an
+        // error) takes precedence above.
+        if is_kill_query(&normalized) {
             self.kill_statement_ids.insert(statement_id);
         }
 
@@ -571,7 +667,7 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
         &'a mut self,
         id: u32,
         _params: ParamParser<'a>,
-        results: QueryResultWriter<'a, BufWriter<OwnedWriteHalf>>,
+        results: QueryResultWriter<'a, W>,
     ) -> Result<(), Self::Error> {
         if id == VERSION_STATEMENT_ID {
             let cols = [Column {
@@ -581,7 +677,7 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
                 colflags: ColumnFlags::empty(),
             }];
             let mut writer = results.start(&cols).await?;
-            writer.write_col(b"8.0.36-mock".as_slice())?;
+            writer.write_col(MOCK_SERVER_VERSION.as_bytes())?;
             return writer.finish().await;
         }
 
@@ -590,8 +686,7 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
         }
 
         if self.kill_statement_ids.contains(&id) {
-            self.kill.received.fetch_add(1, Ordering::SeqCst);
-            self.kill.pending.store(true, Ordering::SeqCst);
+            self.kill.record_kill(KILL_QUERY_PREFIX);
         }
 
         results.completed(OkResponse::default()).await
@@ -602,14 +697,12 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
     async fn on_init<'a>(
         &'a mut self,
         db: &'a str,
-        writer: InitWriter<'a, BufWriter<OwnedWriteHalf>>,
+        writer: InitWriter<'a, W>,
     ) -> Result<(), Self::Error> {
         // opensrv routes both COM_INIT_DB and `USE db` queries here.
         let query = format!("USE {db}");
-        self.text_queries
-            .lock()
-            .expect("text queries lock poisoned")
-            .push(query.clone());
+        self.record_text(&query);
+        self.record(MockQueryKind::InitDb, &query);
         if let Some((kind, message)) = self.find_step(&query).and_then(|step| step.error) {
             return writer.error(kind, message).await;
         }
@@ -619,13 +712,11 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
     async fn on_query<'a>(
         &'a mut self,
         query: &'a str,
-        results: QueryResultWriter<'a, BufWriter<OwnedWriteHalf>>,
+        results: QueryResultWriter<'a, W>,
     ) -> Result<(), Self::Error> {
         let normalized = Self::normalize_query(query);
-        self.text_queries
-            .lock()
-            .expect("text queries lock poisoned")
-            .push(normalized.clone());
+        self.record_text(&normalized);
+        self.record(MockQueryKind::Text, &normalized);
 
         if normalized.eq_ignore_ascii_case("SELECT VERSION()") {
             let cols = [Column {
@@ -635,8 +726,16 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
                 colflags: ColumnFlags::empty(),
             }];
             let mut writer = results.start(&cols).await?;
-            writer.write_col("8.0.36-mock")?;
+            writer.write_col(MOCK_SERVER_VERSION)?;
             return writer.finish().await;
+        }
+
+        if is_kill_query(&normalized) {
+            if let Some(step) = self.find_step(query) {
+                return Self::write_step(&step, results).await;
+            }
+            self.kill.record_kill(&normalized);
+            return results.completed(OkResponse::default()).await;
         }
 
         if self.kill.hits_next_statement.load(Ordering::SeqCst)
@@ -667,8 +766,10 @@ pub struct MockMySqlServer {
     pub port: u16,
     accept_task: tokio::task::JoinHandle<()>,
     connections: Arc<AtomicUsize>,
+    live_connections: Arc<AtomicUsize>,
     connection_tasks: Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>>,
     text_queries: Arc<Mutex<Vec<String>>>,
+    recorded_queries: Arc<Mutex<Vec<RecordedQuery>>>,
     kill: Arc<MockKillState>,
 }
 
@@ -702,6 +803,15 @@ impl MockMySqlServer {
 
     /// Start a server from a full [`MockScript`] (row streams, kill hook, …).
     pub async fn start_with(script: MockScript) -> Self {
+        Self::start_backend(Self::script_backend(script)).await
+    }
+
+    /// Like [`Self::start_with`], with TLS offered to clients using `tls_config`.
+    pub async fn start_with_tls(script: MockScript, tls_config: Arc<ServerConfig>) -> Self {
+        Self::start_serving(Self::script_backend(script), Some(tls_config)).await
+    }
+
+    fn script_backend(script: MockScript) -> MockMySqlBackend {
         let mut backend = MockMySqlBackend::with_steps(script.steps);
         backend.multi_result_steps = Arc::new(
             script
@@ -727,7 +837,8 @@ impl MockMySqlServer {
             .kill
             .hits_next_statement
             .store(script.kill_hits_next_statement, Ordering::SeqCst);
-        Self::start_backend(backend).await
+        backend.rejected_username = script.rejected_username;
+        backend
     }
 
     pub async fn start_script_with_unsupported_prepared_prefixes(
@@ -747,6 +858,10 @@ impl MockMySqlServer {
     }
 
     async fn start_backend(backend: MockMySqlBackend) -> Self {
+        Self::start_serving(backend, None).await
+    }
+
+    async fn start_serving(backend: MockMySqlBackend, tls: Option<Arc<ServerConfig>>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("should bind mock mysql server");
@@ -756,14 +871,17 @@ impl MockMySqlServer {
             .port();
 
         let connections = Arc::new(AtomicUsize::new(0));
+        let live_connections = Arc::new(AtomicUsize::new(0));
         let text_queries = Arc::clone(&backend.text_queries);
+        let recorded_queries = Arc::clone(&backend.recorded_queries);
         let kill = Arc::clone(&backend.kill);
-        let accepted = Arc::clone(&connections);
         let connection_tasks = Arc::new(Mutex::new(Vec::new()));
         let accept_loop = AcceptLoop {
             listener,
             backend,
-            accepted,
+            tls,
+            accepted: Arc::clone(&connections),
+            live: Arc::clone(&live_connections),
             tasks: Arc::clone(&connection_tasks),
         };
         let accept_task = tokio::spawn(accept_loop.run());
@@ -772,8 +890,10 @@ impl MockMySqlServer {
             port,
             accept_task,
             connections,
+            live_connections,
             connection_tasks,
             text_queries,
+            recorded_queries,
             kill,
         }
     }
@@ -783,9 +903,48 @@ impl MockMySqlServer {
         self.kill.received.load(Ordering::SeqCst)
     }
 
+    /// Thread ids named by the `KILL QUERY <id>` text statements received so far.
+    pub fn killed_thread_ids(&self) -> Vec<u64> {
+        self.kill
+            .killed_thread_ids
+            .lock()
+            .expect("killed thread ids lock poisoned")
+            .clone()
+    }
+
     /// Number of client connections accepted so far.
     pub fn connection_count(&self) -> usize {
         self.connections.load(Ordering::SeqCst)
+    }
+
+    /// Number of client connections currently open.
+    pub fn live_connection_count(&self) -> usize {
+        self.live_connections.load(Ordering::SeqCst)
+    }
+
+    /// Every statement received so far, tagged with the connection that sent it.
+    pub fn recorded_queries(&self) -> Vec<RecordedQuery> {
+        self.recorded_queries
+            .lock()
+            .expect("recorded queries lock poisoned")
+            .clone()
+    }
+
+    /// Statements received on one connection, in arrival order.
+    pub fn queries_on_connection(&self, connection_id: u32) -> Vec<RecordedQuery> {
+        self.recorded_queries()
+            .into_iter()
+            .filter(|query| query.connection_id == connection_id)
+            .collect()
+    }
+
+    /// Id of the first connection that received `sql` (whitespace-normalized match).
+    pub fn connection_that_sent(&self, sql: &str) -> Option<u32> {
+        let normalized = MockMySqlBackend::normalize_query(sql);
+        self.recorded_queries()
+            .into_iter()
+            .find(|query| query.sql.eq_ignore_ascii_case(&normalized))
+            .map(|query| query.connection_id)
     }
 
     /// Close the `index`-th accepted connection (0-based, in accept order) from
@@ -814,8 +973,8 @@ enum StreamRowsEnd {
     Killed,
 }
 
-async fn write_stream_rows(
-    writer: &mut RowWriter<'_, BufWriter<OwnedWriteHalf>>,
+async fn write_stream_rows<W: AsyncWrite + Send + Unpin>(
+    writer: &mut RowWriter<'_, W>,
     step: &MockStreamStep,
     kill: &MockKillState,
 ) -> io::Result<StreamRowsEnd> {
@@ -833,15 +992,47 @@ async fn write_stream_rows(
 struct AcceptLoop {
     listener: TcpListener,
     backend: MockMySqlBackend,
+    tls: Option<Arc<ServerConfig>>,
     accepted: Arc<AtomicUsize>,
+    live: Arc<AtomicUsize>,
     tasks: Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>>,
+}
+
+struct LiveConnectionGuard {
+    live: Arc<AtomicUsize>,
+}
+
+impl LiveConnectionGuard {
+    fn open(live: &Arc<AtomicUsize>) -> Self {
+        live.fetch_add(1, Ordering::SeqCst);
+        Self {
+            live: Arc::clone(live),
+        }
+    }
+}
+
+impl Drop for LiveConnectionGuard {
+    fn drop(&mut self) {
+        self.live.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 impl AcceptLoop {
     async fn run(self) {
         while let Ok((stream, _)) = self.listener.accept().await {
-            self.accepted.fetch_add(1, Ordering::SeqCst);
-            let task = tokio::spawn(serve_connection(self.backend.clone(), stream));
+            let accepted_before = self.accepted.fetch_add(1, Ordering::SeqCst);
+            let mut backend = self.backend.clone();
+            backend.connection_id = FIRST_MOCK_CONNECTION_ID
+                + u32::try_from(accepted_before).expect("connection count fits in u32");
+            let live_guard = LiveConnectionGuard::open(&self.live);
+            let task = tokio::spawn(serve_connection(
+                backend,
+                stream,
+                ConnectionExtras {
+                    tls: self.tls.clone(),
+                    live_guard,
+                },
+            ));
             self.tasks
                 .lock()
                 .expect("connection tasks lock poisoned")
@@ -850,14 +1041,44 @@ impl AcceptLoop {
     }
 }
 
-async fn serve_connection(backend: MockMySqlBackend, stream: TcpStream) {
-    let (reader, writer) = stream.into_split();
-    // opensrv only flushes at the end of a command, so zero capacity sends throttled rows one by one.
-    let writer = BufWriter::with_capacity(0, writer);
-    let served = AsyncMysqlIntermediary::run_on(backend, reader, writer).await;
-    if let Err(error) = served {
+struct ConnectionExtras {
+    tls: Option<Arc<ServerConfig>>,
+    live_guard: LiveConnectionGuard,
+}
+
+async fn serve_connection(backend: MockMySqlBackend, stream: TcpStream, extras: ConnectionExtras) {
+    let ConnectionExtras { tls, live_guard } = extras;
+    if let Err(error) = serve_mysql_protocol(backend, stream, tls).await {
         eprintln!("mock mysql server error: {error}");
     }
+    drop(live_guard);
+}
+
+type PlainReader = FirstPacketReader<OwnedReadHalf>;
+type PlainWriter = BufWriter<OwnedWriteHalf>;
+
+async fn serve_mysql_protocol(
+    mut backend: MockMySqlBackend,
+    stream: TcpStream,
+    tls: Option<Arc<ServerConfig>>,
+) -> io::Result<()> {
+    let (reader, writer) = stream.into_split();
+    // opensrv only flushes at the end of a command, so zero capacity sends throttled rows one by one.
+    let mut writer = BufWriter::with_capacity(0, writer);
+    let (client_wants_tls, handshake) =
+        AsyncMysqlIntermediary::<MockMySqlBackend, PlainReader, PlainWriter>::init_before_ssl(
+            &mut backend,
+            FirstPacketReader::new(reader),
+            &mut writer,
+            &tls,
+        )
+        .await?;
+    let options = IntermediaryOptions::default();
+    let tls_config = tls.filter(|_| client_wants_tls);
+    let Some(tls_config) = tls_config else {
+        return plain_run_with_options(backend, writer, options, handshake).await;
+    };
+    secure_run_with_options(backend, writer, options, tls_config, handshake).await
 }
 
 impl Drop for MockMySqlServer {

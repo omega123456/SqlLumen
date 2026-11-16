@@ -1,4 +1,5 @@
 use super::*;
+use crate::mysql::pool::{BackgroundPool, KillQuery};
 
 pub fn get_dump_progress_impl(state: &AppState, job_id: &str) -> Result<DumpJobProgress, String> {
     let mut jobs = state.dump_jobs.write().map_err(|error| error.to_string())?;
@@ -26,21 +27,20 @@ pub(super) struct DumpThread<'a> {
 
 pub(super) async fn kill_dump_query_if_active(
     state: &AppState,
-    pool: &sqlx::MySqlPool,
+    pool: &BackgroundPool,
     job: DumpThread<'_>,
 ) -> Result<(), String> {
     if !is_dump_thread_still_active(state, &job)? {
         return Ok(());
     }
     let DumpThread { job_id, thread_id } = job;
-    let kill_sql = format!("KILL QUERY {}", thread_id);
     tracing::debug!(job_id, thread_id, "cancel_dump: issuing KILL QUERY");
-    crate::mysql::query_log::log_outgoing_sql(&kill_sql);
-    if let Err(error) = sqlx::query(sqlx::AssertSqlSafe(kill_sql.as_str()))
-        .execute(pool)
-        .await
-    {
-        tracing::warn!(job_id, error = %error, "KILL QUERY failed during dump cancel");
+    let kill = KillQuery {
+        thread_id,
+        checkout_timeout: pool.connect_timeout(),
+    };
+    if let Err(failure) = pool.kill_query(kill).await {
+        tracing::warn!(job_id, %failure, "KILL QUERY failed during dump cancel");
     }
     Ok(())
 }

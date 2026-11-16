@@ -1,15 +1,16 @@
-use futures::stream::StreamExt;
 use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
-use sqlx::mysql::MySqlValueRef;
-use sqlx::{Column, Row, TypeInfo, Value, ValueRef};
 use std::collections::HashMap;
 use std::io::{Seek, Write};
 
 use crate::export::job_retention::cleanup_terminal_jobs;
 use crate::export::sql_dump::{self, DumpOptions, SqlDumpValue, INSERT_BATCH_SIZE};
 use crate::export::sql_import;
-use crate::mysql::schema_queries::{decode_mysql_text_cell, decode_mysql_text_cell_named};
+use crate::mysql::cell_values::DecodedRow;
+#[cfg(not(coverage))]
+use crate::mysql::logged_query::{decoded_row_stream, fetch_decoded, stream};
+use crate::mysql::logged_query::{fetch_decoded_pooled, LoggedStatement};
+use crate::mysql::pool::BackgroundPool;
 use crate::state::{AppState, DumpJobProgress, DumpJobStatus, ImportJobProgress, ImportJobStatus};
 
 mod dump_control;
@@ -24,8 +25,6 @@ pub use dump_values::*;
 pub use exportable_objects::*;
 pub use import_job::*;
 pub use insert_writer::*;
-
-const BITS_PER_BYTE: u32 = 8;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -75,7 +74,7 @@ pub async fn list_exportable_objects(
     list_exportable_objects_impl(&state, &connection_id).await
 }
 
-fn open_pool(state: &AppState, connection_id: &str) -> Result<sqlx::MySqlPool, String> {
+fn open_pool(state: &AppState, connection_id: &str) -> Result<BackgroundPool, String> {
     state
         .registry
         .get_pool(connection_id)

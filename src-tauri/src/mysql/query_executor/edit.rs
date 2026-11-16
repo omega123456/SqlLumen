@@ -1,29 +1,16 @@
 use super::*;
 
 #[cfg(not(coverage))]
-async fn query_session_current_database(pool: &sqlx::MySqlPool) -> Option<String> {
-    match sqlx::query("SELECT DATABASE()").fetch_one(pool).await {
-        Ok(row) => match row.try_get::<String, _>(0) {
-            Ok(db) => {
-                tracing::debug!(database = %db, "analyze_query_for_edit: resolved current database via SELECT DATABASE()");
-                Some(db)
-            }
-            Err(error) => {
-                tracing::warn!(
-                    error = %error,
-                    "analyze_query_for_edit: SELECT DATABASE() returned non-string (NULL?)"
-                );
-                None
-            }
-        },
-        Err(error) => {
-            tracing::warn!(
-                error = %error,
-                "analyze_query_for_edit: SELECT DATABASE() query failed"
-            );
-            None
-        }
+async fn resolve_edit_database(state: &AppState, connection_id: &str) -> Option<String> {
+    let session_database =
+        crate::mysql::session::existing_session_database(state, connection_id).await;
+    if session_database.is_some() {
+        return session_database;
     }
+    state
+        .registry
+        .get_connection_params(connection_id)
+        .and_then(|params| params.default_database)
 }
 
 #[cfg(not(coverage))]
@@ -51,13 +38,7 @@ pub async fn analyze_query_for_edit_impl(
         .get_pool(connection_id)
         .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
 
-    let params = state.registry.get_connection_params(connection_id);
-    let default_database = params.and_then(|params| params.default_database);
-
-    let default_database = match default_database {
-        Some(database) => Some(database),
-        None => query_session_current_database(&pool).await,
-    };
+    let default_database = resolve_edit_database(state, connection_id).await;
 
     tracing::debug!(
         default_database = ?default_database,
@@ -100,7 +81,7 @@ struct EditTable<'a> {
 
 #[cfg(not(coverage))]
 async fn fetch_edit_foreign_keys(
-    pool: &sqlx::MySqlPool,
+    pool: &crate::mysql::pool::BackgroundPool,
     table: EditTable<'_>,
 ) -> Vec<crate::mysql::schema_queries::ForeignKeyInfo> {
     let EditTable { database, table } = table;
@@ -119,7 +100,7 @@ async fn fetch_edit_foreign_keys(
 
 #[cfg(not(coverage))]
 async fn fetch_table_edit_info(
-    pool: &sqlx::MySqlPool,
+    pool: &crate::mysql::pool::BackgroundPool,
     table: EditTable<'_>,
 ) -> Option<QueryTableEditInfo> {
     let EditTable {

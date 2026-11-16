@@ -68,32 +68,16 @@ pub(super) fn normalize_default_value(
 }
 
 #[cfg(not(coverage))]
-pub(super) fn decode_text_cell_named(row: &MySqlRow, column: &str) -> Result<String, String> {
-    match row.try_get::<String, _>(column) {
-        Ok(value) => Ok(value),
-        Err(_) => {
-            let bytes: Vec<u8> = row.try_get(column).map_err(|error| {
-                format!("Failed to decode column '{column}' as UTF-8 text: {error}")
-            })?;
-            Ok(String::from_utf8_lossy(&bytes).into_owned())
-        }
-    }
+pub(super) fn decode_text_cell_named(row: &DecodedRow, column: &str) -> Result<String, String> {
+    row.required_text(column)
 }
 
 #[cfg(not(coverage))]
 pub(super) fn decode_optional_text_cell_named(
-    row: &MySqlRow,
+    row: &DecodedRow,
     column: &str,
 ) -> Result<Option<String>, String> {
-    match row.try_get::<Option<String>, _>(column) {
-        Ok(value) => Ok(value),
-        Err(_) => match row.try_get::<Option<Vec<u8>>, _>(column) {
-            Ok(value) => Ok(value.map(|bytes| String::from_utf8_lossy(&bytes).into_owned())),
-            Err(error) => Err(format!(
-                "Failed to decode optional column '{column}' as UTF-8 text: {error}"
-            )),
-        },
-    }
+    row.optional_text(column)
 }
 
 #[cfg(not(coverage))]
@@ -137,37 +121,28 @@ pub(super) fn charset_for_collation(collation: &str) -> String {
 
 #[cfg(not(coverage))]
 pub(super) struct DesignerTableLookup<'a> {
-    pub(super) pool: &'a sqlx::MySqlPool,
+    pub(super) pool: &'a BackgroundPool,
     pub(super) database: &'a str,
     pub(super) table_name: &'a str,
 }
 
 #[cfg(not(coverage))]
 impl DesignerTableLookup<'_> {
-    pub(super) fn log_query(&self, sql: &str) {
-        let binds = [self.database.to_string(), self.table_name.to_string()];
-        query_log::log_outgoing_sql_bound(sql, &binds);
+    fn statement<'a>(&self, sql: &'a str) -> LoggedStatement<'a> {
+        LoggedStatement::bound(sql, vec![self.database.into(), self.table_name.into()])
     }
 
-    pub(super) async fn fetch_all(&self, sql: &'static str) -> Result<Vec<MySqlRow>, String> {
-        self.log_query(sql);
-        sqlx::query(sql)
-            .bind(self.database)
-            .bind(self.table_name)
-            .fetch_all(self.pool)
+    pub(super) async fn fetch_all(&self, sql: &'static str) -> Result<Vec<DecodedRow>, String> {
+        fetch_decoded_pooled(self.pool, self.statement(sql))
             .await
             .map_err(|error| error.to_string())
     }
 
-    pub(super) async fn fetch_metadata_row(&self) -> Result<MySqlRow, String> {
+    pub(super) async fn fetch_metadata_row(&self) -> Result<DecodedRow, String> {
         let metadata_sql = table_designer::load_table_metadata_query();
-        self.log_query(metadata_sql);
         let database = self.database;
         let table_name = self.table_name;
-        sqlx::query(metadata_sql)
-            .bind(database)
-            .bind(table_name)
-            .fetch_optional(self.pool)
+        fetch_first_decoded_pooled(self.pool, self.statement(metadata_sql))
             .await
             .map_err(|error| error.to_string())?
             .ok_or_else(|| format!("Table '{database}.{table_name}' was not found"))
@@ -183,7 +158,7 @@ pub(super) fn is_auto_increment_extra(extra: Option<&str>) -> bool {
 }
 
 #[cfg(not(coverage))]
-pub(super) fn designer_column_from_row(row: &MySqlRow) -> Result<DesignerColumnDef, String> {
+pub(super) fn designer_column_from_row(row: &DecodedRow) -> Result<DesignerColumnDef, String> {
     let name = decode_text_cell_named(row, "COLUMN_NAME")?;
     let column_type = decode_text_cell_named(row, "COLUMN_TYPE")?;
     let is_nullable = decode_text_cell_named(row, "IS_NULLABLE")?;
@@ -212,12 +187,10 @@ pub(super) fn designer_column_from_row(row: &MySqlRow) -> Result<DesignerColumnD
 }
 
 #[cfg(not(coverage))]
-pub(super) fn index_row_group(row: &MySqlRow) -> Result<IndexRowGroup, String> {
+pub(super) fn index_row_group(row: &DecodedRow) -> Result<IndexRowGroup, String> {
     Ok(IndexRowGroup {
         name: decode_text_cell_named(row, "INDEX_NAME")?,
-        non_unique: row
-            .try_get("NON_UNIQUE")
-            .map_err(|error| error.to_string())?,
+        non_unique: row.signed("NON_UNIQUE")?,
         index_type: decode_text_cell_named(row, "INDEX_TYPE")?,
         columns: vec![decode_text_cell_named(row, "COLUMN_NAME")?],
     })
@@ -233,7 +206,7 @@ pub(super) fn append_index_row(groups: &mut Vec<IndexRowGroup>, row_group: Index
 
 #[cfg(not(coverage))]
 pub(super) fn designer_indexes_from_rows(
-    rows: &[MySqlRow],
+    rows: &[DecodedRow],
 ) -> Result<Vec<DesignerIndexDef>, String> {
     let mut groups: Vec<IndexRowGroup> = Vec::new();
     for row in rows {
@@ -243,7 +216,7 @@ pub(super) fn designer_indexes_from_rows(
 }
 
 #[cfg(not(coverage))]
-pub(super) fn foreign_key_from_row(row: &MySqlRow) -> Result<DesignerForeignKeyDef, String> {
+pub(super) fn foreign_key_from_row(row: &DecodedRow) -> Result<DesignerForeignKeyDef, String> {
     Ok(DesignerForeignKeyDef {
         name: decode_text_cell_named(row, "CONSTRAINT_NAME")?,
         source_column: decode_text_cell_named(row, "COLUMN_NAME")?,
@@ -269,7 +242,7 @@ pub(super) fn append_foreign_key_row(
 
 #[cfg(not(coverage))]
 pub(super) fn designer_foreign_keys_from_rows(
-    rows: &[MySqlRow],
+    rows: &[DecodedRow],
 ) -> Result<Vec<DesignerForeignKeyDef>, String> {
     let mut foreign_keys = Vec::new();
     for row in rows {
@@ -279,23 +252,20 @@ pub(super) fn designer_foreign_keys_from_rows(
 }
 
 #[cfg(not(coverage))]
-pub(super) fn decode_auto_increment(row: &MySqlRow) -> Result<Option<u64>, String> {
-    match row.try_get::<Option<u64>, _>("AUTO_INCREMENT") {
-        Ok(value) => Ok(value),
-        Err(unsigned_error) => Ok(row
-            .try_get::<Option<i64>, _>("AUTO_INCREMENT")
-            .map_err(|_| unsigned_error.to_string())?
-            .and_then(|value| u64::try_from(value).ok())),
-    }
+pub(super) fn decode_auto_increment(row: &DecodedRow) -> Result<Option<u64>, String> {
+    let auto_increment = row.optional_signed("AUTO_INCREMENT")?;
+    Ok(auto_increment.and_then(|value| u64::try_from(value).ok()))
 }
 
 #[cfg(not(coverage))]
-pub(super) fn optional_text_or_empty(row: &MySqlRow, column: &str) -> Result<String, String> {
+pub(super) fn optional_text_or_empty(row: &DecodedRow, column: &str) -> Result<String, String> {
     Ok(decode_optional_text_cell_named(row, column)?.unwrap_or_default())
 }
 
 #[cfg(not(coverage))]
-pub(super) fn table_properties_from_row(row: &MySqlRow) -> Result<DesignerTableProperties, String> {
+pub(super) fn table_properties_from_row(
+    row: &DecodedRow,
+) -> Result<DesignerTableProperties, String> {
     let collation = optional_text_or_empty(row, "TABLE_COLLATION")?;
     Ok(DesignerTableProperties {
         engine: optional_text_or_empty(row, "ENGINE")?,

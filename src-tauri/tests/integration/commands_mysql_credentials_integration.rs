@@ -16,24 +16,24 @@ use sqllumen_lib::commands::mysql::{
 };
 use sqllumen_lib::commands::settings::{get_all_settings_impl, get_setting_impl, set_setting_impl};
 use sqllumen_lib::credentials::{self};
+use sqllumen_lib::mysql::connection_options::mysql_opts;
 #[cfg(not(coverage))]
 use sqllumen_lib::mysql::health::attempt_reconnect_once_for_test;
 #[cfg(coverage)]
 use sqllumen_lib::mysql::health::spawn_health_monitor;
 use sqllumen_lib::mysql::pool::SslSettings;
 use sqllumen_lib::mysql::pool::{
-    build_connect_options, create_pool, set_test_pool_factory, ConnectionParams,
+    create_pool, set_test_pool_factory, BackgroundPool, ConnectionParams,
 };
 use sqllumen_lib::mysql::registry::{
     ConnectionRegistry, ConnectionStatus, RegistryEntry, StoredConnectionParams,
 };
 use sqllumen_lib::mysql::table_data_cache::TableDataCache;
 use sqllumen_lib::state::AppState;
-use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions, MySqlSslMode};
-use sqlx::ConnectOptions;
 #[cfg(coverage)]
 use std::process::Command;
 use std::sync::{Arc, Mutex};
+#[cfg(not(coverage))]
 use std::time::Duration;
 use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
@@ -45,8 +45,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::common;
 
-static CAPTURED_POOL_URL: Mutex<Option<String>> = Mutex::new(None);
-static CAPTURED_POOL_OPTIONS_DEBUG: Mutex<Option<String>> = Mutex::new(None);
+static CAPTURED_POOL_OPTIONS: Mutex<Option<mysql_async::Opts>> = Mutex::new(None);
 
 struct PoolFactoryGuard {
     _guard: std::sync::MutexGuard<'static, ()>,
@@ -59,7 +58,7 @@ impl Drop for PoolFactoryGuard {
 }
 
 fn install_test_pool_factory(
-    factory: fn(&ConnectionParams) -> Result<sqlx::MySqlPool, sqlx::Error>,
+    factory: fn(&ConnectionParams) -> Result<BackgroundPool, String>,
 ) -> PoolFactoryGuard {
     static POOL_FACTORY_LOCK: Mutex<()> = Mutex::new(());
     let guard = POOL_FACTORY_LOCK
@@ -156,16 +155,8 @@ fn poisoned_state() -> AppState {
     }
 }
 
-fn dummy_pool() -> sqlx::MySqlPool {
-    let opts = MySqlConnectOptions::new()
-        .host("127.0.0.1")
-        .port(13306)
-        .username("dummy")
-        .password("dummy")
-        .ssl_mode(MySqlSslMode::Disabled);
-    MySqlPoolOptions::new()
-        .acquire_timeout(Duration::from_secs(1))
-        .connect_lazy_with(opts)
+fn dummy_pool() -> BackgroundPool {
+    common::mock_session::unreachable_pool()
 }
 
 #[tauri::command]
@@ -373,32 +364,36 @@ async fn list_open_connection_sessions_returns_serializable_runtime_metadata() {
     );
 }
 
-fn forced_pool_error(_: &ConnectionParams) -> Result<sqlx::MySqlPool, sqlx::Error> {
-    Err(sqlx::Error::PoolTimedOut)
+fn forced_pool_error(_: &ConnectionParams) -> Result<BackgroundPool, String> {
+    Err("connecting to MySQL timed out after 1 s".to_string())
 }
 
-fn forced_pool_success(_: &ConnectionParams) -> Result<sqlx::MySqlPool, sqlx::Error> {
+fn forced_pool_success(_: &ConnectionParams) -> Result<BackgroundPool, String> {
     Ok(dummy_pool())
 }
 
-fn capture_pool_url_success(params: &ConnectionParams) -> Result<sqlx::MySqlPool, sqlx::Error> {
-    let url = build_connect_options(params).to_url_lossy().to_string();
-    let mut guard = CAPTURED_POOL_URL
+fn capture_pool_options_success(params: &ConnectionParams) -> Result<BackgroundPool, String> {
+    let opts = mysql_opts(params)?;
+    let mut guard = CAPTURED_POOL_OPTIONS
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    *guard = Some(url);
+    *guard = Some(opts);
     Ok(dummy_pool())
 }
 
-fn capture_pool_options_debug_success(
-    params: &ConnectionParams,
-) -> Result<sqlx::MySqlPool, sqlx::Error> {
-    let debug_output = format!("{:?}", build_connect_options(params));
-    let mut guard = CAPTURED_POOL_OPTIONS_DEBUG
+fn reset_captured_pool_options() {
+    let mut guard = CAPTURED_POOL_OPTIONS
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    *guard = Some(debug_output);
-    Ok(dummy_pool())
+    *guard = None;
+}
+
+fn captured_pool_options() -> mysql_async::Opts {
+    CAPTURED_POOL_OPTIONS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+        .expect("pool factory should capture the MySQL options")
 }
 
 fn update_input(password: Option<&str>) -> UpdateConnectionInput {
@@ -813,7 +808,7 @@ async fn open_connection_impl_coverage_succeeds_with_test_pool_factory() {
 }
 
 #[test]
-fn build_connect_options_applies_ssl_database_and_credentials() {
+fn mysql_opts_apply_ssl_database_and_credentials() {
     let params = ConnectionParams {
         host: "db.example.com".to_string(),
         port: 3307,
@@ -828,16 +823,19 @@ fn build_connect_options_applies_ssl_database_and_credentials() {
         },
         connect_timeout_secs: 9,
     };
-    let url = build_connect_options(&params).to_url_lossy().to_string();
-    assert!(url.contains("db.example.com"));
-    assert!(url.contains("3307"));
-    assert!(url.contains("alice"));
-    assert!(url.contains("analytics"));
-    assert!(url.contains("ssl-ca="));
+    let opts = mysql_opts(&params).expect("options build");
+    assert_eq!(opts.ip_or_hostname(), "db.example.com");
+    assert_eq!(opts.tcp_port(), 3307);
+    assert_eq!(opts.user(), Some("alice"));
+    assert_eq!(opts.pass(), Some("super-secret"));
+    assert_eq!(opts.db_name(), Some("analytics"));
+    let ssl_opts = opts.ssl_opts().expect("TLS is enabled");
+    assert_eq!(ssl_opts.root_certs().len(), 1);
+    assert!(ssl_opts.client_identity().is_some());
 }
 
 #[test]
-fn build_connect_options_disables_ssl_and_omits_empty_database() {
+fn mysql_opts_disable_ssl_and_omit_empty_database() {
     let params = ConnectionParams {
         host: "localhost".to_string(),
         port: 3306,
@@ -852,10 +850,11 @@ fn build_connect_options_disables_ssl_and_omits_empty_database() {
         },
         connect_timeout_secs: 4,
     };
-    let url = build_connect_options(&params).to_url_lossy().to_string();
-    assert!(url.contains("root:pw@localhost:3306"));
-    assert!(!url.contains("localhost:3306/"));
-    assert!(url.contains("ssl-mode=DISABLED") || url.contains("ssl-mode=disabled"));
+    let opts = mysql_opts(&params).expect("options build");
+    assert_eq!(opts.user(), Some("root"));
+    assert_eq!(opts.pass(), Some("pw"));
+    assert_eq!(opts.db_name(), None);
+    assert!(opts.ssl_opts().is_none());
 }
 
 #[tokio::test]
@@ -877,18 +876,53 @@ async fn create_pool_uses_injected_test_factory() {
     })
     .await
     .expect("test factory should return pool");
-    pool.close().await;
+    pool.disconnect().await.expect("pool disconnects");
+}
+
+fn closed_port_test_connection_input() -> TestConnectionInput {
+    TestConnectionInput {
+        port: common::silent_listener::closed_port(),
+        connect_timeout_secs: Some(1),
+        ..sample_test_connection_input()
+    }
 }
 
 #[tokio::test]
 async fn test_connection_impl_reports_connection_failures() {
-    let _guard = install_test_pool_factory(forced_pool_error);
-    let result = test_connection_impl(sample_test_connection_input()).await;
+    let result = test_connection_impl(closed_port_test_connection_input()).await;
     assert!(!result.success);
     assert!(result
         .error_message
         .expect("error should exist")
         .starts_with("Connection failed:"));
+}
+
+#[cfg(not(coverage))]
+#[tokio::test]
+async fn test_connection_impl_honours_the_connect_timeout() {
+    const TIMEOUT_DEADLINE: Duration = Duration::from_millis(1500);
+
+    let listener = common::silent_listener::SilentListener::start().await;
+    let input = TestConnectionInput {
+        port: listener.port,
+        connect_timeout_secs: Some(1),
+        ..sample_test_connection_input()
+    };
+    let started = std::time::Instant::now();
+    let result = test_connection_impl(input).await;
+
+    assert!(
+        started.elapsed() < TIMEOUT_DEADLINE,
+        "{:?}",
+        started.elapsed()
+    );
+    assert!(!result.success);
+    let error_message = result.error_message.expect("error should exist");
+    assert!(
+        error_message.starts_with("Connection failed:"),
+        "{error_message}"
+    );
+    assert!(error_message.contains("timed out"), "{error_message}");
 }
 
 // Testing a saved connection with an empty form password resolves the stored
@@ -1253,14 +1287,9 @@ async fn open_connection_ipc_omits_password_for_passwordless_profiles() {
     )
     .expect("save_connection IPC should succeed");
 
-    {
-        let mut guard = CAPTURED_POOL_URL
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        *guard = None;
-    }
+    reset_captured_pool_options();
 
-    let _pool_guard = install_test_pool_factory(capture_pool_url_success);
+    let _pool_guard = install_test_pool_factory(capture_pool_options_success);
     let result: OpenConnectionResultDto = invoke_tauri_command(
         &webview,
         "open_connection",
@@ -1272,22 +1301,13 @@ async fn open_connection_ipc_omits_password_for_passwordless_profiles() {
     )
     .expect("open_connection IPC should succeed for passwordless profiles");
 
-    let url = CAPTURED_POOL_URL
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .clone()
-        .expect("pool factory should capture the MySQL URL");
+    let opts = captured_pool_options();
 
     assert_eq!(result.server_version, "Unknown");
     assert!(!result.session_id.is_empty());
-    assert!(
-        url.contains("root@127.0.0.1:3306"),
-        "expected username and host in URL, got {url}"
-    );
-    assert!(
-        !url.contains("root:@127.0.0.1:3306"),
-        "passwordless profiles must omit the password marker, got {url}"
-    );
+    assert_eq!(opts.user(), Some("root"));
+    assert_eq!(opts.ip_or_hostname(), "127.0.0.1");
+    assert_eq!(opts.tcp_port(), 3306);
 }
 
 #[tokio::test]
@@ -1303,14 +1323,9 @@ async fn open_connection_ipc_does_not_set_password_option_for_passwordless_profi
     )
     .expect("save_connection IPC should succeed");
 
-    {
-        let mut guard = CAPTURED_POOL_OPTIONS_DEBUG
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        *guard = None;
-    }
+    reset_captured_pool_options();
 
-    let _pool_guard = install_test_pool_factory(capture_pool_options_debug_success);
+    let _pool_guard = install_test_pool_factory(capture_pool_options_success);
     let result: OpenConnectionResultDto = invoke_tauri_command(
         &webview,
         "open_connection",
@@ -1322,17 +1337,14 @@ async fn open_connection_ipc_does_not_set_password_option_for_passwordless_profi
     )
     .expect("open_connection IPC should succeed for passwordless profiles");
 
-    let options_debug = CAPTURED_POOL_OPTIONS_DEBUG
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .clone()
-        .expect("pool factory should capture MySQL options");
+    let opts = captured_pool_options();
 
     assert_eq!(result.server_version, "Unknown");
     assert!(!result.session_id.is_empty());
-    assert!(
-        options_debug.contains("password: None"),
-        "passwordless profiles must not set a password option, got {options_debug}"
+    assert_eq!(
+        opts.pass(),
+        None,
+        "passwordless profiles must not set a password option"
     );
 }
 
@@ -1775,7 +1787,6 @@ fn coverage_stub_run_function_is_callable() {
 
 #[tokio::test]
 async fn mysql_open_and_test_wrappers_work_via_ipc() {
-    let _guard = install_test_pool_factory(forced_pool_error);
-    let test_result = test_connection_impl(sample_test_connection_input()).await;
+    let test_result = test_connection_impl(closed_port_test_connection_input()).await;
     assert!(!test_result.success);
 }

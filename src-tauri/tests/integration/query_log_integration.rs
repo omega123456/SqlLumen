@@ -1,22 +1,27 @@
 //! Integration coverage for `mysql::query_log` (tracing helpers + row formatting).
 
 use crate::common::log_capture::LogCaptureGuard;
+#[cfg(not(coverage))]
 use crate::common::mock_mysql_server::{
     MockCell, MockColumnDef, MockMySqlServer, MockQueryResponse,
 };
+#[cfg(not(coverage))]
 use chrono::NaiveDate;
+#[cfg(not(coverage))]
 use opensrv_mysql::{ColumnFlags, ColumnType};
+#[cfg(not(coverage))]
+use sqllumen_lib::mysql::logged_query::{fetch_all_pooled, LoggedStatement};
 use sqllumen_lib::mysql::query_log;
-use sqlx::mysql::MySqlPoolOptions;
 
 #[tokio::test]
 async fn query_log_simple_emitters_run() {
     let _capture = LogCaptureGuard::start();
     query_log::log_outgoing_sql("SELECT 1");
     query_log::log_outgoing_sql_bound("SELECT ?", &["x".to_string()]);
-    query_log::log_sqlx_describe("DESCRIBE t");
+    query_log::log_mysql_async_result(1, Some(7));
 }
 
+#[cfg(not(coverage))]
 fn plain_column(name: &'static str, coltype: ColumnType) -> MockColumnDef {
     MockColumnDef {
         name,
@@ -25,9 +30,10 @@ fn plain_column(name: &'static str, coltype: ColumnType) -> MockColumnDef {
     }
 }
 
+#[cfg(not(coverage))]
 #[tokio::test]
 async fn query_log_rows_and_execute_hit_formatting_paths() {
-    let _capture = LogCaptureGuard::start();
+    let capture = LogCaptureGuard::start();
     let response = MockQueryResponse {
         query: "SELECT qlog_probe",
         columns: vec![
@@ -50,29 +56,25 @@ async fn query_log_rows_and_execute_hit_formatting_paths() {
     };
 
     let server = MockMySqlServer::start(response).await;
-    let url = format!("mysql://root@127.0.0.1:{}/?ssl-mode=DISABLED", server.port);
-    let pool = MySqlPoolOptions::new()
-        .max_connections(1)
-        .connect(&url)
-        .await
-        .expect("connect mock mysql");
+    let pool = crate::common::mock_session::mock_pool(server.port);
 
-    let rows = sqlx::query("SELECT qlog_probe")
-        .fetch_all(&pool)
+    let rows = fetch_all_pooled(&pool, LoggedStatement::text("SELECT qlog_probe"))
         .await
         .expect("fetch probe row");
 
-    query_log::log_mysql_rows(rows.as_slice());
+    query_log::log_mysql_async_rows(rows.as_slice());
+    let logs = capture.contents();
+    assert!(logs.contains("big_i=Some(-42)"), "{logs}");
+    assert!(logs.contains("dec_str=Some(\"99.10\")"), "{logs}");
+    assert!(
+        logs.contains("bad_txt=Some(\"\u{fffd}\u{fffd}\")"),
+        "{logs}"
+    );
 
-    let exec = sqlx::query("SELECT 1")
-        .execute(&pool)
-        .await
-        .expect("execute");
-    query_log::log_execute_result(&exec);
-
-    pool.close().await;
+    pool.disconnect().await.expect("pool disconnects");
 }
 
+#[cfg(not(coverage))]
 #[tokio::test]
 async fn query_log_formats_timestamp_columns_without_decode_errors() {
     let capture = LogCaptureGuard::start();
@@ -105,19 +107,13 @@ async fn query_log_formats_timestamp_columns_without_decode_errors() {
     };
 
     let server = MockMySqlServer::start(response).await;
-    let url = format!("mysql://root@127.0.0.1:{}/?ssl-mode=DISABLED", server.port);
-    let pool = MySqlPoolOptions::new()
-        .max_connections(1)
-        .connect(&url)
-        .await
-        .expect("connect mock mysql");
+    let pool = crate::common::mock_session::mock_pool(server.port);
 
-    let row = sqlx::query("SELECT temporal_probe")
-        .fetch_one(&pool)
+    let rows = fetch_all_pooled(&pool, LoggedStatement::text("SELECT temporal_probe"))
         .await
         .expect("fetch probe row");
 
-    query_log::log_mysql_row(&row);
+    query_log::log_mysql_async_rows(&rows);
 
     let logs = capture.contents();
     assert!(logs.contains("created_at=Some(\"2024-01-01 00:00:00\")"));
@@ -125,9 +121,10 @@ async fn query_log_formats_timestamp_columns_without_decode_errors() {
     assert!(!logs.contains("created_at=<decode_error"));
     assert!(!logs.contains("updated_at=<decode_error"));
 
-    pool.close().await;
+    pool.disconnect().await.expect("pool disconnects");
 }
 
+#[cfg(not(coverage))]
 #[tokio::test]
 async fn query_log_formats_decimal_columns_without_decode_errors() {
     let capture = LogCaptureGuard::start();
@@ -163,19 +160,13 @@ async fn query_log_formats_decimal_columns_without_decode_errors() {
     };
 
     let server = MockMySqlServer::start(response).await;
-    let url = format!("mysql://root@127.0.0.1:{}/?ssl-mode=DISABLED", server.port);
-    let pool = MySqlPoolOptions::new()
-        .max_connections(1)
-        .connect(&url)
-        .await
-        .expect("connect mock mysql");
+    let pool = crate::common::mock_session::mock_pool(server.port);
 
-    let row = sqlx::query("SELECT decimal_probe")
-        .fetch_one(&pool)
+    let rows = fetch_all_pooled(&pool, LoggedStatement::text("SELECT decimal_probe"))
         .await
         .expect("fetch probe row");
 
-    query_log::log_mysql_row(&row);
+    query_log::log_mysql_async_rows(&rows);
 
     let logs = capture.contents();
     assert!(logs.contains("consumption=Some(\"123.45\")"));
@@ -183,5 +174,5 @@ async fn query_log_formats_decimal_columns_without_decode_errors() {
     assert!(!logs.contains("consumption=<decode_error"));
     assert!(!logs.contains("cost=<decode_error"));
 
-    pool.close().await;
+    pool.disconnect().await.expect("pool disconnects");
 }

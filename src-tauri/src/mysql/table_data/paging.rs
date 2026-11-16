@@ -1,12 +1,6 @@
 use super::*;
 
 #[cfg(not(coverage))]
-pub(super) fn log_table_data_sql(sql: &str, params: &[serde_json::Value]) {
-    let binds: Vec<String> = params.iter().map(|value| value.to_string()).collect();
-    crate::mysql::query_log::log_outgoing_sql_bound(sql, &binds);
-}
-
-#[cfg(not(coverage))]
 const COLUMN_METADATA_SQL: &str =
     "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, \
                    COLUMN_DEFAULT, EXTRA \
@@ -46,33 +40,32 @@ struct MetadataRowsQuery<'a> {
 
 #[cfg(not(coverage))]
 async fn fetch_metadata_rows(
-    pool: &sqlx::MySqlPool,
+    pool: &BackgroundPool,
     query: MetadataRowsQuery<'_>,
-) -> Result<Vec<sqlx::mysql::MySqlRow>, String> {
-    log_table_data_sql(
-        query.sql,
-        &[
-            serde_json::Value::String(query.database.to_string()),
-            serde_json::Value::String(query.table.to_string()),
-        ],
-    );
-    let rows = sqlx::query(query.sql)
-        .bind(query.database)
-        .bind(query.table)
-        .fetch_all(pool)
+) -> Result<Vec<DecodedRow>, String> {
+    use crate::mysql::logged_query::fetch_decoded_pooled;
+
+    let values = vec![query.database.into(), query.table.into()];
+    fetch_decoded_pooled(pool, LoggedStatement::bound(query.sql, values))
         .await
-        .map_err(|error| format!("Failed to fetch {}: {error}", query.failure_label))?;
-    crate::mysql::query_log::log_mysql_rows(&rows);
-    Ok(rows)
+        .map_err(|error| format!("Failed to fetch {}: {error}", query.failure_label))
 }
 
 #[cfg(not(coverage))]
-fn column_meta_from_row(row: &sqlx::mysql::MySqlRow) -> TableDataColumnMeta {
+fn decode_text(row: &DecodedRow, column_index: usize) -> String {
+    row.optional_text(column_index)
+        .ok()
+        .flatten()
+        .unwrap_or_default()
+}
+
+#[cfg(not(coverage))]
+fn column_meta_from_row(row: &DecodedRow) -> TableDataColumnMeta {
     let data_type = decode_text(row, 1).to_uppercase();
     let column_type = decode_text(row, 2);
     let is_nullable = decode_text(row, 3) == "YES";
     let column_key = decode_text(row, 4);
-    let column_default = decode_optional_text(row, 5);
+    let column_default = row.optional_text(5).ok().flatten();
     let extra = decode_text(row, 6).to_lowercase();
     TableDataColumnMeta {
         name: decode_text(row, 0),
@@ -117,7 +110,7 @@ struct UniqueConstraintColumns {
 }
 
 #[cfg(not(coverage))]
-fn group_unique_constraints(rows: &[sqlx::mysql::MySqlRow]) -> Vec<UniqueConstraintColumns> {
+fn group_unique_constraints(rows: &[DecodedRow]) -> Vec<UniqueConstraintColumns> {
     let mut constraints: Vec<UniqueConstraintColumns> = Vec::new();
     for row in rows {
         let constraint_name = decode_text(row, 0);
@@ -158,7 +151,7 @@ fn first_not_null_unique_key(
 
 #[cfg(not(coverage))]
 pub async fn fetch_table_pk_impl(
-    pool: &sqlx::MySqlPool,
+    pool: &BackgroundPool,
     database: &str,
     table: &str,
 ) -> Result<TableKeyMetadata, String> {
@@ -255,30 +248,32 @@ struct CancellablePageFetch<'a> {
 
 #[cfg(not(coverage))]
 async fn fetch_cancellable_page_rows(
-    pool: &sqlx::MySqlPool,
+    pool: &BackgroundPool,
     fetch: CancellablePageFetch<'_>,
-) -> Result<Vec<sqlx::mysql::MySqlRow>, String> {
+) -> Result<Vec<DecodedRow>, String> {
+    use crate::mysql::logged_query::{fetch_decoded, fetch_first};
+
     let mut conn = pool
-        .acquire()
+        .checkout()
         .await
         .map_err(|error| format!("Failed to acquire connection: {error}"))?;
-    let thread_id: Option<u64> = sqlx::query_scalar("SELECT CONNECTION_ID()")
-        .fetch_one(&mut *conn)
+    let connection_id_row = fetch_first(&mut conn, LoggedStatement::text("SELECT CONNECTION_ID()"))
         .await
-        .ok();
-    if let Some(tid) = thread_id {
+        .ok()
+        .flatten();
+    let thread_id = connection_id_row
+        .as_ref()
+        .map(DecodedRow::from_row)
+        .and_then(|row| row.unsigned(0).ok());
+    if let Some(connection_thread_id) = thread_id {
         fetch
             .running_queries
             .write()
             .await
-            .insert(fetch.cancel_key.clone(), tid);
+            .insert(fetch.cancel_key.clone(), connection_thread_id);
     }
 
-    let mut data_query = sqlx::query(sqlx::AssertSqlSafe(fetch.sql));
-    for param in fetch.params {
-        data_query = bind_json_value(data_query, param);
-    }
-    let data_result = data_query.fetch_all(&mut *conn).await;
+    let data_result = fetch_decoded(&mut conn, json_bound_statement(fetch.sql, fetch.params)).await;
 
     if thread_id.is_some() {
         fetch
@@ -288,30 +283,27 @@ async fn fetch_cancellable_page_rows(
             .remove(&fetch.cancel_key);
     }
 
-    let data_rows = data_result.map_err(|error| format!("Data query failed: {error}"))?;
-    crate::mysql::query_log::log_mysql_rows(&data_rows);
-    Ok(data_rows)
+    data_result.map_err(|error| format!("Data query failed: {error}"))
 }
 
 #[cfg(not(coverage))]
 fn serialize_page_row(
-    row: &sqlx::mysql::MySqlRow,
+    row: &DecodedRow,
     columns: &[TableDataColumnMeta],
     primary_key_columns: &std::collections::HashSet<&str>,
 ) -> Vec<serde_json::Value> {
-    let row_col_count = row.columns().len();
     columns
         .iter()
         .enumerate()
         .map(|(column_index, col_meta)| {
-            if column_index >= row_col_count {
+            let Some(cell) = row.cells().get(column_index) else {
                 return serde_json::Value::Null;
-            }
+            };
             let encoding = CellEncoding {
                 is_binary: col_meta.is_binary,
                 is_primary_key: primary_key_columns.contains(col_meta.name.as_str()),
             };
-            serialize_table_value(row, column_index, encoding)
+            serialize_table_value(cell, encoding)
         })
         .collect()
 }
@@ -345,7 +337,6 @@ pub async fn fetch_table_data_impl(
     let data_sql = format!(
         "SELECT {projection} FROM {safe_db}.{safe_table}{where_sql}{order_sql} LIMIT {page_size} OFFSET {offset}"
     );
-    log_table_data_sql(&data_sql, &filter_clause.params);
 
     let cancel_key = (context.connection_id.to_string(), query.tab_id.clone());
     let sql = data_sql.as_str();

@@ -1,8 +1,12 @@
 use crate::commands::query_history_bridge::resolve_connection_context;
 use crate::db::history::NewHistoryEntry;
+use crate::mysql::cell_values::DecodedRow;
+use crate::mysql::logged_query::{
+    execute_pooled, fetch_decoded_pooled, fetch_first_decoded_pooled, LoggedStatement,
+};
+use crate::mysql::pool::BackgroundPool;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
-use sqlx::Row;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -39,6 +43,33 @@ const RDS_KILL_PROCEDURE_CHECK_SQL: &str = "SELECT ROUTINE_NAME \
       AND ROUTINE_TYPE = 'PROCEDURE' \
     LIMIT 1";
 
+fn text_or_empty(row: &DecodedRow, column_name: &str) -> String {
+    row.optional_text(column_name)
+        .ok()
+        .flatten()
+        .unwrap_or_default()
+}
+
+fn optional_text_or_none(row: &DecodedRow, column_name: &str) -> Option<String> {
+    row.optional_text(column_name).ok().flatten()
+}
+
+fn process_row(row: &DecodedRow) -> Result<ProcessRow, String> {
+    let id = row
+        .unsigned("Id")
+        .map_err(|error| format!("Failed to read Id column: {error}"))?;
+    Ok(ProcessRow {
+        id,
+        user: text_or_empty(row, "User"),
+        host: text_or_empty(row, "Host"),
+        db: optional_text_or_none(row, "db"),
+        command: text_or_empty(row, "Command"),
+        time: row.signed("Time").unwrap_or(0),
+        state: optional_text_or_none(row, "State"),
+        info: optional_text_or_none(row, "Info"),
+    })
+}
+
 pub async fn get_processlist_impl(
     state: &AppState,
     session_id: &str,
@@ -48,42 +79,13 @@ pub async fn get_processlist_impl(
         .get_pool(session_id)
         .ok_or_else(|| format!("Connection '{session_id}' not found"))?;
 
-    let sql = "SHOW FULL PROCESSLIST";
-    crate::mysql::query_log::log_outgoing_sql(sql);
-    let rows = sqlx::raw_sql(sql)
-        .fetch_all(&pool)
+    let rows = fetch_decoded_pooled(&pool, LoggedStatement::text("SHOW FULL PROCESSLIST"))
         .await
         .map_err(|error| format!("Failed to fetch process list: {error}"))?;
-    crate::mysql::query_log::log_mysql_rows(&rows);
 
     let mut result = Vec::with_capacity(rows.len());
-
-    let get_string =
-        |row: &sqlx::mysql::MySqlRow, col: &str| -> String { row.try_get(col).unwrap_or_default() };
-    let get_opt_string = |row: &sqlx::mysql::MySqlRow, col: &str| -> Option<String> {
-        row.try_get(col).unwrap_or(None)
-    };
-
     for row in &rows {
-        let id: u64 = row
-            .try_get::<u64, _>("Id")
-            .or_else(|_| row.try_get::<i64, _>("Id").map(|value| value as u64))
-            .map_err(|error| format!("Failed to read Id column: {error}"))?;
-        let time: i64 = row
-            .try_get::<i64, _>("Time")
-            .or_else(|_| row.try_get::<i32, _>("Time").map(|value| value as i64))
-            .unwrap_or(0);
-
-        result.push(ProcessRow {
-            id,
-            user: get_string(row, "User"),
-            host: get_string(row, "Host"),
-            db: get_opt_string(row, "db"),
-            command: get_string(row, "Command"),
-            time,
-            state: get_opt_string(row, "State"),
-            info: get_opt_string(row, "Info"),
-        });
+        result.push(process_row(row)?);
     }
 
     Ok(result)
@@ -102,41 +104,28 @@ fn kill_query_sql(id: u64, has_rds_kill: bool) -> String {
     if has_rds_kill {
         return format!("CALL mysql.rds_kill({id})");
     }
-    format!("KILL QUERY {id}")
+    crate::mysql::pool::kill_query_sql(id)
 }
 
-async fn detect_rds_kill(pool: &sqlx::MySqlPool) -> bool {
-    crate::mysql::query_log::log_outgoing_sql(RDS_KILL_PROCEDURE_CHECK_SQL);
-    match sqlx::query(RDS_KILL_PROCEDURE_CHECK_SQL)
-        .fetch_optional(pool)
-        .await
-    {
-        Ok(Some(row)) => {
-            crate::mysql::query_log::log_mysql_row(&row);
-            true
-        }
-        Ok(None) => false,
+async fn detect_rds_kill(pool: &BackgroundPool) -> bool {
+    let statement = LoggedStatement::text(RDS_KILL_PROCEDURE_CHECK_SQL);
+    match fetch_first_decoded_pooled(pool, statement).await {
+        Ok(first_row) => first_row.is_some(),
         Err(error) => {
-            crate::mysql::query_log::log_execute_error(&error);
             tracing::warn!(%error, "Failed to check for mysql.rds_kill");
             false
         }
     }
 }
 
-async fn execute_kill(pool: &sqlx::MySqlPool, id: u64, sql: &str) -> KillResult {
-    crate::mysql::query_log::log_outgoing_sql(sql);
-    match sqlx::query(sqlx::AssertSqlSafe(sql)).execute(pool).await {
-        Ok(result) => {
-            crate::mysql::query_log::log_execute_result(&result);
-            KillResult {
-                id,
-                success: true,
-                error: None,
-            }
-        }
+async fn execute_kill(pool: &BackgroundPool, id: u64, sql: &str) -> KillResult {
+    match execute_pooled(pool, LoggedStatement::text(sql)).await {
+        Ok(_) => KillResult {
+            id,
+            success: true,
+            error: None,
+        },
         Err(error) => {
-            crate::mysql::query_log::log_execute_error(&error);
             tracing::warn!(id, error = %error, "Failed to kill query");
             KillResult {
                 id,

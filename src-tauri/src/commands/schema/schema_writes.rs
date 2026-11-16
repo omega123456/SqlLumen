@@ -2,12 +2,12 @@ use super::*;
 
 #[cfg(not(coverage))]
 pub(super) async fn execute_schema_statement(
-    pool: &sqlx::MySqlPool,
+    pool: &BackgroundPool,
     sql: &str,
-) -> Result<(), sqlx::Error> {
-    query_log::log_outgoing_sql(sql);
-    let result = sqlx::query(sqlx::AssertSqlSafe(sql)).execute(pool).await?;
-    query_log::log_execute_result(&result);
+) -> Result<(), mysql_async::Error> {
+    use crate::mysql::logged_query::{execute_pooled, LoggedStatement};
+
+    execute_pooled(pool, LoggedStatement::text(sql)).await?;
     Ok(())
 }
 

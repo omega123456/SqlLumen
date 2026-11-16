@@ -1,4 +1,8 @@
 use super::*;
+#[cfg(not(coverage))]
+use crate::mysql::cell_values::cell_json;
+#[cfg(not(coverage))]
+use crate::mysql::logged_query::fetch_decoded_pooled;
 
 #[cfg(not(coverage))]
 pub(super) fn sql_export_table_name(options: &ExportTableOptions) -> &str {
@@ -43,8 +47,7 @@ impl Drop for TempFileGuard {
 }
 
 #[cfg(not(coverage))]
-type ExportRowStream<'a> =
-    futures::stream::BoxStream<'a, Result<sqlx::mysql::MySqlRow, sqlx::Error>>;
+type ExportRowStream<'a> = crate::mysql::logged_query::LoggedRows<'a>;
 
 #[cfg(not(coverage))]
 type ExportFileWriter = std::io::BufWriter<std::fs::File>;
@@ -57,12 +60,8 @@ struct ExportQuery {
 
 #[cfg(not(coverage))]
 impl ExportQuery {
-    fn bound(&self) -> sqlx::query::Query<'_, sqlx::MySql, sqlx::mysql::MySqlArguments> {
-        let mut query = sqlx::query(sqlx::AssertSqlSafe(self.sql.as_str()));
-        for param in &self.params {
-            query = bind_json_value(query, param);
-        }
-        query
+    fn statement(&self) -> LoggedStatement<'_> {
+        json_bound_statement(&self.sql, &self.params)
     }
 }
 
@@ -90,7 +89,6 @@ async fn build_export_query(
     let order_sql = order_by_sql(options.sort.as_ref())?;
     let limit_sql = export_limit_sql(options);
     let sql = format!("SELECT * FROM {safe_db}.{safe_table}{where_sql}{order_sql}{limit_sql}");
-    log_table_data_sql(&sql, &filter_clause.params);
     Ok(ExportQuery {
         sql,
         params: filter_clause.params,
@@ -98,18 +96,16 @@ async fn build_export_query(
 }
 
 #[cfg(not(coverage))]
-fn row_column_names(row: &sqlx::mysql::MySqlRow) -> Vec<String> {
+fn row_column_names(row: &DecodedRow) -> Vec<String> {
     row.columns()
         .iter()
-        .map(|column| column.name().to_string())
+        .map(|column| column.name_str().into_owned())
         .collect()
 }
 
 #[cfg(not(coverage))]
-fn serialized_export_row(row: &sqlx::mysql::MySqlRow) -> Vec<serde_json::Value> {
-    (0..row.columns().len())
-        .map(|column_index| serialize_export_value(row, column_index))
-        .collect()
+fn serialized_export_row(row: &DecodedRow) -> Vec<serde_json::Value> {
+    row.cells().iter().map(cell_json).collect()
 }
 
 #[cfg(not(coverage))]
@@ -118,12 +114,9 @@ async fn export_xlsx(
     query: &ExportQuery,
     options: &ExportTableOptions,
 ) -> Result<(), String> {
-    let rows = query
-        .bound()
-        .fetch_all(context.pool)
+    let rows = fetch_decoded_pooled(context.pool, query.statement())
         .await
         .map_err(|error| format!("Export query failed: {error}"))?;
-    crate::mysql::query_log::log_mysql_rows(&rows);
 
     let columns = rows.first().map(row_column_names).unwrap_or_default();
     let serialized_rows: Vec<Vec<serde_json::Value>> =
@@ -139,19 +132,11 @@ async fn export_xlsx(
 }
 
 #[cfg(not(coverage))]
-async fn next_export_row(
-    stream: &mut ExportRowStream<'_>,
-) -> Result<Option<sqlx::mysql::MySqlRow>, String> {
-    use futures::TryStreamExt;
-
-    let row = stream
-        .try_next()
+async fn next_export_row(stream: &mut ExportRowStream<'_>) -> Result<Option<DecodedRow>, String> {
+    stream
+        .next_decoded()
         .await
-        .map_err(|error| format!("Export query failed: {error}"))?;
-    if let Some(row) = &row {
-        crate::mysql::query_log::log_mysql_row(row);
-    }
-    Ok(row)
+        .map_err(|error| format!("Export query failed: {error}"))
 }
 
 #[cfg(not(coverage))]
@@ -165,7 +150,7 @@ fn write_csv_record(
 }
 
 #[cfg(not(coverage))]
-fn csv_export_record(row: &sqlx::mysql::MySqlRow) -> Vec<String> {
+fn csv_export_record(row: &DecodedRow) -> Vec<String> {
     serialized_export_row(row)
         .iter()
         .map(crate::export::csv_writer::csv_field)
@@ -199,7 +184,7 @@ async fn stream_csv_export(
 
 #[cfg(not(coverage))]
 fn json_export_object(
-    row: &sqlx::mysql::MySqlRow,
+    row: &DecodedRow,
     columns: &[String],
 ) -> serde_json::Map<String, serde_json::Value> {
     let mut object = serde_json::Map::new();
@@ -210,11 +195,11 @@ fn json_export_object(
 }
 
 #[cfg(not(coverage))]
-fn export_value_or_null(row: &sqlx::mysql::MySqlRow, column_index: usize) -> serde_json::Value {
-    if column_index >= row.columns().len() {
-        return serde_json::Value::Null;
-    }
-    serialize_export_value(row, column_index)
+fn export_value_or_null(row: &DecodedRow, column_index: usize) -> serde_json::Value {
+    row.cells()
+        .get(column_index)
+        .map(cell_json)
+        .unwrap_or(serde_json::Value::Null)
 }
 
 #[cfg(not(coverage))]
@@ -302,19 +287,37 @@ async fn stream_export_to_temp_file(
     query: &ExportQuery,
     export: StreamedExport<'_>,
 ) -> Result<(), String> {
-    let mut stream = query.bound().fetch(context.pool);
+    let mut conn = context
+        .pool
+        .checkout()
+        .await
+        .map_err(|error| format!("Export query failed: {error}"))?;
+    let mut stream = crate::mysql::logged_query::stream(&mut conn, query.statement())
+        .await
+        .map_err(|error| format!("Export query failed: {error}"))?;
     let file = std::fs::File::create(export.temp_path)
         .map_err(|error| format!("Failed to create file: {error}"))?;
     let writer = std::io::BufWriter::new(file);
 
+    let written = write_streamed_export(&mut stream, writer, &export).await;
+    stream.finish();
+    written
+}
+
+#[cfg(not(coverage))]
+async fn write_streamed_export(
+    stream: &mut ExportRowStream<'_>,
+    writer: ExportFileWriter,
+    export: &StreamedExport<'_>,
+) -> Result<(), String> {
     match export.format {
         crate::export::ExportFormat::Csv => {
-            stream_csv_export(&mut stream, writer, export.options.include_headers).await
+            stream_csv_export(stream, writer, export.options.include_headers).await
         }
-        crate::export::ExportFormat::Json => stream_json_export(&mut stream, writer).await,
+        crate::export::ExportFormat::Json => stream_json_export(stream, writer).await,
         crate::export::ExportFormat::SqlInsert => {
             let table_name = sql_export_table_name(export.options);
-            stream_sql_insert_export(&mut stream, writer, table_name).await
+            stream_sql_insert_export(stream, writer, table_name).await
         }
         _ => Err("Unexpected format for streaming export".to_string()),
     }

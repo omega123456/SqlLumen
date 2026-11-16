@@ -4,7 +4,7 @@
 //! user cancel, and execute / re-execute view specs.
 //!
 //! Omitted from `cargo sqllumen-llvm-cov`, like the other mock-server suites:
-//! instrumented builds hit sqlx pool-acquire timeouts against the mock.
+//! instrumented builds replace the database-executing functions with coverage stubs.
 
 #![cfg(not(coverage))]
 

@@ -22,7 +22,7 @@ pub(super) struct PartialRebuildJob {
     tables: Vec<(String, String)>,
     db: std::sync::Arc<Mutex<rusqlite::Connection>>,
     http_client: reqwest::Client,
-    pool: sqlx::MySqlPool,
+    pool: crate::mysql::pool::BackgroundPool,
 }
 
 #[cfg(not(coverage))]

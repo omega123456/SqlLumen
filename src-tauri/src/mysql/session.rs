@@ -8,6 +8,8 @@ use crate::state::AppState;
 pub const QUEUED_RUN_CANCELLED_MESSAGE: &str =
     "Query cancelled while waiting for the editor session";
 
+pub const SESSION_DATABASE_WAIT: std::time::Duration = std::time::Duration::from_millis(250);
+
 pub struct EditorSession {
     pub conn: mysql_async::Conn,
     pub thread_id: u64,
@@ -124,19 +126,26 @@ pub async fn acquire(state: &AppState, connection_id: &str) -> Result<SessionGua
             .get_connection_params(connection_id)
             .ok_or_else(|| format!("Connection '{connection_id}' not found in registry"))?;
         let mut conn = crate::mysql::multi_result::build_connection(&params).await?;
-
-        let sql = "SELECT CONNECTION_ID()";
-        crate::mysql::query_log::log_outgoing_sql(sql);
-        let thread_id: u64 = conn
-            .query_first::<u64, _>(sql)
-            .await
-            .map_err(|error| format!("Failed to get connection ID: {error}"))?
-            .ok_or_else(|| "CONNECTION_ID() returned NULL".to_string())?;
-
+        let thread_id = read_connection_id(&mut conn).await?;
         *guard = Some(EditorSession { conn, thread_id });
     }
 
     Ok(guard)
+}
+
+#[cfg(not(coverage))]
+async fn read_connection_id(conn: &mut mysql_async::Conn) -> Result<u64, String> {
+    use crate::mysql::logged_query::{fetch_first, LoggedStatement};
+
+    let first_row = fetch_first(conn, LoggedStatement::text("SELECT CONNECTION_ID()"))
+        .await
+        .map_err(|error| format!("Failed to get connection ID: {error}"))?;
+    let Some(row) = first_row else {
+        return Err("CONNECTION_ID() returned NULL".to_string());
+    };
+    crate::mysql::cell_values::DecodedRow::from_row(&row)
+        .unsigned(0)
+        .map_err(|error| format!("Failed to get connection ID: {error}"))
 }
 
 #[cfg(not(coverage))]
@@ -184,12 +193,40 @@ async fn acquire_unless_cancelled(
 }
 
 #[cfg(not(coverage))]
+pub async fn existing_session_database(state: &AppState, connection_id: &str) -> Option<String> {
+    use crate::mysql::query_executor::RunDatabase;
+
+    let slot = existing_slot(state, connection_id)?;
+    let Ok(mut guard) = tokio::time::timeout(SESSION_DATABASE_WAIT, slot.lock_owned()).await else {
+        tracing::debug!(
+            connection_id,
+            "editor session busy; using the registry default database"
+        );
+        return None;
+    };
+    let session = guard.as_mut()?;
+    let read = crate::mysql::multi_result::read_session_database(&mut session.conn).await;
+    match read {
+        Ok(RunDatabase::Named(database)) => Some(database),
+        Ok(RunDatabase::NoDatabase | RunDatabase::NotCaptured) => None,
+        Err(error) => {
+            tracing::warn!(
+                connection_id,
+                %error,
+                "reading the editor session database failed; using the registry default"
+            );
+            None
+        }
+    }
+}
+
+#[cfg(not(coverage))]
 pub async fn use_database(
     state: &AppState,
     connection_id: &str,
     database: &str,
 ) -> Result<(), String> {
-    use mysql_async::prelude::Queryable;
+    use crate::mysql::logged_query::{execute, LoggedStatement};
 
     let Some(slot) = existing_slot(state, connection_id) else {
         return Ok(());
@@ -203,9 +240,7 @@ pub async fn use_database(
         "USE {}",
         crate::mysql::schema_queries::safe_identifier(database)?
     );
-    crate::mysql::query_log::log_outgoing_sql(&sql);
-    if let Err(error) = session.conn.query_drop(&sql).await {
-        crate::mysql::query_log::log_mysql_async_error(&error);
+    if let Err(error) = execute(&mut session.conn, LoggedStatement::text(&sql)).await {
         if error.is_fatal() {
             tracing::warn!(
                 connection_id,

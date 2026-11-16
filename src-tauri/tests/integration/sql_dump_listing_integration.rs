@@ -1,7 +1,9 @@
 //! `list_exportable_objects_impl` against the in-process mock MySQL server.
 
 use opensrv_mysql::ErrorKind;
-use sqllumen_lib::commands::sql_dump::{list_exportable_objects_impl, DumpObjectType};
+use sqllumen_lib::commands::sql_dump::list_exportable_objects_impl;
+#[cfg(not(coverage))]
+use sqllumen_lib::commands::sql_dump::DumpObjectType;
 
 use crate::common;
 use crate::common::mock_mysql_server::{MockCell, MockMySqlServer, MockQueryStep};
@@ -38,6 +40,7 @@ fn exportable_objects_step() -> MockQueryStep {
     )
 }
 
+#[cfg(not(coverage))]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn listing_groups_tables_and_views_by_database() {
     let server = MockMySqlServer::start_script(vec![exportable_objects_step()]).await;

@@ -2,7 +2,7 @@
 //!
 //! These tests use `futures::stream::iter` with `Vec<SqlDumpValue>` rows
 //! and `std::io::Cursor<Vec<u8>>` as the writer, avoiding any need for
-//! real MySQL connections or `MySqlRow` construction.
+//! real MySQL connections or driver row construction.
 
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -32,10 +32,10 @@ fn make_progress(job_id: &str) -> Arc<RwLock<HashMap<String, DumpJobProgress>>> 
     Arc::new(RwLock::new(map))
 }
 
-/// Build a stream of `Result<Vec<SqlDumpValue>, sqlx::Error>` from an iterator of rows.
+/// Build a stream of `Result<Vec<SqlDumpValue>, mysql_async::Error>` from an iterator of rows.
 fn row_stream(
     rows: Vec<Vec<SqlDumpValue>>,
-) -> impl futures::TryStream<Ok = Vec<SqlDumpValue>, Error = sqlx::Error> + Unpin {
+) -> impl futures::TryStream<Ok = Vec<SqlDumpValue>, Error = mysql_async::Error> + Unpin {
     futures::stream::iter(rows.into_iter().map(Ok))
 }
 
@@ -358,7 +358,7 @@ async fn mid_stream_error_propagates() {
     let columns = vec!["id".to_string(), "name".to_string()];
 
     // 1500 Ok rows followed by one Err — guarantees at least one full batch is flushed
-    let mut items: Vec<Result<Vec<SqlDumpValue>, sqlx::Error>> = (0..1500)
+    let mut items: Vec<Result<Vec<SqlDumpValue>, mysql_async::Error>> = (0..1500)
         .map(|i| {
             Ok(vec![
                 SqlDumpValue::Int(i),
@@ -366,7 +366,7 @@ async fn mid_stream_error_propagates() {
             ])
         })
         .collect();
-    items.push(Err(sqlx::Error::Protocol("connection lost".into())));
+    items.push(Err(mysql_async::Error::Other("connection lost".into())));
 
     let stream = futures::stream::iter(items);
 

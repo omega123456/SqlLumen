@@ -1345,17 +1345,10 @@ mod coverage_stubs {
         reexecute_single_result_impl,
     };
     use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
-    use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
     use tokio_util::sync::CancellationToken;
 
     fn register(state: &AppState) {
-        let pool = MySqlPoolOptions::new().connect_lazy_with(
-            MySqlConnectOptions::new()
-                .host("127.0.0.1")
-                .port(13306)
-                .username("dummy")
-                .password("dummy"),
-        );
+        let pool = crate::common::mock_session::unreachable_pool();
         state.registry.insert(
             CONN.to_string(),
             RegistryEntry {

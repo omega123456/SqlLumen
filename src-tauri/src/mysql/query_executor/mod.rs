@@ -10,8 +10,6 @@ use crate::mysql::sql_chars::{
 };
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
-#[cfg(not(coverage))]
-use sqlx::Row;
 use std::collections::HashMap;
 use std::sync::Arc;
 #[cfg(coverage)]

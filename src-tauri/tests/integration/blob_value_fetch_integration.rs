@@ -35,7 +35,7 @@ mod fetch_blob_value_against_mock {
         .await
         .expect("fetch should succeed");
 
-        pool.close().await;
+        pool.disconnect().await.expect("mock pool disconnects");
 
         assert_eq!(resp.base64, Some(B64.encode(raw)));
         assert_eq!(resp.byte_length, raw.len() as u64);
@@ -60,7 +60,7 @@ mod fetch_blob_value_against_mock {
         .await
         .expect("fetch should succeed");
 
-        pool.close().await;
+        pool.disconnect().await.expect("mock pool disconnects");
 
         assert_eq!(resp.base64, None);
         assert_eq!(resp.byte_length, 0);
@@ -88,7 +88,7 @@ mod fetch_blob_value_against_mock {
         .await
         .expect("fetch should succeed");
 
-        pool.close().await;
+        pool.disconnect().await.expect("mock pool disconnects");
 
         assert!(resp.too_large);
         assert_eq!(resp.base64, None);
@@ -119,7 +119,7 @@ mod fetch_blob_value_against_mock {
         .await
         .expect("fetch should succeed");
 
-        pool.close().await;
+        pool.disconnect().await.expect("mock pool disconnects");
 
         assert!(!resp.too_large);
         assert_eq!(resp.base64, Some(B64.encode(raw)));
@@ -143,7 +143,7 @@ mod fetch_blob_value_against_mock {
         .await
         .expect_err("empty pk pairs should error");
 
-        pool.close().await;
+        pool.disconnect().await.expect("mock pool disconnects");
 
         assert!(err.to_lowercase().contains("primary key"));
     }

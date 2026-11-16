@@ -1,31 +1,17 @@
 use super::*;
 
-pub(super) type ColumnTypeAndFlags = (
-    mysql_async::consts::ColumnType,
-    mysql_async::consts::ColumnFlags,
-);
-
-pub(super) struct ResultColumns {
-    pub(super) metas: Vec<crate::mysql::query_executor::ColumnMeta>,
-    pub(super) types: Vec<ColumnTypeAndFlags>,
-}
-
-pub(super) fn result_columns(columns_ref: &[mysql_async::Column]) -> ResultColumns {
+pub(super) fn column_metas(
+    columns_ref: &[mysql_async::Column],
+) -> Vec<crate::mysql::query_executor::ColumnMeta> {
     use crate::mysql::query_executor::ColumnMeta;
 
-    ResultColumns {
-        metas: columns_ref
-            .iter()
-            .map(|column| ColumnMeta {
-                name: column.name_str().to_string(),
-                data_type: column_type_display_name(column.column_type(), column.flags()),
-            })
-            .collect(),
-        types: columns_ref
-            .iter()
-            .map(|column| (column.column_type(), column.flags()))
-            .collect(),
-    }
+    columns_ref
+        .iter()
+        .map(|column| ColumnMeta {
+            name: column.name_str().to_string(),
+            data_type: crate::mysql::cell_values::column_type_display_name(column),
+        })
+        .collect()
 }
 
 pub(super) async fn stop_rows_after_ceiling<P>(
@@ -83,12 +69,12 @@ pub(super) async fn execute_single_select_statement(
         .map_err(|error| map_mysql_error(&error))?;
 
     let execution_time_ms = start.elapsed().as_millis() as u64;
-    let columns = result_columns(result.columns_ref());
+    let column_metadata = column_metas(result.columns_ref());
     let limits = RowBufferLimits {
         capacity_hint: row_capacity_hint(auto_limit_applied, row_limit_used),
         ceiling: context.ceiling,
     };
-    let decoded = stream_serialized_rows(&mut result, &columns.types, limits).await?;
+    let decoded = stream_serialized_rows(&mut result, limits).await?;
     let late_kill_possible =
         decoded.overflowed && stop_rows_after_ceiling(&mut result, context).await;
 
@@ -100,7 +86,7 @@ pub(super) async fn execute_single_select_statement(
     let total_time_ms = start.elapsed().as_millis() as u64;
     let mut stored = StoredResult::new(StoredResultParts {
         query_id: uuid::Uuid::new_v4().to_string(),
-        columns: columns.metas,
+        columns: column_metadata,
         rows: Arc::new(decoded.rows),
         execution_time_ms,
         total_time_ms,
@@ -231,17 +217,17 @@ where
         drain_result_set(result).await;
         return Ok(CallResultSet::Affected(affected));
     }
-    let columns = result_columns(columns_ref);
+    let column_metadata = column_metas(columns_ref);
     let limits = RowBufferLimits {
         capacity_hint: 0,
         ceiling: call.context.ceiling,
     };
-    let decoded = stream_serialized_rows(result, &columns.types, limits).await?;
+    let decoded = stream_serialized_rows(result, limits).await?;
     if decoded.overflowed {
         drain_overflowed_call_set(result, call.context).await?;
     }
     let rows = CallRows {
-        columns: columns.metas,
+        columns: column_metadata,
         rows: decoded.rows,
         affected_rows: 0,
         truncated: decoded.overflowed,

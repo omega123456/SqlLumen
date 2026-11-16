@@ -1,4 +1,3 @@
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 #[cfg(not(coverage))]
 use std::sync::Arc;
 
@@ -12,7 +11,6 @@ mod connection;
 mod row_stream;
 #[cfg(not(coverage))]
 mod statements;
-mod value_serialization;
 #[cfg(not(coverage))]
 pub use batch::*;
 #[cfg(not(coverage))]
@@ -23,24 +21,6 @@ pub use connection::*;
 pub(crate) use row_stream::*;
 #[cfg(not(coverage))]
 use statements::*;
-pub use value_serialization::*;
-
-pub const JS_SAFE_INTEGER_MAX: i64 = 9_007_199_254_740_991;
-
-pub fn json_from_i64(number: i64) -> serde_json::Value {
-    let is_safe_integer = (-JS_SAFE_INTEGER_MAX..=JS_SAFE_INTEGER_MAX).contains(&number);
-    if is_safe_integer {
-        return serde_json::Value::from(number);
-    }
-    serde_json::Value::String(number.to_string())
-}
-
-pub fn json_from_u64(number: u64) -> serde_json::Value {
-    if number > JS_SAFE_INTEGER_MAX as u64 {
-        return serde_json::Value::String(number.to_string());
-    }
-    serde_json::Value::from(number)
-}
 
 pub fn is_call_statement(sql: &str) -> bool {
     let stripped = crate::mysql::query_executor::strip_non_executable_comments(sql);

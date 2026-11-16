@@ -1,7 +1,7 @@
 //! Shared helpers for the binary/BLOB integration test suites.
 //!
 //! These build mock MySQL query steps for the `len`/`val` blob-fetch shape and
-//! connect a `sqlx` pool to an in-process [`MockMySqlServer`]. They are gated on
+//! connect a background pool to an in-process [`MockMySqlServer`]. They are gated on
 //! `#[cfg(not(coverage))]` to match the suites that consume them, which exercise
 //! the in-process mock server only outside coverage instrumentation.
 
@@ -9,18 +9,17 @@
 
 use crate::common::mock_mysql_server::{MockCell, MockColumnDef, MockMySqlServer, MockQueryStep};
 use opensrv_mysql::{ColumnFlags, ColumnType};
-use sqllumen_lib::mysql::pool::set_test_pool_factory;
-use sqlx::mysql::MySqlPoolOptions;
+use sqllumen_lib::mysql::pool::{set_test_pool_factory, BackgroundPool};
 
-/// Connect a single-connection `sqlx` pool to the mock server, clearing any
-/// installed test pool factory first so the real connector is used.
-pub async fn connect_mock_pool(server: &MockMySqlServer) -> sqlx::MySqlPool {
+use crate::common::mock_session::{mock_connection_input, mock_pool_with_params};
+
+/// Connect a background pool to the mock server with `app_db` as its default
+/// database, clearing any installed test pool factory first.
+pub async fn connect_mock_pool(server: &MockMySqlServer) -> BackgroundPool {
     set_test_pool_factory(None);
-    MySqlPoolOptions::new()
-        .max_connections(1)
-        .connect(&format!("mysql://root@127.0.0.1:{}/app_db", server.port))
-        .await
-        .expect("should connect to mock mysql server")
+    let mut params = mock_connection_input(server.port);
+    params.default_database = Some("app_db".to_string());
+    mock_pool_with_params(&params)
 }
 
 /// Build the `OCTET_LENGTH(...) AS len` query step returning a single cell.

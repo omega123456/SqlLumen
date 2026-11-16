@@ -18,8 +18,6 @@ use sqllumen_lib::mysql::table_data_cache::TableDataCache;
 #[cfg(coverage)]
 use sqllumen_lib::state::AppState;
 #[cfg(coverage)]
-use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
-#[cfg(coverage)]
 use std::sync::{Arc, Mutex};
 
 #[cfg(coverage)]
@@ -67,13 +65,8 @@ fn test_state() -> AppState {
 }
 
 #[cfg(coverage)]
-fn dummy_lazy_pool() -> sqlx::MySqlPool {
-    let opts = MySqlConnectOptions::new()
-        .host("127.0.0.1")
-        .port(13306)
-        .username("dummy")
-        .password("dummy");
-    MySqlPoolOptions::new().connect_lazy_with(opts)
+fn dummy_lazy_pool() -> sqllumen_lib::mysql::pool::BackgroundPool {
+    crate::common::mock_session::unreachable_pool()
 }
 
 #[cfg(coverage)]

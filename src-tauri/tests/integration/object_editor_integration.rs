@@ -14,16 +14,10 @@ use sqllumen_lib::commands::object_editor::{
 };
 use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
 use sqllumen_lib::state::AppState;
-use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
 use tokio_util::sync::CancellationToken;
 
-fn dummy_lazy_pool() -> sqlx::MySqlPool {
-    let opts = MySqlConnectOptions::new()
-        .host("127.0.0.1")
-        .port(13306)
-        .username("dummy")
-        .password("dummy");
-    MySqlPoolOptions::new().connect_lazy_with(opts)
+fn dummy_lazy_pool() -> sqllumen_lib::mysql::pool::BackgroundPool {
+    crate::common::mock_session::unreachable_pool()
 }
 
 fn dummy_stored_params() -> StoredConnectionParams {
@@ -799,7 +793,6 @@ mod mock_success_paths {
         MockCell, MockColumnDef, MockMySqlServer, MockQueryStep,
     };
     use opensrv_mysql::{ColumnFlags, ColumnType};
-    use sqlx::mysql::MySqlPoolOptions;
 
     /// Start mock server + register a real pool on `state` returning the connection id.
     async fn setup_mock_pool_with_steps(
@@ -808,12 +801,7 @@ mod mock_success_paths {
         steps: Vec<MockQueryStep>,
     ) -> MockMySqlServer {
         let server = MockMySqlServer::start_script(steps).await;
-        let url = format!("mysql://root@127.0.0.1:{}/?ssl-mode=DISABLED", server.port);
-        let pool = MySqlPoolOptions::new()
-            .max_connections(2)
-            .connect(&url)
-            .await
-            .expect("connect to mock mysql server");
+        let pool = crate::common::mock_session::mock_pool(server.port);
 
         let entry = RegistryEntry {
             pool,
@@ -827,6 +815,15 @@ mod mock_success_paths {
         };
         state.registry.insert(connection_id.to_string(), entry);
         server
+    }
+
+    fn runs_as_text_on(
+        statement: &crate::common::mock_mysql_server::RecordedQuery,
+        connection_id: u32,
+    ) -> bool {
+        use crate::common::mock_mysql_server::MockQueryKind;
+
+        statement.connection_id == connection_id && statement.kind == MockQueryKind::Text
     }
 
     async fn setup_mock_pool(state: &AppState, connection_id: &str) -> MockMySqlServer {
@@ -859,6 +856,49 @@ mod mock_success_paths {
         );
         assert_eq!(resp.saved_object_name, Some("my_proc".to_string()));
         assert!(resp.error_message.is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn save_object_runs_use_and_ddl_on_one_connection() {
+        use crate::common::mock_mysql_server::MockQueryKind;
+
+        let state = common::test_app_state();
+        let server = setup_mock_pool(&state, "mock-conn").await;
+        let body = "CREATE PROCEDURE `one_conn_proc`() BEGIN SELECT 1; END";
+        let request = make_request(RequestFields {
+            connection_id: "mock-conn",
+            database: "mydb",
+            object_name: "one_conn_proc",
+            object_type: "procedure",
+            body,
+            mode: "alter",
+        });
+
+        let response = save_object_impl(request, &state).await.expect("save");
+        assert!(response.success, "{response:?}");
+
+        let recorded = server.recorded_queries();
+        let use_connection = recorded
+            .iter()
+            .find(|query| query.kind == MockQueryKind::InitDb)
+            .map(|query| query.connection_id)
+            .expect("USE was recorded");
+        let save_statements: Vec<_> = recorded
+            .iter()
+            .filter(|query| query.sql.contains("one_conn_proc"))
+            .collect();
+        assert_eq!(
+            save_statements.len(),
+            2,
+            "DROP and CREATE: {save_statements:?}"
+        );
+        let all_run_as_text_on_the_use_connection = save_statements
+            .iter()
+            .all(|statement| runs_as_text_on(statement, use_connection));
+        assert!(
+            all_run_as_text_on_the_use_connection,
+            "USE on {use_connection}: {save_statements:?}"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
