@@ -1,8 +1,8 @@
-import EditorWorkerUrl from 'monaco-editor/esm/vs/editor/editor.worker?worker'
-import JsonWorkerUrl from 'monaco-editor/esm/vs/language/json/json.worker?worker'
-import CssWorkerUrl from 'monaco-editor/esm/vs/language/css/css.worker?worker'
-import HtmlWorkerUrl from 'monaco-editor/esm/vs/language/html/html.worker?worker'
-import TsWorkerUrl from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
+import EditorWorkerUrl from 'monaco-editor/editor/editor.worker?worker'
+import JsonWorkerUrl from 'monaco-editor/language/json/json.worker?worker'
+import CssWorkerUrl from 'monaco-editor/language/css/css.worker?worker'
+import HtmlWorkerUrl from 'monaco-editor/language/html/html.worker?worker'
+import TsWorkerUrl from 'monaco-editor/language/typescript/ts.worker?worker'
 import MySQLLanguageWorker from '../workers/mysql-language.worker?worker'
 
 type WorkerConstructor = new () => Worker

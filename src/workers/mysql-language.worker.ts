@@ -1,4 +1,4 @@
-import { start } from 'monaco-editor/esm/vs/editor/editor.worker.start.js'
+import { start } from 'monaco-editor/editor/editor.worker.start.js'
 import { MySQLWorker } from 'monaco-sql-languages/esm/languages/mysql/mysqlWorker.js'
 
 type MySQLWorkerContext = ConstructorParameters<typeof MySQLWorker>[0]

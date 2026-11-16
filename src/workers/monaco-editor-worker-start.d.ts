@@ -1,5 +1,5 @@
-declare module 'monaco-editor/esm/vs/editor/editor.worker.start.js' {
-  import type { worker } from 'monaco-editor/esm/vs/editor/editor.api'
+declare module 'monaco-editor/editor/editor.worker.start.js' {
+  import type { worker } from 'monaco-editor'
 
   export function start<TClient>(
     createClient: (workerContext: worker.IWorkerContext) => TClient

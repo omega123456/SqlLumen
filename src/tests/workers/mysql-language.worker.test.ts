@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mockStart = vi.fn()
 const mockCreateParser = vi.fn()
 
-vi.mock('monaco-editor/esm/vs/editor/editor.worker.start.js', () => ({
+vi.mock('monaco-editor/editor/editor.worker.start.js', () => ({
   start: mockStart,
 }))
 
