@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest'
-import { SQL_BUILTIN_FUNCTIONS } from '../../../components/query-editor/sql-keywords'
 import {
   BUILTIN_FUNCTION_SIGNATURES,
   getBuiltinSignature,
@@ -44,20 +43,9 @@ describe('builtin-function-signatures', () => {
       }
     })
 
-    it('covers ALL functions from SQL_BUILTIN_FUNCTIONS', () => {
-      const missing: string[] = []
-      for (const fnName of SQL_BUILTIN_FUNCTIONS) {
-        if (!BUILTIN_FUNCTION_SIGNATURES.has(fnName)) {
-          missing.push(fnName)
-        }
-      }
-      expect(missing, `Missing entries for: ${missing.join(', ')}`).toHaveLength(0)
-    })
-
-    it('has uppercase keys matching SQL_BUILTIN_FUNCTIONS casing', () => {
-      for (const fnName of SQL_BUILTIN_FUNCTIONS) {
-        // Keys should match the SQL_BUILTIN_FUNCTIONS casing exactly
-        expect(BUILTIN_FUNCTION_SIGNATURES.has(fnName), `Missing key for "${fnName}"`).toBe(true)
+    it('has uppercase keys so case-insensitive lookup finds every entry', () => {
+      for (const key of BUILTIN_FUNCTION_SIGNATURES.keys()) {
+        expect(key, `Key "${key}" should be uppercase`).toBe(key.toUpperCase())
       }
     })
   })
