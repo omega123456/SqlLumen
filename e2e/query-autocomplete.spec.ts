@@ -565,6 +565,7 @@ test.describe('Monaco SQL autocomplete', () => {
     const suggestWidget = await openAutocomplete(page, 'email')
     expectAutocomplete(suggestWidget)
     await expect(suggestWidget).toContainText('created_at')
+    await expect(suggestWidget).not.toContainText('total')
   })
 
   test('UPDATE alias completion suggests the aliased table columns', async ({ page }) => {
@@ -576,6 +577,7 @@ test.describe('Monaco SQL autocomplete', () => {
     const suggestWidget = await openAutocomplete(page, 'email')
     expectAutocomplete(suggestWidget)
     await expect(suggestWidget).toContainText('created_at')
+    await expect(suggestWidget).not.toContainText('total')
   })
 
   test('WHERE after a complete condition still suggests the FROM table columns', async ({
@@ -589,6 +591,7 @@ test.describe('Monaco SQL autocomplete', () => {
     const suggestWidget = await openAutocomplete(page, 'email')
     expectAutocomplete(suggestWidget)
     await expect(suggestWidget).toContainText('created_at')
+    await expect(suggestWidget).not.toContainText('total')
   })
 
   test('SELECT * suggests clause keywords instead of columns', async ({ page }) => {
