@@ -121,6 +121,7 @@ SqlLumen checks GitHub Releases for updates. When one is available, a banner app
 **Query editor**
 
 - **Monaco SQL editor** — syntax highlighting, completion-oriented tooling, formatting, and find and replace
+- **Schema-aware autocomplete** — databases, tables, columns, routines, and built-in functions, ranked for the clause you are in. Table aliases, CTE names and aliases, and derived-table aliases complete their columns after a `.`
 - **Multi-statement execution** — run the statement at the cursor, or every statement in the editor
 - **Shared session per connection** — all query windows of a connection share one MySQL session, so `SET @x`, `USE`, temporary tables, and transactions carry over between runs and windows
 - **AI diff and review** — review generated changes as a diff before you apply them
