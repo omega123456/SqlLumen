@@ -812,7 +812,7 @@ describe('completionService — column suggestions broad fallback', () => {
       'SELECT * ',
       pos(1, 10),
       buildSuggestions({
-        syntax: [{ syntaxContextType: EntityContextType.COLUMN, wordRanges: [] }],
+        syntax: [{ syntaxContextType: EntityContextType.COLUMN, wordRanges: [{ text: '*' }] }],
         keywords: ['FROM'],
       }),
       null
@@ -833,7 +833,7 @@ describe('completionService — column suggestions broad fallback', () => {
       'SELECT users.* ',
       pos(1, 16),
       buildSuggestions({
-        syntax: [{ syntaxContextType: EntityContextType.COLUMN, wordRanges: [] }],
+        syntax: [],
         keywords: ['FROM'],
       }),
       null
@@ -854,7 +854,7 @@ describe('completionService — column suggestions broad fallback', () => {
       'SELECT app_db.users.* ',
       pos(1, 23),
       buildSuggestions({
-        syntax: [{ syntaxContextType: EntityContextType.COLUMN, wordRanges: [] }],
+        syntax: [],
         keywords: ['FROM'],
       }),
       null

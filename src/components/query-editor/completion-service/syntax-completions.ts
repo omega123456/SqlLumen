@@ -292,8 +292,7 @@ export function buildSyntaxCompletions(request: SyntaxCompletionRequest): ICompl
     inCallStatementContext: inCallStatementContext,
   })
 
-  const isWildcardFollowUp = isColumnContext && isAfterSelectWildcard(statementPrefix)
-  if (isWildcardFollowUp) {
+  if (isAfterSelectWildcard(request.suggestions)) {
     return buildWildcardFollowUpItems(request, sortPrefixes.keyword)
   }
 

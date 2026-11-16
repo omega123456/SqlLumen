@@ -1,11 +1,12 @@
 import type { editor, Position } from 'monaco-editor'
-import type { Suggestions } from 'monaco-sql-languages'
+import type { Suggestions, SyntaxSuggestion } from 'monaco-sql-languages'
 import { EntityContextType } from 'dt-sql-parser'
 import { stripQuotes } from '../alias-resolver'
 import { findStatementAtCursor, splitStatements } from '../sql-parser-utils'
 import { isSameTextIgnoringCase } from '../../../lib/value-checks'
 import type { CaretText, ParseFallbackMode } from './completion-types'
 
+const SELECT_WILDCARD = '*'
 const ROUTINE_DECLARATION_PATTERN = /CREATE\b[\s\S]*\b(?:PROCEDURE|FUNCTION|TRIGGER|EVENT)\b/i
 const STORED_PROGRAM_BLOCK_TOKEN_PATTERN =
   /\bBEGIN\b|\bEND\s+(?:IF|CASE|LOOP|WHILE|REPEAT)\b|\bEND\b/gi
@@ -149,10 +150,17 @@ export function isCallStatementContext(statementPrefix: string): boolean {
   return /^CALL\b/i.test(statementPrefix.trimStart())
 }
 
-export function isAfterSelectWildcard(statementPrefix: string): boolean {
-  return /^\s*SELECT(?:\s+(?:ALL|DISTINCT(?:ROW)?))?\s+(?:(?:[\w`"']+\.){0,2}\*)\s*$/i.test(
-    statementPrefix
-  )
+function syntaxWordText(suggestion: SyntaxSuggestion): string {
+  return suggestion.wordRanges.map((wordRange) => wordRange.text).join('')
+}
+
+function isWildcardColumnSuggestion(suggestion: SyntaxSuggestion): boolean {
+  const isColumnSuggestion = suggestion.syntaxContextType === EntityContextType.COLUMN
+  return isColumnSuggestion && syntaxWordText(suggestion) === SELECT_WILDCARD
+}
+
+export function isAfterSelectWildcard(suggestions: Suggestions): boolean {
+  return suggestions.syntax.some(isWildcardColumnSuggestion)
 }
 
 export function getScopedSchemaDatabases(
