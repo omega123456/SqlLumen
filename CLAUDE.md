@@ -222,7 +222,8 @@ Keep every test in a dedicated file under the appropriate test root (`src/tests/
 
 ## Key Gotchas
 
-- **ESLint 10 + react-hooks:** `pnpm.peerDependencyRules.allowedVersions.eslint: "10"` in `package.json` — do not remove; `eslint-plugin-react-hooks` hasn't declared ESLint 10 support yet.
+- **pnpm settings live in `pnpm-workspace.yaml`.** pnpm 12 ignores the `pnpm` field in `package.json`; never add one back.
+- **ESLint 10 + react-hooks:** `peerDependencyRules.allowedVersions.eslint: '10'` in `pnpm-workspace.yaml` — do not remove; `eslint-plugin-react-hooks` hasn't declared ESLint 10 support yet.
 - **`csp: null`** in `tauri.conf.json` is intentional for now.
 - **Migrations** are compiled into the binary via `include_str!`. To add one: create `src-tauri/migrations/NNN_description.sql` and register it in the `MIGRATIONS` array in `src-tauri/src/db/migrations.rs`.
 - **Monaco:** SQL worker wiring is in `main.tsx` / `src/lib/monaco-worker-setup.ts`. Keep Playwright and dev builds consistent when upgrading Monaco.

@@ -1,0 +1,10 @@
+allowBuilds:
+  esbuild: true
+
+peerDependencyRules:
+  # marked and react-responsive-carousel are transitive peer resolutions only, not direct dependencies; accepted intentionally
+  allowedVersions:
+    eslint: '10'
+    marked: '>=4'
+    react: '19'
+    react-dom: '19'
