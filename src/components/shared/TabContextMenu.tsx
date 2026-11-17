@@ -59,7 +59,11 @@ function TabContextMenuEntry({
         closeMenu()
       }}
     >
-      {item.icon ? <span aria-hidden>{item.icon}</span> : null}
+      {item.icon ? (
+        <span className="shrink-0" aria-hidden>
+          {item.icon}
+        </span>
+      ) : null}
       <span>{item.label}</span>
       {item.shortcut ? (
         <span
