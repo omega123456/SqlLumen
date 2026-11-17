@@ -1,6 +1,6 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ResultPanel } from '../../../components/query-editor/ResultPanel'
 import { DEFAULT_RESULT_STATE, useQueryStore } from '../../../stores/query-store'
 import * as ResultToolbarModule from '../../../components/query-editor/ResultToolbar'
@@ -8,38 +8,12 @@ import * as ResultGridViewModule from '../../../components/query-editor/ResultGr
 import * as ResultFormViewModule from '../../../components/query-editor/ResultFormView'
 import * as ResultTextViewModule from '../../../components/query-editor/ResultTextView'
 import * as FilterDialogModule from '../../../components/dialogs/FilterDialog'
+import React from 'react'
+import { ipc } from '../../ipc-mock'
+import { withRows } from '../../helpers/query-test-utils'
+import { gridTabPanelClassNameFor } from '../../../components/query-editor/result-panel/result-panel-model'
 
 // Use vi.spyOn to install per-test mock implementations without vi.mock().
-
-beforeEach(() => {
-  vi.spyOn(ResultToolbarModule, 'ResultToolbar').mockImplementation(
-    ({ tabId }: { tabId: string }) =>
-      (<div data-testid="result-toolbar">{tabId}</div>) as unknown as React.ReactElement
-  )
-  vi.spyOn(ResultGridViewModule, 'ResultGridView').mockImplementation(
-    ({ viewRowCount }: { viewRowCount: number }) =>
-      (
-        <div data-testid="grid-view">Grid rows: {viewRowCount}</div>
-      ) as unknown as React.ReactElement
-  )
-  vi.spyOn(ResultFormViewModule, 'ResultFormView').mockImplementation(
-    ({ viewRowCount }: { viewRowCount: number }) =>
-      (
-        <div data-testid="form-view">Form rows: {viewRowCount}</div>
-      ) as unknown as React.ReactElement
-  )
-  vi.spyOn(ResultTextViewModule, 'ResultTextView').mockImplementation(
-    ({ viewRowCount }: { viewRowCount: number }) =>
-      (
-        <div data-testid="text-view">Text rows: {viewRowCount}</div>
-      ) as unknown as React.ReactElement
-  )
-  vi.spyOn(FilterDialogModule, 'FilterDialog').mockImplementation(
-    () => null as unknown as React.ReactElement
-  )
-})
-
-import React from 'react'
 
 const result = {
   ...DEFAULT_RESULT_STATE,
@@ -50,7 +24,37 @@ const result = {
 }
 
 describe('ResultPanel', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   beforeEach(() => {
+    vi.spyOn(ResultToolbarModule, 'ResultToolbar').mockImplementation(
+      ({ tabId }: { tabId: string }) =>
+        (<div data-testid="result-toolbar">{tabId}</div>) as unknown as React.ReactElement
+    )
+    vi.spyOn(ResultGridViewModule, 'ResultGridView').mockImplementation(
+      ({ viewRowCount }: { viewRowCount: number }) =>
+        (
+          <div data-testid="grid-view">Grid rows: {viewRowCount}</div>
+        ) as unknown as React.ReactElement
+    )
+    vi.spyOn(ResultFormViewModule, 'ResultFormView').mockImplementation(
+      ({ viewRowCount }: { viewRowCount: number }) =>
+        (
+          <div data-testid="form-view">Form rows: {viewRowCount}</div>
+        ) as unknown as React.ReactElement
+    )
+    vi.spyOn(ResultTextViewModule, 'ResultTextView').mockImplementation(
+      ({ viewRowCount }: { viewRowCount: number }) =>
+        (
+          <div data-testid="text-view">Text rows: {viewRowCount}</div>
+        ) as unknown as React.ReactElement
+    )
+    vi.spyOn(FilterDialogModule, 'FilterDialog').mockImplementation(
+      () => null as unknown as React.ReactElement
+    )
+
     act(() => {
       useQueryStore.setState({
         tabs: {
@@ -265,6 +269,333 @@ describe('ResultPanel', () => {
       render(<ResultPanel tabId="tab1" connectionId="c1" />)
       expect(screen.getByText('Results expired')).toBeInTheDocument()
       expect(screen.queryByTestId('result-window-error-band')).not.toBeInTheDocument()
+    })
+  })
+})
+
+describe('expired state', () => {
+  const TAB_ID = 'test-tab-expired'
+  const CONN_ID = 'conn-expired-1'
+
+  function setTabWithExpiredResult() {
+    act(() => {
+      useQueryStore.setState({
+        tabs: {
+          [TAB_ID]: {
+            content: 'SELECT * FROM users',
+            selectedText: '',
+            filePath: null,
+            tabStatus: 'success',
+            prevTabStatus: 'idle',
+            cursorPosition: null,
+            connectionId: CONN_ID,
+            results: [
+              {
+                ...DEFAULT_RESULT_STATE,
+                resultStatus: 'success',
+                queryId: 'q-expired-1',
+                lastExecutedSql: 'SELECT * FROM users',
+                columns: [{ name: 'id', dataType: 'INT' }],
+                ...withRows([[1]]),
+                totalRows: 1,
+                isExpired: true,
+              },
+            ],
+            activeResultIndex: 0,
+            activeBottomPanelItem: { type: 'result' },
+            pendingNavigationAction: null,
+            executionStartedAt: null,
+            isCancelling: false,
+            wasCancelled: false,
+          },
+        },
+      })
+    })
+  }
+
+  function setTabWithRestoringRows() {
+    act(() => {
+      useQueryStore.setState({
+        tabs: {
+          [TAB_ID]: {
+            content: 'SELECT * FROM users',
+            selectedText: '',
+            filePath: null,
+            tabStatus: 'success',
+            prevTabStatus: 'idle',
+            cursorPosition: null,
+            connectionId: CONN_ID,
+            results: [
+              {
+                ...DEFAULT_RESULT_STATE,
+                resultStatus: 'success',
+                queryId: 'q-restoring-1',
+                lastExecutedSql: 'SELECT * FROM users',
+                columns: [{ name: 'id', dataType: 'INT' }],
+                ...withRows([]),
+                totalRows: 1,
+                rowResidency: {
+                  status: 'restoring',
+                  isActive: true,
+                  inactiveSince: null,
+                },
+              },
+            ],
+            activeResultIndex: 0,
+            activeBottomPanelItem: { type: 'result' },
+            pendingNavigationAction: null,
+            executionStartedAt: null,
+            isCancelling: false,
+            wasCancelled: false,
+          },
+        },
+      })
+    })
+  }
+
+  describe('ResultPanel — expired state', () => {
+    beforeEach(() => {
+      useQueryStore.setState({ tabs: {} })
+    })
+
+    it('renders the expired banner when isExpired is true', () => {
+      setTabWithExpiredResult()
+      render(<ResultPanel tabId={TAB_ID} connectionId={CONN_ID} />)
+
+      expect(screen.getByText('Results expired')).toBeInTheDocument()
+      expect(screen.getByText('Cached results are no longer available.')).toBeInTheDocument()
+      expect(screen.getByText('Re-run query')).toBeInTheDocument()
+    })
+
+    it('has a role="status" wrapper that is always present', () => {
+      // Even when not expired, the wrapper is mounted
+      act(() => {
+        useQueryStore.setState({
+          tabs: {
+            [TAB_ID]: {
+              content: '',
+              selectedText: '',
+              filePath: null,
+              tabStatus: 'idle',
+              prevTabStatus: 'idle',
+              cursorPosition: null,
+              connectionId: CONN_ID,
+              results: [],
+              activeResultIndex: 0,
+              activeBottomPanelItem: { type: 'result' },
+              pendingNavigationAction: null,
+              executionStartedAt: null,
+              isCancelling: false,
+              wasCancelled: false,
+            },
+          },
+        })
+      })
+      render(<ResultPanel tabId={TAB_ID} connectionId={CONN_ID} />)
+
+      expect(screen.getByTestId('expired-status')).toBeInTheDocument()
+      expect(screen.getByTestId('expired-status')).toHaveAttribute('role', 'status')
+    })
+
+    it('clicking Re-run query triggers retryExpiredResult', async () => {
+      const user = userEvent.setup()
+      setTabWithExpiredResult()
+      let resolveExecute:
+        | ((value: {
+            queryId: string
+            columns: { name: string; dataType: string }[]
+            totalRows: number
+            executionTimeMs: number
+            affectedRows: number
+            rows: unknown[][]
+            autoLimitApplied: boolean
+          }) => void)
+        | null = null
+
+      // Override execute_query to succeed
+      ipc.override(
+        'execute_query',
+        () =>
+          new Promise<{
+            queryId: string
+            columns: { name: string; dataType: string }[]
+            totalRows: number
+            executionTimeMs: number
+            affectedRows: number
+            rows: unknown[][]
+            autoLimitApplied: boolean
+          }>((resolve) => {
+            resolveExecute = resolve
+          })
+      )
+
+      render(<ResultPanel tabId={TAB_ID} connectionId={CONN_ID} />)
+
+      await user.click(screen.getByText('Re-run query'))
+
+      await waitFor(() => {
+        expect(screen.getByText('Executing query...')).toBeInTheDocument()
+      })
+      expect(screen.queryByText('Results expired')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('retry-expired-button')).not.toBeInTheDocument()
+      ;(
+        resolveExecute as
+          | ((value: {
+              queryId: string
+              columns: { name: string; dataType: string }[]
+              totalRows: number
+              executionTimeMs: number
+              affectedRows: number
+              rows: unknown[][]
+              autoLimitApplied: boolean
+            }) => void)
+          | null
+      )?.({
+        queryId: 'q-refreshed',
+        columns: [{ name: 'id', dataType: 'INT' }],
+        totalRows: 1,
+        executionTimeMs: 5,
+        affectedRows: 0,
+        rows: [[1]],
+        autoLimitApplied: false,
+      })
+
+      // After retry, isExpired should be cleared
+      await waitFor(() => {
+        const tab = useQueryStore.getState().tabs[TAB_ID]
+        const result = tab?.results[0]
+        expect(result?.isExpired).toBe(false)
+      })
+    })
+
+    it('does not show expired banner when isExpired is false', () => {
+      act(() => {
+        useQueryStore.setState({
+          tabs: {
+            [TAB_ID]: {
+              content: 'SELECT 1',
+              selectedText: '',
+              filePath: null,
+              tabStatus: 'success',
+              prevTabStatus: 'idle',
+              cursorPosition: null,
+              connectionId: CONN_ID,
+              results: [
+                {
+                  ...DEFAULT_RESULT_STATE,
+                  resultStatus: 'success',
+                  queryId: 'q-ok',
+                  lastExecutedSql: 'SELECT 1',
+                  columns: [{ name: 'id', dataType: 'INT' }],
+                  ...withRows([[1]]),
+                  totalRows: 1,
+                  isExpired: false,
+                },
+              ],
+              activeResultIndex: 0,
+              activeBottomPanelItem: { type: 'result' },
+              pendingNavigationAction: null,
+              executionStartedAt: null,
+              isCancelling: false,
+              wasCancelled: false,
+            },
+          },
+        })
+      })
+      render(<ResultPanel tabId={TAB_ID} connectionId={CONN_ID} />)
+
+      expect(screen.queryByText('Results expired')).not.toBeInTheDocument()
+    })
+
+    it('renders the restoring overlay for frontend row restore without showing expired UI', () => {
+      setTabWithRestoringRows()
+      render(<ResultPanel tabId={TAB_ID} connectionId={CONN_ID} />)
+
+      expect(screen.getByTestId('result-panel')).toHaveAttribute('aria-busy', 'true')
+      expect(screen.getByTestId('query-result-restore-overlay')).toHaveAttribute('role', 'status')
+      expect(screen.getByTestId('query-result-restore-overlay')).toHaveAttribute(
+        'aria-live',
+        'polite'
+      )
+      expect(screen.getByText('Restoring cached results…')).toBeInTheDocument()
+      expect(screen.queryByText('Results expired')).not.toBeInTheDocument()
+      expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-busy', 'true')
+    })
+
+    it('does not block a resident active result when another result in the tab is restoring', () => {
+      act(() => {
+        useQueryStore.setState({
+          tabs: {
+            [TAB_ID]: {
+              content: 'SELECT 1; SELECT 2',
+              selectedText: '',
+              filePath: null,
+              tabStatus: 'restoring',
+              prevTabStatus: 'success',
+              cursorPosition: null,
+              connectionId: CONN_ID,
+              results: [
+                {
+                  ...DEFAULT_RESULT_STATE,
+                  resultStatus: 'success',
+                  queryId: 'q-active-1',
+                  columns: [{ name: 'id', dataType: 'INT' }],
+                  ...withRows([[1]]),
+                  totalRows: 1,
+                  rowResidency: {
+                    status: 'resident',
+                    isActive: true,
+                    inactiveSince: null,
+                  },
+                },
+                {
+                  ...DEFAULT_RESULT_STATE,
+                  resultStatus: 'success',
+                  queryId: 'q-restoring-2',
+                  columns: [{ name: 'id', dataType: 'INT' }],
+                  ...withRows([]),
+                  totalRows: 1,
+                  rowResidency: {
+                    status: 'restoring',
+                    isActive: false,
+                    inactiveSince: 123,
+                  },
+                },
+              ],
+              activeResultIndex: 0,
+              activeBottomPanelItem: { type: 'result' },
+              pendingNavigationAction: null,
+              executionStartedAt: null,
+              isCancelling: false,
+              wasCancelled: false,
+            },
+          },
+        })
+      })
+
+      render(<ResultPanel tabId={TAB_ID} connectionId={CONN_ID} />)
+
+      expect(screen.queryByTestId('query-result-restore-overlay')).not.toBeInTheDocument()
+      expect(screen.getByTestId('result-panel')).toHaveAttribute('aria-busy', 'false')
+    })
+  })
+})
+
+describe('grid layout isolation', () => {
+  const CONTAINMENT_AND_ISOLATION_UTILITIES = [
+    'contain-layout',
+    'contain-paint',
+    'contain-style',
+    'isolate',
+  ]
+
+  describe('ResultPanel grid layout isolation', () => {
+    it('paint- and layout-contains a mounted grid view so it does not invalidate Monaco siblings', () => {
+      const gridPanelUtilities = gridTabPanelClassNameFor('grid', 3).split(' ')
+
+      expect(gridPanelUtilities).toEqual(
+        expect.arrayContaining(CONTAINMENT_AND_ISOLATION_UTILITIES)
+      )
     })
   })
 })

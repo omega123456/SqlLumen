@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useSystemTheme } from '../hooks/use-system-theme'
-import { setupMatchMedia, setupMatchMediaWithListeners } from './helpers/mock-match-media'
+import { useSystemTheme } from '../../hooks/use-system-theme'
+import { setupMatchMedia, setupMatchMediaWithListeners } from '../helpers/mock-match-media'
 
 const mockAddEventListener = vi.fn()
 const mockRemoveEventListener = vi.fn()

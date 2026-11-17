@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { dispatchAuxClick } from '../helpers/dispatch-aux-click'
+import { dispatchAuxClick } from '../../helpers/dispatch-aux-click'
 import userEvent from '@testing-library/user-event'
-import { ConnectionTabBar } from '../../components/layout/ConnectionTabBar'
-import { currentTheme } from '../../lib/theme-tokens'
-import { useThemeStore } from '../../stores/theme-store'
-import { useConnectionStore } from '../../stores/connection-store'
-import { useCommandPaletteStore } from '../../stores/command-palette-store'
-import { setupMatchMedia } from '../helpers/mock-match-media'
-import type { ActiveConnection, SavedConnection } from '../../types/connection'
+import { ConnectionTabBar } from '../../../components/layout/ConnectionTabBar'
+import { currentTheme } from '../../../lib/theme-tokens'
+import { useThemeStore } from '../../../stores/theme-store'
+import { useConnectionStore } from '../../../stores/connection-store'
+import { useCommandPaletteStore } from '../../../stores/command-palette-store'
+import { setupMatchMedia } from '../../helpers/mock-match-media'
+import type { ActiveConnection, SavedConnection } from '../../../types/connection'
 
 function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedConnection {
   return {

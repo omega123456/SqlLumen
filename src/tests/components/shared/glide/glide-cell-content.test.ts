@@ -1,9 +1,12 @@
+import { GridCellKind } from '@glideapps/glide-data-grid'
 import { describe, expect, it } from 'vitest'
 import {
   classifyCellValue,
   buildBlobCell,
+  buildForeignKeyCell,
   buildNullCell,
   buildTextCell,
+  formatBlobDisplayValue,
 } from '../../../../components/shared/glide/glide-cell-content'
 
 describe('glide-cell-content', () => {
@@ -82,5 +85,27 @@ describe('glide-cell-content', () => {
     expect(cell.isBlob).toBe(true)
     expect(cell.displayValue).toBe('[BLOB - 2 B]')
     expect(cell.copyValue).toBe('[BLOB - 2 B]')
+  })
+
+  it('formats blob display values and builds foreign key cells', () => {
+    expect(formatBlobDisplayValue(new Uint8Array([1, 2]))).toBe('[BLOB - 2 B]')
+    expect(formatBlobDisplayValue(new ArrayBuffer(3))).toBe('[BLOB - 3 B]')
+    expect(formatBlobDisplayValue('plain')).toBe('[BLOB]')
+    // A blob column whose value arrives as inlined base64 derives its size.
+    expect(formatBlobDisplayValue('aGk=', true)).toBe('[BLOB - 2 B]')
+
+    const flags = classifyCellValue(new Uint8Array([1]), 'avatar', {
+      isBlobColumn: true,
+      isReadOnly: true,
+      isModified: true,
+      isFkCell: true,
+      isSelectedRow: true,
+      isEditingRow: true,
+      isNewRow: true,
+      highlightedColumnKey: 'avatar',
+    })
+    expect(flags).toMatchObject({ isBlob: true, isReadOnly: true, isHighlightedColumn: true })
+    const fkCell = buildForeignKeyCell('42', flags)
+    expect(fkCell.kind).toBe(GridCellKind.Text)
   })
 })

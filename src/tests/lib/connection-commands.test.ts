@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { ipc } from './ipc-mock'
+import { ipc } from '../ipc-mock'
 import {
   saveConnection,
   getConnection,
@@ -15,8 +15,8 @@ import {
   closeConnection,
   getConnectionStatus,
   listOpenConnectionSessions,
-} from '../lib/connection-commands'
-import type { ConnectionFormData } from '../types/connection'
+} from '../../lib/connection-commands'
+import type { ConnectionFormData } from '../../types/connection'
 
 beforeEach(() => {
   vi.clearAllMocks()

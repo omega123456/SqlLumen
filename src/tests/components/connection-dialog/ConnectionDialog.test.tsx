@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, act, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { ConnectionDialog } from '../../components/connection-dialog/ConnectionDialog'
-import { useConnectionStore } from '../../stores/connection-store'
-import { ipc } from '../ipc-mock'
-import type { SavedConnection } from '../../types/connection'
+import { ConnectionDialog } from '../../../components/connection-dialog/ConnectionDialog'
+import { useConnectionStore } from '../../../stores/connection-store'
+import { ipc } from '../../ipc-mock'
+import type { SavedConnection } from '../../../types/connection'
 
 // Polyfill HTMLDialogElement methods for jsdom
 const showModalMock = vi.fn(function (this: HTMLDialogElement) {

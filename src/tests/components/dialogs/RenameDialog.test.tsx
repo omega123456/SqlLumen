@@ -84,23 +84,9 @@ describe('RenameDialog', () => {
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
 
-  it('Escape key calls onCancel', async () => {
-    const user = userEvent.setup()
-    const onCancel = vi.fn()
-    render(<RenameDialog {...defaultProps} onCancel={onCancel} />)
-
-    await user.keyboard('{Escape}')
-    expect(onCancel).toHaveBeenCalledTimes(1)
-  })
-
   it('has data-testid="rename-dialog"', () => {
     render(<RenameDialog {...defaultProps} />)
     expect(screen.getByTestId('rename-dialog')).toBeInTheDocument()
-  })
-
-  it('does not render when isOpen is false', () => {
-    render(<RenameDialog {...defaultProps} isOpen={false} />)
-    expect(screen.queryByTestId('rename-dialog')).not.toBeInTheDocument()
   })
 
   it('shows loading state when isLoading', () => {

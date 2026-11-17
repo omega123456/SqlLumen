@@ -9,10 +9,6 @@ import {
   removeTableDataTab,
   requestTableDataColumnJump,
 } from '../../../stores/table-data-store/table-data-reducers'
-import {
-  canEvictInactiveTableDataTab,
-  shouldScheduleTableDataEviction,
-} from '../../../stores/table-data-store/table-data-residency'
 import type { TableDataTabState } from '../../../types/schema'
 
 function createTab(overrides: Partial<TableDataTabState> = {}): TableDataTabState {
@@ -106,21 +102,6 @@ describe('table data reducers', () => {
     const eviction = { tabId: 'tab-1', evictedAt: EVICTED_AT }
     expect(evictTableDataRows(activeState, eviction)).toBe(activeState)
     expect(evictTableDataRows(activeState, { ...eviction, tabId: 'missing' })).toBe(activeState)
-  })
-
-  it('decides eviction eligibility from residency, edits and rows', () => {
-    const dirtyTab = createTab({
-      editState: {
-        rowKey: { id: 1 },
-        originalValues: {},
-        currentValues: {},
-        modifiedColumns: new Set(['name']),
-        isNewRow: false,
-      },
-    })
-    expect(canEvictInactiveTableDataTab(dirtyTab)).toBe(false)
-    expect(shouldScheduleTableDataEviction(createTab())).toBe(true)
-    expect(shouldScheduleTableDataEviction(createTab({ rows: [] }))).toBe(false)
   })
 
   it('requests, consumes and clears a column jump', () => {

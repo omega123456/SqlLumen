@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { MONACO_THEMES, getMonacoThemeName, registerMonacoThemes } from '../../../lib/monaco-theme'
-import { readThemeTokens } from '../../helpers/tailwind-theme'
+import { MONACO_THEMES, getMonacoThemeName, registerMonacoThemes } from '../../lib/monaco-theme'
+import { readThemeTokens } from '../helpers/tailwind-theme'
 
 describe('getMonacoThemeName', () => {
   it('returns dark theme for dark preference', () => {

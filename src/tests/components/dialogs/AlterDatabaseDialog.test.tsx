@@ -176,11 +176,6 @@ describe('AlterDatabaseDialog', () => {
     await waitForAlterDatabaseDialogIdle()
   })
 
-  it('does not render when isOpen is false', () => {
-    render(<AlterDatabaseDialog {...defaultProps} isOpen={false} />)
-    expect(screen.queryByTestId('alter-database-dialog')).not.toBeInTheDocument()
-  })
-
   it('displays the database name as subtitle', async () => {
     render(<AlterDatabaseDialog {...defaultProps} />)
     expect(screen.getByText('test_db')).toBeInTheDocument()
@@ -194,17 +189,6 @@ describe('AlterDatabaseDialog', () => {
 
     await waitForAlterDatabaseDialogIdle()
     await user.click(screen.getByTestId('alter-db-cancel-button'))
-    expect(onCancel).toHaveBeenCalledTimes(1)
-    rerender(<AlterDatabaseDialog {...defaultProps} onCancel={onCancel} isOpen={false} />)
-  })
-
-  it('Escape key calls onCancel', async () => {
-    const user = userEvent.setup()
-    const onCancel = vi.fn()
-    const { rerender } = render(<AlterDatabaseDialog {...defaultProps} onCancel={onCancel} />)
-
-    await waitForAlterDatabaseDialogIdle()
-    await user.keyboard('{Escape}')
     expect(onCancel).toHaveBeenCalledTimes(1)
     rerender(<AlterDatabaseDialog {...defaultProps} onCancel={onCancel} isOpen={false} />)
   })

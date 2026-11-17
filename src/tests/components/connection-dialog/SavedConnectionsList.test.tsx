@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { SavedConnectionsList } from '../../components/connection-dialog/SavedConnectionsList'
-import { useConnectionStore } from '../../stores/connection-store'
-import { ipc } from '../ipc-mock'
-import type { SavedConnection, ConnectionGroup } from '../../types/connection'
+import { SavedConnectionsList } from '../../../components/connection-dialog/SavedConnectionsList'
+import { useConnectionStore } from '../../../stores/connection-store'
+import { ipc } from '../../ipc-mock'
+import type { SavedConnection, ConnectionGroup } from '../../../types/connection'
 
 function makeConnection(overrides: Partial<SavedConnection> = {}): SavedConnection {
   return {

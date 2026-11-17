@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { ipc } from './ipc-mock'
-import { useThemeStore } from '../stores/theme-store'
-import { setupMatchMedia } from './helpers/mock-match-media'
+import { ipc } from '../ipc-mock'
+import { useThemeStore } from '../../stores/theme-store'
+import { setupMatchMedia } from '../helpers/mock-match-media'
 
 beforeEach(() => {
   // Reset store state between tests

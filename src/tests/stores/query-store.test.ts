@@ -16,8 +16,13 @@ import {
   firstWindowFor,
   makeTabState,
   withRows,
+  rowsOf,
+  hasNoLoadedRows,
 } from '../helpers/query-test-utils'
 import { makeTableDataTabState } from '../helpers/table-data-test-utils'
+import { act, waitFor } from '@testing-library/react'
+import { useSettingsStore } from '../../stores/settings-store'
+import type { FilterCondition, QueryTableEditInfo, TableDataColumnMeta } from '../../types/schema'
 
 /**
  * Set result-level fields on an existing tab created by setContent().
@@ -482,6 +487,27 @@ describe('useQueryStore — executeQuery', () => {
     expect(executeCallCount).toBe(0)
     // Status should still be running
     expect(useQueryStore.getState().getTabState('tab-guard').tabStatus).toBe('running')
+  })
+
+  it('shows every returned row when an explicit LIMIT leaves autoLimitApplied false', async () => {
+    const returnedRowCount = 100
+    const allRows = Array.from({ length: returnedRowCount }, (_, index) => [index + 1])
+    overrideCommands({
+      execute_query: () => ({
+        queryId: 'q-limit-bug',
+        columns: [{ name: 'id', dataType: 'INT' }],
+        totalRows: returnedRowCount,
+        executionTimeMs: 10,
+        affectedRows: 0,
+        firstWindow: firstWindowFor(allRows),
+        autoLimitApplied: false,
+      }),
+      evict_results: () => null,
+    })
+
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT * FROM users LIMIT 100')
+
+    expect(flat('tab-1').rows).toHaveLength(returnedRowCount)
   })
 })
 
@@ -1541,6 +1567,12 @@ describe('useQueryStore — cancelQuery', () => {
     expect(cancelCallCount).toBe(0)
   })
 
+  it('does nothing when the tab does not exist', async () => {
+    await useQueryStore.getState().cancelQuery('conn-1', 'nonexistent')
+
+    expect(ipc.payloads('cancel_query')).toHaveLength(0)
+  })
+
   it('does not create ghost tab state if tab was closed during cancel IPC', async () => {
     let resolveCancelPromise: ((value: unknown) => void) | null = null
     overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
@@ -2244,69 +2276,6 @@ describe('useQueryStore — connection-aware async completion', () => {
     // Rows remain resident for immediate reuse / TTL eligibility.
     expect(flat('tab-bg').rows).toEqual([[1], [2], [3]])
   })
-
-  it('keeps the first multi-result active only when the connection is visible', async () => {
-    overrideCommands({
-      execute_multi_query: () => ({
-        results: [
-          {
-            queryId: 'q-1',
-            columns: [{ name: 'id', dataType: 'INT' }],
-            firstWindow: firstWindowFor([[1]]),
-            totalRows: 1,
-            executionTimeMs: 1,
-            totalTimeMs: 1,
-            affectedRows: 0,
-            autoLimitApplied: false,
-            error: null,
-            sourceSql: 'SELECT id FROM t',
-            reExecutable: true,
-          },
-        ],
-      }),
-    })
-    resetWorkspaceStore({ visibleConnectionSessionId: 'conn-1' })
-    registerQueryTab('conn-1', 'tab-multi-visible')
-
-    await useQueryStore
-      .getState()
-      .executeMultiQuery('conn-1', 'tab-multi-visible', ['SELECT id FROM t'])
-
-    expect(
-      useQueryStore.getState().tabs['tab-multi-visible']?.results[0]?.rowResidency.isActive
-    ).toBe(true)
-  })
-
-  it('keeps the first multi-result inactive when the connection is no longer visible', async () => {
-    overrideCommands({
-      execute_multi_query: () => ({
-        results: [
-          {
-            queryId: 'q-1',
-            columns: [{ name: 'id', dataType: 'INT' }],
-            firstWindow: firstWindowFor([[1]]),
-            totalRows: 1,
-            executionTimeMs: 1,
-            totalTimeMs: 1,
-            affectedRows: 0,
-            autoLimitApplied: false,
-            error: null,
-            sourceSql: 'SELECT id FROM t',
-            reExecutable: true,
-          },
-        ],
-      }),
-    })
-    resetWorkspaceStore({ visibleConnectionSessionId: 'conn-other' })
-    registerQueryTab('conn-1', 'tab-multi-bg')
-
-    await useQueryStore.getState().executeMultiQuery('conn-1', 'tab-multi-bg', ['SELECT id FROM t'])
-
-    const residency = useQueryStore.getState().tabs['tab-multi-bg']?.results[0]?.rowResidency
-    expect(residency?.status).toBe('resident')
-    expect(residency?.isActive).toBe(false)
-    expect(typeof residency?.inactiveSince).toBe('number')
-  })
 })
 
 // ---------------------------------------------------------------------------
@@ -2667,5 +2636,1908 @@ describe('full export job', () => {
     await startAndFirstPoll()
     await useQueryStore.getState().startFullExport(TAB, REQUEST)
     expect(ipc.payloads('start_result_export')).toHaveLength(1)
+  })
+})
+
+describe('multi-result actions', () => {
+  /**
+   * Tests for multi-query store actions: executeMultiQuery, executeCallQuery,
+   * setActiveResultIndex, and per-result isolation.
+   */
+
+  const overrideCommands = overrideIpcCommands
+  const overrideNamedCommands = overrideNamedIpcCommands
+
+  const QUERY_STORE_MULTI_COMMANDS = [
+    'analyze_query_for_edit',
+    'cancel_query',
+    'evict_results',
+    'execute_call_query',
+    'execute_multi_query',
+    'fetch_cached_rows',
+    'reexecute_single_result',
+    'sort_results',
+  ] as const
+
+  // Shared mock setup
+  const multiQueryResult = {
+    results: [
+      {
+        queryId: 'mq1',
+        sourceSql: 'SELECT 1',
+        columns: [{ name: 'id', dataType: 'INT' }],
+        totalRows: 1,
+        executionTimeMs: 5,
+        affectedRows: 0,
+        firstWindow: firstWindowFor([[1]]),
+
+        autoLimitApplied: false,
+        error: null,
+        reExecutable: true,
+      },
+      {
+        queryId: 'mq2',
+        sourceSql: 'INSERT INTO t VALUES (1)',
+        columns: [],
+        totalRows: 0,
+        executionTimeMs: 3,
+        affectedRows: 1,
+        firstWindow: firstWindowFor([]),
+
+        autoLimitApplied: false,
+        error: null,
+        reExecutable: true,
+      },
+      {
+        queryId: 'mq3',
+        sourceSql: 'SELECT name FROM users',
+        columns: [{ name: 'name', dataType: 'VARCHAR' }],
+        totalRows: 2,
+        executionTimeMs: 10,
+        affectedRows: 0,
+        firstWindow: firstWindowFor([['Alice'], ['Bob']]),
+
+        autoLimitApplied: false,
+        error: null,
+        reExecutable: true,
+      },
+    ],
+  }
+
+  beforeEach(() => {
+    useQueryStore.setState({ tabs: {} })
+    resetWorkspaceStore({ visibleConnectionSessionId: 'conn-1' })
+    _resetToastTimeoutsForTests()
+    overrideCommands({
+      execute_multi_query: () => multiQueryResult,
+      execute_call_query: () => multiQueryResult,
+      analyze_query_for_edit: () => [],
+      evict_results: () => null,
+    })
+  })
+
+  describe('useQueryStore — executeMultiQuery', () => {
+    it('populates one result per statement with its own columns, rows and affected rows', async () => {
+      useQueryStore
+        .getState()
+        .setContent('tab-1', 'SELECT 1; INSERT INTO t; SELECT name FROM users')
+
+      await useQueryStore
+        .getState()
+        .executeMultiQuery('conn-1', 'tab-1', [
+          'SELECT 1',
+          'INSERT INTO t VALUES (1)',
+          'SELECT name FROM users',
+        ])
+
+      const tab = useQueryStore.getState().tabs['tab-1']!
+      expect(tab.tabStatus).toBe('success')
+      expect(tab.results).toHaveLength(3)
+      expect(tab.activeResultIndex).toBe(0)
+
+      const [selectResult, dmlResult, namesResult] = tab.results
+      expect(selectResult.resultStatus).toBe('success')
+      expect(selectResult.columns).toEqual([{ name: 'id', dataType: 'INT' }])
+      expect(rowsOf('tab-1', 0)).toEqual([[1]])
+      expect(selectResult.queryId).toBe('mq1')
+      expect(selectResult.lastExecutedSql).toBe('SELECT 1')
+      expect(selectResult.reExecutable).toBe(true)
+
+      expect(dmlResult.resultStatus).toBe('success')
+      expect(dmlResult.columns).toEqual([])
+      expect(rowsOf('tab-1', 1)).toEqual([])
+      expect(dmlResult.affectedRows).toBe(1)
+
+      expect(namesResult.resultStatus).toBe('success')
+      expect(namesResult.columns).toEqual([{ name: 'name', dataType: 'VARCHAR' }])
+      expect(rowsOf('tab-1', 2)).toEqual([['Alice'], ['Bob']])
+      expect(namesResult.totalRows).toBe(2)
+    })
+
+    it('sets tab status to error on IPC failure', async () => {
+      overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
+        if (cmd === 'execute_multi_query') throw new Error('Connection lost')
+        return null
+      })
+
+      useQueryStore.getState().setContent('tab-1', 'SELECT 1; SELECT 2')
+
+      await useQueryStore.getState().executeMultiQuery('conn-1', 'tab-1', ['SELECT 1', 'SELECT 2'])
+
+      const tab = useQueryStore.getState().tabs['tab-1']!
+      expect(tab.tabStatus).toBe('error')
+      expect(tab.results).toHaveLength(1)
+      expect(tab.results[0].resultStatus).toBe('error')
+      expect(tab.results[0].errorMessage).toBe('Connection lost')
+    })
+
+    it('does not execute when tab is already running', async () => {
+      useQueryStore.getState().setContent('tab-1', 'SELECT 1')
+      // Set status to running manually
+      useQueryStore.setState((prev) => ({
+        tabs: {
+          ...prev.tabs,
+          'tab-1': { ...prev.tabs['tab-1']!, tabStatus: 'running' },
+        },
+      }))
+
+      const spy = vi.fn()
+      overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, () => {
+        spy()
+        return multiQueryResult
+      })
+
+      await useQueryStore.getState().executeMultiQuery('conn-1', 'tab-1', ['SELECT 1'])
+
+      expect(spy).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('useQueryStore — executeCallQuery', () => {
+    it('populates results from CALL statement', async () => {
+      useQueryStore.getState().setContent('tab-1', 'CALL my_proc()')
+
+      await useQueryStore.getState().executeCallQuery('conn-1', 'tab-1', 'CALL my_proc()')
+
+      const tab = useQueryStore.getState().tabs['tab-1']!
+      expect(tab.tabStatus).toBe('success')
+      expect(tab.results).toHaveLength(3)
+      expect(tab.activeResultIndex).toBe(0)
+    })
+
+    it('sets error on IPC failure', async () => {
+      overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
+        if (cmd === 'execute_call_query') throw new Error('Proc not found')
+        return null
+      })
+
+      useQueryStore.getState().setContent('tab-1', 'CALL my_proc()')
+
+      await useQueryStore.getState().executeCallQuery('conn-1', 'tab-1', 'CALL my_proc()')
+
+      const tab = useQueryStore.getState().tabs['tab-1']!
+      expect(tab.tabStatus).toBe('error')
+      expect(tab.results[0].errorMessage).toBe('Proc not found')
+    })
+  })
+
+  describe('useQueryStore — setActiveResultIndex', () => {
+    function setupMultiResult() {
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': {
+            content: 'SELECT 1; SELECT 2',
+            selectedText: '',
+            filePath: null,
+            tabStatus: 'success',
+            prevTabStatus: 'idle',
+            cursorPosition: null,
+            connectionId: 'conn-1',
+            results: [
+              {
+                ...DEFAULT_RESULT_STATE,
+                resultStatus: 'success',
+                queryId: 'q1',
+                columns: [{ name: 'id', dataType: 'INT' }],
+                ...withRows([[1]]),
+                totalRows: 1,
+              },
+              {
+                ...DEFAULT_RESULT_STATE,
+                resultStatus: 'success',
+                queryId: 'q2',
+                columns: [{ name: 'name', dataType: 'VARCHAR' }],
+                ...withRows([['Alice']]),
+                totalRows: 1,
+              },
+            ],
+            activeResultIndex: 0,
+            pendingNavigationAction: null,
+            executionStartedAt: null,
+            isCancelling: false,
+            wasCancelled: false,
+            activeBottomPanelItem: { type: 'result' },
+          },
+        },
+      })
+    }
+
+    it('switches active result index', () => {
+      setupMultiResult()
+      useQueryStore.getState().setActiveResultIndex('tab-1', 1)
+      const tab = useQueryStore.getState().tabs['tab-1']!
+      expect(tab.activeResultIndex).toBe(1)
+    })
+
+    it('does nothing for out-of-bounds or negative indices', () => {
+      setupMultiResult()
+      useQueryStore.getState().setActiveResultIndex('tab-1', 5)
+      useQueryStore.getState().setActiveResultIndex('tab-1', -1)
+      expect(useQueryStore.getState().tabs['tab-1']!.activeResultIndex).toBe(0)
+    })
+
+    it('does nothing for unknown tab', () => {
+      setupMultiResult()
+      useQueryStore.getState().setActiveResultIndex('nonexistent', 0)
+      // Should not throw
+      expect(useQueryStore.getState().tabs['nonexistent']).toBeUndefined()
+    })
+
+    it('flat() returns data for the active result', () => {
+      setupMultiResult()
+      // Initial: activeResultIndex=0
+      expect(flat('tab-1').queryId).toBe('q1')
+
+      useQueryStore.getState().setActiveResultIndex('tab-1', 1)
+      expect(flat('tab-1').queryId).toBe('q2')
+      expect(flat('tab-1').columns).toEqual([{ name: 'name', dataType: 'VARCHAR' }])
+    })
+
+    it('does not touch result residency when switching results on a hidden query tab', () => {
+      setupMultiResult()
+      resetWorkspaceStore()
+      useWorkspaceStore.setState({
+        tabsByConnection: {
+          'conn-1': [
+            { id: 'tab-1', type: 'query-editor', label: 'Query 1', connectionId: 'conn-1' },
+            { id: 'tab-2', type: 'query-editor', label: 'Query 2', connectionId: 'conn-1' },
+          ],
+        },
+        activeTabByConnection: {
+          'conn-1': 'tab-2',
+        },
+      })
+
+      useQueryStore.getState().setActiveResultIndex('tab-1', 1)
+
+      expect(useQueryStore.getState().tabs['tab-1']!.activeResultIndex).toBe(1)
+      expect(ipc.payloads('touch_results')).toHaveLength(0)
+    })
+  })
+
+  describe('useQueryStore — per-result isolation', () => {
+    it('selecting a row and switching view mode only affect the active result', () => {
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': {
+            content: '',
+            selectedText: '',
+            filePath: null,
+            tabStatus: 'success',
+            prevTabStatus: 'idle',
+            cursorPosition: null,
+            connectionId: 'conn-1',
+            results: [
+              {
+                ...DEFAULT_RESULT_STATE,
+                resultStatus: 'success',
+                queryId: 'q1',
+                columns: [{ name: 'id', dataType: 'INT' }],
+                ...withRows([[1], [2]]),
+                totalRows: 2,
+                viewMode: 'grid',
+              },
+              {
+                ...DEFAULT_RESULT_STATE,
+                resultStatus: 'success',
+                queryId: 'q2',
+                columns: [{ name: 'name', dataType: 'VARCHAR' }],
+                ...withRows([['Alice']]),
+                totalRows: 1,
+                viewMode: 'grid',
+              },
+            ],
+            activeResultIndex: 0,
+            pendingNavigationAction: null,
+            executionStartedAt: null,
+            isCancelling: false,
+            wasCancelled: false,
+            activeBottomPanelItem: { type: 'result' },
+          },
+        },
+      })
+
+      useQueryStore.getState().setSelectedRow('tab-1', 1)
+      useQueryStore.getState().setViewMode('tab-1', 'form')
+
+      const tab = useQueryStore.getState().tabs['tab-1']!
+      expect(tab.results[0].selectedRowIndex).toBe(1)
+      expect(tab.results[0].viewMode).toBe('form')
+      expect(tab.results[1].selectedRowIndex).toBeNull()
+      expect(tab.results[1].viewMode).toBe('grid')
+    })
+  })
+
+  describe('useQueryStore — isCallSql', () => {
+    it('detects CALL statements', async () => {
+      const { isCallSql } = await import('../../stores/query-store')
+      expect(isCallSql('CALL my_proc()')).toBe(true)
+      expect(isCallSql('  CALL my_proc()')).toBe(true)
+      expect(isCallSql('-- comment\nCALL my_proc()')).toBe(true)
+      expect(isCallSql('SELECT 1')).toBe(false)
+      expect(isCallSql('INSERT INTO t VALUES (1)')).toBe(false)
+    })
+  })
+
+  describe('useQueryStore — hasAnyUnsavedEdits', () => {
+    it('returns false when no results have edits', async () => {
+      const { hasAnyUnsavedEdits } = await import('../../stores/query-store')
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': {
+            content: '',
+            selectedText: '',
+            filePath: null,
+            tabStatus: 'success',
+            prevTabStatus: 'idle',
+            cursorPosition: null,
+            connectionId: 'conn-1',
+            results: [
+              { ...DEFAULT_RESULT_STATE, resultStatus: 'success' },
+              { ...DEFAULT_RESULT_STATE, resultStatus: 'success' },
+            ],
+            activeResultIndex: 0,
+            pendingNavigationAction: null,
+            executionStartedAt: null,
+            isCancelling: false,
+            wasCancelled: false,
+            activeBottomPanelItem: { type: 'result' },
+          },
+        },
+      })
+
+      const tab = useQueryStore.getState().tabs['tab-1']!
+      expect(hasAnyUnsavedEdits(tab)).toBe(false)
+    })
+
+    it('returns true when any result has modified columns', async () => {
+      const { hasAnyUnsavedEdits } = await import('../../stores/query-store')
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': {
+            content: '',
+            selectedText: '',
+            filePath: null,
+            tabStatus: 'success',
+            prevTabStatus: 'idle',
+            cursorPosition: null,
+            connectionId: 'conn-1',
+            results: [
+              { ...DEFAULT_RESULT_STATE, resultStatus: 'success' },
+              {
+                ...DEFAULT_RESULT_STATE,
+                resultStatus: 'success',
+                editState: {
+                  rowKey: { id: 1 },
+                  originalValues: { name: 'Alice' },
+                  currentValues: { name: 'Bob' },
+                  modifiedColumns: new Set(['name']),
+                  isNewRow: false,
+                },
+              },
+            ],
+            activeResultIndex: 0,
+            pendingNavigationAction: null,
+            executionStartedAt: null,
+            isCancelling: false,
+            wasCancelled: false,
+            activeBottomPanelItem: { type: 'result' },
+          },
+        },
+      })
+
+      const tab = useQueryStore.getState().tabs['tab-1']!
+      expect(hasAnyUnsavedEdits(tab)).toBe(true)
+    })
+
+    it('returns false for undefined tab', async () => {
+      const { hasAnyUnsavedEdits } = await import('../../stores/query-store')
+      expect(hasAnyUnsavedEdits(undefined)).toBe(false)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Additional coverage: setActiveResultIndex edge cases
+  // ---------------------------------------------------------------------------
+
+  describe('useQueryStore — setActiveResultIndex (deferred analysis & edit discard)', () => {
+    function setupMultiResultForAnalysis() {
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': {
+            content: 'SELECT 1; SELECT name FROM users',
+            selectedText: '',
+            filePath: null,
+            tabStatus: 'success',
+            prevTabStatus: 'idle',
+            cursorPosition: null,
+            connectionId: 'conn-1',
+            results: [
+              {
+                ...DEFAULT_RESULT_STATE,
+                resultStatus: 'success',
+                queryId: 'q1',
+                columns: [{ name: 'id', dataType: 'INT' }],
+                ...withRows([[1]]),
+                totalRows: 1,
+                isAnalyzed: true,
+                lastExecutedSql: 'SELECT 1',
+                reExecutable: true,
+              },
+              {
+                ...DEFAULT_RESULT_STATE,
+                resultStatus: 'success',
+                queryId: 'q2',
+                columns: [{ name: 'name', dataType: 'VARCHAR' }],
+                ...withRows([['Alice']]),
+                totalRows: 1,
+                isAnalyzed: false,
+                lastExecutedSql: 'SELECT name FROM users',
+                reExecutable: true,
+              },
+            ],
+            activeResultIndex: 0,
+            pendingNavigationAction: null,
+            executionStartedAt: null,
+            isCancelling: false,
+            wasCancelled: false,
+            activeBottomPanelItem: { type: 'result' },
+          },
+        },
+      })
+    }
+
+    it('triggers deferred analysis when switching to an unanalyzed SELECT result', async () => {
+      setupMultiResultForAnalysis()
+      const analyzeHandler = vi.fn().mockResolvedValue([])
+      overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
+        if (cmd === 'analyze_query_for_edit') return analyzeHandler()
+        return null
+      })
+
+      useQueryStore.getState().setActiveResultIndex('tab-1', 1)
+      const tab = useQueryStore.getState().tabs['tab-1']!
+      expect(tab.activeResultIndex).toBe(1)
+
+      // Allow the fire-and-forget analysis to settle
+      await vi.waitFor(() => {
+        expect(analyzeHandler).toHaveBeenCalled()
+      })
+    })
+
+    it('ignores deferred analysis errors when the switched result was replaced before failure resolves', async () => {
+      setupMultiResultForAnalysis()
+
+      overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
+        if (cmd === 'analyze_query_for_edit') {
+          useQueryStore.setState((prev) => {
+            const tab = prev.tabs['tab-1']
+            if (!tab) return prev
+            const nextResults = [...tab.results]
+            nextResults[1] = {
+              ...nextResults[1],
+              queryId: 'q2-newer',
+            }
+            return {
+              tabs: {
+                ...prev.tabs,
+                'tab-1': { ...tab, results: nextResults },
+              },
+            }
+          })
+          throw new Error('analysis exploded')
+        }
+        return null
+      })
+
+      useQueryStore.getState().setActiveResultIndex('tab-1', 1)
+
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(useQueryStore.getState().tabs['tab-1']!.activeResultIndex).toBe(1)
+      expect(useQueryStore.getState().tabs['tab-1']!.results[1]!.queryId).toBe('q2-newer')
+    })
+
+    it('discards clean editState when switching result', () => {
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': {
+            content: 'SELECT 1; SELECT 2',
+            selectedText: '',
+            filePath: null,
+            tabStatus: 'success',
+            prevTabStatus: 'idle',
+            cursorPosition: null,
+            connectionId: 'conn-1',
+            results: [
+              {
+                ...DEFAULT_RESULT_STATE,
+                resultStatus: 'success',
+                queryId: 'q1',
+                columns: [{ name: 'id', dataType: 'INT' }],
+                ...withRows([[1]]),
+                totalRows: 1,
+                // editState with NO modified columns (clean)
+                editState: {
+                  rowKey: { id: 1 },
+                  originalValues: { id: 1 },
+                  currentValues: { id: 1 },
+                  modifiedColumns: new Set<string>(),
+                  isNewRow: false,
+                },
+                editingRowIndex: 0,
+              },
+              {
+                ...DEFAULT_RESULT_STATE,
+                resultStatus: 'success',
+                queryId: 'q2',
+                columns: [{ name: 'name', dataType: 'VARCHAR' }],
+                ...withRows([['Alice']]),
+                totalRows: 1,
+              },
+            ],
+            activeResultIndex: 0,
+            pendingNavigationAction: null,
+            executionStartedAt: null,
+            isCancelling: false,
+            wasCancelled: false,
+            activeBottomPanelItem: { type: 'result' },
+          },
+        },
+      })
+
+      useQueryStore.getState().setActiveResultIndex('tab-1', 1)
+      const tab = useQueryStore.getState().tabs['tab-1']!
+      expect(tab.activeResultIndex).toBe(1)
+      // The clean editState should have been discarded
+      expect(tab.results[0].editState).toBeNull()
+      expect(tab.results[0].editingRowIndex).toBeNull()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Additional coverage: cancelQuery
+  // ---------------------------------------------------------------------------
+
+  // fetchPage tests removed — fetchPage action was removed in Phase 1
+
+  // ---------------------------------------------------------------------------
+  // Additional coverage: changeRowLimit with non-reExecutable
+  // ---------------------------------------------------------------------------
+
+  describe('useQueryStore — changeRowLimit', () => {
+    it('shows warning toast for non-reExecutable results', async () => {
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': {
+            content: 'CALL proc()',
+            selectedText: '',
+            filePath: null,
+            tabStatus: 'success',
+            prevTabStatus: 'idle',
+            cursorPosition: null,
+            connectionId: 'conn-1',
+            results: [
+              {
+                ...DEFAULT_RESULT_STATE,
+                resultStatus: 'success',
+                queryId: 'q1',
+                columns: [{ name: 'id', dataType: 'INT' }],
+                ...withRows([[1]]),
+                totalRows: 1,
+                reExecutable: false,
+                lastExecutedSql: 'CALL proc()',
+              },
+            ],
+            activeResultIndex: 0,
+            pendingNavigationAction: null,
+            executionStartedAt: null,
+            isCancelling: false,
+            wasCancelled: false,
+            activeBottomPanelItem: { type: 'result' },
+          },
+        },
+      })
+
+      await useQueryStore.getState().changeRowLimit('conn-1', 'tab-1', 50)
+
+      // Page size should NOT have changed (non-reExecutable)
+      const tab = useQueryStore.getState().tabs['tab-1']!
+      expect(tab.results[0].rowLimit).toBe(DEFAULT_RESULT_STATE.rowLimit)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Additional coverage: cleanupTab and cleanupConnection
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // Additional coverage: setViewMode for tab with no results
+  // ---------------------------------------------------------------------------
+
+  describe('useQueryStore — setViewMode edge cases', () => {
+    it('creates a result with the new viewMode when tab has empty results', () => {
+      useQueryStore.getState().setContent('tab-1', '')
+      // tab-1 now has results: []
+      useQueryStore.getState().setViewMode('tab-1', 'form')
+
+      const tab = useQueryStore.getState().tabs['tab-1']!
+      expect(tab.results).toHaveLength(1)
+      expect(tab.results[0].viewMode).toBe('form')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Additional coverage: sortResults edge cases
+  // ---------------------------------------------------------------------------
+
+  describe('useQueryStore — sortResults', () => {
+    function setupSortableTab(overrides: Record<string, unknown> = {}) {
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': {
+            content: 'CALL proc()',
+            selectedText: '',
+            filePath: null,
+            tabStatus: 'success',
+            prevTabStatus: 'idle',
+            cursorPosition: null,
+            connectionId: 'conn-1',
+            results: [
+              {
+                ...DEFAULT_RESULT_STATE,
+                resultStatus: 'success',
+                queryId: 'q1',
+                columns: [{ name: 'id', dataType: 'INT' }],
+                ...withRows([[3], [1], [2]]),
+                totalRows: 3,
+                lastExecutedSql: 'SELECT id FROM t',
+                sortColumn: 'id',
+                sortDirection: 'asc' as const,
+                ...overrides,
+              },
+            ],
+            activeResultIndex: 0,
+            pendingNavigationAction: null,
+            executionStartedAt: null,
+            isCancelling: false,
+            wasCancelled: false,
+            activeBottomPanelItem: { type: 'result' },
+          },
+        },
+      })
+    }
+
+    it('clears the sort of a non-re-executable (CALL) result in Rust without a re-run', async () => {
+      setupSortableTab({ reExecutable: false })
+      ipc.override('set_result_view', () => ({
+        viewVersion: 2,
+        viewRowCount: 3,
+        totalRows: 3,
+        firstWindow: { offset: 0, rows: [[3], [1], [2]], baseIndices: [0, 1, 2] },
+      }))
+
+      await useQueryStore.getState().sortResults('tab-1', 'id', null)
+
+      const tab = useQueryStore.getState().tabs['tab-1']!
+      expect(tab.results[0].sortColumn).toBeNull()
+      expect(tab.results[0].sortDirection).toBeNull()
+      expect(rowsOf('tab-1', 0)).toEqual([[3], [1], [2]])
+      expect(ipc.payloads('reexecute_single_result')).toHaveLength(0)
+      expect(ipc.payloads('execute_call_query')).toHaveLength(0)
+    })
+
+    it('handles a sort IPC error by keeping the previous view and showing the band', async () => {
+      setupSortableTab({ reExecutable: true })
+      ipc.override('set_result_view', () => {
+        throw new Error('Sort failed')
+      })
+
+      await useQueryStore.getState().sortResults('tab-1', 'id', 'desc')
+
+      const result = useQueryStore.getState().tabs['tab-1']!.results[0]
+      expect(result.sortDirection).toBe('asc')
+      expect(result.viewError).toBe('Sort failed')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Stale re-execution discard: sortResults (sort-clear) on multi-result tabs
+  // ---------------------------------------------------------------------------
+
+  describe('useQueryStore — sortResults on a later result of a multi-result tab', () => {
+    it('targets the active result index and leaves the other results untouched', async () => {
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': {
+            content: 'SELECT 1; SELECT 2',
+            selectedText: '',
+            filePath: null,
+            tabStatus: 'success',
+            prevTabStatus: 'idle',
+            cursorPosition: null,
+            connectionId: 'conn-1',
+            results: [
+              {
+                ...DEFAULT_RESULT_STATE,
+                resultStatus: 'success',
+                queryId: 'q1',
+                columns: [{ name: 'id', dataType: 'INT' }],
+                ...withRows([[1]]),
+                totalRows: 1,
+              },
+              {
+                ...DEFAULT_RESULT_STATE,
+                resultStatus: 'success',
+                queryId: 'q2',
+                columns: [{ name: 'name', dataType: 'VARCHAR' }],
+                ...withRows([['Bob'], ['Alice']]),
+                totalRows: 2,
+              },
+            ],
+            activeResultIndex: 1,
+            pendingNavigationAction: null,
+            executionStartedAt: null,
+            isCancelling: false,
+            wasCancelled: false,
+            activeBottomPanelItem: { type: 'result' },
+          },
+        },
+      })
+      ipc.override('set_result_view', () => ({
+        viewVersion: 2,
+        viewRowCount: 2,
+        totalRows: 2,
+        firstWindow: { offset: 0, rows: [['Alice'], ['Bob']], baseIndices: [1, 0] },
+      }))
+
+      await useQueryStore.getState().sortResults('tab-1', 'name', 'asc')
+
+      expect(ipc.payloads('set_result_view')[0]).toMatchObject({ resultIndex: 1, queryId: 'q2' })
+      expect(rowsOf('tab-1', 1)).toEqual([['Alice'], ['Bob']])
+      expect(rowsOf('tab-1', 0)).toEqual([[1]])
+      expect(useQueryStore.getState().tabs['tab-1']!.results[0].sortColumn).toBeNull()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Stale re-execution discard: changeRowLimit on multi-result tabs
+  // ---------------------------------------------------------------------------
+
+  describe('useQueryStore — changeRowLimit stale re-execution discard', () => {
+    function setupMultiResultForPageSize() {
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': {
+            content: 'SELECT 1; SELECT 2',
+            selectedText: '',
+            filePath: null,
+            tabStatus: 'success',
+            prevTabStatus: 'idle',
+            cursorPosition: null,
+            connectionId: 'conn-1',
+            results: [
+              {
+                ...DEFAULT_RESULT_STATE,
+                resultStatus: 'success',
+                queryId: 'q1',
+                columns: [{ name: 'id', dataType: 'INT' }],
+                ...withRows([[1]]),
+                totalRows: 1,
+                lastExecutedSql: 'SELECT 1',
+                reExecutable: true,
+              },
+              {
+                ...DEFAULT_RESULT_STATE,
+                resultStatus: 'success',
+                queryId: 'q2',
+                columns: [{ name: 'name', dataType: 'VARCHAR' }],
+                ...withRows([['Alice']]),
+                totalRows: 1,
+                lastExecutedSql: 'SELECT 2',
+                reExecutable: true,
+              },
+            ],
+            activeResultIndex: 0,
+            pendingNavigationAction: null,
+            executionStartedAt: null,
+            isCancelling: false,
+            wasCancelled: false,
+            activeBottomPanelItem: { type: 'result' },
+          },
+        },
+      })
+    }
+
+    it('discards stale changeRowLimit re-execution when queryId changes during await', async () => {
+      setupMultiResultForPageSize()
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
+        if (cmd === 'reexecute_single_result') {
+          // Simulate a newer query replacing the results while re-exec is in flight
+          useQueryStore.setState((prev) => {
+            const tab = prev.tabs['tab-1']
+            if (!tab) return prev
+            const newResults = [...tab.results]
+            newResults[0] = {
+              ...newResults[0],
+              queryId: 'q1-replaced-newer',
+              ...withRows([[777]]),
+            }
+            return {
+              tabs: {
+                ...prev.tabs,
+                'tab-1': { ...tab, results: newResults },
+              },
+            }
+          })
+          return {
+            queryId: 'reexec-page-result',
+            sourceSql: 'SELECT 1',
+            columns: [{ name: 'id', dataType: 'INT' }],
+            totalRows: 1,
+            executionTimeMs: 5,
+            affectedRows: 0,
+            firstWindow: firstWindowFor([[42]]),
+
+            autoLimitApplied: false,
+            error: null,
+            reExecutable: true,
+          }
+        }
+        return null
+      })
+
+      await useQueryStore.getState().changeRowLimit('conn-1', 'tab-1', 50)
+
+      // The stale result should have been discarded
+      const tab = useQueryStore.getState().tabs['tab-1']!
+      expect(rowsOf('tab-1', 0)).toEqual([[777]])
+      expect(tab.results[0].queryId).toBe('q1-replaced-newer')
+      expect(warnSpy).not.toHaveBeenCalled()
+      warnSpy.mockRestore()
+    })
+
+    it('applies changeRowLimit normally when queryId is unchanged', async () => {
+      setupMultiResultForPageSize()
+
+      overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
+        if (cmd === 'reexecute_single_result') {
+          return {
+            queryId: 'new-q1',
+            sourceSql: 'SELECT 1',
+            columns: [{ name: 'id', dataType: 'INT' }],
+            totalRows: 1,
+            executionTimeMs: 5,
+            affectedRows: 0,
+            firstWindow: firstWindowFor([[42]]),
+
+            autoLimitApplied: false,
+            error: null,
+            reExecutable: true,
+          }
+        }
+        if (cmd === 'analyze_query_for_edit') return []
+        return null
+      })
+
+      await useQueryStore.getState().changeRowLimit('conn-1', 'tab-1', 50)
+
+      // The result should have been applied normally
+      const tab = useQueryStore.getState().tabs['tab-1']!
+      expect(rowsOf('tab-1', 0)).toEqual([[42]])
+      expect(tab.results[0].queryId).toBe('new-q1')
+      expect(tab.results[0].rowLimit).toBe(50)
+    })
+  })
+
+  describe('useQueryStore — multi-result connection-aware completion', () => {
+    /** Register a query tab as the selected tab for the given connection. */
+    function registerQueryTab(connectionId: string, tabId: string): void {
+      useWorkspaceStore.setState({
+        tabsByConnection: {
+          [connectionId]: [{ id: tabId, type: 'query-editor', label: 'Query', connectionId }],
+        },
+        activeTabByConnection: { [connectionId]: tabId },
+      })
+    }
+
+    it('activates only the first result when the connection is globally visible', async () => {
+      resetWorkspaceStore({ visibleConnectionSessionId: 'conn-1' })
+      registerQueryTab('conn-1', 'tab-multi')
+
+      await useQueryStore
+        .getState()
+        .executeMultiQuery('conn-1', 'tab-multi', ['SELECT 1', 'INSERT INTO t', 'SELECT name'])
+
+      const results = useQueryStore.getState().tabs['tab-multi']!.results
+      expect(results[0].rowResidency.isActive).toBe(true)
+      expect(results[1].rowResidency.isActive).toBe(false)
+      expect(results[2].rowResidency.isActive).toBe(false)
+    })
+
+    it('keeps every result inactive when the connection is no longer visible', async () => {
+      resetWorkspaceStore({ visibleConnectionSessionId: 'conn-other' })
+      registerQueryTab('conn-1', 'tab-multi-bg')
+
+      await useQueryStore
+        .getState()
+        .executeMultiQuery('conn-1', 'tab-multi-bg', ['SELECT 1', 'INSERT INTO t', 'SELECT name'])
+
+      const results = useQueryStore.getState().tabs['tab-multi-bg']!.results
+      expect(results.every((result) => result.rowResidency.isActive === false)).toBe(true)
+      expect(results[0].rowResidency.status).toBe('resident')
+      expect(results[0].rowResidency.inactiveSince).toBeTypeOf('number')
+    })
+  })
+})
+
+describe('expired results', () => {
+  const TAB_ID = 'tab-expired-test'
+  const CONN_ID = 'conn-expired-test'
+  const FILTER_EQ_ID_2: FilterCondition[] = [{ column: 'id', operator: '==', value: '2' }]
+  const TEST_EDIT_TABLE_COLUMNS: TableDataColumnMeta[] = [
+    {
+      name: 'id',
+      dataType: 'INT',
+      isBooleanAlias: false,
+      isNullable: false,
+      isPrimaryKey: true,
+      isUniqueKey: true,
+      hasDefault: false,
+      columnDefault: null,
+      isBinary: false,
+      isAutoIncrement: false,
+    },
+  ]
+  const TEST_EDIT_TABLE_INFO: QueryTableEditInfo = {
+    database: 'db',
+    table: 'users',
+    columns: TEST_EDIT_TABLE_COLUMNS,
+    primaryKey: {
+      keyColumns: ['id'],
+      hasAutoIncrement: false,
+      isUniqueKeyFallback: false,
+    },
+    foreignKeys: [],
+  }
+
+  function setupTabWithResult() {
+    act(() => {
+      useQueryStore.setState({
+        tabs: {
+          [TAB_ID]: {
+            content: 'SELECT * FROM users',
+            selectedText: '',
+            filePath: null,
+            tabStatus: 'success',
+            prevTabStatus: 'idle',
+            cursorPosition: null,
+            connectionId: CONN_ID,
+            results: [
+              {
+                ...DEFAULT_RESULT_STATE,
+                resultStatus: 'success',
+                queryId: 'q-test-1',
+                lastExecutedSql: 'SELECT * FROM users',
+                columns: [{ name: 'id', dataType: 'INT' }],
+                ...withRows([[1]]),
+                totalRows: 1,
+              },
+            ],
+            activeResultIndex: 0,
+            activeBottomPanelItem: { type: 'result' },
+            pendingNavigationAction: null,
+            executionStartedAt: null,
+            isCancelling: false,
+            wasCancelled: false,
+          },
+        },
+      })
+    })
+  }
+
+  function setupMultiResultTab() {
+    act(() => {
+      useQueryStore.setState({
+        tabs: {
+          [TAB_ID]: {
+            content: 'SELECT * FROM users; SELECT * FROM orders;',
+            selectedText: '',
+            filePath: null,
+            tabStatus: 'success',
+            prevTabStatus: 'idle',
+            cursorPosition: { lineNumber: 1, column: 10 },
+            connectionId: CONN_ID,
+            results: [
+              {
+                ...DEFAULT_RESULT_STATE,
+                resultStatus: 'success',
+                queryId: 'q-test-1',
+                lastExecutedSql: 'SELECT * FROM users',
+                columns: [{ name: 'id', dataType: 'INT' }],
+                ...withRows([[1]]),
+                totalRows: 1,
+              },
+              {
+                ...DEFAULT_RESULT_STATE,
+                resultStatus: 'success',
+                queryId: 'q-test-2',
+                lastExecutedSql: 'SELECT * FROM orders',
+                columns: [{ name: 'id', dataType: 'INT' }],
+                ...withRows([[2]]),
+                totalRows: 1,
+              },
+            ],
+            activeResultIndex: 0,
+            activeBottomPanelItem: { type: 'result' },
+            pendingNavigationAction: null,
+            executionStartedAt: null,
+            isCancelling: false,
+            wasCancelled: false,
+          },
+        },
+      })
+    })
+  }
+
+  describe('query-store expired result handling', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+      useQueryStore.setState({ tabs: {} })
+      resetWorkspaceStore({ visibleConnectionSessionId: CONN_ID })
+      useWorkspaceStore.setState({
+        tabsByConnection: {
+          [CONN_ID]: [
+            {
+              id: TAB_ID,
+              type: 'query-editor',
+              label: 'Query 1',
+              connectionId: CONN_ID,
+            },
+          ],
+        },
+        activeTabByConnection: {
+          [CONN_ID]: TAB_ID,
+        },
+      })
+      useSettingsStore.setState({
+        settings: {
+          'results.cacheTTL': '1',
+        },
+      })
+    })
+
+    afterEach(() => {
+      vi.clearAllTimers()
+      vi.useRealTimers()
+    })
+
+    it('validateActiveTabResults marks expired when touch_results returns expired', async () => {
+      setupTabWithResult()
+
+      ipc.override('touch_results', () => ({ status: 'expired' }))
+
+      act(() => {
+        useQueryStore.getState().validateActiveTabResults(TAB_ID)
+      })
+
+      await waitFor(() => {
+        const tab = useQueryStore.getState().tabs[TAB_ID]
+        expect(tab?.results.every((result) => result.isExpired)).toBe(true)
+      })
+    })
+
+    it('validateActiveTabResults does not mark expired when touch_results returns available', async () => {
+      setupTabWithResult()
+
+      ipc.override('touch_results', () => ({ status: 'available' }))
+
+      act(() => {
+        useQueryStore.getState().validateActiveTabResults(TAB_ID)
+      })
+
+      await waitFor(() => {
+        const tab = useQueryStore.getState().tabs[TAB_ID]
+        expect(tab?.results[0]?.isExpired).toBe(false)
+      })
+    })
+
+    it('evicts inactive result rows after the configured TTL', async () => {
+      setupTabWithResult()
+
+      act(() => {
+        useQueryStore.getState().markResultSurfaceInactive(TAB_ID, 0)
+      })
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000)
+      })
+
+      const result = useQueryStore.getState().tabs[TAB_ID]?.results[0]
+      // Only the page cache is dropped; counts and view metadata stay.
+      expect(rowsOf(TAB_ID)).toEqual([])
+      expect(hasNoLoadedRows(TAB_ID, 0)).toBe(true)
+      expect(result?.viewRowCount).toBe(1)
+      expect(result?.rowResidency.status).toBe('evicted')
+      expect(result?.rowsEvictedAt).toBeTypeOf('number')
+      expect(result?.isExpired).toBe(false)
+    })
+
+    it('evicts a filtered result like any other, keeping its view spec', async () => {
+      setupTabWithResult()
+
+      act(() => {
+        useQueryStore.setState((state) => {
+          const tab = state.tabs[TAB_ID]
+          if (!tab) return state
+          const result = {
+            ...tab.results[0],
+            filterModel: FILTER_EQ_ID_2,
+          }
+          return {
+            tabs: {
+              ...state.tabs,
+              [TAB_ID]: {
+                ...tab,
+                results: [result],
+              },
+            },
+          }
+        })
+      })
+
+      act(() => {
+        useQueryStore.getState().markResultSurfaceInactive(TAB_ID, 0)
+      })
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000)
+      })
+
+      const result = useQueryStore.getState().tabs[TAB_ID]?.results[0]
+      expect(result?.rowResidency.status).toBe('evicted')
+      expect(result?.filterModel).toEqual(FILTER_EQ_ID_2)
+      expect(hasNoLoadedRows(TAB_ID, 0)).toBe(true)
+      expect(result?.rowsEvictedAt).toBeTypeOf('number')
+    })
+
+    it('restores an evicted result by refetching its visible window (no re-run, view kept)', async () => {
+      setupTabWithResult()
+
+      act(() => {
+        useQueryStore.setState((state) => {
+          const tab = state.tabs[TAB_ID]
+          if (!tab) return state
+          const result = {
+            ...tab.results[0],
+            rowsEvictedAt: 1234,
+            filterModel: FILTER_EQ_ID_2,
+            viewVersion: 3,
+            rowResidency: {
+              status: 'evicted' as const,
+              isActive: false,
+              inactiveSince: Date.now(),
+            },
+          }
+          return {
+            tabs: {
+              ...state.tabs,
+              [TAB_ID]: {
+                ...tab,
+                results: [result],
+              },
+            },
+          }
+        })
+      })
+
+      ipc.override('touch_results', () => ({ status: 'available' }))
+      // The Rust view still applies the filter: the refetched window is filtered.
+      ipc.override('fetch_result_window', () => ({
+        offset: 0,
+        rows: [[2]],
+        baseIndices: [1],
+        viewRowCount: 1,
+        viewVersion: 3,
+      }))
+
+      await act(async () => {
+        await useQueryStore.getState().markResultSurfaceActive(TAB_ID, 0)
+      })
+
+      const result = useQueryStore.getState().tabs[TAB_ID]?.results[0]
+      expect(result?.rowResidency.status).toBe('resident')
+      expect(result?.rowResidency.isActive).toBe(true)
+      expect(result?.rowsEvictedAt).toBeNull()
+      expect(rowsOf(TAB_ID)).toEqual([[2]])
+      expect(result?.filterModel).toEqual(FILTER_EQ_ID_2)
+      expect(ipc.payloads('touch_results')).toHaveLength(1)
+      expect(ipc.payloads('fetch_result_window')[0]).toMatchObject({
+        connectionId: CONN_ID,
+        tabId: TAB_ID,
+        queryId: 'q-test-1',
+        resultIndex: 0,
+        viewVersion: 3,
+        offset: 0,
+        limit: 1000,
+      })
+      expect(ipc.payloads('execute_query')).toHaveLength(0)
+      expect(ipc.payloads('set_result_view')).toHaveLength(0)
+    })
+
+    it('preserves the latest inactive visibility state when restore finishes after switching away', async () => {
+      setupMultiResultTab()
+
+      act(() => {
+        useQueryStore.setState((state) => {
+          const tab = state.tabs[TAB_ID]
+          if (!tab) return state
+          const results = [...tab.results]
+          results[1] = {
+            ...results[1],
+            rowResidency: {
+              status: 'evicted',
+              isActive: false,
+              inactiveSince: 123,
+            },
+          }
+          return {
+            tabs: {
+              ...state.tabs,
+              [TAB_ID]: { ...tab, results, activeResultIndex: 1 },
+            },
+          }
+        })
+      })
+
+      const deferred: { resolve?: (value: Record<string, unknown>) => void } = {}
+      ipc.override('touch_results', () => ({ status: 'available' }))
+      ipc.override(
+        'fetch_result_window',
+        () =>
+          new Promise((resolve) => {
+            deferred.resolve = resolve
+          })
+      )
+
+      const restorePromise = useQueryStore.getState().markResultSurfaceActive(TAB_ID, 1)
+      await waitFor(() => {
+        expect(ipc.payloads('fetch_result_window')).toHaveLength(1)
+      })
+      act(() => {
+        useQueryStore.getState().markResultSurfaceInactive(TAB_ID, 1)
+      })
+      if (!deferred.resolve) {
+        throw new Error('Expected fetch_result_window resolver')
+      }
+      deferred.resolve({
+        offset: 0,
+        rows: [[22]],
+        baseIndices: [0],
+        viewRowCount: 1,
+        viewVersion: 0,
+      })
+      await restorePromise
+
+      const result = useQueryStore.getState().tabs[TAB_ID]?.results[1]
+      expect(rowsOf(TAB_ID, 1)).toEqual([[22]])
+      expect(result?.rowResidency).toEqual({
+        status: 'resident',
+        isActive: false,
+        inactiveSince: expect.any(Number),
+      })
+    })
+
+    it('does not mark a resident active result as restoring while another result is being restored', async () => {
+      setupMultiResultTab()
+
+      act(() => {
+        useQueryStore.setState((state) => {
+          const tab = state.tabs[TAB_ID]
+          if (!tab) return state
+          const results = [...tab.results]
+          results[1] = {
+            ...results[1],
+            rowResidency: {
+              status: 'evicted',
+              isActive: false,
+              inactiveSince: 123,
+            },
+          }
+          return {
+            tabs: {
+              ...state.tabs,
+              [TAB_ID]: { ...tab, results, activeResultIndex: 1 },
+            },
+          }
+        })
+      })
+
+      const deferred: { resolve?: (value: Record<string, unknown>) => void } = {}
+      ipc.override('touch_results', () => ({ status: 'available' }))
+      ipc.override(
+        'fetch_result_window',
+        () =>
+          new Promise((resolve) => {
+            deferred.resolve = resolve
+          })
+      )
+
+      const restorePromise = useQueryStore.getState().markResultSurfaceActive(TAB_ID, 1)
+      await waitFor(() => {
+        expect(ipc.payloads('fetch_result_window')).toHaveLength(1)
+      })
+
+      act(() => {
+        useQueryStore.getState().setActiveResultIndex(TAB_ID, 0)
+      })
+
+      const activeResult = useQueryStore.getState().tabs[TAB_ID]?.results[0]
+      expect(activeResult?.rowResidency.status).toBe('resident')
+      expect(useQueryStore.getState().tabs[TAB_ID]?.tabStatus).toBe('restoring')
+
+      if (!deferred.resolve) {
+        throw new Error('Expected fetch_result_window resolver')
+      }
+      deferred.resolve({
+        offset: 0,
+        rows: [[22]],
+        baseIndices: [0],
+        viewRowCount: 1,
+        viewVersion: 0,
+      })
+      await restorePromise
+    })
+
+    it('marks results expired when restore finds missing backend cache', async () => {
+      setupTabWithResult()
+
+      act(() => {
+        useQueryStore.setState((state) => {
+          const tab = state.tabs[TAB_ID]
+          if (!tab) return state
+          const result = {
+            ...tab.results[0],
+            rowResidency: {
+              status: 'evicted' as const,
+              isActive: false,
+              inactiveSince: Date.now(),
+            },
+          }
+          return {
+            tabs: {
+              ...state.tabs,
+              [TAB_ID]: {
+                ...tab,
+                results: [result],
+              },
+            },
+          }
+        })
+      })
+
+      ipc.override('touch_results', () => ({ status: 'missing' }))
+
+      await act(async () => {
+        await useQueryStore.getState().markResultSurfaceActive(TAB_ID, 0)
+      })
+
+      const result = useQueryStore.getState().tabs[TAB_ID]?.results[0]
+      expect(result?.isExpired).toBe(true)
+      expect(result?.rowResidency.status).toBe('evicted')
+      expect(ipc.payloads('fetch_result_window')).toHaveLength(0)
+    })
+
+    it('resets restoring status back to evicted when restore fetch throws', async () => {
+      setupTabWithResult()
+
+      act(() => {
+        useQueryStore.setState((state) => {
+          const tab = state.tabs[TAB_ID]
+          if (!tab) return state
+          return {
+            tabs: {
+              ...state.tabs,
+              [TAB_ID]: {
+                ...tab,
+                results: [
+                  {
+                    ...tab.results[0],
+                    rowResidency: {
+                      status: 'evicted',
+                      isActive: false,
+                      inactiveSince: 999,
+                    },
+                  },
+                ],
+              },
+            },
+          }
+        })
+      })
+
+      ipc.override('touch_results', () => ({ status: 'available' }))
+      ipc.override('fetch_result_window', () => {
+        throw new Error('restore failed')
+      })
+
+      await act(async () => {
+        await useQueryStore.getState().markResultSurfaceActive(TAB_ID, 0)
+      })
+
+      const result = useQueryStore.getState().tabs[TAB_ID]?.results[0]
+      expect(result?.rowResidency).toEqual({
+        status: 'evicted',
+        isActive: true,
+        inactiveSince: null,
+      })
+    })
+
+    it('does not evict rows for results with dirty edits', async () => {
+      setupTabWithResult()
+
+      act(() => {
+        useQueryStore.setState((state) => {
+          const tab = state.tabs[TAB_ID]
+          if (!tab) return state
+          const result = {
+            ...tab.results[0],
+            editState: {
+              rowKey: { id: 1 },
+              originalValues: { id: 1 },
+              currentValues: { id: 2 },
+              modifiedColumns: new Set(['id']),
+              isNewRow: false,
+              insertEligibleColumns: new Set<string>(),
+            },
+          }
+          return {
+            tabs: {
+              ...state.tabs,
+              [TAB_ID]: {
+                ...tab,
+                results: [result],
+              },
+            },
+          }
+        })
+      })
+
+      act(() => {
+        useQueryStore.getState().markResultSurfaceInactive(TAB_ID, 0)
+      })
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000)
+      })
+
+      const result = useQueryStore.getState().tabs[TAB_ID]?.results[0]
+      expect(rowsOf(TAB_ID)).toEqual([[1]])
+      expect(result?.rowResidency.status).toBe('resident')
+    })
+
+    it('restores the newly active evicted result in a multi-result tab', async () => {
+      setupMultiResultTab()
+
+      act(() => {
+        useQueryStore.setState((state) => {
+          const tab = state.tabs[TAB_ID]
+          if (!tab) return state
+          const results = [...tab.results]
+          results[1] = {
+            ...results[1],
+            rowResidency: {
+              status: 'evicted',
+              isActive: false,
+              inactiveSince: Date.now(),
+            },
+          }
+          return {
+            tabs: {
+              ...state.tabs,
+              [TAB_ID]: { ...tab, results },
+            },
+          }
+        })
+      })
+
+      ipc.override('touch_results', () => ({ status: 'available' }))
+      ipc.override('fetch_result_window', () => ({
+        offset: 0,
+        rows: [[22]],
+        baseIndices: [0],
+        viewRowCount: 1,
+        viewVersion: 0,
+      }))
+
+      await act(async () => {
+        useQueryStore.getState().setActiveResultIndex(TAB_ID, 1)
+        await waitFor(() => {
+          const result = useQueryStore.getState().tabs[TAB_ID]?.results[1]
+          expect(result?.rowResidency.status).toBe('resident')
+        })
+      })
+
+      const tab = useQueryStore.getState().tabs[TAB_ID]
+      expect(tab?.activeResultIndex).toBe(1)
+      expect(rowsOf(TAB_ID, 1)).toEqual([[22]])
+      expect(tab?.results[0]?.rowResidency.isActive).toBe(false)
+      expect(tab?.results[1]?.rowResidency.isActive).toBe(true)
+    })
+
+    it('retryExpiredResult uses the shared editor execution plan from selected text', async () => {
+      setupTabWithResult()
+
+      act(() => {
+        useQueryStore.setState((state) => {
+          const tab = state.tabs[TAB_ID]
+          if (!tab) return state
+          const results = [...tab.results]
+          results[0] = {
+            ...results[0],
+            isExpired: true,
+            lastExecutedSql: 'SELECT * FROM users',
+          }
+          return {
+            tabs: {
+              ...state.tabs,
+              [TAB_ID]: {
+                ...tab,
+                content: 'SELECT * FROM users;\nSELECT * FROM orders WHERE id = 9;',
+                selectedText: 'SELECT * FROM orders WHERE id = 9',
+                cursorPosition: { lineNumber: 1, column: 10 },
+                results,
+              },
+            },
+          }
+        })
+      })
+
+      const executeQuerySpy = vi.fn(() => ({
+        queryId: 'q-retried',
+        columns: [{ name: 'id', dataType: 'INT' }],
+        totalRows: 1,
+        executionTimeMs: 5,
+        affectedRows: 0,
+        firstWindow: firstWindowFor([[1]]),
+
+        autoLimitApplied: false,
+      }))
+
+      ipc.override('execute_query', executeQuerySpy)
+
+      await act(async () => {
+        await useQueryStore.getState().retryExpiredResult(TAB_ID)
+      })
+
+      const tab = useQueryStore.getState().tabs[TAB_ID]
+      expect(executeQuerySpy).toHaveBeenCalledTimes(1)
+      expect(ipc.payloads('execute_query')[0]).toMatchObject({
+        sql: 'SELECT * FROM orders WHERE id = 9',
+      })
+      expect(tab?.results[0]?.isExpired).toBe(false)
+    })
+
+    it('retryExpiredResult keeps isExpired when no valid rerun plan is available', async () => {
+      setupTabWithResult()
+
+      act(() => {
+        useQueryStore.setState((state) => {
+          const tab = state.tabs[TAB_ID]
+          if (!tab) return state
+          const results = [...tab.results]
+          results[0] = { ...results[0], isExpired: true, lastExecutedSql: null }
+          return {
+            tabs: {
+              ...state.tabs,
+              [TAB_ID]: { ...tab, content: '   ', selectedText: '', cursorPosition: null, results },
+            },
+          }
+        })
+      })
+
+      await act(async () => {
+        await useQueryStore.getState().retryExpiredResult(TAB_ID)
+      })
+
+      expect(ipc.payloads('execute_query')).toHaveLength(0)
+      expect(useQueryStore.getState().tabs[TAB_ID]?.results[0]?.isExpired).toBe(true)
+    })
+
+    it('retryExpiredResult keeps isExpired when rerun fails', async () => {
+      setupTabWithResult()
+
+      act(() => {
+        useQueryStore.setState((state) => {
+          const tab = state.tabs[TAB_ID]
+          if (!tab) return state
+          const results = [...tab.results]
+          results[0] = { ...results[0], isExpired: true }
+          return { tabs: { ...state.tabs, [TAB_ID]: { ...tab, results } } }
+        })
+      })
+
+      ipc.override('execute_query', () => {
+        throw new Error('connection dropped')
+      })
+
+      await act(async () => {
+        await useQueryStore.getState().retryExpiredResult(TAB_ID)
+      })
+
+      const tab = useQueryStore.getState().tabs[TAB_ID]
+      expect(tab?.results.every((item) => item.isExpired)).toBe(true)
+      expect(tab?.results[0]?.resultStatus).toBe('error')
+    })
+
+    it('retryExpiredResult uses the statement at cursor for multi-result tabs', async () => {
+      setupMultiResultTab()
+      let resolveReexecute:
+        | ((value: {
+            sourceSql: string
+            reExecutable: boolean
+            columns: { name: string; dataType: string }[]
+            firstWindow: { offset: number; rows: unknown[][]; baseIndices: number[] }
+            totalRows: number
+            executionTimeMs: number
+            affectedRows: number
+            autoLimitApplied: boolean
+            queryId: string
+            error: null
+          }) => void)
+        | null = null
+
+      act(() => {
+        useQueryStore.setState((state) => {
+          const tab = state.tabs[TAB_ID]
+          if (!tab) return state
+          const results = [...tab.results]
+          results[0] = { ...results[0], isExpired: true }
+          return { tabs: { ...state.tabs, [TAB_ID]: { ...tab, results } } }
+        })
+      })
+
+      ipc.override(
+        'reexecute_single_result',
+        () =>
+          new Promise((resolve) => {
+            resolveReexecute = resolve
+          })
+      )
+
+      await act(async () => {
+        const retryPromise = useQueryStore.getState().retryExpiredResult(TAB_ID)
+        expect(useQueryStore.getState().tabs[TAB_ID]?.tabStatus).toBe('running')
+        resolveReexecute?.({
+          sourceSql: 'SELECT * FROM users',
+          reExecutable: true,
+          columns: [{ name: 'id', dataType: 'INT' }],
+          firstWindow: firstWindowFor([[5]]),
+          totalRows: 1,
+          executionTimeMs: 3,
+          affectedRows: 0,
+
+          autoLimitApplied: false,
+          queryId: 'q-reexec-1',
+          error: null,
+        })
+        await retryPromise
+      })
+
+      expect(ipc.payloads('reexecute_single_result')[0]).toMatchObject({
+        sql: 'SELECT * FROM users',
+        resultIndex: 0,
+      })
+      expect(useQueryStore.getState().tabs[TAB_ID]?.results[0]?.isExpired).toBe(false)
+    })
+
+    it('sortResults sets isExpired when error contains results_expired', async () => {
+      setupMultiResultTab()
+
+      ipc.override('set_result_view', () => {
+        throw new Error('results_expired: Results expired.')
+      })
+
+      await act(async () => {
+        await useQueryStore.getState().sortResults(TAB_ID, 'id', 'asc')
+      })
+
+      const tab = useQueryStore.getState().tabs[TAB_ID]
+      expect(tab?.results.every((result) => result.isExpired)).toBe(true)
+      expect(tab?.results.some((result) => result.isSorting)).toBe(false)
+    })
+
+    it('changeRowLimit sets all tab results expired when re-execution returns results_expired', async () => {
+      setupMultiResultTab()
+
+      ipc.override('reexecute_single_result', () => {
+        throw new Error('results_expired: Results expired.')
+      })
+
+      await act(async () => {
+        await useQueryStore.getState().changeRowLimit(CONN_ID, TAB_ID, 50)
+      })
+
+      expect(
+        useQueryStore.getState().tabs[TAB_ID]?.results.every((result) => result.isExpired)
+      ).toBe(true)
+    })
+
+    it('saveCurrentRow marks the whole tab expired when cache sync reports results_expired', async () => {
+      setupTabWithResult()
+
+      act(() => {
+        useQueryStore.setState((state) => {
+          const tab = state.tabs[TAB_ID]
+          if (!tab) return state
+          const result = {
+            ...tab.results[0],
+            editMode: 'db.users',
+            editConnectionId: CONN_ID,
+            editingRowIndex: 0,
+            editingBaseIndex: 0,
+            editBoundColumnIndexMap: new Map([['id', 0]]),
+            editColumnBindings: new Map([[0, 'id']]),
+            editState: {
+              rowKey: { id: 1 },
+              originalValues: { id: 1 },
+              currentValues: { id: 2 },
+              modifiedColumns: new Set(['id']),
+              isNewRow: false,
+              insertEligibleColumns: new Set<string>(),
+            },
+            editTableMetadata: {
+              'db.users': TEST_EDIT_TABLE_INFO,
+            },
+          }
+          return {
+            tabs: {
+              ...state.tabs,
+              [TAB_ID]: { ...tab, results: [result] },
+            },
+          }
+        })
+      })
+
+      ipc.override('update_table_row', () => undefined)
+      ipc.override('update_result_cell', () => {
+        throw new Error('results_expired: Results expired.')
+      })
+
+      await act(async () => {
+        const saved = await useQueryStore.getState().saveCurrentRow(TAB_ID)
+        expect(saved).toBe(true)
+      })
+
+      expect(
+        useQueryStore.getState().tabs[TAB_ID]?.results.every((result) => result.isExpired)
+      ).toBe(true)
+    })
+
+    it('successful executeQuery sets isExpired to false', async () => {
+      setupTabWithResult()
+
+      // Mark as expired first
+      act(() => {
+        useQueryStore.setState((state) => {
+          const tab = state.tabs[TAB_ID]
+          if (!tab) return state
+          const results = [...tab.results]
+          results[0] = { ...results[0], isExpired: true }
+          return { tabs: { ...state.tabs, [TAB_ID]: { ...tab, results } } }
+        })
+      })
+
+      ipc.override('execute_query', () => ({
+        queryId: 'q-fresh',
+        columns: [{ name: 'id', dataType: 'INT' }],
+        totalRows: 1,
+        executionTimeMs: 5,
+        affectedRows: 0,
+        firstWindow: firstWindowFor([[1]]),
+
+        autoLimitApplied: false,
+      }))
+
+      await act(async () => {
+        await useQueryStore.getState().executeQuery(CONN_ID, TAB_ID, 'SELECT 1')
+      })
+
+      const tab = useQueryStore.getState().tabs[TAB_ID]
+      // executeQuery creates a new result with DEFAULT_RESULT_STATE which has isExpired: false
+      expect(tab?.results[0]?.isExpired).toBe(false)
+    })
+
+    it('validateActiveTabResults leaves tab available when touch_results returns available', async () => {
+      setupMultiResultTab()
+
+      act(() => {
+        useQueryStore.setState((state) => {
+          const tab = state.tabs[TAB_ID]
+          if (!tab) return state
+          return {
+            tabs: {
+              ...state.tabs,
+              [TAB_ID]: {
+                ...tab,
+                results: tab.results.map((result) => ({ ...result, isExpired: true })),
+              },
+            },
+          }
+        })
+      })
+
+      ipc.override('touch_results', () => ({ status: 'available' }))
+
+      act(() => {
+        useQueryStore.getState().validateActiveTabResults(TAB_ID)
+      })
+
+      await waitFor(() => {
+        expect(
+          useQueryStore.getState().tabs[TAB_ID]?.results.every((result) => result.isExpired)
+        ).toBe(true)
+      })
+    })
+
+    it('keeps a background query completion resident-but-inactive and TTL-eligible', async () => {
+      // The query tab belongs to CONN_ID, but a different connection is now the
+      // globally visible connection, so the completion must not become active.
+      act(() => {
+        useWorkspaceStore.setState({ visibleConnectionSessionId: 'conn-other-visible' })
+      })
+
+      ipc.override('execute_query', () => ({
+        queryId: 'q-bg',
+        columns: [{ name: 'id', dataType: 'INT' }],
+        totalRows: 1,
+        executionTimeMs: 5,
+        affectedRows: 0,
+        firstWindow: firstWindowFor([[1]]),
+        autoLimitApplied: false,
+      }))
+
+      await act(async () => {
+        await useQueryStore.getState().executeQuery(CONN_ID, TAB_ID, 'SELECT id FROM users')
+      })
+
+      const completed = useQueryStore.getState().tabs[TAB_ID]?.results[0]
+      expect(completed?.rowResidency.status).toBe('resident')
+      expect(completed?.rowResidency.isActive).toBe(false)
+      expect(completed?.rowResidency.inactiveSince).toBeTypeOf('number')
+      expect(rowsOf(TAB_ID)).toEqual([[1]])
+
+      // The background completion is on the normal inactive TTL lifecycle.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000)
+      })
+
+      const evicted = useQueryStore.getState().tabs[TAB_ID]?.results[0]
+      expect(rowsOf(TAB_ID)).toEqual([])
+      expect(evicted?.rowResidency.status).toBe('evicted')
+    })
   })
 })

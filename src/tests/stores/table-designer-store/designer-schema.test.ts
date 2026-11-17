@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  normalizeLoadedSchema,
   cloneValue,
   computeIsDirty,
   createBlankSchema,
   createDefaultTabState,
   isCreateDraftReadyForDdl,
-  normalizeLoadedSchema,
   resetSchemaFor,
 } from '../../../stores/table-designer-store/designer-schema'
 import type { TableDesignerTabState } from '../../../stores/table-designer-store'

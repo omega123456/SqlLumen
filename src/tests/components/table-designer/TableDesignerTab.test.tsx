@@ -577,3 +577,38 @@ describe('TableDesignerTab', () => {
     expect(action).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('create flow', () => {
+  function makeCreateTab(): TableDesignerTabType {
+    return {
+      id: 'tab-create',
+      type: 'table-designer',
+      label: '__new_table__',
+      connectionId: 'conn-1',
+      mode: 'create',
+      databaseName: 'app_db',
+      objectName: '__new_table__',
+    }
+  }
+
+  describe('TableDesignerTab create flow', () => {
+    beforeEach(() => {
+      useTableDesignerStore.getState().cleanupTab('tab-create')
+      useTableDesignerStore.setState({ tabs: {} })
+      resetWorkspaceStore()
+      useSchemaStore.setState({ connectionStates: {} })
+      useThemeStore.setState({ theme: 'dark', resolvedTheme: 'dark' })
+    })
+
+    it('renders the column editor when opening a new table designer tab', async () => {
+      render(<TableDesignerTab tab={makeCreateTab()} />)
+
+      await waitFor(() => {
+        expect(useTableDesignerStore.getState().tabs['tab-create']).toBeDefined()
+        expect(screen.getByTestId('column-editor')).toBeInTheDocument()
+      })
+
+      expect(screen.getByTestId('column-editor-ghost-add')).toBeInTheDocument()
+    })
+  })
+})

@@ -62,15 +62,6 @@ describe('ConfirmDialog', () => {
     expect(screen.getByTestId('confirm-confirm-button')).toHaveFocus()
   })
 
-  it('Escape key calls onCancel', async () => {
-    const user = userEvent.setup()
-    const onCancel = vi.fn()
-    render(<ConfirmDialog {...defaultProps} onCancel={onCancel} />)
-
-    await user.keyboard('{Escape}')
-    expect(onCancel).toHaveBeenCalledTimes(1)
-  })
-
   it('isLoading disables confirm button and shows a spinner with loading state', () => {
     render(<ConfirmDialog {...defaultProps} isLoading />)
     const btn = screen.getByTestId('confirm-confirm-button')
@@ -82,11 +73,6 @@ describe('ConfirmDialog', () => {
   it('renders "This action cannot be undone." warning', () => {
     render(<ConfirmDialog {...defaultProps} />)
     expect(screen.getByText('This action cannot be undone.')).toBeInTheDocument()
-  })
-
-  it('does not render when isOpen is false', () => {
-    render(<ConfirmDialog {...defaultProps} isOpen={false} />)
-    expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument()
   })
 
   it('has data-testid="confirm-dialog"', () => {

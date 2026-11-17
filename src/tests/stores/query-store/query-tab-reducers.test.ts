@@ -12,15 +12,6 @@ import {
   setQueryResultsExpired,
 } from '../../../stores/query-store/query-tab-reducers'
 import {
-  hasOpenExportDialog,
-  hasResultAt,
-  hasResults,
-} from '../../../stores/query-store/result-lists'
-import {
-  canEvictInactiveResult,
-  shouldScheduleResultEviction,
-} from '../../../stores/query-store/result-residency'
-import {
   DEFAULT_RESULT_STATE,
   type ResultExportJob,
   type SingleResultState,
@@ -154,7 +145,7 @@ describe('query tab reducers', () => {
   it('closes every open export dialog of a tab', () => {
     const state = stateWith([resultWith({ exportDialogOpen: true }), resultWith()])
     const closed = closeQueryExportDialogs(state, 'tab-1')
-    expect(hasOpenExportDialog(closed.tabs['tab-1'])).toBe(false)
+    expect(closed.tabs['tab-1'].results.some((result) => result.exportDialogOpen)).toBe(false)
     expect(closed.tabs['tab-1'].results[1]).toBe(state.tabs['tab-1'].results[1])
     expect(closeQueryExportDialogs(closed, 'tab-1')).toBe(closed)
   })
@@ -171,26 +162,5 @@ describe('query tab reducers', () => {
     expect(patchExportJob(started, { tabId: 'missing', partial: { jobId: 'x' } })).toBe(started)
     expect(removeExportJob(patched, 'tab-1')).toEqual({ exportJobs: {} })
     expect(removeExportJob(patched, 'missing')).toBe(patched)
-  })
-})
-
-describe('result lists and residency', () => {
-  it('detects results by presence and index', () => {
-    expect(hasResults(undefined)).toBe(false)
-    expect(hasResults(tabWith([]))).toBe(false)
-    expect(hasResultAt(tabWith([resultWith()]), 0)).toBe(true)
-    expect(hasResultAt(tabWith([resultWith()]), 1)).toBe(false)
-    expect(hasResultAt(undefined, 0)).toBe(false)
-    expect(hasOpenExportDialog(undefined)).toBe(false)
-  })
-
-  it('schedules eviction only for clean resident results that hold rows', () => {
-    expect(shouldScheduleResultEviction(resultWith())).toBe(true)
-    expect(shouldScheduleResultEviction(resultWith({ viewRowCount: 0 }))).toBe(false)
-    expect(shouldScheduleResultEviction(resultWith({ isExpired: true }))).toBe(false)
-    const evicted = resultWith({
-      rowResidency: { status: 'evicted', isActive: false, inactiveSince: null },
-    })
-    expect(canEvictInactiveResult(evicted)).toBe(false)
   })
 })

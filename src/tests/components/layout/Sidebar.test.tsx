@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Sidebar } from '../../components/layout/Sidebar'
-import { useConnectionStore } from '../../stores/connection-store'
-import { useSchemaStore } from '../../stores/schema-store'
-import type { ActiveConnection, SavedConnection } from '../../types/connection'
+import { Sidebar } from '../../../components/layout/Sidebar'
+import { useConnectionStore } from '../../../stores/connection-store'
+import { useSchemaStore } from '../../../stores/schema-store'
+import type { ActiveConnection, SavedConnection } from '../../../types/connection'
 
 function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedConnection {
   return {

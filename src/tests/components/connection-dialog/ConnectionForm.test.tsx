@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { ConnectionForm } from '../../components/connection-dialog/ConnectionForm'
-import { useConnectionStore } from '../../stores/connection-store'
-import { useSettingsStore } from '../../stores/settings-store'
-import { ipc } from '../ipc-mock'
-import type { SavedConnection } from '../../types/connection'
+import { ConnectionForm } from '../../../components/connection-dialog/ConnectionForm'
+import { useConnectionStore } from '../../../stores/connection-store'
+import { useSettingsStore } from '../../../stores/settings-store'
+import { ipc } from '../../ipc-mock'
+import type { SavedConnection } from '../../../types/connection'
 
 function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedConnection {
   return {

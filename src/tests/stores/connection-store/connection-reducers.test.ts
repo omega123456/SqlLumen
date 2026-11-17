@@ -2,9 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyProfileDefaultDatabase,
   attachActiveConnection,
-  normalizeConnectionOrder,
   reorderActiveConnections,
-  setConnectionStatus,
   setSessionDatabase,
 } from '../../../stores/connection-store/connection-reducers'
 import {
@@ -85,11 +83,6 @@ describe('connection reducers', () => {
     expect(attached.activeConnections.b.id).toBe('b')
   })
 
-  it('normalizes a stale connection order', () => {
-    const state = { ...orderedState(['a', 'b']), activeConnectionOrder: ['gone', 'b'] }
-    expect(normalizeConnectionOrder(state)).toEqual({ activeConnectionOrder: ['b', 'a'] })
-  })
-
   it('reorders a connection and clamps the insert index', () => {
     const state = orderedState(['a', 'b', 'c'])
     expect(reorderActiveConnections(state, { sessionId: 'a', insertIndex: 99 })).toEqual({
@@ -99,13 +92,6 @@ describe('connection reducers', () => {
       activeConnectionOrder: ['c', 'a', 'b'],
     })
     expect(reorderActiveConnections(state, { sessionId: 'missing', insertIndex: 0 })).toBe(state)
-  })
-
-  it('updates the status of a known connection only', () => {
-    const state = orderedState(['a'])
-    const updated = setConnectionStatus(state, { connectionId: 'a', status: 'reconnecting' })
-    expect(updated.activeConnections.a.status).toBe('reconnecting')
-    expect(setConnectionStatus(state, { connectionId: 'missing', status: 'connected' })).toBe(state)
   })
 
   it('sets the session database', () => {

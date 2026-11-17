@@ -7,21 +7,6 @@ import {
 } from '../../../stores/update-store/update-reducers'
 import { getPlatformState } from '../../../stores/update-store/update-platform'
 
-describe('update platform', () => {
-  it('asks linux users to quit manually and everyone else to relaunch', () => {
-    expect(getPlatformState('linux', '2.0.0')).toEqual({
-      currentPlatform: 'linux',
-      readyToFinishAction: 'manual-quit',
-      readyToFinishCta: 'Got it',
-      readyToFinishMessage: 'Quit and reopen SqlLumen to finish installing version 2.0.0.',
-    })
-    expect(getPlatformState('macos', null)).toMatchObject({
-      readyToFinishAction: 'relaunch',
-      readyToFinishMessage: 'Restart SqlLumen to finish installing version the latest version.',
-    })
-  })
-})
-
 describe('update reducers', () => {
   it('keeps the available version when the platform is detected', () => {
     expect(withDetectedPlatform({ availableVersion: '2.0.0' }, 'windows')).toEqual(

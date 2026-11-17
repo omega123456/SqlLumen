@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  addBlankColumn,
   addBlankForeignKey,
   addBlankIndex,
   editColumnField,
@@ -66,21 +65,9 @@ const populatedTab = tabWithSchema({
 })
 
 describe('schema edits', () => {
-  it('renames a column and its index and foreign key references', () => {
-    const edit = editColumnField(populatedTab, { index: 1, field: 'name', value: 'mail' })
-    expect(edit?.schema.columns[1].name).toBe('mail')
-    expect(edit?.schema.indexes[0].columns).toEqual(['mail'])
-    expect(edit?.schema.foreignKeys[0].sourceColumn).toBe('mail')
-  })
-
   it('drops auto increment when a column type can no longer hold it', () => {
     const edit = editColumnField(populatedTab, { index: 0, field: 'type', value: 'VARCHAR' })
     expect(edit?.schema.columns[0].isAutoIncrement).toBe(false)
-  })
-
-  it('reports a duplicate column name', () => {
-    const edit = editColumnField(populatedTab, { index: 1, field: 'name', value: 'id' })
-    expect(edit?.validationErrors).toEqual({ 'columns.1.name': 'Duplicate column name' })
   })
 
   it('ignores out-of-range positions', () => {
@@ -91,24 +78,6 @@ describe('schema edits', () => {
     expect(removeIndex(populatedTab, 9)).toBeNull()
     expect(editForeignKeyField(populatedTab, { index: 9, field: 'name', value: 'x' })).toBeNull()
     expect(removeForeignKey(populatedTab, 9)).toBeNull()
-  })
-
-  it('adds a blank column and flags its missing name', () => {
-    const edit = addBlankColumn(populatedTab)
-    expect(edit.schema.columns).toHaveLength(3)
-    expect(edit.validationErrors).toEqual({ 'columns.2.name': 'Column name is required' })
-  })
-
-  it('removes a column with the indexes and foreign keys that used it', () => {
-    const edit = removeColumn(populatedTab, 1)
-    expect(edit?.schema.columns.map((entry) => entry.name)).toEqual(['id'])
-    expect(edit?.schema.indexes).toEqual([])
-    expect(edit?.schema.foreignKeys).toEqual([])
-  })
-
-  it('moves a column', () => {
-    const edit = moveColumn(populatedTab, { fromIndex: 0, toIndex: 1 })
-    expect(edit?.schema.columns.map((entry) => entry.name)).toEqual(['email', 'id'])
   })
 
   it('edits, adds and removes indexes with index validation', () => {

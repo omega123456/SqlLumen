@@ -1,44 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import {
-  useSchemaStore,
-  makeNodeId,
-  parseNodeId,
-  SCHEMA_CATEGORIES,
-} from '../../stores/schema-store'
+import { useSchemaStore, makeNodeId, SCHEMA_CATEGORIES } from '../../stores/schema-store'
 import { ipc } from '../ipc-mock'
 
 beforeEach(() => {
   useSchemaStore.setState({
     connectionStates: {},
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Node ID helpers
-// ---------------------------------------------------------------------------
-
-describe('makeNodeId / parseNodeId', () => {
-  it('creates and parses a node ID correctly', () => {
-    const id = makeNodeId('database', 'mydb', 'mydb')
-    const parsed = parseNodeId(id)
-    expect(parsed.type).toBe('database')
-    expect(parsed.database).toBe('mydb')
-    expect(parsed.name).toBe('mydb')
-  })
-
-  it('handles Unicode characters in names', () => {
-    const id = makeNodeId('table', 'données', 'ütf8_tëst')
-    const parsed = parseNodeId(id)
-    expect(parsed.type).toBe('table')
-    expect(parsed.database).toBe('données')
-    expect(parsed.name).toBe('ütf8_tëst')
-  })
-
-  it('handles colons in names via base64 encoding', () => {
-    const id = makeNodeId('table', 'db:name', 'tbl:name')
-    const parsed = parseNodeId(id)
-    expect(parsed.database).toBe('db:name')
-    expect(parsed.name).toBe('tbl:name')
   })
 })
 

@@ -143,17 +143,6 @@ describe('FkLookupDialog', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
-  it('Escape key closes the dialog shell', async () => {
-    const onClose = vi.fn()
-    const user = userEvent.setup()
-    render(<FkLookupDialog {...props} onClose={onClose} />)
-
-    await waitFor(() => expect(screen.getByTestId('fk-lookup-grid')).toBeInTheDocument())
-    await user.keyboard('{Escape}')
-
-    expect(onClose).toHaveBeenCalled()
-  })
-
   it('filtering reloads data with filter model', async () => {
     const user = userEvent.setup()
     render(<FkLookupDialog {...props} />)

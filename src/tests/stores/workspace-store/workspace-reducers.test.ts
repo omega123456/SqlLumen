@@ -6,7 +6,6 @@ import {
   applyAllConnectionNormalizations,
   applyConnectionNormalization,
   clearStackRecency,
-  insertProcessListTab,
   markTabPendingClose,
   patchObjectEditorTab,
   patchTableDesignerTab,
@@ -28,7 +27,6 @@ import {
   designerTab,
   historyTab,
   objectEditorTab,
-  processListTab,
   queryTab,
   tableTab,
 } from '../../helpers/workspace-tab-fixtures'
@@ -120,18 +118,6 @@ describe('workspace reducers', () => {
     expect(background).not.toHaveProperty('activeTabByConnection')
     const foreground = prependHistoryTab(state, { tab: historyTab(), activate: true })
     expect(foreground).toMatchObject({ activeTabByConnection: { [CONNECTION_ID]: 'history' } })
-  })
-
-  it('inserts the process list after the history tab', () => {
-    const state = stateWith([historyTab(), queryTab('q1')])
-    expect(tabIds(insertProcessListTab(state, processListTab()))).toEqual([
-      'history',
-      `processlist-${CONNECTION_ID}`,
-      'q1',
-    ])
-    expect(tabIds(insertProcessListTab(stateWith([queryTab('q1')]), processListTab()))[0]).toBe(
-      `processlist-${CONNECTION_ID}`
-    )
   })
 
   it('marks one tab as pending close', () => {

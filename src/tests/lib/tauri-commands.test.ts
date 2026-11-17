@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest'
 
-import { ipc } from './ipc-mock'
+import { ipc } from '../ipc-mock'
 import {
   getSetting,
   setSetting,
   getAllSettings,
   getThemeSetting,
   setThemeSetting,
-} from '../lib/tauri-commands'
+} from '../../lib/tauri-commands'
 
 describe('getSetting', () => {
   it('calls invoke with correct command and args', async () => {

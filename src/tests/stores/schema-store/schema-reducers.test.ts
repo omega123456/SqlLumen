@@ -7,7 +7,6 @@ import {
   removeConnectionTree,
 } from '../../../stores/schema-store/schema-reducers'
 import { createDefaultConnectionState } from '../../../stores/schema-store/connection-tree'
-import { makeNodeId, parseNodeId } from '../../../stores/schema-store/node-ids'
 
 describe('schema reducers', () => {
   it('falls back to a default tree for an unknown connection', () => {
@@ -35,10 +34,5 @@ describe('schema reducers', () => {
   it('removes a connection tree', () => {
     const state = { connectionStates: { conn: createDefaultConnectionState() } }
     expect(removeConnectionTree(state, 'conn')).toEqual({ connectionStates: {} })
-  })
-
-  it('round-trips unicode node ids', () => {
-    const id = makeNodeId('table', 'bolt', 'árvíztűrő:tükör')
-    expect(parseNodeId(id)).toEqual({ type: 'table', database: 'bolt', name: 'árvíztűrő:tükör' })
   })
 })

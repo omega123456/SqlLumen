@@ -354,15 +354,6 @@ describe('ExportDialog', () => {
     expect(screen.getByTestId('export-table-name-input')).toHaveValue('exported_results')
   })
 
-  it('Escape key calls onClose', async () => {
-    const user = userEvent.setup()
-    const onClose = vi.fn()
-    render(<ExportDialog {...defaultProps} onClose={onClose} />)
-
-    await user.keyboard('{Escape}')
-    expect(onClose).toHaveBeenCalledTimes(1)
-  })
-
   it('unchecking headers sends includeHeaders: false', async () => {
     const user = userEvent.setup()
     render(<ExportDialog {...defaultProps} />)

@@ -1,7 +1,6 @@
 import type {
   HistoryTab,
   ObjectEditorTab,
-  ProcessListTab,
   QueryEditorTab,
   TableDataTab,
   TableDesignerTab,
@@ -15,15 +14,6 @@ export function queryTab(id: string, label = id): QueryEditorTab {
 
 export function historyTab(id = 'history'): HistoryTab {
   return { id: id, type: 'history', label: 'History', connectionId: CONNECTION_ID }
-}
-
-export function processListTab(): ProcessListTab {
-  return {
-    id: `processlist-${CONNECTION_ID}`,
-    type: 'processlist',
-    label: 'Process list',
-    connectionId: CONNECTION_ID,
-  }
 }
 
 export function tableTab(id: string, overrides: Partial<TableDataTab> = {}): TableDataTab {

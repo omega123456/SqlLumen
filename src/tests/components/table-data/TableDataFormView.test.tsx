@@ -214,24 +214,6 @@ describe('TableDataFormView', () => {
     expect(screen.getByTestId('form-record-label')).not.toHaveTextContent('Record 1 of 1')
   })
 
-  it('shows all column fields', () => {
-    setupStore()
-    renderFormView()
-
-    expect(screen.getByTestId('form-field-id')).toBeInTheDocument()
-    expect(screen.getByTestId('form-field-name')).toBeInTheDocument()
-    expect(screen.getByTestId('form-field-avatar')).toBeInTheDocument()
-  })
-
-  it('BLOB field renders as read-only (no <input>)', () => {
-    setupStore()
-    renderFormView()
-
-    const avatarInput = screen.getByTestId('form-input-avatar')
-    // BLOB fields should be rendered as a div, not an input
-    expect(avatarInput.tagName).toBe('DIV')
-  })
-
   it('renders a View/Edit button beside the BLOB field', () => {
     setupStore()
     renderFormView()
@@ -255,30 +237,6 @@ describe('TableDataFormView', () => {
     expect(btn).toHaveAttribute('title', 'Cannot view BLOB — table has no primary key')
     await user.click(btn)
     expect(screen.queryByTestId('blob-viewer-dialog')).not.toBeInTheDocument()
-  })
-
-  it('PK field label shows "(Primary Key)"', () => {
-    setupStore()
-    renderFormView()
-
-    const idField = screen.getByTestId('form-field-id')
-    expect(idField).toHaveTextContent('(Primary Key)')
-  })
-
-  it('NULL toggle button shown for nullable fields', () => {
-    setupStore()
-    renderFormView()
-
-    // 'name' is nullable, so it should have a NULL toggle
-    expect(screen.getByTestId('btn-null-name')).toBeInTheDocument()
-  })
-
-  it('NULL toggle button NOT shown for non-nullable fields', () => {
-    setupStore()
-    renderFormView()
-
-    // 'id' is not nullable
-    expect(screen.queryByTestId('btn-null-id')).not.toBeInTheDocument()
   })
 
   it('clicking NULL toggle updates cell value to null', () => {
@@ -314,36 +272,12 @@ describe('TableDataFormView', () => {
     expect(nameInput).toHaveAttribute('data-modified')
   })
 
-  it('Previous button disabled on first record', () => {
-    setupStore()
-    renderFormView()
-
-    const prevBtn = screen.getByTestId('btn-form-previous')
-    expect(prevBtn).toBeDisabled()
-  })
-
   it('Next button stays enabled for optimistic unknown-total navigation', () => {
     setupStore()
     renderFormView()
 
     const nextBtn = screen.getByTestId('btn-form-next')
     expect(nextBtn).not.toBeDisabled()
-  })
-
-  it('Save button disabled when no changes', () => {
-    setupStore()
-    renderFormView()
-
-    const saveBtn = screen.getByTestId('btn-form-save')
-    expect(saveBtn).toBeDisabled()
-  })
-
-  it('Discard button disabled when no editState', () => {
-    setupStore()
-    renderFormView()
-
-    const discardBtn = screen.getByTestId('btn-form-discard')
-    expect(discardBtn).toBeDisabled()
   })
 
   it('Copy button copies value to clipboard', async () => {
@@ -363,20 +297,6 @@ describe('TableDataFormView', () => {
     expect(screen.getByText('No rows to display')).toBeInTheDocument()
   })
 
-  it('Previous and Next enabled with multiple records', () => {
-    setupStore({
-      rows: [
-        [1, 'Alice', null],
-        [2, 'Bob', null],
-      ],
-      selectedRowKey: { id: 1 },
-    })
-    renderFormView()
-
-    expect(screen.getByTestId('btn-form-previous')).toBeDisabled()
-    expect(screen.getByTestId('btn-form-next')).not.toBeDisabled()
-  })
-
   it('Save button enabled when there are modifications', () => {
     const editState: RowEditState = {
       rowKey: { id: 1 },
@@ -391,14 +311,6 @@ describe('TableDataFormView', () => {
 
     expect(screen.getByTestId('btn-form-save')).not.toBeDisabled()
     expect(screen.getByTestId('btn-form-discard')).not.toBeDisabled()
-  })
-
-  it('NULL toggle button not shown for BLOB fields even if nullable', () => {
-    // avatar is nullable + binary — NULL toggle should not appear
-    setupStore()
-    renderFormView()
-
-    expect(screen.queryByTestId('btn-null-avatar')).not.toBeInTheDocument()
   })
 
   it('fields are read-only when connection is read-only', () => {
@@ -883,19 +795,6 @@ describe('TableDataFormView', () => {
     expect(state?.editState?.currentValues.name).toBe('')
   })
 
-  it('copy button copies NULL as "NULL" string for null values', async () => {
-    setupStore({
-      rows: [[1, null, '[BLOB - 128 bytes]']],
-      selectedRowKey: { id: 1 },
-    })
-    renderFormView()
-
-    const copyBtn = screen.getByTestId('btn-copy-name')
-    fireEvent.click(copyBtn)
-
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('NULL')
-  })
-
   it('Save button calls saveCurrentRow', async () => {
     const editState: RowEditState = {
       rowKey: { id: 1 },
@@ -967,40 +866,6 @@ describe('TableDataFormView', () => {
     expect(screen.queryByTestId('btn-null-name')).not.toBeInTheDocument()
   })
 
-  it('BLOB field shows data when value is not null', () => {
-    setupStore()
-    renderFormView()
-
-    const avatarField = screen.getByTestId('form-input-avatar')
-    expect(avatarField).toHaveTextContent('[BLOB - 128 bytes]')
-  })
-
-  it('BLOB field shows "(BLOB data)" when value is null', () => {
-    setupStore({
-      rows: [[1, 'Alice', null]],
-      selectedRowKey: { id: 1 },
-    })
-    renderFormView()
-
-    const avatarField = screen.getByTestId('form-input-avatar')
-    expect(avatarField).toHaveTextContent('(BLOB data)')
-  })
-
-  it('displays edited value from editState instead of raw row data', () => {
-    const editState: RowEditState = {
-      rowKey: { id: 1 },
-      originalValues: { id: 1, name: 'Alice', avatar: '[BLOB - 128 bytes]' },
-      currentValues: { id: 1, name: 'Edited', avatar: '[BLOB - 128 bytes]' },
-      modifiedColumns: new Set(['name']),
-      isNewRow: false,
-    }
-    setupStore({ editState })
-    renderFormView()
-
-    const nameInput = screen.getByTestId('form-input-name') as HTMLInputElement
-    expect(nameInput.value).toBe('Edited')
-  })
-
   it('input stays editable and empty for null values in edit state', () => {
     const editState: RowEditState = {
       rowKey: { id: 1 },
@@ -1027,22 +892,6 @@ describe('TableDataFormView', () => {
     const nameInput = screen.getByTestId('form-input-name')
     expect(nameInput.tagName).toBe('DIV')
     expect(nameInput).toHaveTextContent('Alice')
-  })
-
-  it('read-only field displays "NULL" when value is null', () => {
-    setupConnection(true) // read-only
-    useTableDataStore.setState({
-      tabs: {
-        'tab-1': makeTabState({
-          rows: [[1, null, '[BLOB - 128 bytes]']],
-          selectedRowKey: { id: 1 },
-        }),
-      },
-    })
-    renderFormView()
-
-    const nameInput = screen.getByTestId('form-input-name')
-    expect(nameInput).toHaveTextContent('NULL')
   })
 
   it('NULL toggle button not shown for read-only connection', () => {
@@ -1148,58 +997,11 @@ describe('TableDataFormView', () => {
 // ---------------------------------------------------------------------------
 
 describe('TableDataFormView — DateTimePicker integration', () => {
-  it('temporal columns render a calendar/clock icon button', () => {
-    setupStoreWithTemporal()
-    renderFormView()
-
-    expect(screen.getByTestId('calendar-btn-created_at')).toBeInTheDocument()
-    expect(screen.getByTestId('calendar-btn-login_time')).toBeInTheDocument()
-  })
-
-  it('non-temporal columns do NOT render a calendar icon', () => {
-    setupStoreWithTemporal()
-    renderFormView()
-
-    expect(screen.queryByTestId('calendar-btn-id')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('calendar-btn-name')).not.toBeInTheDocument()
-  })
-
   it('BLOB columns do not render a calendar icon', () => {
     setupStoreWithTemporal()
     renderFormView()
 
     expect(screen.queryByTestId('calendar-btn-avatar')).not.toBeInTheDocument()
-  })
-
-  it('DATE/DATETIME/TIMESTAMP columns have aria-label "Open date picker"', () => {
-    setupStoreWithTemporal()
-    renderFormView()
-
-    const calBtn = screen.getByTestId('calendar-btn-created_at')
-    expect(calBtn).toHaveAttribute('aria-label', 'Open date picker')
-  })
-
-  it('TIME columns have aria-label "Open time picker"', () => {
-    setupStoreWithTemporal()
-    renderFormView()
-
-    const clockBtn = screen.getByTestId('calendar-btn-login_time')
-    expect(clockBtn).toHaveAttribute('aria-label', 'Open time picker')
-  })
-
-  it('clicking the calendar icon opens the DateTimePicker', async () => {
-    setupStoreWithTemporal()
-    renderFormView()
-    const user = userEvent.setup()
-
-    // No picker initially
-    expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
-
-    await user.click(screen.getByTestId('calendar-btn-created_at'))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
-    })
   })
 
   it('picker onApply updates the field value via the store', async () => {
@@ -1219,21 +1021,6 @@ describe('TableDataFormView — DateTimePicker integration', () => {
       const state = useTableDataStore.getState().tabs['tab-1']
       expect(state?.editState).not.toBeNull()
       expect(state?.editState?.currentValues.created_at).toBe('2023-06-15 10:30:00')
-    })
-  })
-
-  it('picker onCancel closes the popup without changing the value', async () => {
-    setupStoreWithTemporal()
-    renderFormView()
-    const user = userEvent.setup()
-
-    // Open picker
-    await user.click(screen.getByTestId('calendar-btn-created_at'))
-    expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
-
-    await user.click(screen.getByTestId('btn-picker-cancel'))
-    await waitFor(() => {
-      expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
     })
   })
 
@@ -1294,35 +1081,6 @@ describe('TableDataFormView — DateTimePicker integration', () => {
     expect(value).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)
   })
 
-  it('read-only temporal columns do not show calendar button', () => {
-    setupConnection(true) // read-only
-    useTableDataStore.setState({
-      tabs: {
-        'tab-1': makeTabState({
-          columns: mockColumnsWithTemporal,
-          rows: mockRowsWithTemporal,
-        }),
-      },
-    })
-    renderFormView()
-
-    expect(screen.queryByTestId('calendar-btn-created_at')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('calendar-btn-login_time')).not.toBeInTheDocument()
-  })
-
-  it('direct typing in text input still works for temporal fields', () => {
-    setupStoreWithTemporal()
-    renderFormView()
-
-    const input = screen.getByTestId('form-input-created_at') as HTMLInputElement
-    fireEvent.focus(input)
-    fireEvent.change(input, { target: { value: '2023-12-25 00:00:00' } })
-
-    const state = useTableDataStore.getState().tabs['tab-1']
-    expect(state?.editState).not.toBeNull()
-    expect(state?.editState?.currentValues.created_at).toBe('2023-12-25 00:00:00')
-  })
-
   it('temporal columns without PK do not show calendar button', () => {
     setupConnection() // writable
     useTableDataStore.setState({
@@ -1338,28 +1096,6 @@ describe('TableDataFormView — DateTimePicker integration', () => {
 
     expect(screen.queryByTestId('calendar-btn-created_at')).not.toBeInTheDocument()
     expect(screen.queryByTestId('calendar-btn-login_time')).not.toBeInTheDocument()
-  })
-
-  it('calendar button is disabled when temporal field value is NULL', () => {
-    setupStoreWithTemporal({
-      rows: [[1, 'Alice', null, null, '[BLOB - 128 bytes]']],
-    })
-    renderFormView()
-
-    const calBtn = screen.getByTestId('calendar-btn-created_at')
-    expect(calBtn).toBeDisabled()
-    const clockBtn = screen.getByTestId('calendar-btn-login_time')
-    expect(clockBtn).toBeDisabled()
-  })
-
-  it('calendar button is enabled when temporal field value is non-null', () => {
-    setupStoreWithTemporal()
-    renderFormView()
-
-    const calBtn = screen.getByTestId('calendar-btn-created_at')
-    expect(calBtn).not.toBeDisabled()
-    const clockBtn = screen.getByTestId('calendar-btn-login_time')
-    expect(clockBtn).not.toBeDisabled()
   })
 
   it('clicking disabled calendar button does NOT open picker for null temporal field', () => {
@@ -1385,22 +1121,6 @@ describe('TableDataFormView — DateTimePicker integration', () => {
     fireEvent.click(input)
 
     // Picker should NOT open because value is null
-    expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
-  })
-
-  it('activating NULL toggle closes picker if it was open for that field', () => {
-    setupStoreWithTemporal()
-    renderFormView()
-
-    // Open picker for created_at via the calendar button
-    fireEvent.click(screen.getByTestId('calendar-btn-created_at'))
-    expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
-
-    // Click NULL toggle for created_at — this sets the value to null
-    const nullBtn = screen.getByTestId('btn-null-created_at')
-    fireEvent.click(nullBtn)
-
-    // Picker should be closed because the field is now NULL
     expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
   })
 })

@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
-import { ipc } from './ipc-mock'
+import { ipc } from '../ipc-mock'
 import {
   useToastStore,
   _resetToastTimeoutsForTests,
   SUCCESS_TOAST_DURATION_MS,
   WARNING_ERROR_TOAST_DURATION_MS,
-} from '../stores/toast-store'
+} from '../../stores/toast-store'
 
 describe('useToastStore', () => {
   beforeEach(() => {
@@ -46,28 +46,28 @@ describe('useToastStore', () => {
     expect(toasts[0].durationMs).toBe(WARNING_ERROR_TOAST_DURATION_MS)
   })
 
-  it('showError logs to application logger at error level', async () => {
+  it('showError logs at error level with the title and optional message', async () => {
     useToastStore.getState().showError('Title', 'Body')
-    await Promise.resolve()
-    expect(ipc.payloads('log_frontend')).toContainEqual({ level: 'error', message: 'Title: Body' })
-  })
-
-  it('showWarning logs to application logger at warn level', async () => {
-    useToastStore.getState().showWarning('Title', 'Body')
-    await Promise.resolve()
-    expect(ipc.payloads('log_frontend')).toContainEqual({ level: 'warn', message: 'Title: Body' })
-  })
-
-  it('showError log line uses title only when message is omitted', async () => {
     useToastStore.getState().showError('Only')
     await Promise.resolve()
-    expect(ipc.payloads('log_frontend')).toContainEqual({ level: 'error', message: 'Only' })
+    expect(ipc.payloads('log_frontend')).toEqual(
+      expect.arrayContaining([
+        { level: 'error', message: 'Title: Body' },
+        { level: 'error', message: 'Only' },
+      ])
+    )
   })
 
-  it('showWarning log line uses title only when message is omitted', async () => {
+  it('showWarning logs at warn level with the title and optional message', async () => {
+    useToastStore.getState().showWarning('Title', 'Body')
     useToastStore.getState().showWarning('Only')
     await Promise.resolve()
-    expect(ipc.payloads('log_frontend')).toContainEqual({ level: 'warn', message: 'Only' })
+    expect(ipc.payloads('log_frontend')).toEqual(
+      expect.arrayContaining([
+        { level: 'warn', message: 'Title: Body' },
+        { level: 'warn', message: 'Only' },
+      ])
+    )
   })
 
   it('error and warning accept duration override', () => {

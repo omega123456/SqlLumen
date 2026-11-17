@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { ComponentType } from 'react'
 import { GridCellKind, type TextCell } from '@glideapps/glide-data-grid'
 import {
@@ -7,6 +7,7 @@ import {
   getGlideEditor,
   wrapEditorAsGlideOverlay,
 } from '../../../../components/shared/glide/glide-editors'
+import type { CellEditorBaseProps } from '../../../../components/shared/grid-cell-editors'
 
 type EditorConfig = { editor: ComponentType<Record<string, unknown>> } | null
 
@@ -402,5 +403,118 @@ describe('wrapEditorAsGlideOverlay', () => {
     expect(onFinishedEditing).toHaveBeenCalledWith(
       expect.objectContaining({ data: 'alpha\nbeta', displayData: 'alpha\nbeta' })
     )
+  })
+})
+
+describe('Glide editor adapters', () => {
+  it('wraps vendor-neutral editors as Glide overlays and resolves editor configs by type', () => {
+    const Editor = (props: CellEditorBaseProps) => (
+      <div>
+        <button type="button" onClick={() => props.onRowChange({ [props.column.key]: 'next' })}>
+          edit {props.column.key}
+        </button>
+        <button type="button" onClick={() => props.onRowChange({ [props.column.key]: null })}>
+          clear {props.column.key}
+        </button>
+        <button type="button" onClick={() => props.onClose(false)}>
+          cancel
+        </button>
+        <button type="button" onClick={() => props.onClose()}>
+          commit
+        </button>
+      </div>
+    )
+    const Overlay = wrapEditorAsGlideOverlay(Editor)
+    const onChange = vi.fn()
+    cleanup()
+    render(
+      <Overlay
+        target={{ x: 0, y: 0, width: 120, height: 24 }}
+        value={
+          {
+            kind: GridCellKind.Text,
+            data: 'old',
+            displayData: 'old',
+            allowOverlay: true,
+            glideEditorData: { row: { name: 'old' }, columnKey: 'name', isNullable: false },
+          } as Parameters<typeof Overlay>[0]['value']
+        }
+        onChange={onChange}
+        onFinishedEditing={vi.fn()}
+      />
+    )
+    screen.getByRole('button', { name: 'edit name' }).click()
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ data: 'next', displayData: 'next' })
+    )
+    screen.getByRole('button', { name: 'clear name' }).click()
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ data: '', displayData: 'NULL', copyData: 'NULL' })
+    )
+
+    const onFinishedEditing = vi.fn()
+    cleanup()
+    render(
+      <Overlay
+        target={{ x: 0, y: 0, width: 120, height: 24 }}
+        value={
+          { kind: GridCellKind.Boolean, data: true, allowOverlay: false } as Parameters<
+            typeof Overlay
+          >[0]['value']
+        }
+        onChange={vi.fn()}
+        onFinishedEditing={onFinishedEditing}
+      />
+    )
+    expect(screen.queryByRole('button', { name: /edit/ })).not.toBeInTheDocument()
+
+    render(
+      <Overlay
+        target={{ x: 0, y: 0, width: 120, height: 24 }}
+        value={
+          {
+            kind: GridCellKind.Text,
+            data: 'old',
+            displayData: 'old',
+            allowOverlay: true,
+            glideEditorData: { row: { name: 'old' }, columnKey: 'name', isNullable: false },
+          } as Parameters<typeof Overlay>[0]['value']
+        }
+        onChange={vi.fn()}
+        onFinishedEditing={onFinishedEditing}
+      />
+    )
+    screen.getByRole('button', { name: 'cancel' }).click()
+    expect(onFinishedEditing).toHaveBeenCalledWith(undefined)
+    screen.getByRole('button', { name: 'edit name' }).click()
+    screen.getByRole('button', { name: 'commit' }).click()
+    expect(onFinishedEditing).toHaveBeenCalledWith(expect.objectContaining({ data: 'next' }))
+    expect(getGlideEditor({ key: 'x', name: 'X' }, 'none')).toBeNull()
+    for (const editorType of ['datetime', 'text'] as const) {
+      const editorConfig = getGlideEditor({ key: 'x', name: 'X' }, editorType)
+      expect(editorConfig).toMatchObject({
+        editor: expect.any(Function),
+      })
+      expect(editorConfig).not.toHaveProperty('disablePadding')
+      expect(editorConfig).not.toHaveProperty('disableStyling')
+    }
+
+    expect(getGlideEditor({ key: 'x', name: 'X' }, 'enum')).toBeNull()
+    expect(
+      getGlideEditor(
+        {
+          key: 'x',
+          name: 'X',
+          foreignKey: {
+            columnName: 'x',
+            referencedDatabase: 'app',
+            referencedTable: 'lookup',
+            referencedColumn: 'id',
+            constraintName: 'fk_lookup_x',
+          },
+        },
+        'enum'
+      )
+    ).toBeNull()
   })
 })
