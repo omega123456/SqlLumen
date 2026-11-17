@@ -196,6 +196,14 @@ Keep every test in a dedicated file under the appropriate test root (`src/tests/
   - When a test change introduces or exposes React `act(...)` warnings, treat that as unfinished work and clean the warnings up before completing the task.
 - **Never assert on CSS classes** (`toHaveClass`, `className` checks, class selectors) in Vitest or Playwright. Assert role, `aria-*`, text, or a `data-*` attribute that is the lookup key (`data-variant`, `data-active`).
 - Tests ship alongside features in the same change set — not deferred.
+- **Keep the suite small: every test must earn its place.** A test earns it by executing a source branch or a bug-fix scenario that no other test executes. Coverage percentage is a floor, never a target; do not add tests to make a number go up when an existing test can assert one more thing.
+  - **One test file per source module.** Extend the existing `src/tests/<mirror path>.test.ts(x)`; never add a sibling such as `-multi`, `-filter`, `-edge-cases` or `-coverage` for the same module. Search for the existing file before creating one.
+  - **Extend before adding.** A new case that shares its setup with an existing test becomes extra assertions in that test, not a new `it`. Never write several "render, then one `expect`" tests over the same fixture; render once and assert the behaviour together.
+  - **One case per branch.** Do not add inputs that hit a branch another case already hits. Use `it.each` only when it reads more clearly than separate cases.
+  - **Test behaviour once, at the layer that owns it.** Shared behaviour (`DialogShell` Escape and open/close, `BaseFormView`, store reducers, the IPC dispatch helper) is tested in its own file, not repeated in every consumer. Consumer tests cover only what the consumer adds. IPC wrappers get a test only where they reshape arguments or results.
+  - **Delete tests with the code they cover.** Removing or replacing production code removes its tests in the same change; never leave a test for dead code.
+  - **Bug-fix regression tests are the exception.** Keep the setup and the assertion of a test added for a bug fix intact when merging or trimming, and name it for the scenario it guards.
+  - **Check the suite size.** Before finishing a change that adds tests, compare the Vitest case and file counts (`pnpm exec vitest run` summary) with the counts before the change. If they grew by more than the new behaviour needs, fold or delete tests until they do not.
 
 ### Rust
 
