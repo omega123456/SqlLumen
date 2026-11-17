@@ -14,9 +14,7 @@ import {
   showErrorToast,
   showSuccessToast,
   showWarningToast,
-  UNTIL_DISMISSED,
   WARNING_ERROR_TOAST_DURATION_MS,
-  type ToastDuration,
 } from '../toast-store'
 import { useConnectionStore } from '../connection-store'
 import { useWorkspaceStore } from '../workspace-store'
@@ -51,10 +49,7 @@ interface OutcomeDetails {
   run: FinishedRun
 }
 
-const SHOW_TOAST: Record<
-  ToastVariant,
-  (title: string, message: string, durationMs: ToastDuration) => string
-> = {
+const SHOW_TOAST: Record<ToastVariant, (title: string, message: string) => string> = {
   success: showSuccessToast,
   warning: showWarningToast,
   error: showErrorToast,
@@ -206,7 +201,7 @@ function runOutcomeOf(tabId: string, result: MultiQueryResult | null): RunOutcom
 }
 
 function showOutcomeToast(toast: OutcomeToast): void {
-  SHOW_TOAST[toast.variant](toast.title, toast.message, UNTIL_DISMISSED)
+  SHOW_TOAST[toast.variant](toast.title, toast.message)
 }
 
 function finishRun(target: RunTarget, result: MultiQueryResult | null): void {

@@ -1,7 +1,7 @@
 import { joinClassNames } from './class-names'
 
 export const CONTEXT_MENU =
-  'fixed z-1000 flex flex-col min-w-context-menu p-1 rounded-overlay border border-light-stroke-flyout dark:border-dark-stroke-flyout bg-light-surface-container-high dark:bg-dark-surface-container-high shadow-light-flyout dark:shadow-dark-flyout'
+  'fixed z-1000 flex flex-col w-max min-w-context-menu p-1 rounded-overlay border border-light-stroke-flyout dark:border-dark-stroke-flyout bg-light-surface-container-high dark:bg-dark-surface-container-high shadow-light-flyout dark:shadow-dark-flyout'
 
 export const CONTEXT_MENU_ICON = 'inline-flex shrink-0 text-inherit'
 

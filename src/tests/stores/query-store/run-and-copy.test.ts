@@ -3,7 +3,7 @@ import { act } from '@testing-library/react'
 import { expectToast, ipc } from '../../ipc-mock'
 import { windowedItem } from '../../helpers/query-test-utils'
 import { useQueryStore } from '../../../stores/query-store'
-import { useToastStore } from '../../../stores/toast-store'
+import { SUCCESS_TOAST_DURATION_MS, useToastStore } from '../../../stores/toast-store'
 import type { MultiQueryResult } from '../../../types/schema'
 import type { RunExportProgress, RunOutcome } from '../../../types/run-export'
 
@@ -75,7 +75,7 @@ afterEach(() => {
 })
 
 describe('executeAllAndCopyResultPath', () => {
-  it('copies the path at start, polls progress and keeps the outcome toast until dismissed', async () => {
+  it('copies the path at start, polls progress and expires the outcome toast', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     ipc.override('get_run_export_progress', () => PROGRESS)
     const clipboardWrite = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
@@ -110,7 +110,7 @@ describe('executeAllAndCopyResultPath', () => {
       .getState()
       .toasts.find((toast) => toast.title === 'Run complete')
     expect(completeToast?.message).toBe(`1 result set · 2,345,678 rows · ${RUN_FILE_PATH}`)
-    expect(completeToast?.durationMs).toBeNull()
+    expect(completeToast?.durationMs).toBe(SUCCESS_TOAST_DURATION_MS)
     const callsAfterFinish = ipc.calls('get_run_export_progress').length
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2_000)
