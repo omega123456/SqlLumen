@@ -31,14 +31,17 @@ export interface TabContextMenuProps {
   portalRoot: HTMLElement
   items: TabContextMenuItem[]
   onClose: () => void
+  testId?: string
 }
 
 function TabContextMenuEntry({
   item,
   closeMenu,
+  testId,
 }: {
   item: TabContextMenuItem
   closeMenu: () => void
+  testId: string
 }) {
   const button = (
     <Button
@@ -47,7 +50,7 @@ function TabContextMenuEntry({
       className={contextMenuItemClassName(item.destructive)}
       data-destructive={dataFlag(item.destructive)}
       disabled={item.disabled}
-      data-testid={`tab-context-menu-item-${item.key}`}
+      data-testid={`${testId}-item-${item.key}`}
       onClick={() => {
         if (item.disabled) {
           return
@@ -90,7 +93,15 @@ function useDismissAllWhileVisible(visible: boolean, closeMenu: () => void) {
   }, [visible, closeMenu])
 }
 
-export function TabContextMenu({ visible, x, y, portalRoot, items, onClose }: TabContextMenuProps) {
+export function TabContextMenu({
+  visible,
+  x,
+  y,
+  portalRoot,
+  items,
+  onClose,
+  testId = 'tab-context-menu',
+}: TabContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
 
   const closeMenu = useCallback(() => {
@@ -119,11 +130,11 @@ export function TabContextMenu({ visible, x, y, portalRoot, items, onClose }: Ta
         top: y,
         position: getContextMenuPositionMode(portalRoot),
       }}
-      data-testid="tab-context-menu"
+      data-testid={testId}
       onMouseDown={(event) => event.preventDefault()}
     >
       {items.map((item) => (
-        <TabContextMenuEntry key={item.key} item={item} closeMenu={closeMenu} />
+        <TabContextMenuEntry key={item.key} item={item} closeMenu={closeMenu} testId={testId} />
       ))}
     </div>,
     portalRoot

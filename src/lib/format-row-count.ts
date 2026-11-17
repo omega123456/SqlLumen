@@ -24,6 +24,10 @@ function rowsWord(count: number): string {
   return count === 1 ? SINGULAR_ROWS_WORD : PLURAL_ROWS_WORD
 }
 
+export function formatRowsCount(count: number): string {
+  return `${formatCount(count)} ${rowsWord(count)}`
+}
+
 function totalRowsWord(input: RowCountInput): string {
   return input.truncated ? PLURAL_ROWS_WORD : rowsWord(input.totalRows)
 }

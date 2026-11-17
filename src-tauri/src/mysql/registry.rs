@@ -150,6 +150,11 @@ impl ConnectionRegistry {
         map.get(id).map(|entry| entry.connection_params.clone())
     }
 
+    pub fn server_version(&self, id: &str) -> Option<String> {
+        let map = self.entries.read().expect("registry lock poisoned");
+        map.get(id).map(|entry| entry.server_version.clone())
+    }
+
     pub fn set_default_database(&self, id: &str, default_database: Option<String>) {
         let mut map = self.entries.write().expect("registry lock poisoned");
         if let Some(entry) = map.get_mut(id) {

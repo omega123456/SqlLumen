@@ -626,6 +626,7 @@ mod coverage_multi_query {
                 tab_id: "mq-tab".to_string(),
                 statements: stmts,
                 row_limit: Some(100),
+                run_export: None,
             },
         )
         .await
@@ -668,6 +669,7 @@ mod coverage_multi_query {
                 tab_id: "mq-tab".to_string(),
                 statements: stmts,
                 row_limit: Some(100),
+                run_export: None,
             },
         )
         .await
@@ -700,6 +702,7 @@ mod coverage_multi_query {
                 tab_id: "tab-1".to_string(),
                 statements: stmts,
                 row_limit: Some(100),
+                run_export: None,
             },
         )
         .await
@@ -725,6 +728,7 @@ mod coverage_multi_query {
                 tab_id: "tab-1".to_string(),
                 statements: stmts,
                 row_limit: Some(100),
+                run_export: None,
             },
         )
         .await
@@ -755,6 +759,7 @@ mod coverage_multi_query {
                 tab_id: "mq-tab".to_string(),
                 statements: stmts,
                 row_limit: Some(100),
+                run_export: None,
             },
         )
         .await
@@ -782,6 +787,7 @@ mod coverage_multi_query {
                 tab_id: "mq-tab".to_string(),
                 statements: stmts,
                 row_limit: Some(100),
+                run_export: None,
             },
         )
         .await
@@ -815,6 +821,7 @@ mod coverage_multi_query {
                 tab_id: "mq-tab-batch".to_string(),
                 statements: stmts,
                 row_limit: Some(100),
+                run_export: None,
             },
         )
         .await
@@ -875,6 +882,7 @@ mod coverage_multi_query {
                 tab_id: "mq-tab-ec".to_string(),
                 statements: stmts,
                 row_limit: Some(100),
+                run_export: None,
             },
         )
         .await
@@ -909,6 +917,7 @@ mod coverage_multi_query {
                 tab_id: "mq-tab-mixed".to_string(),
                 statements: stmts,
                 row_limit: Some(100),
+                run_export: None,
             },
         )
         .await

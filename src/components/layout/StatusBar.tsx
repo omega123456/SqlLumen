@@ -30,9 +30,12 @@ import {
   PendingWorkInfo,
   QueryInfo,
   QueryRunningInfo,
+  RunProgressInfo,
   TableDataInfo,
   UpdateIndicator,
 } from './status-bar/StatusIndicators'
+import { visibleRunTabId, type VisibleRun } from './status-bar/run-progress-model'
+import { useWorkspaceStore } from '../../stores/workspace-store'
 
 function ActivityRegion({ activity }: { activity: StatusActivity }) {
   return (
@@ -56,6 +59,7 @@ function ActivityRegion({ activity }: { activity: StatusActivity }) {
 
 interface StatusBarTrailingProps {
   activity: StatusActivity
+  runProgress: ReactNode
   updateIndicator: ReactNode
   serverVersion: string
   onCancelPendingWork: () => void
@@ -66,6 +70,7 @@ function StatusBarTrailing(props: StatusBarTrailingProps) {
   return (
     <div className={STATUS_BAR_RIGHT}>
       <ActivityRegion activity={activity} />
+      {props.runProgress}
       {activity.pendingWork && (
         <PendingWorkInfo work={activity.pendingWork} onCancel={props.onCancelPendingWork} />
       )}
@@ -84,6 +89,49 @@ function cancelPendingRowAction(tabId: string | null, cancelRowAction: (tabId: s
   cancelRowAction(tabId)
 }
 
+function useVisibleRun(activeWorkspaceTabId: string | null): VisibleRun | null {
+  const runTabId = useQueryStore((state) => visibleRunTabId(state.tabs, activeWorkspaceTabId))
+  const runTab = useQueryStore((state) => (runTabId ? state.tabs[runTabId] : undefined))
+  const connectionId = runTab?.connectionId ?? ''
+  const tabLabel = useWorkspaceStore(
+    (state) =>
+      (state.tabsByConnection[connectionId] ?? []).find((tab) => tab.id === runTabId)?.label ?? ''
+  )
+  if (!runTabId) return null
+  const runExport = runTab?.runExport
+  if (!runExport) return null
+  return {
+    connectionId: connectionId,
+    tabId: runTabId,
+    tabLabel: tabLabel,
+    progress: runExport.progress,
+    isRunTabActive: runTabId === activeWorkspaceTabId,
+    isCancelling: runTab.isCancelling,
+  }
+}
+
+function useActiveQueryTab(activeWorkspaceTabId: string | null) {
+  const tabStatus = useQueryStore((state) =>
+    activeWorkspaceTabId ? state.tabs[activeWorkspaceTabId]?.tabStatus : undefined
+  )
+  const isExporting = useQueryStore((state) =>
+    activeWorkspaceTabId ? state.tabs[activeWorkspaceTabId]?.runExport?.isActive === true : false
+  )
+  const result = useQueryStore((state) =>
+    activeWorkspaceTabId ? getActiveResult(state.tabs[activeWorkspaceTabId]) : null
+  )
+  return { tabStatus, isExporting, result }
+}
+
+function RunProgressSlot({ activeWorkspaceTabId }: { activeWorkspaceTabId: string | null }) {
+  const run = useVisibleRun(activeWorkspaceTabId)
+  const cancelQuery = useQueryStore((state) => state.cancelQuery)
+  if (!run) return null
+  return (
+    <RunProgressInfo run={run} onCancel={() => void cancelQuery(run.connectionId, run.tabId)} />
+  )
+}
+
 function updateIndicatorFor(updateStatus: string, onOpenUpdates: () => void): ReactNode {
   if (updateStatus !== 'available') return null
   return <UpdateIndicator onOpenUpdates={onOpenUpdates} />
@@ -99,12 +147,7 @@ export function StatusBar() {
   const { activeWorkspaceTabId, isQueryEditorTab, activeTableDataTabId } =
     useActiveWorkspaceTab(connectionTabId)
 
-  const queryTabStatus = useQueryStore((state) =>
-    activeWorkspaceTabId ? state.tabs[activeWorkspaceTabId]?.tabStatus : undefined
-  )
-  const activeResultState = useQueryStore((state) =>
-    activeWorkspaceTabId ? getActiveResult(state.tabs[activeWorkspaceTabId]) : null
-  )
+  const activeQueryTab = useActiveQueryTab(activeWorkspaceTabId)
   const activeTableDataState = useTableDataStore((state) =>
     activeTableDataTabId ? (state.tabs[activeTableDataTabId] ?? null) : null
   )
@@ -120,11 +163,7 @@ export function StatusBar() {
   const activity = resolveStatusActivity({
     indexState: indexState,
     flash: flash,
-    queryPane: {
-      isActive: isQueryEditorTab && !isShowingTableData,
-      result: activeResultState,
-      tabStatus: queryTabStatus,
-    },
+    queryPane: { isActive: isQueryEditorTab && !isShowingTableData, ...activeQueryTab },
     tableData: activeTableDataState,
   })
 
@@ -151,6 +190,7 @@ export function StatusBar() {
 
       <StatusBarTrailing
         activity={activity}
+        runProgress={<RunProgressSlot activeWorkspaceTabId={activeWorkspaceTabId} />}
         updateIndicator={updateIndicator}
         serverVersion={activeConnection.serverVersion}
         onCancelPendingWork={() => cancelPendingRowAction(activeWorkspaceTabId, cancelRowAction)}

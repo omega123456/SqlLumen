@@ -496,6 +496,7 @@ describe('ResultGridView editing', () => {
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,
+            runExport: null,
             activeBottomPanelItem: { type: 'result' },
           },
         },

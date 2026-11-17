@@ -74,6 +74,7 @@ mod result_export_job_integration;
 mod result_row_ceiling_integration;
 mod result_view_integration;
 mod retrieval_hints_integration;
+mod run_export_integration;
 mod schema_cache_integration;
 mod schema_index_builder_integration;
 mod schema_index_chunking_integration;

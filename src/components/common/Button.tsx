@@ -3,6 +3,7 @@ import { dataFlag } from '../../lib/data-attributes'
 import {
   buttonClassName,
   type ButtonContentAlign,
+  type ButtonSegment,
   type ButtonSize,
   type ButtonVariant,
 } from './button/button-classes'
@@ -16,6 +17,7 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   iconOnly?: boolean
   invalid?: boolean
   contentAlign?: ButtonContentAlign
+  segment?: ButtonSegment
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
@@ -26,6 +28,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     iconOnly = false,
     invalid = false,
     contentAlign = 'center',
+    segment = 'whole',
     className,
     type = 'button',
     ...rest
@@ -42,6 +45,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       data-invalid={dataFlag(invalid)}
       data-danger-text={dataFlag(dangerText)}
       data-align={contentAlign}
+      data-segment={segment}
       className={buttonClassName({
         variant,
         size,
@@ -49,6 +53,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
         iconOnly,
         invalid,
         contentAlign,
+        segment,
         className,
       })}
       {...rest}

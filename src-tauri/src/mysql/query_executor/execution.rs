@@ -109,6 +109,8 @@ pub async fn cancel_query_impl(
     let connection_id = request.connection_id.as_str();
     let tab_id = request.tab_id.as_str();
     let key = (connection_id.to_string(), tab_id.to_string());
+    let tab_run = crate::mysql::session::TabRun::new(connection_id, tab_id);
+    state.editor_sessions.runs.request_cancel(&tab_run);
 
     let thread_id = {
         let running = state.running_queries.read().await;
@@ -116,8 +118,7 @@ pub async fn cancel_query_impl(
     };
 
     let Some(thread_id) = thread_id else {
-        let queued_run = crate::mysql::session::TabRun::new(connection_id, tab_id);
-        return Ok(state.editor_sessions.cancel_queued_run(&queued_run));
+        return Ok(state.editor_sessions.cancel_queued_run(&tab_run));
     };
 
     let pool = state
@@ -150,6 +151,8 @@ pub async fn cancel_query_impl(
     let connection_id = request.connection_id.as_str();
     let tab_id = request.tab_id.as_str();
     let key = (connection_id.to_string(), tab_id.to_string());
+    let tab_run = crate::mysql::session::TabRun::new(connection_id, tab_id);
+    state.editor_sessions.runs.request_cancel(&tab_run);
 
     let thread_id = {
         let running = state.running_queries.read().await;
@@ -157,8 +160,7 @@ pub async fn cancel_query_impl(
     };
 
     let Some(thread_id) = thread_id else {
-        let queued_run = crate::mysql::session::TabRun::new(connection_id, tab_id);
-        return Ok(state.editor_sessions.cancel_queued_run(&queued_run));
+        return Ok(state.editor_sessions.cancel_queued_run(&tab_run));
     };
 
     state

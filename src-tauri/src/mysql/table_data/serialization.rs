@@ -1,14 +1,6 @@
 #[cfg(not(coverage))]
 use super::*;
 
-pub(super) fn is_binary_data_type(data_type: &str) -> bool {
-    let upper = data_type.to_uppercase();
-    matches!(
-        upper.as_str(),
-        "BLOB" | "TINYBLOB" | "MEDIUMBLOB" | "LONGBLOB" | "BINARY" | "VARBINARY"
-    )
-}
-
 pub fn format_bytes(bytes: u64) -> String {
     if bytes < 1024 {
         return format!("{bytes} B");

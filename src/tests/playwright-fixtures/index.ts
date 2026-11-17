@@ -24,6 +24,7 @@ import {
 } from './object-editor'
 import { ORDERS_FOREIGN_KEYS, ORDERS_LIST_COLUMNS, ORDERS_TABLE_DATA } from './orders'
 import { RESULT_EXPORT_JOB_ID, RESULT_EXPORT_PROGRESS_COMPLETED } from './result-export'
+import { RUN_EXPORT_START } from './run-export'
 import {
   BLOB_QUERY_RESULT,
   buildResultView,
@@ -62,7 +63,7 @@ import type { OpenConnectionSession } from '../../types/connection'
 import type { BlobValueResponse, GenerateDdlResponse, SchemaMetadataFull } from '../../types/schema'
 import type { DumpJobProgress, ImportJobProgress } from '../../lib/sql-dump-commands'
 import type { CopyProgress, CopyableObjects } from '../../lib/copy-to-host-commands'
-import type { ResultExportProgress } from '../../lib/export-commands'
+import type { ResultExportProgress, RunExportStart } from '../../lib/export-commands'
 import type {
   PlaywrightAnalyzeQueryResult,
   PlaywrightForeignKey,
@@ -111,6 +112,7 @@ type FixtureOverrideDomain =
   | 'resultExportStart'
   | 'resultExportProgress'
   | 'resultExportCancel'
+  | 'runExport'
   | 'blobValue'
   | 'aiModels'
   | 'logsPage'
@@ -144,6 +146,7 @@ type FixtureOverrides = {
   resultExportStart: Record<string, string>
   resultExportProgress: Record<string, ResultExportProgress>
   resultExportCancel: Record<string, null>
+  runExport: Record<string, RunExportStart>
   blobValue: Record<string, BlobValueResponse>
   aiModels: Record<string, AiModelInfo[]>
   logsPage: Record<string, LogPage>
@@ -177,6 +180,7 @@ type FixtureOverrideValueMap = {
   resultExportStart: string
   resultExportProgress: ResultExportProgress
   resultExportCancel: null
+  runExport: RunExportStart
   blobValue: BlobValueResponse
   aiModels: AiModelInfo[]
   logsPage: LogPage
@@ -222,6 +226,7 @@ type FixtureRegistryApi = {
   getCopyProgressFixture: (jobId: string | null | undefined) => CopyProgress
   getCancelCopyFixture: (jobId: string | null | undefined) => null
   getResultExportStartFixture: () => string
+  getRunExportFixture: () => RunExportStart
   getResultExportProgressFixture: (jobId: string | null | undefined) => ResultExportProgress
   getCancelResultExportFixture: (jobId: string | null | undefined) => null
   getBlobValueFixture: (column: string | null | undefined) => BlobValueResponse
@@ -355,6 +360,7 @@ function createEmptyFixtureOverrides(): FixtureOverrides {
     resultExportStart: {},
     resultExportProgress: {},
     resultExportCancel: {},
+    runExport: {},
     blobValue: {},
     aiModels: {},
     logsPage: {},
@@ -811,6 +817,10 @@ export function getCancelResultExportFixture(jobId: string | null | undefined): 
   return overrides.resultExportCancel[jobKey] ?? overrides.resultExportCancel.default ?? null
 }
 
+export function getRunExportFixture(): RunExportStart {
+  return overrides.runExport.default ?? RUN_EXPORT_START
+}
+
 export function getBlobValueFixture(column: string | null | undefined): BlobValueResponse {
   const columnKey = normalizeLookupKey(column)
 
@@ -985,6 +995,7 @@ const fixtureRegistry: FixtureRegistryApi = {
   getCopyProgressFixture,
   getCancelCopyFixture,
   getResultExportStartFixture,
+  getRunExportFixture,
   getResultExportProgressFixture,
   getCancelResultExportFixture,
   getBlobValueFixture,

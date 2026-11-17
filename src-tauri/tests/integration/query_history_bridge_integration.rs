@@ -447,6 +447,7 @@ mod coverage_bridge_tests {
                 tab_id: "tab-2".to_string(),
                 statements,
                 row_limit: Some(100),
+                run_export: None,
             },
         )
         .await
@@ -563,6 +564,7 @@ mod coverage_bridge_tests {
                     "RENAME TABLE test_db.orders TO test_db.orders_archive".to_string(),
                 ],
                 row_limit: Some(100),
+                run_export: None,
             },
         )
         .await
@@ -602,6 +604,7 @@ mod coverage_bridge_tests {
                 tab_id: "tab-1".to_string(),
                 statements,
                 row_limit: Some(100),
+                run_export: None,
             },
         )
         .await

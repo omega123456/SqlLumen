@@ -1,5 +1,4 @@
-import type { ShortcutBinding, WorkspaceTab } from '../../../types/schema'
-import { shortcutLabelParts } from '../../../lib/shortcut-labels'
+import type { WorkspaceTab } from '../../../types/schema'
 
 export const MOVE_ONE_SLOT_RIGHT_INSERT_OFFSET = 2
 export const WORKSPACE_TAB_TEST_ID_PREFIX = 'workspace-tab-'
@@ -33,11 +32,6 @@ export function translateSubsetInsertIndex(
 
 export function findTabById(tabs: WorkspaceTab[], tabId: string): WorkspaceTab | null {
   return tabs.find((tab) => tab.id === tabId) ?? null
-}
-
-export function revealShortcutLabel(binding: ShortcutBinding | null): string | undefined {
-  if (!binding?.key) return undefined
-  return shortcutLabelParts(binding).join(' ')
 }
 
 export const VISIBLE_SLOT_OFFSET_FOR_DIRECTION: Record<'left' | 'right', number> = {

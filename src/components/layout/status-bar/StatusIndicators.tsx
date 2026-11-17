@@ -7,6 +7,7 @@ import {
   STATUS_BAR,
   STATUS_BAR_ACTIVITY,
   STATUS_BAR_LEFT,
+  STATUS_BAR_LINK,
   STATUS_BAR_RIGHT,
   STATUS_BAR_SPACER,
   STATUS_TEXT,
@@ -23,6 +24,12 @@ import {
   type TableDataInfoState,
 } from './status-bar-model'
 import type { PendingWork } from './pending-work-model'
+import {
+  runProgressAnnouncement,
+  runProgressLabel,
+  showRunTab,
+  type VisibleRun,
+} from './run-progress-model'
 
 const INDEXING_INDICATOR = 'flex shrink-0 items-center gap-1 transition-fade-slide duration-500'
 const INDEXING_ICON = 'size-3 shrink-0'
@@ -101,7 +108,7 @@ export function IndexFlashIndicator({
 function StatusSpinner() {
   return (
     <span
-      className="inline-block size-2.5 animate-spin-700ms rounded-round border-spinner border-light-primary-a30 border-t-light-primary window-blurred:animate-spin-700ms-paused dark:border-dark-primary-a30 dark:border-t-dark-primary"
+      className="inline-block size-2.5 rounded-round border-spinner border-light-primary-a30 border-t-light-primary motion-safe:animate-spin-700ms motion-safe:window-blurred:animate-spin-700ms-paused dark:border-dark-primary-a30 dark:border-t-dark-primary"
       aria-hidden="true"
     />
   )
@@ -131,10 +138,7 @@ export function PendingWorkInfo({ work, onCancel }: PendingWorkInfoProps) {
       {work.isCancellable && (
         <Button
           variant="bare"
-          className={joinClassNames([
-            'ml-1 cursor-pointer p-0 text-size-caption whitespace-nowrap text-light-primary hover:underline focus-visible:underline dark:text-dark-primary',
-            FOCUS_RING,
-          ])}
+          className={joinClassNames([STATUS_BAR_LINK, FOCUS_RING])}
           onClick={onCancel}
           data-testid="row-action-cancel"
         >
@@ -143,6 +147,59 @@ export function PendingWorkInfo({ work, onCancel }: PendingWorkInfoProps) {
       )}
       <span className="sr-only" role="status" aria-live="polite">
         {work.announcement}
+      </span>
+    </div>
+  )
+}
+
+interface RunProgressInfoProps {
+  run: VisibleRun
+  onCancel: () => void
+}
+
+function RunProgressLabel({ run }: { run: VisibleRun }) {
+  const label = runProgressLabel(run)
+  if (run.isRunTabActive) {
+    return (
+      <span className={STATUS_TEXT} data-testid="status-run-progress-label">
+        {label}
+      </span>
+    )
+  }
+  return (
+    <Button
+      variant="bare"
+      className={joinClassNames([
+        'cursor-pointer p-0 text-size-caption whitespace-nowrap text-light-on-surface-variant hover:underline focus-visible:underline dark:text-dark-on-surface-variant',
+        FOCUS_RING,
+      ])}
+      onClick={() => showRunTab(run)}
+      title="Show the tab running this export"
+      data-testid="status-run-progress-label"
+    >
+      {label}
+    </Button>
+  )
+}
+
+export function RunProgressInfo({ run, onCancel }: RunProgressInfoProps) {
+  const showsCancel = !run.isRunTabActive && !run.isCancelling
+  return (
+    <div className="flex shrink-0 items-center gap-1" data-testid="status-run-progress">
+      <StatusSpinner />
+      <RunProgressLabel run={run} />
+      {showsCancel && (
+        <Button
+          variant="bare"
+          className={joinClassNames([STATUS_BAR_LINK, FOCUS_RING])}
+          onClick={onCancel}
+          data-testid="status-run-cancel"
+        >
+          Cancel
+        </Button>
+      )}
+      <span className="sr-only" role="status" aria-live="polite">
+        {runProgressAnnouncement(run)}
       </span>
     </div>
   )

@@ -5,12 +5,12 @@ import { useShortcutStore } from '../../../stores/shortcut-store'
 import type { TabContextMenuItem } from '../../shared/TabContextMenu'
 import { dispatchDismissAll } from '../../../lib/context-menu-events'
 import { getContextMenuPortalRoot } from '../../../lib/context-menu-utils'
+import { menuShortcutLabel } from '../../../lib/shortcut-labels'
 import type { ContextMenuOpenPoint } from '../../../lib/context-menu-utils'
 import { buildTabMenuItems, type TabMenuTarget } from './tab-menu-items'
 import {
   VISIBLE_SLOT_OFFSET_FOR_DIRECTION,
   findTabById,
-  revealShortcutLabel,
   translateSubsetInsertIndex,
   type TabIdLists,
 } from './tab-rail-model'
@@ -69,7 +69,7 @@ export function useTabContextMenu(inputs: TabContextMenuInputs) {
       tab: findTabById(tabs, menu.tabId),
       visibleIndex: visibleIndex,
       visibleTabIds: visibleTabIds,
-      revealShortcut: revealShortcutLabel(revealBinding),
+      revealShortcut: menuShortcutLabel(revealBinding),
     }
     return buildTabMenuItems(target, {
       rename: () => startRename(menu.tabId),

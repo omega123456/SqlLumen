@@ -94,6 +94,13 @@ fn binary_primary_key_json(cell: &CellValue) -> serde_json::Value {
     serde_json::Value::String([BINARY_PRIMARY_KEY_PREFIX, hex_digits.as_str()].concat())
 }
 
+pub fn cached_binary_cell_as_hex(cell: &serde_json::Value) -> Option<String> {
+    let encoded = cell.as_str()?;
+    let bytes = BASE64_STANDARD.decode(encoded).ok()?;
+    let hex_digits = hex::encode_upper(bytes);
+    Some([BINARY_PRIMARY_KEY_PREFIX, hex_digits.as_str()].concat())
+}
+
 pub fn row_json(row: mysql_async::Row) -> Vec<serde_json::Value> {
     let columns = row.columns();
     super::decode_owned_values(row.unwrap(), &columns)

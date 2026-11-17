@@ -20,6 +20,8 @@ pub struct MultiQueryResultItem {
     pub applied_row_limit: Option<usize>,
     pub full_export_blocked_reason: Option<FullExportBlockedReason>,
     pub first_window: crate::mysql::result_view::ResultWindow,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exported_row_count: Option<usize>,
 }
 
 impl MultiQueryResultItem {
@@ -42,6 +44,7 @@ impl MultiQueryResultItem {
             applied_row_limit: stored.applied_row_limit,
             full_export_blocked_reason: stored.full_export_blocked_reason,
             first_window: crate::mysql::result_view::first_window(stored),
+            exported_row_count: None,
         }
     }
 }
@@ -50,4 +53,6 @@ impl MultiQueryResultItem {
 #[serde(rename_all = "camelCase")]
 pub struct MultiQueryResult {
     pub results: Vec<MultiQueryResultItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run_export: Option<crate::export::run_export::RunExportSummary>,
 }

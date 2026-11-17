@@ -15,6 +15,11 @@ export const ACTION_DESCRIPTORS: ShortcutActionDescriptor[] = [
     label: 'Execute all',
     description: 'Run all statements in the editor',
   },
+  {
+    id: 'execute-all-copy-path',
+    label: 'Execute all and copy result path',
+    description: 'Run all statements, write the results to a temp file and copy its path',
+  },
   { id: 'format-query', label: 'Format query', description: 'Auto-format the current SQL' },
   {
     id: 'command-palette',

@@ -377,6 +377,7 @@ describe('UpdatesSettings', () => {
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          runExport: null,
           activeBottomPanelItem: { type: 'result' },
         },
         'query-2': {
@@ -414,6 +415,7 @@ describe('UpdatesSettings', () => {
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          runExport: null,
           activeBottomPanelItem: { type: 'result' },
         },
       },

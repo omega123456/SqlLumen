@@ -3,7 +3,12 @@ import type { CSSProperties } from 'react'
 import { X, CheckCircle, Warning, XCircle, type Icon } from '@phosphor-icons/react'
 import { joinClassNames } from '../../lib/class-names'
 import { FOCUS_RING } from '../../lib/focus-ring'
-import { useToastStore, type ToastItem } from '../../stores/toast-store'
+import {
+  UNTIL_DISMISSED,
+  useToastStore,
+  type ToastDuration,
+  type ToastItem,
+} from '../../stores/toast-store'
 
 const TOAST_ICON_SIZE = 16
 
@@ -36,9 +41,14 @@ function ToastIcon({ variant }: { variant: ToastItem['variant'] }) {
   return <VariantIcon size={TOAST_ICON_SIZE} weight="fill" aria-hidden />
 }
 
+function progressStyleFor(durationMs: ToastDuration): CSSProperties {
+  if (durationMs === UNTIL_DISMISSED) return {}
+  return { animationDuration: `${durationMs}ms` }
+}
+
 function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: string) => void }) {
   const role = item.variant === 'error' ? 'alert' : 'status'
-  const progressStyle: CSSProperties = { animationDuration: `${item.durationMs}ms` }
+  const progressStyle = progressStyleFor(item.durationMs)
 
   return (
     <div

@@ -34,6 +34,7 @@ import type {
   SavedConnection,
   TestConnectionResult,
 } from '../../types/connection'
+import type { RunExportProgress } from '../../types/run-export'
 import type {
   AiChatRequest,
   AiModelInfo,
@@ -60,7 +61,9 @@ import type {
   ExportResult,
   ExportResultsRequest,
   ResultExportProgress,
+  RunExportStart,
   StartResultExportRequest,
+  StartRunExportRequest,
 } from '../export-commands'
 import type { ListHistoryRequest } from '../history-commands'
 import type { LogLevelFilter, LogPage } from '../log-commands'
@@ -146,6 +149,7 @@ export interface PayloadCommandMap {
 
   export_results: Command<ExportResultsRequest, ExportResult>
   start_result_export: Command<StartResultExportRequest, string>
+  start_run_export: Command<StartRunExportRequest, RunExportStart>
 
   update_favorite: Command<{ id: number; input: UpdateFavoriteInput }, boolean>
 
@@ -260,6 +264,7 @@ export interface ArgumentCommandMap {
 
   get_result_export_progress: Command<JobArgument, ResultExportProgress>
   cancel_result_export: Command<JobArgument, void>
+  get_run_export_progress: Command<{ runId: string }, RunExportProgress | null>
 
   create_favorite: Command<{ input: CreateFavoriteInput }, number>
   list_favorites: Command<ConnectionArgument, FavoriteEntry[]>

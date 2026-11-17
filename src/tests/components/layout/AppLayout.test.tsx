@@ -85,6 +85,7 @@ describe('AppLayout', () => {
       const actions = useShortcutStore.getState()._actions
       expect(actions['execute-query']).toBeTypeOf('function')
       expect(actions['execute-all']).toBeTypeOf('function')
+      expect(actions['execute-all-copy-path']).toBeTypeOf('function')
       expect(actions['format-query']).toBeTypeOf('function')
       expect(actions['command-palette']).toBeTypeOf('function')
       expect(actions['command-palette-table']).toBeTypeOf('function')
@@ -496,7 +497,7 @@ describe('AppLayout', () => {
   })
 
   describe('execute-all action', () => {
-    it('executes all statements via executeMultiQuery', () => {
+    it('executes all statements via executeMultiQuery, or runs them and copies the result path', () => {
       useConnectionStore.setState({ activeTabId: 'conn-1' })
       useWorkspaceStore.setState({
         tabsByConnection: {
@@ -505,6 +506,7 @@ describe('AppLayout', () => {
         activeTabByConnection: { 'conn-1': 'tab-1' },
       })
       const executeMultiQueryMock = vi.fn()
+      const executeAllAndCopyResultPathMock = vi.fn()
       const requestNavigationActionMock = vi.fn((_tabId: string, action: () => void) => action())
       useQueryStore.setState({
         tabs: {
@@ -516,6 +518,7 @@ describe('AppLayout', () => {
           },
         },
         executeMultiQuery: executeMultiQueryMock,
+        executeAllAndCopyResultPath: executeAllAndCopyResultPathMock,
         requestNavigationAction: requestNavigationActionMock,
       } as never)
 
@@ -530,6 +533,16 @@ describe('AppLayout', () => {
         'SELECT 1',
         'SELECT 2',
       ])
+
+      act(() => {
+        useShortcutStore.getState().dispatchAction('execute-all-copy-path')
+      })
+
+      expect(executeAllAndCopyResultPathMock).toHaveBeenCalledWith({
+        connectionId: 'conn-1',
+        tabId: 'tab-1',
+        statements: ['SELECT 1', 'SELECT 2'],
+      })
     })
 
     it('does nothing when content is empty', () => {

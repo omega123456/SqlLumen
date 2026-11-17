@@ -15,7 +15,7 @@ import { useShortcut } from '../../hooks/useShortcut'
 import { useShortcutStore } from '../../stores/shortcut-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
-import { isExecutionLocked, useQueryStore } from '../../stores/query-store'
+import { isExecutionLocked, useQueryStore, type RunTarget } from '../../stores/query-store'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
 import { useImportDialogStore } from '../../stores/import-dialog-store'
 import { useSettingsStore } from '../../stores/settings-store'
@@ -34,16 +34,10 @@ import {
 } from '../query-editor/sql-parser-utils'
 import { buildExecuteQueryPlan, runExecuteQueryPlan } from '../../lib/query-execution-plan'
 import { CommandPalette } from '../command-palette/CommandPalette'
+import { executableStatements } from '../query-editor/editor-toolbar/editor-file-actions'
 
 import { logFrontend, logFrontendError } from '../../lib/app-log-commands'
 import { isAiLockStatus } from '../../lib/query-tab-status'
-
-function getExecutableStatements(sql: string): string[] {
-  return splitStatements(sql)
-    .map((statement) => statement.sql.trim())
-    .filter((statement) => statement.length > 0)
-    .filter((statement) => !/^DELIMITER\s/i.test(statement))
-}
 
 const SQL_FORMAT_OPTIONS = { language: 'mysql', tabWidth: 2 } as const
 const START_OF_DOCUMENT = { lineNumber: 1, column: 1 }
@@ -112,15 +106,26 @@ function executeQueryAtCursor(): void {
   runExecuteQueryPlan(useQueryStore.getState(), queryTab, plan)
 }
 
-function executeAllStatements(): void {
+function runAllStatementsInActiveTab(run: (target: RunTarget) => void): void {
   const queryTab = getRunnableQueryTab()
   if (!queryTab) return
-  const queryState = useQueryStore.getState()
   const { connectionId, tabId, tabState } = queryTab
-  queryState.requestNavigationAction(tabId, () => {
-    const statements = getExecutableStatements(tabState.content)
+  useQueryStore.getState().requestNavigationAction(tabId, () => {
+    const statements = executableStatements(tabState.content)
     if (statements.length === 0) return
-    queryState.executeMultiQuery(connectionId, tabId, statements)
+    run({ connectionId: connectionId, tabId: tabId, statements: statements })
+  })
+}
+
+function executeAllStatements(): void {
+  runAllStatementsInActiveTab(({ connectionId, tabId, statements }) => {
+    void useQueryStore.getState().executeMultiQuery(connectionId, tabId, statements)
+  })
+}
+
+function executeAllAndCopyResultPath(): void {
+  runAllStatementsInActiveTab((target) => {
+    void useQueryStore.getState().executeAllAndCopyResultPath(target)
   })
 }
 
@@ -270,6 +275,7 @@ function revealActiveTabInObjectBrowser(): void {
 const APP_SHORTCUT_ACTIONS: Record<string, () => void> = {
   'execute-query': executeQueryAtCursor,
   'execute-all': executeAllStatements,
+  'execute-all-copy-path': executeAllAndCopyResultPath,
   'format-query': formatActiveQuery,
   'save-file': saveActiveObjectEditor,
   'new-query-tab': openNewQueryTab,

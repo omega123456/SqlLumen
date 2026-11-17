@@ -4,6 +4,7 @@ import { logFrontendError } from '../../lib/app-log-commands'
 import { isAiLockStatus } from '../../lib/query-tab-status'
 import { removeQueryTabs } from './query-tab-reducers'
 import { cancelExportJobInBackground, dropExportJob, runningExportJobId } from './full-export'
+import { stopRunProgressPolling } from './run-and-copy'
 import { DEFAULT_TAB_STATE } from './query-state-defaults'
 import type { ExecutionStatus, TabStatus } from './query-state-types'
 import {
@@ -43,6 +44,7 @@ export function cleanupTab(connectionId: string, tabId: string) {
     cancelExportJobInBackground(runningJobId, 'cleanupTab')
   }
   dropExportJob(tabId)
+  stopRunProgressPolling(tabId)
   cancelAllResultLifecycleTimers(tabId, getQueryState().tabs[tabId]?.results.length ?? 0)
   dropTabResultWindows(tabId)
   dropViewTrackers(tabId)
@@ -56,6 +58,7 @@ export function cleanupTab(connectionId: string, tabId: string) {
 export function cleanupConnection(connectionId: string, tabIds: string[]) {
   for (const id of tabIds) {
     dropExportJob(id)
+    stopRunProgressPolling(id)
     cancelAllResultLifecycleTimers(id, getQueryState().tabs[id]?.results.length ?? 0)
     dropTabResultWindows(id)
     dropViewTrackers(id)

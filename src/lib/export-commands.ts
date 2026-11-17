@@ -1,6 +1,7 @@
 import { invokeArgumentCommand, invokeCommand } from './ipc/dispatch'
 import type { ExportFormat, ExportOptions } from '../types/schema'
 import type { ResultSlotRequest } from './ipc/requests'
+import type { RunExportProgress } from '../types/run-export'
 
 export interface ExportResult {
   bytesWritten: number
@@ -73,4 +74,25 @@ export async function getResultExportProgress(jobId: string): Promise<ResultExpo
 
 export async function cancelResultExport(jobId: string): Promise<void> {
   await invokeArgumentCommand({ command: 'cancel_result_export', argument: { jobId } })
+}
+
+export interface StartRunExportRequest {
+  connectionId: string
+  tabId: string
+  connectionName: string
+  tabTitle: string
+  statements: string[]
+}
+
+export interface RunExportStart {
+  runId: string
+  runFilePath: string
+}
+
+export async function startRunExport(request: StartRunExportRequest): Promise<RunExportStart> {
+  return invokeCommand({ command: 'start_run_export', payload: request })
+}
+
+export async function getRunExportProgress(runId: string): Promise<RunExportProgress | null> {
+  return invokeArgumentCommand({ command: 'get_run_export_progress', argument: { runId } })
 }

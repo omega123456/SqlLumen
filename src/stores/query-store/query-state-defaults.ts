@@ -42,6 +42,7 @@ export const DEFAULT_RESULT_STATE: SingleResultState = {
   viewRequestSeq: 0,
   truncated: false,
   rowCeiling: 0,
+  exportedRowCount: null,
   appliedRowLimit: null,
   fullExportBlockedReason: null,
   executionTimeMs: 0,
@@ -112,6 +113,7 @@ export const DEFAULT_TAB_STATE: TabQueryState = {
   executionStartedAt: null,
   isCancelling: false,
   wasCancelled: false,
+  runExport: null,
 }
 
 export const ROW_EDIT_STATE_RESET: Partial<SingleResultState> = {

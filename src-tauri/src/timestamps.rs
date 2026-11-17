@@ -4,6 +4,7 @@ use jiff::{Timestamp, ToSpan};
 
 const STORED_FRACTIONAL_SECOND_DIGITS: u8 = 6;
 const LOG_FRACTIONAL_SECOND_DIGITS: u8 = 3;
+const FOLDER_TIMESTAMP_FORMAT: &str = "%Y%m%dT%H%M%S%.3fZ";
 
 const STORED_TIMESTAMP_PRINTER: DateTimePrinter =
     DateTimePrinter::new().precision(Some(STORED_FRACTIONAL_SECOND_DIGITS));
@@ -24,6 +25,14 @@ pub fn log_timestamp(timestamp: Timestamp) -> String {
 
 pub fn log_timestamp_now() -> String {
     log_timestamp(Timestamp::now())
+}
+
+pub fn folder_timestamp(timestamp: Timestamp) -> String {
+    timestamp.strftime(FOLDER_TIMESTAMP_FORMAT).to_string()
+}
+
+pub fn folder_timestamp_now() -> String {
+    folder_timestamp(Timestamp::now())
 }
 
 pub fn days_before(timestamp: Timestamp, days: i64) -> Timestamp {

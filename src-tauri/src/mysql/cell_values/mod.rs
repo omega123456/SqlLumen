@@ -14,6 +14,14 @@ const NOT_FIXED_DECIMALS: u8 = 31;
 const BINARY_CHARACTER_SET_ID: u16 = 63;
 const BITS_PER_BYTE: u32 = 8;
 
+pub fn is_binary_data_type(data_type: &str) -> bool {
+    let upper = data_type.to_uppercase();
+    matches!(
+        upper.as_str(),
+        "BLOB" | "TINYBLOB" | "MEDIUMBLOB" | "LONGBLOB" | "BINARY" | "VARBINARY"
+    )
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum CellValue {
     Null,

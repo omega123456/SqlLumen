@@ -1,4 +1,5 @@
 use super::*;
+use crate::export::run_export::{claim_run, RunClaim, RunFinish};
 
 #[cfg(not(coverage))]
 pub async fn execute_multi_query_impl(
@@ -7,6 +8,7 @@ pub async fn execute_multi_query_impl(
 ) -> Result<MultiQueryResult, String> {
     let connection_id = request.connection_id.as_str();
     let tab_id = request.tab_id.as_str();
+    let run_claim = claim_run(state, request.run_export.as_ref())?;
     state
         .registry
         .get_pool(connection_id)
@@ -19,23 +21,43 @@ pub async fn execute_multi_query_impl(
     );
 
     let run = TabRun::new(connection_id, tab_id);
+    let expected_invalidation_version = state
+        .result_cache
+        .current_invalidation_version(connection_id, tab_id);
     let batch = crate::mysql::multi_result::StatementBatch {
         statements: &request.statements,
         row_limit,
         is_read_only,
+        run: run_claim.as_ref().map(RunClaim::session),
     };
+    let batch_outcome =
+        crate::mysql::multi_result::execute_multi_query_internal(state, &run, batch).await;
+    let run_export = finish_claimed_run(run_claim, &batch_outcome);
     let crate::mysql::multi_result::BatchResults {
         stored_results,
         result_items,
-    } = crate::mysql::multi_result::execute_multi_query_internal(state, &run, batch).await?;
+    } = batch_outcome?;
 
-    state
-        .result_cache
-        .insert(CacheKey::new(connection_id, tab_id), stored_results);
+    state.result_cache.insert_if_current(
+        CacheKey::new(connection_id, tab_id),
+        crate::mysql::result_cache::VersionedValue {
+            expected_invalidation_version,
+            value: stored_results,
+        },
+    );
 
     Ok(MultiQueryResult {
         results: result_items,
+        run_export,
     })
+}
+
+fn finish_claimed_run(
+    run_claim: Option<RunClaim<'_>>,
+    batch_outcome: &Result<crate::mysql::multi_result::BatchResults, String>,
+) -> Option<crate::export::run_export::RunExportSummary> {
+    let claim = run_claim?;
+    Some(claim.finish(&RunFinish::from_batch(batch_outcome)))
 }
 
 #[cfg(coverage)]
@@ -46,6 +68,7 @@ pub async fn execute_multi_query_impl(
     let connection_id = request.connection_id.as_str();
     let tab_id = request.tab_id.as_str();
     let statements = &request.statements;
+    let run_claim = claim_run(state, request.run_export.as_ref())?;
     state
         .registry
         .get_pool(connection_id)
@@ -57,10 +80,13 @@ pub async fn execute_multi_query_impl(
     let mut stored_results: Vec<StoredResult> = Vec::new();
     let mut result_items: Vec<MultiQueryResultItem> = Vec::new();
 
-    for sql in statements {
+    for (statement_index, sql) in statements.iter().enumerate() {
         let sql = sql.trim();
         if sql.is_empty() {
             continue;
+        }
+        if let Some(claim) = run_claim.as_ref() {
+            claim.session().begin_statement(statement_index);
         }
 
         let is_statement_blocked = is_read_only && !is_read_only_allowed(sql);
@@ -82,6 +108,7 @@ pub async fn execute_multi_query_impl(
         let _sql_to_execute = sql_with_auto_limit(sql, auto_limit_applied, row_limit);
 
         let mut stored = StoredResult::empty(uuid::Uuid::new_v4().to_string());
+        stored.statement_index = statement_index;
         stored.auto_limit_applied = auto_limit_applied;
         stored.applied_row_limit = auto_limit_applied.then_some(row_limit);
         stored.row_ceiling = ceiling;
@@ -99,12 +126,24 @@ pub async fn execute_multi_query_impl(
         .insert(key.clone(), 42u64);
     state.running_queries.write().await.remove(&key);
 
+    let batch_outcome: Result<crate::mysql::multi_result::BatchResults, String> =
+        Ok(crate::mysql::multi_result::BatchResults {
+            stored_results,
+            result_items,
+        });
+    let run_export = finish_claimed_run(run_claim, &batch_outcome);
+    let crate::mysql::multi_result::BatchResults {
+        stored_results,
+        result_items,
+    } = batch_outcome?;
+
     state
         .result_cache
         .insert(CacheKey::new(connection_id, tab_id), stored_results);
 
     Ok(MultiQueryResult {
         results: result_items,
+        run_export,
     })
 }
 
@@ -136,6 +175,7 @@ pub async fn execute_call_query_impl(
         statements: &statements,
         row_limit,
         is_read_only,
+        run: None,
     };
     let crate::mysql::multi_result::BatchResults {
         stored_results,
@@ -148,6 +188,7 @@ pub async fn execute_call_query_impl(
 
     Ok(MultiQueryResult {
         results: result_items,
+        run_export: None,
     })
 }
 
@@ -194,6 +235,7 @@ pub async fn execute_call_query_impl(
 
     Ok(MultiQueryResult {
         results: vec![item],
+        run_export: None,
     })
 }
 

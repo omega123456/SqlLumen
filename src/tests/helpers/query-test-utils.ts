@@ -160,6 +160,7 @@ interface TabOverrides {
   activeBottomPanelItem?: TabQueryState['activeBottomPanelItem']
   activeResultIndex?: number
   results?: TabQueryState['results']
+  runExport?: TabQueryState['runExport']
 }
 
 // All keys that belong to SingleResultState
@@ -292,6 +293,7 @@ export function makeTabState(
     executionStartedAt: null,
     isCancelling: false,
     wasCancelled: false,
+    runExport: null,
     ...tabOverrides,
   }
 }

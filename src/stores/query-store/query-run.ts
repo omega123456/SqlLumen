@@ -1,4 +1,4 @@
-import type { MultiQueryResultItem, ResultViewSpec } from '../../types/schema'
+import type { MultiQueryResult, MultiQueryResultItem, ResultViewSpec } from '../../types/schema'
 import {
   executeQuery as executeQueryCmd,
   executeMultiQuery as executeMultiQueryCmd,
@@ -16,7 +16,7 @@ import {
   EDIT_ANALYSIS_ERROR_TOAST_DURATION_MS,
   getDefaultRowLimit,
 } from './query-state-defaults'
-import type { SingleResultState } from './query-state-types'
+import type { RunTarget, SingleResultState, TabQueryState } from './query-state-types'
 import {
   beginExecution,
   cancelAllResultLifecycleTimers,
@@ -32,7 +32,7 @@ import { viewFieldsForColumns, windowMetaFromResponse } from './result-view-spec
 interface MultiResultExecution {
   connectionId: string
   tabId: string
-  ipcCall: () => Promise<{ results: MultiQueryResultItem[] }>
+  ipcCall: () => Promise<MultiQueryResult>
   runPostAnalysis: boolean
 }
 
@@ -189,9 +189,9 @@ async function runMultiResultExecution({
   tabId,
   ipcCall,
   runPostAnalysis,
-}: MultiResultExecution) {
+}: MultiResultExecution): Promise<MultiQueryResult | null> {
   const currentState = getQueryState().tabs[tabId]
-  if (isExecutionLocked(currentState)) return
+  if (isExecutionLocked(currentState)) return null
 
   getQueryState().clearEditState(tabId)
   patchTab(tabId, { wasCancelled: false, connectionId: connectionId })
@@ -206,11 +206,13 @@ async function runMultiResultExecution({
   }
   try {
     const multiResult = await ipcCall()
-    if (!getQueryState().tabs[tabId]) return
+    if (!getQueryState().tabs[tabId]) return null
     applyMultiResultSuccess(run, multiResult.results)
+    return multiResult
   } catch (error) {
-    if (!getQueryState().tabs[tabId]) return
+    if (!getQueryState().tabs[tabId]) return null
     applyExecutionFailure(connectionId, tabId, error)
+    return null
   }
 }
 
@@ -270,6 +272,26 @@ export async function executeMultiQuery(connectionId: string, tabId: string, sta
   })
 }
 
+export async function executeMultiQueryWithRun(
+  target: RunTarget,
+  runId: string
+): Promise<MultiQueryResult | null> {
+  const { connectionId, tabId, statements } = target
+  return runMultiResultExecution({
+    connectionId: connectionId,
+    tabId: tabId,
+    ipcCall: () =>
+      executeMultiQueryCmd({
+        connectionId: connectionId,
+        tabId: tabId,
+        statements: statements,
+        rowLimit: getDefaultRowLimit(),
+        runExport: { runId: runId },
+      }),
+    runPostAnalysis: true,
+  })
+}
+
 export async function executeCallQuery(connectionId: string, tabId: string, sql: string) {
   await runMultiResultExecution({
     connectionId: connectionId,
@@ -302,6 +324,7 @@ export async function cancelQuery(connectionId: string, tabId: string) {
       patchTab(tabId, { isCancelling: false, wasCancelled: false })
       return
     }
+    if (hasActiveRunExport(getQueryState().tabs[tabId])) return
     showSuccessToast('Query cancelled')
   } catch (error) {
     if (!getQueryState().tabs[tabId]) return
@@ -310,6 +333,10 @@ export async function cancelQuery(connectionId: string, tabId: string) {
     const errorMessage = toErrorMessage(error)
     showErrorToast('Cancel failed', errorMessage)
   }
+}
+
+function hasActiveRunExport(tab: TabQueryState | undefined): boolean {
+  return tab?.runExport?.isActive === true
 }
 
 export function queryRunActions() {

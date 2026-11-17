@@ -17,19 +17,34 @@ pub async fn execute_multi_query_internal(
         connection_id,
         thread_id: session.thread_id,
         pool: state.registry.get_pool(connection_id),
+        run: batch.run,
     };
     let row_limit_used = crate::mysql::query_executor::requested_row_limit(batch.row_limit);
     let mut results = BatchResults::default();
 
-    for sql in batch.statements {
+    for (statement_index, sql) in batch.statements.iter().enumerate() {
         let sql = sql.trim();
         if sql.is_empty() {
             continue;
         }
 
+        if batch.is_run_cancelled() {
+            results.push_error(StatementFailure {
+                sql,
+                statement_index,
+                error_message: QUERY_CANCELLED_MESSAGE.to_string(),
+            });
+            break;
+        }
+        batch.begin_statement(statement_index);
+
         let is_statement_blocked = batch.is_read_only && !is_read_only_allowed(sql);
         if is_statement_blocked {
-            results.push_error(sql, READ_ONLY_VIOLATION_MESSAGE.to_string());
+            results.push_error(StatementFailure {
+                sql,
+                statement_index,
+                error_message: READ_ONLY_VIOLATION_MESSAGE.to_string(),
+            });
             break;
         }
 
@@ -42,9 +57,13 @@ pub async fn execute_multi_query_internal(
         match stmt_result {
             Ok(outcomes) => outcomes
                 .into_iter()
-                .for_each(|outcome| results.push(outcome)),
-            Err(error_msg) => {
-                results.push_error(sql, error_msg);
+                .for_each(|outcome| results.push(outcome.in_statement(statement_index))),
+            Err(error_message) => {
+                results.push_error(StatementFailure {
+                    sql,
+                    statement_index,
+                    error_message,
+                });
                 break;
             }
         }
@@ -70,6 +89,7 @@ pub async fn execute_single_on_session(
         connection_id,
         thread_id: session.thread_id,
         pool: state.registry.get_pool(connection_id),
+        run: None,
     };
     let result = execute_statement(&mut session.conn, statement, &context).await;
 
@@ -96,9 +116,7 @@ pub(super) async fn execute_statement(
     statement: SessionStatement<'_>,
     context: &DecodeContext<'_>,
 ) -> Result<StatementOutcome, String> {
-    use crate::mysql::query_executor::{
-        needs_auto_limit, returns_result_set, strip_non_executable_comments,
-    };
+    use crate::mysql::query_executor::{returns_result_set, strip_non_executable_comments};
 
     let sql = statement.sql;
     let is_result_set = returns_result_set(&strip_non_executable_comments(sql));
@@ -107,8 +125,13 @@ pub(super) async fn execute_statement(
     }
     let select = SelectStatement {
         sql,
-        auto_limit_applied: needs_auto_limit(sql),
+        auto_limit_applied: applies_auto_limit(sql, context),
         row_limit_used: statement.row_limit,
     };
     execute_single_select_statement(conn, &select, context).await
+}
+
+fn applies_auto_limit(sql: &str, context: &DecodeContext<'_>) -> bool {
+    let writes_every_row = context.run.is_some();
+    !writes_every_row && crate::mysql::query_executor::needs_auto_limit(sql)
 }

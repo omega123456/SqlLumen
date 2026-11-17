@@ -13,6 +13,7 @@ import type {
 } from '../types/schema'
 import { invokeArgumentCommand, invokeCommand } from './ipc/dispatch'
 import type { ResultSlotRequest } from './ipc/requests'
+import type { RunExportOptions } from '../types/run-export'
 
 export interface ExecuteQueryResult extends QueryResultMeta, ResultWindowMeta {}
 
@@ -29,6 +30,7 @@ export interface ExecuteMultiQueryRequest {
   tabId: string
   statements: string[]
   rowLimit: number
+  runExport?: RunExportOptions
 }
 
 export interface ExecuteCallQueryRequest {

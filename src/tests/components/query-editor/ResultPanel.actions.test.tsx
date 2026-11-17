@@ -488,6 +488,7 @@ describe('filter button and dialog', () => {
       executionStartedAt: null,
       isCancelling: false,
       wasCancelled: false,
+      runExport: null,
       activeBottomPanelItem: { type: 'result' },
     }
 

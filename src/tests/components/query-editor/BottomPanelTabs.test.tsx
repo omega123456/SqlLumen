@@ -46,6 +46,7 @@ describe('BottomPanelTabs', () => {
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          runExport: null,
         },
       },
     })
@@ -128,6 +129,7 @@ describe('BottomPanelTabs', () => {
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          runExport: null,
         },
       },
     })
@@ -164,6 +166,7 @@ describe('BottomPanelTabs', () => {
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          runExport: null,
         },
       },
     })

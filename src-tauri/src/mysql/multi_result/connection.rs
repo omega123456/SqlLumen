@@ -1,9 +1,11 @@
 use super::*;
 
+pub const QUERY_CANCELLED_MESSAGE: &str = "Query cancelled";
+
 pub(crate) fn map_mysql_error(error: &mysql_async::Error) -> String {
     crate::mysql::query_log::log_mysql_async_error(error);
     if is_query_interrupted(error) {
-        return "Query cancelled".to_string();
+        return QUERY_CANCELLED_MESSAGE.to_string();
     }
     format!("Query failed: {error}")
 }

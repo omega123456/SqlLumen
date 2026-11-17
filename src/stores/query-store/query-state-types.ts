@@ -12,6 +12,7 @@ import type {
 } from '../../types/schema'
 import { type CachedRow, type ViewRange } from '../../lib/result-window-cache'
 import { type ResultExportProgress, type ResultExportStatus } from '../../lib/export-commands'
+import type { RunExportProgress } from '../../types/run-export'
 
 export type ExecutionStatus = 'idle' | 'running' | 'success' | 'error'
 
@@ -66,6 +67,7 @@ export interface SingleResultState {
   viewRequestSeq: number
   truncated: boolean
   rowCeiling: number
+  exportedRowCount: number | null
   appliedRowLimit: number | null
   fullExportBlockedReason: FullExportBlockedReason | null
   executionTimeMs: number
@@ -134,6 +136,20 @@ export interface TabQueryState {
   executionStartedAt: number | null
   isCancelling: boolean
   wasCancelled: boolean
+  runExport: TabRunExport | null
+}
+
+export interface TabRunExport {
+  runId: string
+  runFilePath: string
+  progress: RunExportProgress | null
+  isActive: boolean
+}
+
+export interface RunTarget {
+  connectionId: string
+  tabId: string
+  statements: string[]
 }
 
 export type FlatTabView = TabQueryState & SingleResultState
@@ -165,6 +181,8 @@ export interface QueryState {
   executeQuery: (connectionId: string, tabId: string, sql: string) => Promise<void>
 
   executeMultiQuery: (connectionId: string, tabId: string, statements: string[]) => Promise<void>
+  executeAllAndCopyResultPath: (target: RunTarget) => Promise<void>
+  copyLastRunFilePath: (tabId: string) => Promise<void>
 
   executeCallQuery: (connectionId: string, tabId: string, sql: string) => Promise<void>
 

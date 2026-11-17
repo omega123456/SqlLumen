@@ -79,6 +79,10 @@ pub struct StoredResult {
     pub source_sql: String,
     pub run_database: RunDatabase,
     pub full_export_blocked_reason: Option<FullExportBlockedReason>,
+    #[serde(default)]
+    pub statement_index: usize,
+    #[serde(default)]
+    pub error_message: Option<String>,
 }
 
 pub struct StoredResultParts {
@@ -125,6 +129,8 @@ impl StoredResult {
             source_sql: String::new(),
             run_database: RunDatabase::NotCaptured,
             full_export_blocked_reason: None,
+            statement_index: 0,
+            error_message: None,
         }
     }
 
@@ -258,6 +264,8 @@ pub struct ExecuteMultiQueryRequest {
     pub tab_id: String,
     pub statements: Vec<String>,
     pub row_limit: Option<usize>,
+    #[serde(default)]
+    pub run_export: Option<crate::export::run_export::RunExportOptions>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

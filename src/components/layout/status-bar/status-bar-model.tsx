@@ -219,6 +219,7 @@ export interface QueryPane {
   isActive: boolean
   result: SingleResultState | null
   tabStatus: string | undefined
+  isExporting: boolean
 }
 
 export interface VisibleFlash {
@@ -293,12 +294,17 @@ export function resolveQueryInfo(queryPane: QueryPane): QueryInfoState | null {
   return { result: result, rowCount: queryRowCountOf(result) }
 }
 
+function showsRunningInfo(queryPane: QueryPane): boolean {
+  const isRunning = queryPane.isActive && queryPane.tabStatus === 'running'
+  return isRunning && !queryPane.isExporting
+}
+
 export function resolveStatusActivity(inputs: StatusActivityInputs): StatusActivity {
   const buildingIndex = buildingIndexOf(inputs.indexState)
   return {
     buildingIndex: buildingIndex,
     flash: resolveVisibleFlash(buildingIndex !== null, inputs.flash),
-    showRunningInfo: inputs.queryPane.isActive && inputs.queryPane.tabStatus === 'running',
+    showRunningInfo: showsRunningInfo(inputs.queryPane),
     pendingWork: resolvePendingWork(inputs),
     tableInfo: resolveTableDataInfo(inputs.tableData),
     queryInfo: resolveQueryInfo(inputs.queryPane),

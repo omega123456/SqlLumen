@@ -9,7 +9,7 @@ import * as ResultFormViewModule from '../../../components/query-editor/ResultFo
 import * as ResultTextViewModule from '../../../components/query-editor/ResultTextView'
 import * as FilterDialogModule from '../../../components/dialogs/FilterDialog'
 import React from 'react'
-import { ipc } from '../../ipc-mock'
+import { expectToast, ipc } from '../../ipc-mock'
 import { withRows } from '../../helpers/query-test-utils'
 import { gridTabPanelClassNameFor } from '../../../components/query-editor/result-panel/result-panel-model'
 
@@ -72,6 +72,7 @@ describe('ResultPanel', () => {
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,
+            runExport: null,
             activeBottomPanelItem: { type: 'result' },
           },
         },
@@ -200,6 +201,40 @@ describe('ResultPanel', () => {
       expect(after.preferredExportScope).toBe('allRows')
     })
 
+    it('points a truncated result from a full run at the run file, which has every row', async () => {
+      const user = userEvent.setup()
+      vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+      setResult(
+        {
+          truncated: true,
+          rowCeiling: 100000,
+          totalRows: 100000,
+          viewRowCount: 100000,
+          exportedRowCount: 2345678,
+        },
+        {
+          runExport: {
+            runId: 'run-1',
+            runFilePath: '/tmp/run.md',
+            progress: null,
+            isActive: false,
+          },
+        }
+      )
+      render(<ResultPanel tabId="tab1" connectionId="c1" />)
+
+      const band = screen.getByTestId('result-truncation-band')
+      expect(band).toHaveAttribute('aria-live', 'polite')
+      expect(band).toHaveTextContent('Showing the first 100,000 of 2,345,678 rows')
+      expect(band).toHaveTextContent(
+        "The run file has every row, in query order. Sort and filter don't apply."
+      )
+      expect(screen.queryByTestId('truncation-export-all')).not.toBeInTheDocument()
+
+      await user.click(screen.getByTestId('truncation-copy-run-path'))
+      await waitFor(() => expectToast('success', 'Run file path copied'))
+    })
+
     it.each([
       [
         'call',
@@ -307,6 +342,7 @@ describe('expired state', () => {
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,
+            runExport: null,
           },
         },
       })
@@ -347,6 +383,7 @@ describe('expired state', () => {
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,
+            runExport: null,
           },
         },
       })
@@ -387,6 +424,7 @@ describe('expired state', () => {
               executionStartedAt: null,
               isCancelling: false,
               wasCancelled: false,
+              runExport: null,
             },
           },
         })
@@ -498,6 +536,7 @@ describe('expired state', () => {
               executionStartedAt: null,
               isCancelling: false,
               wasCancelled: false,
+              runExport: null,
             },
           },
         })
@@ -568,6 +607,7 @@ describe('expired state', () => {
               executionStartedAt: null,
               isCancelling: false,
               wasCancelled: false,
+              runExport: null,
             },
           },
         })

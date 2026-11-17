@@ -1,5 +1,9 @@
 use crate::commands::run_blocking_with_state;
 use crate::export::result_export::{self, StartResultExportInput};
+use crate::export::run_export::{
+    get_run_export_progress_impl, start_run_export_impl, RunExportProgress, RunExportStart,
+    StartRunExportRequest,
+};
 use crate::export::{ExportOptions, ExportResult};
 use crate::mysql::query_executor::SharedRow;
 use crate::state::AppState;
@@ -68,6 +72,25 @@ pub async fn export_results(
     payload: ExportResultsRequest,
 ) -> Result<ExportResult, String> {
     run_blocking_with_state(app, move |state| export_results_impl(state, payload)).await?
+}
+
+#[tauri::command]
+pub async fn start_run_export(
+    app: tauri::AppHandle,
+    payload: StartRunExportRequest,
+) -> Result<RunExportStart, String> {
+    run_blocking_with_state(app, move |state| {
+        start_run_export_impl(state, &payload, &std::env::temp_dir())
+    })
+    .await?
+}
+
+#[tauri::command]
+pub fn get_run_export_progress(
+    state: tauri::State<'_, AppState>,
+    run_id: String,
+) -> Option<RunExportProgress> {
+    get_run_export_progress_impl(&state, &run_id)
 }
 
 pub fn start_result_export_in_background<R: tauri::Runtime>(

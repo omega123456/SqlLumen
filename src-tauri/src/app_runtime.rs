@@ -85,6 +85,7 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
 
     let caches = create_shared_caches(&conn, dir.join(SPILL_DIRECTORY_NAME));
     spawn_cache_maintenance(&caches);
+    spawn_run_folder_sweep();
     tracing::info!(
         target: "sqllumen_lib",
         rust_log_env_set = logging_init.rust_log_env_set,
@@ -108,6 +109,12 @@ fn load_cache_ttl_seconds(conn: &Connection) -> u64 {
         .flatten()
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(DEFAULT_CACHE_TTL_SECONDS)
+}
+
+fn spawn_run_folder_sweep() {
+    tauri::async_runtime::spawn_blocking(|| {
+        crate::export::run_export::sweep_run_folders(&std::env::temp_dir(), jiff::Timestamp::now());
+    });
 }
 
 fn remove_leftover_spill_directory(spill_dir: &Path) {

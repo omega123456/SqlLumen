@@ -1414,6 +1414,7 @@ mod coverage_stubs {
                 tab_id: TAB.to_string(),
                 statements: vec!["SELECT 1".to_string(), "CALL p()".to_string()],
                 row_limit: Some(0),
+                run_export: None,
             },
         )
         .await

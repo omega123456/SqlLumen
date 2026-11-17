@@ -63,6 +63,8 @@ macro_rules! registered_command_handler {
             commands::export::start_result_export,
             commands::export::get_result_export_progress,
             commands::export::cancel_result_export,
+            commands::export::start_run_export,
+            commands::export::get_run_export_progress,
             commands::table_data::fetch_table_data,
             commands::table_data::touch_table_data,
             commands::table_data::evict_table_data,

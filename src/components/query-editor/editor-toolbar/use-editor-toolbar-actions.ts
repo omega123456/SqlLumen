@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { format as formatSQL } from 'sql-formatter'
 import { logFrontendWarning } from '../../../lib/app-log-commands'
-import { useQueryStore } from '../../../stores/query-store'
+import { useQueryStore, type RunTarget } from '../../../stores/query-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
 import { useImportDialogStore } from '../../../stores/import-dialog-store'
 import { writeFile } from '../../../lib/query-commands'
@@ -21,17 +21,47 @@ export interface EditorToolbarTarget {
   isDisabled: boolean
 }
 
-function useExecuteAll({ connectionId, tabId, content, isDisabled }: EditorToolbarTarget) {
-  const executeMultiQuery = useQueryStore((state) => state.executeMultiQuery)
+function useRunAllStatements({ connectionId, tabId, content, isDisabled }: EditorToolbarTarget) {
   const requestNavigationAction = useQueryStore((state) => state.requestNavigationAction)
-  return async function handleExecuteAll() {
+  return function runAllStatements(run: (target: RunTarget) => void) {
     if (isDisabled) return
     if (!content.trim()) return
     requestNavigationAction(tabId, () => {
       const statements = executableStatements(content)
       if (statements.length === 0) return
-      executeMultiQuery(connectionId, tabId, statements)
+      run({ connectionId: connectionId, tabId: tabId, statements: statements })
     })
+  }
+}
+
+function useExecuteAll(target: EditorToolbarTarget) {
+  const executeMultiQuery = useQueryStore((state) => state.executeMultiQuery)
+  const runAllStatements = useRunAllStatements(target)
+  return function handleExecuteAll() {
+    runAllStatements(({ connectionId, tabId, statements }) => {
+      void executeMultiQuery(connectionId, tabId, statements)
+    })
+  }
+}
+
+function useExecuteAllAndCopyPath(target: EditorToolbarTarget) {
+  const executeAllAndCopyResultPath = useQueryStore((state) => state.executeAllAndCopyResultPath)
+  const runAllStatements = useRunAllStatements(target)
+  return function handleExecuteAllAndCopyPath() {
+    runAllStatements((runTarget) => {
+      void executeAllAndCopyResultPath(runTarget)
+    })
+  }
+}
+
+function useCopyLastRunPath({ tabId }: EditorToolbarTarget) {
+  const copyLastRunFilePath = useQueryStore((state) => state.copyLastRunFilePath)
+  const lastRunFilePath = useQueryStore(
+    (state) => state.tabs[tabId]?.runExport?.runFilePath ?? null
+  )
+  return {
+    hasLastRunFilePath: lastRunFilePath !== null,
+    handleCopyLastRunPath: () => void copyLastRunFilePath(tabId),
   }
 }
 
@@ -97,6 +127,8 @@ async function handleImportSql(connectionId: string) {
 export function useEditorToolbarActions(target: EditorToolbarTarget) {
   return {
     handleExecuteAll: useExecuteAll(target),
+    handleExecuteAllAndCopyPath: useExecuteAllAndCopyPath(target),
+    ...useCopyLastRunPath(target),
     ...useSaveToFile(target),
     ...useOpenFile(target),
     handleFormat: useFormatContent(target),

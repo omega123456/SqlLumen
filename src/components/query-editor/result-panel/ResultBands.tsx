@@ -95,12 +95,59 @@ function FailureBand({ tabId, result }: { tabId: string; result: SingleResultSta
   )
 }
 
+const RUN_FILE_TRUNCATION_MESSAGE =
+  "The run file has every row, in query order. Sort and filter don't apply."
+
+interface RunFileBandProps {
+  result: SingleResultState
+  exportedRowCount: number
+  onCopyRunFilePath: () => void
+}
+
+function RunFileBand({ result, exportedRowCount, onCopyRunFilePath }: RunFileBandProps) {
+  return (
+    <InfoBar
+      severity="warning"
+      polite
+      title={`Showing the first ${formatCount(result.rowCeiling)} of ${formatCount(exportedRowCount)} rows`}
+      message={RUN_FILE_TRUNCATION_MESSAGE}
+      actions={
+        <Button size="sm" onClick={onCopyRunFilePath} data-testid="truncation-copy-run-path">
+          Copy run file path
+        </Button>
+      }
+      data-testid="result-truncation-band"
+    />
+  )
+}
+
+function ResultTruncationBand({ tabId, result, isTabRunning }: ResultBandsProps) {
+  const openExportDialog = useQueryStore((state) => state.openExportDialog)
+  const copyLastRunFilePath = useQueryStore((state) => state.copyLastRunFilePath)
+  const exportedRowCount = result.exportedRowCount
+  if (exportedRowCount !== null) {
+    return (
+      <RunFileBand
+        result={result}
+        exportedRowCount={exportedRowCount}
+        onCopyRunFilePath={() => void copyLastRunFilePath(tabId)}
+      />
+    )
+  }
+  return (
+    <TruncationBand
+      result={result}
+      isTabRunning={isTabRunning}
+      onExportAllRows={() => openExportDialog(tabId, 'allRows')}
+    />
+  )
+}
+
 function hasAnyBand(result: SingleResultState): boolean {
   return result.truncated || result.failedWindowRange !== null || result.viewError !== null
 }
 
 export function ResultBands({ tabId, result, isTabRunning }: ResultBandsProps) {
-  const openExportDialog = useQueryStore((state) => state.openExportDialog)
   if (!hasAnyBand(result)) return null
   return (
     <div
@@ -108,11 +155,7 @@ export function ResultBands({ tabId, result, isTabRunning }: ResultBandsProps) {
       data-testid="result-band-slot"
     >
       {result.truncated && (
-        <TruncationBand
-          result={result}
-          isTabRunning={isTabRunning}
-          onExportAllRows={() => openExportDialog(tabId, 'allRows')}
-        />
+        <ResultTruncationBand tabId={tabId} result={result} isTabRunning={isTabRunning} />
       )}
       <FailureBand tabId={tabId} result={result} />
     </div>

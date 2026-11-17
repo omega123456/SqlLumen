@@ -1,4 +1,5 @@
 import type { ForeignKeyInfo } from '../schema'
+import type { RunExportSummary } from '../run-export'
 import type { PrimaryKeyInfo, TableDataColumnMeta } from './table-data'
 
 export interface ColumnMeta {
@@ -130,10 +131,12 @@ export interface MultiQueryResultItem extends ResultWindowMeta {
   autoLimitApplied: boolean
   error: string | null
   reExecutable: boolean
+  exportedRowCount?: number
 }
 
 export interface MultiQueryResult {
   results: MultiQueryResultItem[]
+  runExport?: RunExportSummary
 }
 
 export interface QueryTableEditInfo {

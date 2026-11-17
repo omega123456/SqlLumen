@@ -288,6 +288,7 @@ describe('ExportDialog', () => {
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          runExport: null,
         },
       },
     })

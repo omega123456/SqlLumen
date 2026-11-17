@@ -74,6 +74,8 @@
     "allow-start-result-export",
     "allow-get-result-export-progress",
     "allow-cancel-result-export",
+    "allow-start-run-export",
+    "allow-get-run-export-progress",
     "allow-fetch-table-data",
     "allow-touch-table-data",
     "allow-evict-table-data",

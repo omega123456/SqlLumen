@@ -6,6 +6,7 @@ import {
   getCancelResultExportFixture,
   getResultExportProgressFixture,
   getResultExportStartFixture,
+  getRunExportFixture,
   getConnectionMemoriesFixture,
   getForeignKeysFixture,
   getGlobalMemoriesFixture,
@@ -104,11 +105,13 @@ export const QUERY_PAYLOAD_HANDLERS = {
   touch_results: returnAvailableStatus,
   export_results: () => getStaticFixture('exportResults'),
   start_result_export: () => getResultExportStartFixture(),
+  start_run_export: () => getRunExportFixture(),
 } satisfies Partial<PayloadCommandHandlers>
 
 export const QUERY_ARGUMENT_HANDLERS = {
   get_result_export_progress: (argument) => getResultExportProgressFixture(argument.jobId),
   cancel_result_export: (argument) => getCancelResultExportFixture(argument.jobId),
+  get_run_export_progress: returnNull,
 } satisfies Partial<ArgumentCommandHandlers>
 
 function syncMockTableDataCache({ table }: { table: string }): { status: string } {

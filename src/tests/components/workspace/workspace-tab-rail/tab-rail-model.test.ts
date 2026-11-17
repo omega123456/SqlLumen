@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  revealShortcutLabel,
-  translateSubsetInsertIndex,
-} from '../../../../components/workspace/workspace-tab-rail/tab-rail-model'
+import { translateSubsetInsertIndex } from '../../../../components/workspace/workspace-tab-rail/tab-rail-model'
 
 describe('translateSubsetInsertIndex', () => {
   const lists = { visibleTabIds: ['a', 'c'], allMovableTabIds: ['a', 'b', 'c', 'd'] }
@@ -18,11 +15,5 @@ describe('translateSubsetInsertIndex', () => {
         2
       )
     ).toBe(3)
-  })
-})
-
-describe('revealShortcutLabel', () => {
-  it('returns undefined for an unassigned binding', () => {
-    expect(revealShortcutLabel(null)).toBeUndefined()
   })
 })

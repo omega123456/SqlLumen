@@ -1,4 +1,5 @@
 use crate::mysql::cache_status::{cache_status_json, CacheStatus};
+use crate::mysql::cell_values::is_binary_data_type;
 #[cfg(not(coverage))]
 use crate::mysql::cell_values::{grid_cell_json, CellValue, DecodedRow, GridCellVariant};
 #[cfg(not(coverage))]

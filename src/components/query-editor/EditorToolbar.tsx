@@ -1,11 +1,40 @@
-import { FastForward } from '@phosphor-icons/react'
+import { ClipboardText, CopySimple, FastForward } from '@phosphor-icons/react'
 import { useQueryStore } from '../../stores/query-store'
 import { useConnectionStore } from '../../stores/connection-store'
-import { Button } from '../common/Button'
+import { SplitButton } from '../common/SplitButton'
+import type { TabContextMenuItem } from '../shared/TabContextMenu'
 import { RunningIndicator } from './RunningIndicator'
 import { isAiLockStatus } from '../../lib/query-tab-status'
 import { useEditorToolbarActions } from './editor-toolbar/use-editor-toolbar-actions'
 import { EditorFileActions } from './editor-toolbar/EditorFileActions'
+import { useShortcutStore } from '../../stores/shortcut-store'
+import { menuShortcutLabel } from '../../lib/shortcut-labels'
+
+const EXECUTE_ALL_COPY_PATH_ACTION = 'execute-all-copy-path'
+
+type EditorToolbarActions = ReturnType<typeof useEditorToolbarActions>
+
+function runMenuItems(
+  actions: EditorToolbarActions,
+  shortcutLabel: string | undefined
+): TabContextMenuItem[] {
+  return [
+    {
+      key: 'execute-all-copy-path',
+      label: 'Execute all and copy result path',
+      icon: <ClipboardText size={18} weight="regular" />,
+      shortcut: shortcutLabel,
+      onSelect: actions.handleExecuteAllAndCopyPath,
+    },
+    {
+      key: 'copy-last-run-path',
+      label: 'Copy last run file path',
+      icon: <CopySimple size={18} weight="regular" />,
+      disabled: !actions.hasLastRunFilePath,
+      onSelect: actions.handleCopyLastRunPath,
+    },
+  ]
+}
 
 interface EditorToolbarProps {
   connectionId: string
@@ -20,6 +49,8 @@ export function EditorToolbar({ connectionId, tabId }: EditorToolbarProps) {
 
   const isRunning = status === 'running'
   const isDisabled = isRunning || isAiLockStatus(status)
+  const copyPathBinding = useShortcutStore((state) => state.shortcuts[EXECUTE_ALL_COPY_PATH_ACTION])
+  const copyPathShortcutLabel = menuShortcutLabel(copyPathBinding)
   const actions = useEditorToolbarActions({
     connectionId: connectionId,
     tabId: tabId,
@@ -38,15 +69,16 @@ export function EditorToolbar({ connectionId, tabId }: EditorToolbarProps) {
         {isRunning ? (
           <RunningIndicator connectionId={connectionId} tabId={tabId} />
         ) : (
-          <Button
-            variant="accent"
+          <SplitButton
             onClick={actions.handleExecuteAll}
             disabled={!content.trim()}
-            data-testid="toolbar-execute-all"
+            menuLabel="More run options"
+            menuItems={runMenuItems(actions, copyPathShortcutLabel)}
+            testId="toolbar-execute-all"
           >
             <FastForward size={16} weight="regular" />
             <span>Execute all</span>
-          </Button>
+          </SplitButton>
         )}
       </div>
     </div>

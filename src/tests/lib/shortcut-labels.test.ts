@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { shortcutLabelParts } from '../../lib/shortcut-labels'
+import { menuShortcutLabel, shortcutLabelParts } from '../../lib/shortcut-labels'
 
 describe('shortcutLabelParts', () => {
   it('lists modifiers before the key', () => {
@@ -9,5 +9,12 @@ describe('shortcutLabelParts', () => {
       'K',
     ])
     expect(shortcutLabelParts({ key: 'F2', modifiers: ['alt'] })).toEqual(['Alt', 'F2'])
+  })
+})
+
+describe('menuShortcutLabel', () => {
+  it('joins the parts with spaces and skips unassigned bindings', () => {
+    expect(menuShortcutLabel({ key: 'Enter', modifiers: ['ctrl', 'alt'] })).toBe('Ctrl Alt Enter')
+    expect(menuShortcutLabel(null)).toBeUndefined()
   })
 })

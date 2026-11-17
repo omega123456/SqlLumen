@@ -3360,6 +3360,7 @@ describe('windowed results', () => {
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,
+            runExport: null,
           },
         },
       })

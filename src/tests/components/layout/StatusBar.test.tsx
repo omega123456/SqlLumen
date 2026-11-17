@@ -11,6 +11,7 @@ import { useSettingsStore } from '../../../stores/settings-store'
 import { useUpdateStore } from '../../../stores/update-store'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import userEvent from '@testing-library/user-event'
+import { ipc } from '../../ipc-mock'
 import type { TableDataTabState, WorkspaceTab } from '../../../types/schema'
 import { makeTabState } from '../../helpers/query-test-utils'
 import { makeTableDataTabState } from '../../helpers/table-data-test-utils'
@@ -667,6 +668,105 @@ describe('StatusBar', () => {
         'Deleting… 1,200 of 4,200'
       )
       expect(screen.queryByTestId('row-action-cancel')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('run export progress', () => {
+    const WRITING_PROGRESS = {
+      runFilePath: '/tmp/run.md',
+      phase: 'writing' as const,
+      statementNumber: 2,
+      statementCount: 5,
+      rowsWritten: 1_234_567,
+      bytesWritten: 88_290_918,
+    }
+
+    function setupRunInSecondTab() {
+      setupActiveConnection()
+      useWorkspaceStore.setState({
+        tabsByConnection: {
+          'conn-1': [
+            { id: 'tab-1', type: 'query-editor', label: 'Query 1', connectionId: 'conn-1' },
+            { id: 'tab-2', type: 'query-editor', label: 'Query 2', connectionId: 'conn-1' },
+          ] as WorkspaceTab[],
+        },
+        activeTabByConnection: { 'conn-1': 'tab-1' },
+      })
+      seedVisibleConnection('conn-1')
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': makeTabState({ status: 'idle' }),
+          'tab-2': makeTabState({
+            status: 'running',
+            connectionId: 'conn-1',
+            runExport: {
+              runId: 'run-1',
+              runFilePath: '/tmp/run.md',
+              progress: WRITING_PROGRESS,
+              isActive: true,
+            },
+          }),
+        },
+      })
+    }
+
+    it('shows a run from another tab with Cancel and opens that tab from its label', async () => {
+      const user = userEvent.setup()
+      setupRunInSecondTab()
+      render(<StatusBar />)
+
+      const label = screen.getByTestId('status-run-progress-label')
+      expect(label).toHaveTextContent(
+        'Query 2 · Writing statement 2 of 5 · 1,234,567 rows · 84.2 MB'
+      )
+      await user.click(screen.getByTestId('status-run-cancel'))
+      expect(ipc.payloads('cancel_query')[0]).toMatchObject({ tabId: 'tab-2' })
+
+      await user.click(label)
+
+      expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe('tab-2')
+      expect(screen.getByTestId('status-run-progress-label')).toHaveTextContent(
+        /^Writing statement 2 of 5/
+      )
+      expect(screen.queryByTestId('status-run-cancel')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('query-running-info')).not.toBeInTheDocument()
+    })
+
+    it.each([
+      [{ progress: null, isCancelling: false }, 'Starting the run…'],
+      [
+        { progress: { ...WRITING_PROGRESS, phase: 'queued' as const }, isCancelling: false },
+        'Waiting for the editor session',
+      ],
+      [
+        { progress: { ...WRITING_PROGRESS, phase: 'running' as const }, isCancelling: false },
+        'Running statement 2 of 5',
+      ],
+      [{ progress: WRITING_PROGRESS, isCancelling: true }, 'Cancelling…'],
+    ])('labels the active tab run %o as %s', ({ progress, isCancelling }, expectedLabel) => {
+      setupRunInSecondTab()
+      act(() => {
+        useWorkspaceStore.setState({ activeTabByConnection: { 'conn-1': 'tab-2' } })
+        useQueryStore.setState((state) => ({
+          tabs: {
+            ...state.tabs,
+            'tab-2': {
+              ...state.tabs['tab-2'],
+              isCancelling: isCancelling,
+              runExport: {
+                runId: 'run-1',
+                runFilePath: '/tmp/run.md',
+                progress: progress,
+                isActive: true,
+              },
+            },
+          },
+        }))
+      })
+
+      render(<StatusBar />)
+
+      expect(screen.getByTestId('status-run-progress-label')).toHaveTextContent(expectedLabel)
     })
   })
 

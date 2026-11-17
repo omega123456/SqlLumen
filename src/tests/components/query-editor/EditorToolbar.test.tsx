@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, act } from '@testing-library/react'
-import { ipc } from '../../ipc-mock'
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { expectToast, ipc } from '../../ipc-mock'
 import { EditorToolbar } from '../../../components/query-editor/EditorToolbar'
 import { useQueryStore } from '../../../stores/query-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
@@ -163,6 +164,30 @@ describe('EditorToolbar', () => {
     // After execution, query store should have result status
     const tabState = useQueryStore.getState().tabs['tab-1']
     expect(tabState?.tabStatus).toBe('success')
+  })
+
+  it('runs every statement and copies the run file path from the Execute all menu', async () => {
+    const user = userEvent.setup()
+    renderToolbar('SELECT 1; SELECT 2;')
+
+    await user.click(screen.getByRole('button', { name: 'More run options' }))
+    expect(screen.getByRole('menuitem', { name: 'Copy last run file path' })).toBeDisabled()
+    await user.click(screen.getByRole('menuitem', { name: /Execute all and copy result path/ }))
+
+    await waitFor(() => expect(ipc.calls('execute_multi_query')).toHaveLength(1))
+    expect(ipc.payloads('start_run_export')[0]).toMatchObject({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      statements: ['SELECT 1', 'SELECT 2'],
+    })
+    expect(ipc.payloads('execute_multi_query')[0]).toMatchObject({
+      statements: ['SELECT 1', 'SELECT 2'],
+      runExport: { runId: 'run-1' },
+    })
+    await waitFor(() => expectToast('success', 'Run started, path copied'))
+
+    await user.click(screen.getByRole('button', { name: 'More run options' }))
+    expect(screen.getByRole('menuitem', { name: 'Copy last run file path' })).toBeEnabled()
   })
 
   it('execute all button calls executeQuery for each statement', async () => {

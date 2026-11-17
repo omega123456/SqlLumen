@@ -251,6 +251,11 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
   // --- Export ---
   export_results: () => ({ bytesWritten: 0, rowsExported: 0 }),
   start_result_export: () => 'mock-result-export-1',
+  start_run_export: () => ({
+    runId: 'run-1',
+    runFilePath: '/tmp/sqllumen/agent-runs/run-1/run.md',
+  }),
+  get_run_export_progress: () => null,
   get_result_export_progress: () => ({
     status: 'running',
     rowsWritten: 0,

@@ -165,7 +165,7 @@ impl HistoryRecord {
         Self {
             sql_text: item.source_sql.clone(),
             duration_ms: item.total_time_ms as i64,
-            row_count: item.total_rows,
+            row_count: history_row_count(item),
             affected_rows: item.affected_rows as i64,
             error_message: item.error.clone(),
         }
@@ -355,4 +355,10 @@ pub async fn execute_call_query_bridge(
     };
     log_history_record(state, session_id, record);
     result
+}
+
+fn history_row_count(item: &MultiQueryResultItem) -> i64 {
+    item.exported_row_count
+        .and_then(|exported_rows| i64::try_from(exported_rows).ok())
+        .unwrap_or(item.total_rows)
 }

@@ -34,6 +34,12 @@ pub struct StatementOutcome {
 }
 
 impl StatementOutcome {
+    #[cfg(not(coverage))]
+    fn in_statement(mut self, statement_index: usize) -> Self {
+        self.stored.statement_index = statement_index;
+        self
+    }
+
     pub fn from_stored(
         stored: crate::mysql::query_executor::StoredResult,
         re_executable: bool,
@@ -53,6 +59,13 @@ pub struct BatchResults {
     pub result_items: Vec<crate::mysql::query_executor::MultiQueryResultItem>,
 }
 
+#[cfg(not(coverage))]
+struct StatementFailure<'a> {
+    sql: &'a str,
+    statement_index: usize,
+    error_message: String,
+}
+
 impl BatchResults {
     #[cfg(not(coverage))]
     fn push(&mut self, outcome: StatementOutcome) {
@@ -61,11 +74,18 @@ impl BatchResults {
     }
 
     #[cfg(not(coverage))]
-    fn push_error(&mut self, sql: &str, error_message: String) {
+    fn push_error(&mut self, failure: StatementFailure<'_>) {
+        let StatementFailure {
+            sql,
+            statement_index,
+            error_message,
+        } = failure;
         use crate::mysql::query_executor::{MultiQueryResultItem, StoredResult};
 
         let mut result = StoredResult::empty(uuid::Uuid::new_v4().to_string());
         result.source_sql = sql.to_string();
+        result.statement_index = statement_index;
+        result.error_message = Some(error_message.clone());
         self.result_items.push(MultiQueryResultItem::from_stored(
             &result,
             Some(error_message),
@@ -81,9 +101,25 @@ pub struct SessionStatement<'a> {
     pub row_limit: usize,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct StatementBatch<'a> {
     pub statements: &'a [String],
     pub row_limit: usize,
     pub is_read_only: bool,
+    pub run: Option<&'a crate::export::run_export::RunSession>,
+}
+
+impl StatementBatch<'_> {
+    #[cfg(not(coverage))]
+    fn is_run_cancelled(&self) -> bool {
+        self.run
+            .is_some_and(crate::export::run_export::RunSession::is_cancel_requested)
+    }
+
+    #[cfg(not(coverage))]
+    fn begin_statement(&self, statement_index: usize) {
+        if let Some(session) = self.run {
+            session.begin_statement(statement_index);
+        }
+    }
 }

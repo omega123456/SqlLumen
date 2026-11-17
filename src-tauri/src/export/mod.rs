@@ -3,6 +3,7 @@ pub mod csv_writer;
 pub mod job_retention;
 pub mod json_writer;
 pub mod result_export;
+pub mod run_export;
 pub mod sql_dump;
 pub mod sql_import;
 pub mod sql_writer;

@@ -3,6 +3,7 @@ pub struct DecodeContext<'a> {
     pub connection_id: &'a str,
     pub thread_id: u64,
     pub pool: Option<crate::mysql::pool::BackgroundPool>,
+    pub run: Option<&'a crate::export::run_export::RunSession>,
 }
 
 pub(super) const CEILING_KILL_ACQUIRE_TIMEOUT: std::time::Duration =
@@ -15,14 +16,30 @@ pub(super) struct SelectStatement<'a> {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct RowBufferLimits {
+pub(super) struct RunTarget<'a> {
+    pub(super) session: &'a crate::export::run_export::RunSession,
+    pub(super) set_number: Option<usize>,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct RowBufferLimits<'a> {
     pub(super) capacity_hint: usize,
     pub(super) ceiling: usize,
+    pub(super) run: Option<RunTarget<'a>>,
+}
+
+impl RowBufferLimits<'_> {
+    pub(super) fn stops_at(&self, cached_row_count: usize) -> bool {
+        self.run.is_none() && cached_row_count >= self.ceiling
+    }
 }
 
 pub(super) struct DecodedRows {
     pub(super) rows: Vec<crate::mysql::query_executor::SharedRow>,
     pub(super) overflowed: bool,
+    pub(super) ended_early: bool,
+    pub(super) rows_read: usize,
+    pub(super) write_error: Option<String>,
 }
 
 pub(super) const ER_QUERY_INTERRUPTED: u16 = 1317;
@@ -31,12 +48,12 @@ pub(crate) fn is_query_interrupted(error: &mysql_async::Error) -> bool {
     matches!(error, mysql_async::Error::Server(server_err) if server_err.code == ER_QUERY_INTERRUPTED)
 }
 
-pub(super) async fn kill_for_ceiling(context: &DecodeContext<'_>) -> bool {
+pub(super) async fn kill_running_statement(context: &DecodeContext<'_>) -> bool {
     let Some(pool) = context.pool.as_ref() else {
         tracing::warn!(
             connection_id = context.connection_id,
             thread_id = context.thread_id,
-            "row ceiling reached but no pool is available for KILL QUERY; draining instead"
+            "stopping a result early but no pool is available for KILL QUERY; draining instead"
         );
         return false;
     };
@@ -44,7 +61,7 @@ pub(super) async fn kill_for_ceiling(context: &DecodeContext<'_>) -> bool {
         connection_id = context.connection_id,
         thread_id = context.thread_id,
         ceiling = context.ceiling,
-        "row ceiling reached: issuing KILL QUERY"
+        "stopping a result early: issuing KILL QUERY"
     );
     let kill = crate::mysql::pool::KillQuery {
         thread_id: context.thread_id,
@@ -57,7 +74,7 @@ pub(super) async fn kill_for_ceiling(context: &DecodeContext<'_>) -> bool {
         connection_id = context.connection_id,
         thread_id = context.thread_id,
         %failure,
-        "row ceiling KILL QUERY failed; draining the rest of the result instead"
+        "KILL QUERY failed; draining the rest of the result instead"
     );
     false
 }

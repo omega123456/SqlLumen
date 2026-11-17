@@ -8,6 +8,7 @@ import { logFrontendError } from '../lib/app-log-commands'
 export const DEFAULT_SHORTCUTS: Record<string, ShortcutBinding> = {
   'execute-query': { key: 'F9', modifiers: [] },
   'execute-all': { key: 'Enter', modifiers: ['ctrl', 'shift'] },
+  'execute-all-copy-path': { key: 'Enter', modifiers: ['ctrl', 'alt'] },
   'format-query': { key: 'F12', modifiers: [] },
   'command-palette': { key: 'F2', modifiers: [] },
   'command-palette-table': { key: 'F2', modifiers: ['shift'] },
@@ -25,6 +26,7 @@ export const DEFAULT_SHORTCUTS: Record<string, ShortcutBinding> = {
 export const EDITOR_CONTEXT_ACTIONS = new Set([
   'execute-query',
   'execute-all',
+  'execute-all-copy-path',
   'format-query',
   'command-palette',
   'command-palette-table',

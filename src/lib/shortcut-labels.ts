@@ -29,3 +29,10 @@ function keyLabel(key: string): string {
 export function shortcutLabelParts(binding: ShortcutBinding): string[] {
   return [...binding.modifiers.map(modifierLabel), keyLabel(binding.key)]
 }
+
+const MENU_SHORTCUT_SEPARATOR = ' '
+
+export function menuShortcutLabel(binding: ShortcutBinding | null | undefined): string | undefined {
+  if (!binding?.key) return undefined
+  return shortcutLabelParts(binding).join(MENU_SHORTCUT_SEPARATOR)
+}

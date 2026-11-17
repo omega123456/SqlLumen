@@ -12,7 +12,9 @@ export type ButtonVariant =
   | 'danger'
   | 'bare'
 
-export type ButtonSize = 'md' | 'sm' | 'xs' | 'tiny' | 'chip' | 'cell' | 'toolbar'
+export type ButtonSize = 'md' | 'sm' | 'xs' | 'tiny' | 'chip' | 'cell' | 'toolbar' | 'menuTrigger'
+
+export type ButtonSegment = 'whole' | 'start' | 'end'
 
 type StyledButtonVariant = Exclude<ButtonVariant, 'bare'>
 type ButtonTextTone =
@@ -47,6 +49,18 @@ const DEFAULT_EDGE_CLASSES: Record<ButtonEdgeTone, string> = {
   invalid: joinClassNames([DEFAULT_SIDE_STROKE, INVALID_CONTROL_EDGE]),
 }
 
+const ACCENT_SIDE_EDGE_CLASSES: Record<ButtonSegment, string> = {
+  whole: 'border-x-stroke-accent',
+  start: 'border-x-stroke-accent',
+  end: 'border-l-light-on-primary-a30 dark:border-l-dark-on-primary-a30 border-r-stroke-accent',
+}
+
+const CORNER_CLASSES: Record<ButtonSegment, string> = {
+  whole: 'rounded-control',
+  start: 'rounded-l-control',
+  end: 'rounded-r-control',
+}
+
 const FOCUS_CLASSES: Record<ButtonEdgeTone, string> = {
   valid: FOCUS_RING,
   invalid: INVALID_CONTROL_FOCUS_RING,
@@ -59,7 +73,7 @@ const SURFACE_CLASSES: Record<StyledButtonVariant, string> = {
     SOLID_DISABLED,
   ]),
   accent: joinClassNames([
-    'bg-light-primary dark:bg-dark-primary border-x-stroke-accent border-t-stroke-accent border-b-stroke-accent-bottom',
+    'bg-light-primary dark:bg-dark-primary border-t-stroke-accent border-b-stroke-accent-bottom',
     'not-disabled:hover:bg-light-accent-hover dark:not-disabled:hover:bg-dark-accent-hover not-disabled:active:bg-light-primary-pressed dark:not-disabled:active:bg-dark-primary-pressed',
     SOLID_DISABLED,
   ]),
@@ -136,6 +150,10 @@ const SIZE_CLASSES: Record<ButtonSize, Record<ButtonShape, string>> = {
     labelled: 'h-control-sm gap-1.5 px-2.5 text-row',
     iconOnly: 'h-control-sm w-control-sm gap-1.5 px-0 text-row',
   },
+  menuTrigger: {
+    labelled: 'h-control gap-2 px-3 text-body',
+    iconOnly: 'h-control w-control-sm gap-2 px-0 text-body',
+  },
 }
 
 export interface ButtonClassOptions {
@@ -145,6 +163,7 @@ export interface ButtonClassOptions {
   iconOnly: boolean
   invalid: boolean
   contentAlign: ButtonContentAlign
+  segment: ButtonSegment
   className: string | undefined
 }
 
@@ -160,8 +179,14 @@ function edgeTone(variant: StyledButtonVariant, invalid: boolean): ButtonEdgeTon
   return 'valid'
 }
 
-function edgeClasses(variant: StyledButtonVariant, tone: ButtonEdgeTone): string | undefined {
-  if (variant === 'default') return DEFAULT_EDGE_CLASSES[tone]
+interface ButtonEdge {
+  tone: ButtonEdgeTone
+  segment: ButtonSegment
+}
+
+function edgeClasses(variant: StyledButtonVariant, edge: ButtonEdge): string | undefined {
+  if (variant === 'default') return DEFAULT_EDGE_CLASSES[edge.tone]
+  if (variant === 'accent') return ACCENT_SIDE_EDGE_CLASSES[edge.segment]
   return undefined
 }
 
@@ -177,15 +202,17 @@ export function buttonClassName({
   iconOnly,
   invalid,
   contentAlign,
+  segment,
   className,
 }: ButtonClassOptions): string | undefined {
   if (variant === 'bare') return className
   const tone = edgeTone(variant, invalid)
   return joinClassNames([
-    'inline-flex items-center rounded-control border cursor-default whitespace-nowrap font-body font-regular disabled:cursor-not-allowed',
+    'inline-flex items-center border cursor-default whitespace-nowrap font-body font-regular disabled:cursor-not-allowed',
+    CORNER_CLASSES[segment],
     FOCUS_CLASSES[tone],
     SURFACE_CLASSES[variant],
-    edgeClasses(variant, tone),
+    edgeClasses(variant, { tone: tone, segment: segment }),
     TEXT_CLASSES[textTone(variant, dangerText)],
     'disabled:text-light-text-disabled dark:disabled:text-dark-text-disabled',
     ALIGN_CLASSES[contentAlign],

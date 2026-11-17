@@ -5,6 +5,7 @@ import {
   useToastStore,
   _resetToastTimeoutsForTests,
   SUCCESS_TOAST_DURATION_MS,
+  UNTIL_DISMISSED,
   WARNING_ERROR_TOAST_DURATION_MS,
 } from '../../stores/toast-store'
 
@@ -94,14 +95,15 @@ describe('useToastStore', () => {
     expect(toasts.map((t) => t.title)).toEqual(['msg-1', 'msg-2', 'msg-3', 'msg-4', 'msg-5'])
   })
 
-  it('auto-dismisses after duration', () => {
+  it('auto-dismisses after duration and keeps an until-dismissed toast', () => {
     vi.useFakeTimers()
     useToastStore.getState().showSuccess('x', undefined, 3000)
-    expect(useToastStore.getState().toasts).toHaveLength(1)
+    useToastStore.getState().showWarning('stays', undefined, UNTIL_DISMISSED)
+    expect(useToastStore.getState().toasts).toHaveLength(2)
     vi.advanceTimersByTime(2999)
-    expect(useToastStore.getState().toasts).toHaveLength(1)
-    vi.advanceTimersByTime(2)
-    expect(useToastStore.getState().toasts).toHaveLength(0)
+    expect(useToastStore.getState().toasts).toHaveLength(2)
+    vi.advanceTimersByTime(60_000)
+    expect(useToastStore.getState().toasts.map((toast) => toast.title)).toEqual(['stays'])
   })
 
   it('dismiss clears pending auto-dismiss', () => {

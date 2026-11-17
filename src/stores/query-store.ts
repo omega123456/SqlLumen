@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { queryTabActions } from './query-store/query-tab-actions'
 import { queryRunActions } from './query-store/query-run'
+import { runAndCopyActions } from './query-store/run-and-copy'
 import { queryRerunActions } from './query-store/query-rerun'
 import { expiredResultActions } from './query-store/expired-results'
 import { resultResidencyActions } from './query-store/result-residency-actions'
@@ -52,6 +53,7 @@ export type {
   FlatTabView,
   RowActionHandle,
   QueryState,
+  RunTarget,
 } from './query-store/query-state-types'
 export { getResultViewSpec } from './query-store/result-view-spec'
 
@@ -60,6 +62,7 @@ export const useQueryStore = create<QueryState>()(() => ({
   exportJobs: {},
   ...queryTabActions(),
   ...queryRunActions(),
+  ...runAndCopyActions(),
   ...queryRerunActions(),
   ...expiredResultActions(),
   ...resultResidencyActions(),

@@ -21,3 +21,15 @@ identifier = "allow-cancel-result-export"
 description = "Enables the cancel_result_export command without any pre-configured scope."
 commands.allow = ["cancel_result_export"]
 commands.deny = []
+
+[[permission]]
+identifier = "allow-start-run-export"
+description = "Enables the start_run_export command without any pre-configured scope."
+commands.allow = ["start_run_export"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-get-run-export-progress"
+description = "Enables the get_run_export_progress command without any pre-configured scope."
+commands.allow = ["get_run_export_progress"]
+commands.deny = []

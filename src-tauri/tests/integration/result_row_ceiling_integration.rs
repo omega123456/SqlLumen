@@ -201,7 +201,7 @@ async fn a_failed_kill_falls_back_to_draining_and_is_still_a_truncated_success()
     assert_eq!(server.kill_count(), 0, "the KILL was refused");
     assert!(capture
         .contents()
-        .contains("row ceiling KILL QUERY failed; draining the rest of the result instead"));
+        .contains("KILL QUERY failed; draining the rest of the result instead"));
     assert_eq!(
         stored(&state, &conn, 0).run_database,
         RunDatabase::NoDatabase
@@ -258,6 +258,7 @@ async fn a_late_ceiling_kill_is_absorbed_before_the_database_probe() {
                 "SELECT 1 AS ok LIMIT 1".to_string(),
             ],
             row_limit: Some(500),
+            run_export: None,
         },
     )
     .await
@@ -298,6 +299,7 @@ async fn a_late_ceiling_kill_after_a_locking_select_does_not_fail_the_next_state
                 "SELECT 1 AS ok LIMIT 1".to_string(),
             ],
             row_limit: Some(500),
+            run_export: None,
         },
     )
     .await
@@ -348,6 +350,7 @@ async fn an_oversized_last_call_set_is_drained_and_earlier_and_later_items_survi
                 "SELECT 2 AS b LIMIT 1".to_string(),
             ],
             row_limit: Some(500),
+            run_export: None,
         },
     )
     .await

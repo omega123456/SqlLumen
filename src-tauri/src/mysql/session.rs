@@ -42,6 +42,7 @@ impl TabRun {
 pub struct EditorSessions {
     slots: std::sync::Mutex<HashMap<String, SessionSlot>>,
     queued_runs: std::sync::Mutex<HashMap<TabRun, CancellationToken>>,
+    pub runs: crate::export::run_export::RunRegistry,
 }
 
 impl EditorSessions {
