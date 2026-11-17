@@ -53,53 +53,6 @@ describe('UnderlineTabs', () => {
     expect(screen.getByRole('button', { name: /Label/ })).toBeInTheDocument()
   })
 
-  it('applies the selector and document variant classes to bars and tabs', () => {
-    render(
-      <>
-        <UnderlineTabBar data-testid="sel-bar" variant="selector">
-          <UnderlineTab data-testid="sel-tab" variant="selector" active onClick={() => {}}>
-            Tables
-          </UnderlineTab>
-        </UnderlineTabBar>
-        <UnderlineTabBar data-testid="doc-bar" variant="document" scrollable>
-          <UnderlineTab
-            data-testid="doc-tab"
-            variant="document"
-            onSelect={() => {}}
-            suffix={<span>x</span>}
-          >
-            Query 1
-          </UnderlineTab>
-        </UnderlineTabBar>
-        <UnderlineTabBar data-testid="default-bar">
-          <UnderlineTab data-testid="default-tab" onClick={() => {}}>
-            Columns
-          </UnderlineTab>
-        </UnderlineTabBar>
-      </>
-    )
-
-    expect(screen.getByTestId('sel-bar')).toHaveAttribute('data-variant', 'selector')
-    expect(screen.getByTestId('sel-tab')).toHaveAttribute('data-variant', 'selector')
-    expect(screen.getByTestId('doc-bar')).toHaveAttribute('data-variant', 'document')
-    expect(screen.getByTestId('doc-tab')).toHaveAttribute('data-variant', 'document')
-    expect(screen.getByTestId('default-bar')).toHaveAttribute('data-variant', 'default')
-    expect(screen.getByTestId('default-tab')).toHaveAttribute('data-variant', 'default')
-  })
-
-  it('applies the bar variant to the suffix wrapper', () => {
-    render(
-      <UnderlineTabBar data-testid="wrap" variant="document" suffix={<span>+</span>}>
-        <UnderlineTab onClick={() => {}}>A</UnderlineTab>
-      </UnderlineTabBar>
-    )
-    expect(screen.getByTestId('wrap')).toHaveAttribute('data-variant', 'document')
-    expect(screen.getByText('+').parentElement?.previousElementSibling).toHaveAttribute(
-      'data-variant',
-      'document'
-    )
-  })
-
   it('renders a prefix before the tabs and the suffix after them', () => {
     const { rerender } = render(
       <UnderlineTabBar

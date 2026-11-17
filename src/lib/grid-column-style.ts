@@ -42,15 +42,6 @@ export function isJsonSqlType(dataType: string): boolean {
   return normalizedUpperType(dataType) === 'JSON'
 }
 
-export function isStringishPrimarySqlType(dataType: string): boolean {
-  const upperType = normalizedUpperType(dataType)
-  return (
-    upperType.startsWith('VARCHAR') ||
-    upperType.startsWith('CHAR') ||
-    isWrappableTextSqlType(upperType)
-  )
-}
-
 const AUTO_WIDTH_MAX = 560
 
 export const DEFAULT_COLUMN_WIDTH_PX = 150

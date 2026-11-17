@@ -515,29 +515,6 @@ describe('ObjectBrowserContextMenu', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
-  it('destructive items have destructive styling', () => {
-    const { nodes, tableId } = makeNodes()
-    setNodes(nodes)
-
-    render(
-      <ObjectBrowserContextMenu
-        visible
-        x={100}
-        y={100}
-        nodeId={tableId}
-        connectionId={CONN_ID}
-        isReadOnly={false}
-        onClose={vi.fn()}
-      />
-    )
-
-    const truncateBtn = screen.getByText('Truncate table...').closest('button')
-    expect(truncateBtn).toHaveAttribute('data-destructive', 'true')
-
-    const dropBtn = screen.getByText('Drop table...').closest('button')
-    expect(dropBtn).toHaveAttribute('data-destructive', 'true')
-  })
-
   it('shows correct items for view node (writable)', () => {
     const { nodes, viewId } = makeNodes()
     setNodes(nodes)

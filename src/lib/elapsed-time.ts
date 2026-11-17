@@ -42,16 +42,11 @@ interface DurationUnits {
   seconds: string
 }
 
-const COMPACT_DURATION_UNITS: DurationUnits = { milliseconds: 'ms', seconds: 's' }
 const SPACED_DURATION_UNITS: DurationUnits = { milliseconds: ' ms', seconds: ' s' }
 
 function formatDurationWithUnits(ms: number, units: DurationUnits): string {
   if (ms < ONE_SECOND_MS) return `${ms}${units.milliseconds}`
   return `${(ms / ONE_SECOND_MS).toFixed(1)}${units.seconds}`
-}
-
-export function formatCompactDuration(ms: number): string {
-  return formatDurationWithUnits(ms, COMPACT_DURATION_UNITS)
 }
 
 export function formatSpacedDuration(ms: number): string {

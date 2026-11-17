@@ -4,14 +4,6 @@ import { render, screen } from '@testing-library/react'
 import { Textarea } from '../../../components/common/Textarea'
 
 describe('Textarea', () => {
-  it('exposes the default variant as its lookup key', () => {
-    render(<Textarea aria-label="Notes" />)
-    expect(screen.getByRole('textbox', { name: 'Notes' })).toHaveAttribute(
-      'data-variant',
-      'default'
-    )
-  })
-
   it('forwards ref', () => {
     const ref = createRef<HTMLTextAreaElement>()
     render(<Textarea ref={ref} defaultValue="hi" />)
@@ -24,22 +16,6 @@ describe('Textarea', () => {
     const el = screen.getByTestId('ta')
     expect(el).toHaveAttribute('autocapitalize', 'none')
     expect(el).toHaveAttribute('autocorrect', 'off')
-  })
-
-  it('exposes the formField variant as its lookup key', () => {
-    render(<Textarea variant="formField" aria-label="Field" />)
-    expect(screen.getByRole('textbox', { name: 'Field' })).toHaveAttribute(
-      'data-variant',
-      'formField'
-    )
-  })
-
-  it('exposes the fixedSize variant as its lookup key', () => {
-    render(<Textarea variant="fixedSize" aria-label="Fixed" />)
-    expect(screen.getByRole('textbox', { name: 'Fixed' })).toHaveAttribute(
-      'data-variant',
-      'fixedSize'
-    )
   })
 
   it('flags the invalid state with a data attribute', () => {

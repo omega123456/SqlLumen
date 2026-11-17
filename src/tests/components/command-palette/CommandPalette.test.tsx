@@ -122,14 +122,6 @@ describe('CommandPalette', () => {
     ipc.override('set_setting', () => undefined)
   })
 
-  it('tints the backdrop with the palette tone', async () => {
-    useCommandPaletteStore.setState({ isOpen: true })
-
-    render(<CommandPalette />)
-
-    expect(await screen.findByTestId('command-palette')).toHaveAttribute('data-tone', 'palette')
-  })
-
   it('renders a no-connection empty state when opened without an active connection', async () => {
     useCommandPaletteStore.setState({ isOpen: true })
 

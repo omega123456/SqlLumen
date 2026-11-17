@@ -93,7 +93,7 @@ src/
   stores/            # Zustand global state (connection-, query-, table-data-, schema-, theme-store)
   components/
     common/          # Shared primitives — Button, TextInput, Checkbox, Dropdown, Textarea, …
-    shared/          # Cross-feature building blocks (DataGrid wrapper, grid editors)
+    shared/          # Cross-feature building blocks (CanvasBaseGridView wrapper, grid editors)
     layout/          # AppLayout, Sidebar, WorkspaceArea, ConnectionTabBar, StatusBar
     workspace/       # WorkspaceTabs
     query-editor/    # Monaco editor, ResultPanel, ResultGridView/FormView/TextView
@@ -134,7 +134,7 @@ src-tauri/
 - **Styling:** Tailwind v4 utilities under the **Styling constraint** section below. Never add a `*.module.css` or any other stylesheet outside `src/index.css` and `src/styles/vendor/`.
 - **State:** Zustand stores in `src/stores/`. Local state via `useState`/`useReducer`. Layout via `react-resizable-panels` v4 — sizes as strings (`"20%"`).
 - **Shared UI primitives over native HTML:** Reuse existing components from `src/components/common/` and `src/components/shared/` (for example `Button`, `TextInput`, `Checkbox`, `Dropdown`, `Textarea`) for fields, actions, and controls. Do **not** drop in raw `<button>`, `<input>`, `<select>`, `<textarea>`, or other native equivalents when the codebase already has a component for that role. Add a new shared primitive only when nothing existing fits or the user explicitly asks for one.
-- **Shared data grid:** Always use the shared `DataGrid` wrapper (`src/components/shared/DataGrid.tsx`). Do not reorder rows client-side when the backend owns sort order.
+- **Shared data grid:** Always use the shared `CanvasBaseGridView` wrapper (`src/components/shared/glide/CanvasBaseGridView.tsx`). Do not reorder rows client-side when the backend owns sort order.
 - **Dates:** Always use the `date-fns` library (already a dependency) for date arithmetic, parsing, comparison and formatting. Never hand-roll date calculations or format strings manually (for example `getFullYear()` / `padStart` chains or string-built timestamps). That includes time-unit conversion (`milliseconds({ minutes: 5 })`, `secondsToMilliseconds`, `fromUnixTime` / `getUnixTime`), elapsed-time breakdowns (`elapsedParts` in `src/lib/elapsed-time.ts`, built on `millisecondsToHours` and friends), calendar comparisons (`isSameDay`, `isSameISOWeek`, local time) and locale-aware display (`intlFormat`, not `toLocale*String`). `src/lib/units.ts` holds no time-unit constants.
 
 ### Error Handling (TypeScript)
@@ -170,7 +170,7 @@ The migration plan is `.agent/plans/2026-11-14_tailwind-utilities-migration_plan
 - **Animations** use the `--animate-*` tokens; every animation has a `-paused` twin applied with `window-blurred:`. Buttons set an explicit `cursor-pointer` or `cursor-default`. Every `overflow-auto` element gets the shared scrollbar classes.
 - **Inline `style`** is only for numbers computed at runtime. Read theme values from TypeScript only through `src/lib/theme-tokens.ts` (`currentTheme`, `readThemeColor`, `readToken`, `readPixelToken`, `observeThemeChange`).
 - **Vendor CSS exception:** hand-written CSS is allowed only in `src/styles/vendor/` for DOM SqlLumen does not render (Monaco, highlight.js, Glide overlays, datepicker, colour picker, resizable panels, fonts), with no colour literals and colours only through `var(--color-light-…)` plus `.dark` twins.
-- **Enforcement:** `src/tests/styles/tailwind-conformance.test.ts` (CSS file allowlist, `index.css` directives, vendor CSS theme variables, paired tokens, Fluent value table) and ESLint `local/tailwind-classes` (applied to all production `src/`).
+- **Enforcement:** ESLint `local/tailwind-classes` (applied to all production `src/`) and review. Vitest does not test CSS, tokens or class strings (ADR `2026-11-17--vitest-tests-only-src-code-and-the-styling-contract-is-enforced-by-eslint-and-review--f43b5a81.md`).
 - **Preflight is on** (`@import 'tailwindcss'`). `html`, `body` and `#root` take their base classes in `index.html`; there is no global element CSS. Preflight resets headings, lists, `pre`/`code`, `svg`, `p` wrapping and `textarea` resize, so a component sets those values itself, and every focusable control applies `FOCUS_RING` from `src/lib/focus-ring.ts`.
 - **Base utilities replace global rules.** `<html>` carries the selection colours (`selection:`) and `svg:max-w-full canvas:max-w-full`; `<body>` carries `select-none` plus `selectable-descendants:select-text`, which re-enables text selection for inputs, textareas, `code`, `pre`, `.hljs`, `contenteditable` and grid cells. Window-blur animation pausing is the `window-blurred:` variant on our own utilities and one Monaco-scoped vendor rule.
 - **Screenshot parity:** a styling migration must not change the baselines. Never update baselines or loosen thresholds to make a migration pass.
@@ -184,6 +184,7 @@ Keep every test in a dedicated file under the appropriate test root (`src/tests/
 ### Vitest (TypeScript)
 
 - Test files mirror source: `src/components/Foo.tsx` → `src/tests/components/Foo.test.tsx`.
+- Vitest covers production code under `src/` only. Do not write Vitest tests for `scripts/`, CSS or `@theme` tokens, class-string contents, or config files such as Tauri capabilities; a test that executes no `src/` code does not belong in the suite.
 - Setup file `src/tests/setup.ts` provides Monaco mocks and jsdom polyfills (`ResizeObserver`, `matchMedia`, `HTMLDialogElement`) and wires Vitest IPC through the shared `src/tests/ipc-mock.ts` harness. A missing IPC fixture throws `[vitest] Unmocked Tauri IPC command: <cmd>`.
 - Do **not** add ad hoc module mocks just to hit coverage on production code paths that can be exercised directly. **ALWAYS** test real behavior through the public API with the shared test harness and existing setup utilities. If a dependency is already globally mocked in `src/tests/setup.ts`, use that shared mock contract rather than overriding it locally unless there is no other practical option.
 - Vitest IPC tests must always go through the shared `src/tests/ipc-mock.ts` harness. Use `ipc.override(...)` for per-test behavior and `ipc.emit(...)` for events. Do not bypass the harness with inline `mockIPC(...)`, ad hoc `vi.mock()` stubs, per-test IPC handlers, or direct wrapper mocks. If a test needs a new IPC response, extend `src/tests/fixtures.ts` or override only the specific command in that test.

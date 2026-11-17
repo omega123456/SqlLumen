@@ -7,7 +7,6 @@ import {
   getAutoSizedColumnWidth,
   isJsonSqlType,
   isNumericSqlType,
-  isStringishPrimarySqlType,
   isWrappableTextSqlType,
 } from '../../lib/grid-column-style'
 import type { TableDataColumnMeta } from '../../types/schema'
@@ -35,29 +34,6 @@ describe('isNumericSqlType', () => {
     expect(isNumericSqlType('TEXT')).toBe(false)
     expect(isNumericSqlType('DATETIME')).toBe(false)
     expect(isNumericSqlType('BLOB')).toBe(false)
-  })
-})
-
-describe('isStringishPrimarySqlType', () => {
-  it('returns true for VARCHAR', () => {
-    expect(isStringishPrimarySqlType('VARCHAR(255)')).toBe(true)
-  })
-
-  it('returns true for CHAR', () => {
-    expect(isStringishPrimarySqlType('CHAR(10)')).toBe(true)
-  })
-
-  it('returns true for TEXT variants', () => {
-    expect(isStringishPrimarySqlType('TEXT')).toBe(true)
-    expect(isStringishPrimarySqlType('TINYTEXT')).toBe(true)
-    expect(isStringishPrimarySqlType('MEDIUMTEXT')).toBe(true)
-    expect(isStringishPrimarySqlType('LONGTEXT')).toBe(true)
-  })
-
-  it('returns false for non-string types', () => {
-    expect(isStringishPrimarySqlType('INT')).toBe(false)
-    expect(isStringishPrimarySqlType('BLOB')).toBe(false)
-    expect(isStringishPrimarySqlType('DATETIME')).toBe(false)
   })
 })
 

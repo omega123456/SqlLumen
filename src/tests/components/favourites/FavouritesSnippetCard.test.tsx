@@ -107,7 +107,7 @@ describe('FavouritesSnippetCard', () => {
     expect(onInsert).toHaveBeenCalledTimes(1)
   })
 
-  it('exposes the selected state as expanded and as its surface variant', () => {
+  it('exposes the selected state as expanded', () => {
     const favourite = makeFavourite()
     render(
       <FavouritesSnippetCard
@@ -121,7 +121,6 @@ describe('FavouritesSnippetCard', () => {
 
     const card = screen.getByTestId('favourites-snippet-card-1')
     expect(card).toHaveAttribute('aria-expanded', 'true')
-    expect(card).toHaveAttribute('data-variant', 'ringSelected')
   })
 
   it('onClick calls onSelect', async () => {

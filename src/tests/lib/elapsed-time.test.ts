@@ -1,10 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import {
-  elapsedParts,
-  formatCompactDuration,
-  formatElapsedTime,
-  formatSpacedDuration,
-} from '../../lib/elapsed-time'
+import { elapsedParts, formatElapsedTime, formatSpacedDuration } from '../../lib/elapsed-time'
 
 describe('formatElapsedTime', () => {
   it('returns "0s" for 0ms', () => expect(formatElapsedTime(0)).toBe('0s'))
@@ -42,12 +37,10 @@ describe('elapsedParts', () => {
 
 describe('short durations', () => {
   it('shows milliseconds below one second', () => {
-    expect(formatCompactDuration(999)).toBe('999ms')
     expect(formatSpacedDuration(999)).toBe('999 ms')
   })
 
   it('shows one decimal of seconds from one second up', () => {
-    expect(formatCompactDuration(1000)).toBe('1.0s')
     expect(formatSpacedDuration(1250)).toBe('1.3 s')
   })
 })

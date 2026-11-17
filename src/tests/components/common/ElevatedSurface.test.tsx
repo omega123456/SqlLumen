@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { ElevatedSurface } from '../../../components/common/ElevatedSurface'
 
 describe('ElevatedSurface', () => {
-  it('renders its children as a ring surface by default', () => {
+  it('renders its children', () => {
     render(
       <ElevatedSurface data-testid="elevated">
         <span>content</span>
@@ -11,48 +11,7 @@ describe('ElevatedSurface', () => {
     )
 
     const surface = screen.getByTestId('elevated')
-    expect(surface).toHaveAttribute('data-variant', 'ring')
     expect(surface).toHaveTextContent('content')
-  })
-
-  it('exposes the bordered variant', () => {
-    render(
-      <ElevatedSurface data-testid="elevated" variant="bordered">
-        x
-      </ElevatedSurface>
-    )
-
-    expect(screen.getByTestId('elevated')).toHaveAttribute('data-variant', 'bordered')
-  })
-
-  it('exposes the hoverable ring variant', () => {
-    render(
-      <ElevatedSurface data-testid="elevated" variant="ringHoverable">
-        x
-      </ElevatedSurface>
-    )
-
-    expect(screen.getByTestId('elevated')).toHaveAttribute('data-variant', 'ringHoverable')
-  })
-
-  it('exposes the selected ring variant', () => {
-    render(
-      <ElevatedSurface data-testid="elevated" variant="ringSelected">
-        x
-      </ElevatedSurface>
-    )
-
-    expect(screen.getByTestId('elevated')).toHaveAttribute('data-variant', 'ringSelected')
-  })
-
-  it('exposes the recessed variant', () => {
-    render(
-      <ElevatedSurface data-testid="elevated" variant="recessed">
-        x
-      </ElevatedSurface>
-    )
-
-    expect(screen.getByTestId('elevated')).toHaveAttribute('data-variant', 'recessed')
   })
 
   it('forwards native attributes to the surface element', () => {

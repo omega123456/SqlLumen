@@ -5,38 +5,12 @@ import userEvent from '@testing-library/user-event'
 import { Button } from '../../../components/common/Button'
 
 describe('Button', () => {
-  it('defaults to type button, the default variant and the md size', () => {
+  it('defaults to type button', () => {
     render(<Button>Go</Button>)
-    const btn = screen.getByRole('button', { name: 'Go' })
-    expect(btn).toHaveAttribute('type', 'button')
-    expect(btn).toHaveAttribute('data-variant', 'default')
-    expect(btn).toHaveAttribute('data-size', 'md')
-    expect(btn).not.toHaveAttribute('data-icon-only')
-    expect(btn).not.toHaveAttribute('data-danger-text')
+    expect(screen.getByRole('button', { name: 'Go' })).toHaveAttribute('type', 'button')
   })
 
-  it.each(['accent', 'subtle', 'subtleMuted', 'subtleToggled', 'danger'] as const)(
-    'exposes the %s variant as its lookup key',
-    (variant) => {
-      render(<Button variant={variant}>{variant}</Button>)
-      expect(screen.getByRole('button')).toHaveAttribute('data-variant', variant)
-    }
-  )
-
-  it('exposes the content alignment as a lookup key', () => {
-    render(
-      <>
-        <Button data-testid="centered">A</Button>
-        <Button contentAlign="start" data-testid="started">
-          B
-        </Button>
-      </>
-    )
-    expect(screen.getByTestId('centered')).toHaveAttribute('data-align', 'center')
-    expect(screen.getByTestId('started')).toHaveAttribute('data-align', 'start')
-  })
-
-  it('keeps the bare variant free of styling attributes', () => {
+  it('renders the bare variant without a style lookup key beyond its variant', () => {
     render(
       <Button variant="bare" size="sm" iconOnly dangerText>
         Bare
@@ -47,59 +21,17 @@ describe('Button', () => {
     expect(btn).toHaveAttribute('type', 'button')
   })
 
-  it('combines danger text with every styled variant', () => {
-    const variants = ['default', 'accent', 'subtle', 'danger'] as const
-    for (const variant of variants) {
-      const { unmount } = render(
-        <Button variant={variant} dangerText>
-          {variant}
-        </Button>
-      )
-      expect(screen.getByRole('button')).toHaveAttribute('data-danger-text', 'true')
-      unmount()
-    }
-  })
-
-  it('exposes the size, icon-only and danger-text lookup keys', () => {
-    render(
-      <Button variant="subtle" size="sm" iconOnly dangerText aria-label="Delete row">
-        x
-      </Button>
-    )
-    const btn = screen.getByRole('button', { name: 'Delete row' })
-    expect(btn).toHaveAttribute('data-variant', 'subtle')
-    expect(btn).toHaveAttribute('data-size', 'sm')
-    expect(btn).toHaveAttribute('data-icon-only', 'true')
-    expect(btn).toHaveAttribute('data-danger-text', 'true')
-  })
-
-  it('flags the invalid state and exposes the cell size', () => {
-    render(
-      <Button size="cell" invalid>
-        Pick
-      </Button>
-    )
-    const btn = screen.getByRole('button', { name: 'Pick' })
-    expect(btn).toHaveAttribute('data-size', 'cell')
-    expect(btn).toHaveAttribute('data-invalid', 'true')
-  })
-
-  it('exposes the toolbar size for labelled and icon-only buttons', () => {
+  it('accepts the danger text and invalid options on the danger and default variants', () => {
     render(
       <>
-        <Button size="toolbar">Add</Button>
-        <Button size="toolbar" iconOnly aria-label="Refresh">
-          x
+        <Button variant="danger" dangerText>
+          Drop
         </Button>
+        <Button invalid>Pick</Button>
       </>
     )
-    expect(screen.getByRole('button', { name: 'Add' })).toHaveAttribute('data-size', 'toolbar')
-    expect(screen.getByRole('button', { name: 'Refresh' })).toHaveAttribute('data-size', 'toolbar')
-  })
-
-  it('does not flag a valid button as invalid', () => {
-    render(<Button>Pick</Button>)
-    expect(screen.getByRole('button', { name: 'Pick' })).not.toHaveAttribute('data-invalid')
+    expect(screen.getByRole('button', { name: 'Drop' })).toHaveAttribute('data-danger-text', 'true')
+    expect(screen.getByRole('button', { name: 'Pick' })).toHaveAttribute('data-invalid', 'true')
   })
 
   it('forwards ref', () => {

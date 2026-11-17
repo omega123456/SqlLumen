@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { ElevatedCodePanel } from '../../../components/common/ElevatedCodePanel'
 
 describe('ElevatedCodePanel', () => {
-  it('renders elevated shell, table-style header, and code body', () => {
+  it('renders the header label, header actions and code body', () => {
     render(
       <ElevatedCodePanel
         data-testid="code-panel"
@@ -15,22 +15,33 @@ describe('ElevatedCodePanel', () => {
     )
 
     const root = screen.getByTestId('code-panel')
-    expect(root).toHaveAttribute('data-variant', 'ring')
-    expect(screen.getByText('DDL').parentElement).toHaveAttribute('data-variant', 'table')
+    expect(screen.getByText('DDL')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Copy' })).toBeInTheDocument()
 
     const code = root.querySelector('pre code')
     expect(code?.textContent).toContain('SELECT 1')
   })
 
-  it('renders the strip header variant', () => {
+  it('renders the label in the strip header', () => {
     render(
       <ElevatedCodePanel label="DDL" headerVariant="strip">
         <span>y</span>
       </ElevatedCodePanel>
     )
 
-    expect(screen.getByText('DDL').parentElement).toHaveAttribute('data-variant', 'strip')
+    expect(screen.getByText('DDL')).toBeInTheDocument()
+  })
+
+  it('renders no header without a label or header actions', () => {
+    render(
+      <ElevatedCodePanel data-testid="code-panel">
+        <span>SELECT 1</span>
+      </ElevatedCodePanel>
+    )
+
+    const root = screen.getByTestId('code-panel')
+    expect(root.querySelector('pre code')?.textContent).toContain('SELECT 1')
+    expect(root.querySelectorAll('span')).toHaveLength(1)
   })
 
   it('omits actions wrapper when headerActions is absent', () => {
@@ -53,50 +64,5 @@ describe('ElevatedCodePanel', () => {
     const root = screen.getByTestId('code-panel')
     expect(screen.queryByText('Hidden')).not.toBeInTheDocument()
     expect(root.querySelector('pre code')?.textContent).toContain('SELECT 1')
-  })
-
-  it('uses standard pre spacing unless asked for snug spacing', () => {
-    const { rerender } = render(
-      <ElevatedCodePanel data-testid="code-panel">
-        <span>SELECT 1</span>
-      </ElevatedCodePanel>
-    )
-    expect(screen.getByTestId('code-panel').querySelector('pre')).toHaveAttribute(
-      'data-spacing',
-      'standard'
-    )
-
-    rerender(
-      <ElevatedCodePanel data-testid="code-panel" preSpacing="snug">
-        <span>SELECT 1</span>
-      </ElevatedCodePanel>
-    )
-    expect(screen.getByTestId('code-panel').querySelector('pre')).toHaveAttribute(
-      'data-spacing',
-      'snug'
-    )
-  })
-
-  it('offers the listing pre spacing for taller code lines', () => {
-    render(
-      <ElevatedCodePanel data-testid="code-panel" preSpacing="listing">
-        <span>SELECT 1</span>
-      </ElevatedCodePanel>
-    )
-
-    expect(screen.getByTestId('code-panel').querySelector('pre')).toHaveAttribute(
-      'data-spacing',
-      'listing'
-    )
-  })
-
-  it('draws the surface in the requested variant', () => {
-    render(
-      <ElevatedCodePanel data-testid="code-panel" surfaceVariant="recessed">
-        <span>SELECT 1</span>
-      </ElevatedCodePanel>
-    )
-
-    expect(screen.getByTestId('code-panel')).toHaveAttribute('data-variant', 'recessed')
   })
 })

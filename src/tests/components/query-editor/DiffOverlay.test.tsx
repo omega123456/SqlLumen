@@ -72,17 +72,16 @@ describe('DiffOverlay', () => {
     expect(DEFAULT_PROPS.onReject).toHaveBeenCalledTimes(1)
   })
 
-  it('renders Accept All button with primary variant', () => {
+  it('labels the Accept All button', () => {
     render(<DiffOverlay {...DEFAULT_PROPS} />)
     const acceptBtn = screen.getByTestId('diff-accept-all-button')
     expect(acceptBtn).toHaveTextContent('Accept all')
   })
 
-  it('renders Reject All button with danger variant', () => {
+  it('labels the Reject All button', () => {
     render(<DiffOverlay {...DEFAULT_PROPS} />)
     const rejectBtn = screen.getByTestId('diff-reject-button')
     expect(rejectBtn).toHaveTextContent('Reject all')
-    expect(rejectBtn).toHaveAttribute('data-variant', 'danger')
   })
 
   it('renders Accept All, Reject All, and Close buttons', () => {

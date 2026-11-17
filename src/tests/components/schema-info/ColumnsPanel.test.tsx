@@ -40,34 +40,18 @@ describe('ColumnsPanel', () => {
     expect(rows).toHaveLength(4)
   })
 
-  it('shows PRI badge with correct styles', () => {
-    const columns = [makeColumn({ name: 'id', columnKey: 'PRI' })]
+  it('shows the PRI, MUL and UNI key badges', () => {
+    const columns = [
+      makeColumn({ name: 'id', columnKey: 'PRI' }),
+      makeColumn({ name: 'user_id', columnKey: 'MUL', ordinalPosition: 2 }),
+      makeColumn({ name: 'email', columnKey: 'UNI', ordinalPosition: 3 }),
+    ]
 
     render(<ColumnsPanel columns={columns} />)
 
-    const badge = screen.getByText('PRI')
-    expect(badge).toBeInTheDocument()
-    expect(badge).toHaveAttribute('data-tone', 'primary')
-  })
-
-  it('shows MUL with the neutral key pill', () => {
-    const columns = [makeColumn({ name: 'user_id', columnKey: 'MUL' })]
-
-    render(<ColumnsPanel columns={columns} />)
-
-    const badge = screen.getByText('MUL')
-    expect(badge).toBeInTheDocument()
-    expect(badge).toHaveAttribute('data-tone', 'other')
-  })
-
-  it('shows UNI with the neutral key pill', () => {
-    const columns = [makeColumn({ name: 'email', columnKey: 'UNI' })]
-
-    render(<ColumnsPanel columns={columns} />)
-
-    const badge = screen.getByText('UNI')
-    expect(badge).toBeInTheDocument()
-    expect(badge).toHaveAttribute('data-tone', 'other')
+    expect(screen.getByText('PRI')).toBeInTheDocument()
+    expect(screen.getByText('MUL')).toBeInTheDocument()
+    expect(screen.getByText('UNI')).toBeInTheDocument()
   })
 
   it('shows null indicator correctly', () => {

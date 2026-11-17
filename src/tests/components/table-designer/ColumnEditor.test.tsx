@@ -511,7 +511,7 @@ describe('ColumnEditor', () => {
     expect(screen.getByTestId('column-length-1')).not.toBeDisabled()
   })
 
-  it('validation error border shown on Name cell when error exists', () => {
+  it('marks the Name cell invalid when a validation error exists', () => {
     renderEditor({
       validationErrors: {
         'columns.1.name': 'Duplicate column name',

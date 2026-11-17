@@ -4,43 +4,6 @@ import { render, screen } from '@testing-library/react'
 import { TextInput } from '../../../components/common/TextInput'
 
 describe('TextInput', () => {
-  it('exposes the default variant as its lookup key', () => {
-    render(<TextInput aria-label="Field" />)
-    expect(screen.getByRole('textbox', { name: 'Field' })).toHaveAttribute(
-      'data-variant',
-      'default'
-    )
-  })
-
-  it('exposes the mono variant as its lookup key', () => {
-    render(<TextInput variant="mono" aria-label="Host" />)
-    expect(screen.getByRole('textbox', { name: 'Host' })).toHaveAttribute('data-variant', 'mono')
-  })
-
-  it('exposes the search variant as its lookup key', () => {
-    render(<TextInput variant="search" aria-label="Filter" />)
-    expect(screen.getByRole('textbox', { name: 'Filter' })).toHaveAttribute(
-      'data-variant',
-      'search'
-    )
-  })
-
-  it('exposes the icon leading variant as its lookup key', () => {
-    render(<TextInput variant="iconLeading" aria-label="Search queries" />)
-    expect(screen.getByRole('textbox', { name: 'Search queries' })).toHaveAttribute(
-      'data-variant',
-      'iconLeading'
-    )
-  })
-
-  it('exposes the accent name variant as its lookup key', () => {
-    render(<TextInput variant="accentName" aria-label="Table name" />)
-    expect(screen.getByRole('textbox', { name: 'Table name' })).toHaveAttribute(
-      'data-variant',
-      'accentName'
-    )
-  })
-
   it('forwards ref', () => {
     const ref = createRef<HTMLInputElement>()
     render(<TextInput ref={ref} defaultValue="a" />)

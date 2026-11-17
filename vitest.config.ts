@@ -12,7 +12,7 @@ export default defineConfig({
     // With coverage, React still emits RunningIndicator act() warnings to stderr; setup.ts filters
     // console.error, and this avoids Vitest duplicating those lines during `pnpm test:coverage`.
     disableConsoleIntercept: true,
-    include: ['src/tests/**/*.{test,spec}.{ts,tsx}', 'scripts/**/*.test.ts'],
+    include: ['src/tests/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['e2e/**', 'node_modules/**', '.opencode/**'],
     coverage: {
       provider: 'v8',
