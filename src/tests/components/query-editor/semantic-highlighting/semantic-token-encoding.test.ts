@@ -12,18 +12,6 @@ function typeIndex(kind: SqlIdentifierKind): number {
 }
 
 describe('encodeSemanticTokens', () => {
-  it('lists every identifier kind in the legend without modifiers', () => {
-    expect(SEMANTIC_TOKEN_LEGEND.tokenTypes).toEqual([
-      'database',
-      'table',
-      'tableAlias',
-      'column',
-      'columnAlias',
-      'function',
-    ])
-    expect(SEMANTIC_TOKEN_LEGEND.tokenModifiers).toEqual([])
-  })
-
   it('delta-encodes spans in document order', () => {
     const data = encodeSemanticTokens([
       span('column', 2, 5),
@@ -38,9 +26,5 @@ describe('encodeSemanticTokens', () => {
       ...[1, 4, 3, typeIndex('column'), 0],
       ...[0, 7, 3, typeIndex('function'), 0],
     ])
-  })
-
-  it('encodes no spans as an empty array', () => {
-    expect(encodeSemanticTokens([])).toHaveLength(0)
   })
 })

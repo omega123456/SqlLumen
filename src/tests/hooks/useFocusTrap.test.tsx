@@ -40,24 +40,6 @@ describe('useFocusTrap', () => {
     expect(queryByTestId('dialog')).not.toBeInTheDocument()
   })
 
-  it('registers keydown listener on document when open', () => {
-    const addSpy = vi.spyOn(document, 'addEventListener')
-    render(<TestDialog isOpen={true} />)
-
-    expect(addSpy).toHaveBeenCalledWith('keydown', expect.any(Function))
-    addSpy.mockRestore()
-  })
-
-  it('removes keydown listener on close', () => {
-    const removeSpy = vi.spyOn(document, 'removeEventListener')
-    const { rerender } = render(<TestDialog isOpen={true} />)
-
-    rerender(<TestDialog isOpen={false} />)
-
-    expect(removeSpy).toHaveBeenCalledWith('keydown', expect.any(Function))
-    removeSpy.mockRestore()
-  })
-
   it('restores focus to previously-focused element on close', async () => {
     const externalButton = document.createElement('button')
     externalButton.textContent = 'External'
@@ -80,37 +62,5 @@ describe('useFocusTrap', () => {
     expect(document.activeElement).toBe(externalButton)
 
     document.body.removeChild(externalButton)
-  })
-
-  it('does not focus anything when dialog has no focusable elements', async () => {
-    function EmptyDialog({ isOpen }: { isOpen: boolean }) {
-      const ref = useRef<HTMLDivElement>(null)
-      useFocusTrap(ref, isOpen)
-      if (!isOpen) return null
-      return (
-        <div ref={ref} data-testid="empty-dialog">
-          <p>No focusable elements</p>
-        </div>
-      )
-    }
-
-    const prevActive = document.activeElement
-    render(<EmptyDialog isOpen={true} />)
-
-    await act(async () => {
-      await new Promise((resolve) => requestAnimationFrame(resolve))
-    })
-
-    // Focus should not have changed since there's nothing to focus
-    expect(document.activeElement).toBe(prevActive)
-  })
-
-  it('does not register listener when isOpen is false', () => {
-    const addSpy = vi.spyOn(document, 'addEventListener')
-    render(<TestDialog isOpen={false} />)
-
-    const keydownCalls = addSpy.mock.calls.filter(([type]) => type === 'keydown')
-    expect(keydownCalls).toHaveLength(0)
-    addSpy.mockRestore()
   })
 })

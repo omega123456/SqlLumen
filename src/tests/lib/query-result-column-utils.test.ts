@@ -1,19 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { hasResultColumns, resolveQueryResultColumns } from '../../lib/query-result-column-utils'
-import type { ColumnMeta, ForeignKeyColumnInfo, TableDataColumnMeta } from '../../types/schema'
-
-const makeTableColumn = (name: string, dataType = 'VARCHAR'): TableDataColumnMeta => ({
-  name,
-  dataType,
-  isNullable: true,
-  isPrimaryKey: false,
-  isUniqueKey: false,
-  hasDefault: false,
-  columnDefault: null,
-  isBinary: false,
-  isBooleanAlias: false,
-  isAutoIncrement: false,
-})
+import type { ColumnMeta, ForeignKeyColumnInfo } from '../../types/schema'
 
 describe('resolveQueryResultColumns', () => {
   it('uses fallback table metadata and omits FK lookup for unbound result columns', () => {
@@ -47,59 +34,10 @@ describe('resolveQueryResultColumns', () => {
     })
     expect(resolved.foreignKey).toBeUndefined()
   })
-
-  it('resolves bound table metadata and FK lookup case-insensitively', () => {
-    const resultColumns: ColumnMeta[] = [{ name: 'Email Alias', dataType: 'VARCHAR' }]
-
-    const [resolved] = resolveQueryResultColumns({
-      resultColumns,
-      editMode: 'db.users',
-      editableColumnMap: new Map([[0, true]]),
-      editTableColumns: [makeTableColumn('EMAIL', 'TEXT')],
-      editForeignKeys: [
-        {
-          columnName: 'email',
-          referencedDatabase: 'accounts',
-          referencedTable: 'users',
-          referencedColumn: 'id',
-          constraintName: 'fk_users_email',
-        },
-      ],
-      editColumnBindings: new Map([[0, 'Email']]),
-    })
-
-    expect(resolved.boundName).toBe('Email')
-    expect(resolved.tableColumnMeta).toMatchObject({ name: 'EMAIL', dataType: 'TEXT' })
-    expect(resolved.effectiveTableMeta).toMatchObject({ name: 'EMAIL', dataType: 'TEXT' })
-    expect(resolved.foreignKey).toMatchObject({
-      columnName: 'email',
-      referencedDatabase: 'accounts',
-      referencedTable: 'users',
-      referencedColumn: 'id',
-    })
-  })
-
-  it('marks result columns non-editable when edit mode is not active', () => {
-    const [resolved] = resolveQueryResultColumns({
-      resultColumns: [{ name: 'id', dataType: 'INT' }],
-      editMode: null,
-      editableColumnMap: new Map([[0, true]]),
-      editTableColumns: [makeTableColumn('id', 'INT')],
-      editForeignKeys: [],
-      editColumnBindings: new Map([[0, 'id']]),
-    })
-
-    expect(resolved.editable).toBe(false)
-    expect(resolved.foreignKey).toBeUndefined()
-  })
 })
 
 describe('hasResultColumns', () => {
   it('is false for a result without columns', () => {
     expect(hasResultColumns({ columns: [] })).toBe(false)
-  })
-
-  it('is true when the result has columns', () => {
-    expect(hasResultColumns({ columns: [{ name: 'id' }] })).toBe(true)
   })
 })

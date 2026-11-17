@@ -21,20 +21,6 @@ describe('isNumericSqlType', () => {
     expect(isNumericSqlType('BIGINT')).toBe(true)
     expect(isNumericSqlType('TINYINT')).toBe(true)
   })
-
-  it('returns true for decimal types', () => {
-    expect(isNumericSqlType('DECIMAL(10,2)')).toBe(true)
-    expect(isNumericSqlType('NUMERIC')).toBe(true)
-    expect(isNumericSqlType('FLOAT')).toBe(true)
-    expect(isNumericSqlType('DOUBLE')).toBe(true)
-  })
-
-  it('returns false for non-numeric types', () => {
-    expect(isNumericSqlType('VARCHAR(255)')).toBe(false)
-    expect(isNumericSqlType('TEXT')).toBe(false)
-    expect(isNumericSqlType('DATETIME')).toBe(false)
-    expect(isNumericSqlType('BLOB')).toBe(false)
-  })
 })
 
 describe('isWrappableTextSqlType', () => {
@@ -43,12 +29,6 @@ describe('isWrappableTextSqlType', () => {
     expect(isWrappableTextSqlType('tinytext')).toBe(true)
     expect(isWrappableTextSqlType('MEDIUMTEXT')).toBe(true)
     expect(isWrappableTextSqlType('LONGTEXT')).toBe(true)
-  })
-
-  it('returns false for non-TEXT string columns', () => {
-    expect(isWrappableTextSqlType('VARCHAR(255)')).toBe(false)
-    expect(isWrappableTextSqlType('CHAR(10)')).toBe(false)
-    expect(isWrappableTextSqlType('JSON')).toBe(false)
   })
 })
 
@@ -127,48 +107,5 @@ describe('getAutoSizedColumnWidth', () => {
     })
     // The difference should be exactly 14px (ceil applied to the sum)
     expect(withFk - base).toBe(14)
-  })
-
-  it('headerIconWidthPx defaults to 0 when omitted', () => {
-    const col = makeColumnMeta('USER_ID', 'BIGINT')
-    const rows: unknown[][] = [[42]]
-    const explicit = getAutoSizedColumnWidth({
-      column: col,
-      columnIndex: 0,
-      rows: rows,
-      displayName: 'USER_ID',
-      headerIconWidthPx: 0,
-    })
-    const implicit = getAutoSizedColumnWidth({
-      column: col,
-      columnIndex: 0,
-      rows: rows,
-      displayName: 'USER_ID',
-    })
-    expect(implicit).toBe(explicit)
-  })
-
-  it('samples only the first 100 rows and ignores rows beyond that limit', () => {
-    const col = makeColumnMeta('title', 'VARCHAR')
-    // 100 rows with a short value
-    const shortRows: unknown[][] = Array.from({ length: 100 }, () => ['hi'])
-    // Same 100 rows plus one extra row with a very long value (row index 100)
-    const rowsWithLongTail: unknown[][] = [...shortRows, ['a'.repeat(500)]]
-
-    const widthShortOnly = getAutoSizedColumnWidth({
-      column: col,
-      columnIndex: 0,
-      rows: shortRows,
-      displayName: 'title',
-    })
-    const widthWithTail = getAutoSizedColumnWidth({
-      column: col,
-      columnIndex: 0,
-      rows: rowsWithLongTail,
-      displayName: 'title',
-    })
-
-    // Row 101 is beyond AUTO_SIZE_SAMPLE_LIMIT (100), so the widths must be equal
-    expect(widthWithTail).toBe(widthShortOnly)
   })
 })

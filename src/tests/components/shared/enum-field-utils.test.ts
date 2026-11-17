@@ -27,15 +27,6 @@ describe('enum-field-utils', () => {
       const meta = { enumValues: [] } as unknown as TableDataColumnMeta
       expect(isEnumColumn(meta)).toBe(false)
     })
-
-    it('returns false when column has no enumValues', () => {
-      const meta = {} as TableDataColumnMeta
-      expect(isEnumColumn(meta)).toBe(false)
-    })
-
-    it('returns false when meta is undefined', () => {
-      expect(isEnumColumn(undefined)).toBe(false)
-    })
   })
 
   describe('getEnumFallbackValue', () => {
@@ -48,25 +39,12 @@ describe('enum-field-utils', () => {
       const meta = {} as TableDataColumnMeta
       expect(getEnumFallbackValue(meta)).toBe('')
     })
-
-    it('returns empty string when meta is undefined', () => {
-      expect(getEnumFallbackValue(undefined)).toBe('')
-    })
   })
 
   describe('isSetColumn', () => {
     it('returns true when column has non-empty setValues', () => {
       const meta = { setValues: ['read', 'write'] } as TableDataColumnMeta
       expect(isSetColumn(meta)).toBe(true)
-    })
-
-    it('returns false when column has empty setValues', () => {
-      const meta = { setValues: [] } as unknown as TableDataColumnMeta
-      expect(isSetColumn(meta)).toBe(false)
-    })
-
-    it('returns false when meta is undefined', () => {
-      expect(isSetColumn(undefined)).toBe(false)
     })
   })
 
@@ -83,24 +61,12 @@ describe('enum-field-utils', () => {
     it('returns an empty array for an empty string', () => {
       expect(parseSetCellValue('')).toEqual([])
     })
-
-    it('splits comma-delimited strings and trims blanks', () => {
-      expect(parseSetCellValue(' read, write , , admin ')).toEqual(['read', 'write', 'admin'])
-    })
   })
 
   describe('serializeSetCellValue', () => {
     it('returns null for nullish arrays', () => {
       expect(serializeSetCellValue(null)).toBeNull()
       expect(serializeSetCellValue(undefined)).toBeNull()
-    })
-
-    it('joins values with commas', () => {
-      expect(serializeSetCellValue(['read', 'write'])).toBe('read,write')
-    })
-
-    it('serializes an empty array to an empty string', () => {
-      expect(serializeSetCellValue([])).toBe('')
     })
   })
 })

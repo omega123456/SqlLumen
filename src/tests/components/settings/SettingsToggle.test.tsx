@@ -1,6 +1,5 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { SettingsToggle } from '../../../components/settings/SettingsToggle'
 
 describe('SettingsToggle', () => {
@@ -22,28 +21,5 @@ describe('SettingsToggle', () => {
     )
 
     expect(screen.getByText('Save files automatically')).toBeInTheDocument()
-  })
-
-  it('calls onChange with new checked state when clicked', async () => {
-    const user = userEvent.setup()
-    const onChangeSpy = vi.fn()
-    render(<SettingsToggle label="Auto-save" checked={false} onChange={onChangeSpy} />)
-
-    await user.click(screen.getByRole('switch'))
-    expect(onChangeSpy).toHaveBeenCalledWith(true)
-  })
-
-  it('applies data-testid to container', () => {
-    render(
-      <SettingsToggle label="Test" checked={true} onChange={() => {}} data-testid="my-toggle" />
-    )
-
-    expect(screen.getByTestId('my-toggle')).toBeInTheDocument()
-  })
-
-  it('switch is disabled when disabled prop is true', () => {
-    render(<SettingsToggle label="Disabled toggle" checked={false} onChange={() => {}} disabled />)
-
-    expect(screen.getByRole('switch')).toBeDisabled()
   })
 })

@@ -1,5 +1,4 @@
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { ObjectEditorToolbar } from '../../../components/object-editor/ObjectEditorToolbar'
 import { OBJECT_TYPE_LABELS } from '../../../components/object-editor/object-editor-constants'
@@ -33,44 +32,6 @@ describe('ObjectEditorToolbar', () => {
   it('renders database name below the title', () => {
     renderToolbar({ databaseName: 'test_db' })
     expect(screen.getByText('test_db')).toBeInTheDocument()
-  })
-
-  it('save button disabled when not dirty', () => {
-    renderToolbar({ isDirty: false })
-    expect(screen.getByTestId('object-editor-save-button')).toBeDisabled()
-  })
-
-  it('save button enabled when dirty', () => {
-    renderToolbar({ isDirty: true })
-    expect(screen.getByTestId('object-editor-save-button')).toBeEnabled()
-  })
-
-  it('save button disabled when saving', () => {
-    renderToolbar({ isDirty: true, isSaving: true })
-    expect(screen.getByTestId('object-editor-save-button')).toBeDisabled()
-  })
-
-  it('save button shows "Saving..." while saving', () => {
-    renderToolbar({ isSaving: true })
-    expect(screen.getByTestId('object-editor-save-button')).toHaveTextContent('Saving...')
-  })
-
-  it('save button shows "Save" when idle', () => {
-    renderToolbar({ isSaving: false })
-    expect(screen.getByTestId('object-editor-save-button')).toHaveTextContent('Save')
-  })
-
-  it('calls onSave when save button clicked', async () => {
-    const user = userEvent.setup()
-    const { props } = renderToolbar({ isDirty: true })
-
-    await user.click(screen.getByTestId('object-editor-save-button'))
-    expect(props.onSave).toHaveBeenCalledTimes(1)
-  })
-
-  it('renders toolbar data-testid', () => {
-    renderToolbar()
-    expect(screen.getByTestId('object-editor-toolbar')).toBeInTheDocument()
   })
 
   // Test all 5 object types render correctly

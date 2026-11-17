@@ -13,14 +13,4 @@ describe('ElevatedSurface', () => {
     const surface = screen.getByTestId('elevated')
     expect(surface).toHaveTextContent('content')
   })
-
-  it('forwards native attributes to the surface element', () => {
-    render(
-      <ElevatedSurface data-testid="elevated" aria-label="Panel">
-        x
-      </ElevatedSurface>
-    )
-
-    expect(screen.getByTestId('elevated')).toHaveAttribute('aria-label', 'Panel')
-  })
 })

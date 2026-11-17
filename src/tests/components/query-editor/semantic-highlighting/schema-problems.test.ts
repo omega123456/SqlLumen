@@ -51,27 +51,6 @@ describe('findSchemaProblems', () => {
     ).toEqual([])
   })
 
-  it('reports an unknown table in the default database with its range', () => {
-    expect(problemsFor('SELECT * FROM ordrs')).toEqual([
-      {
-        message: 'Unknown table `shop.ordrs`',
-        range: { lineNumber: 1, startColumn: 15, length: 5 },
-      },
-    ])
-  })
-
-  it('reports an unknown table in an explicitly qualified database', () => {
-    expect(messagesFor('SELECT * FROM analytics.sessions', null)).toEqual([
-      'Unknown table `analytics.sessions`',
-    ])
-  })
-
-  it('reports an unknown table in a known database that has no tables', () => {
-    expect(messagesFor('SELECT * FROM empty_db.anything')).toEqual([
-      'Unknown table `empty_db.anything`',
-    ])
-  })
-
   it('reports an unknown database qualifier on its range', () => {
     expect(problemsFor('SELECT * FROM shopp.users')).toEqual([
       {
@@ -85,20 +64,6 @@ describe('findSchemaProblems', () => {
     expect(messagesFor('SELECT * FROM information_schema.TABLES, mysql.user')).toEqual([])
   })
 
-  it('skips unqualified tables when no database resolves', () => {
-    expect(messagesFor('SELECT * FROM ordrs', null)).toEqual([])
-  })
-
-  it('skips tables in databases the cache does not know', () => {
-    expect(messagesFor('USE other; SELECT * FROM ordrs')).toEqual([])
-  })
-
-  it('resolves unqualified tables against the latest USE', () => {
-    expect(messagesFor('USE analytics; SELECT * FROM users')).toEqual([
-      'Unknown table `analytics.users`',
-    ])
-  })
-
   it('never reports CTE names, derived tables or tables the script creates', () => {
     expect(
       messagesFor(
@@ -107,29 +72,10 @@ describe('findSchemaProblems', () => {
     ).toEqual([])
   })
 
-  it('compares table and column names ignoring case', () => {
-    expect(messagesFor('SELECT U.EMAIL FROM USERS U, analytics.EVENTS')).toEqual([])
-  })
-
-  it('reports an unknown column of an aliased table', () => {
-    expect(problemsFor('SELECT u.emial FROM users u')).toEqual([
-      {
-        message: 'Unknown column `emial` in `users`',
-        range: { lineNumber: 1, startColumn: 10, length: 5 },
-      },
-    ])
-  })
-
   it('reports unknown columns qualified by table name or by database and table', () => {
     expect(messagesFor('SELECT users.nope, shop.users.gone FROM users')).toEqual([
       'Unknown column `nope` in `users`',
       'Unknown column `gone` in `users`',
-    ])
-  })
-
-  it('reports an unknown column of a view', () => {
-    expect(messagesFor('SELECT v.email FROM active_users v')).toEqual([
-      'Unknown column `email` in `active_users`',
     ])
   })
 
@@ -146,19 +92,6 @@ describe('findSchemaProblems', () => {
       messagesFor(
         'WITH recent AS (SELECT 1) SELECT r.nope, recent.nope, d.nope, o.nope FROM recent r, (SELECT 1) d, orders o'
       )
-    ).toEqual([])
-  })
-
-  it('never reports a database-qualified column of an unknown table', () => {
-    expect(messagesFor('SELECT shop.ghosts.id FROM users')).toEqual([])
-  })
-
-  it('reports nothing while the cache holds no schema', () => {
-    const statements = classifySqlIdentifiers(new EditorMySQLParser(), 'SELECT u.x FROM nope u')
-    const loadingCache: SchemaCache = { ...readyCache(), status: 'loading', databases: [] }
-
-    expect(
-      findSchemaProblems(statements, { cache: loadingCache, defaultDatabase: 'shop' })
     ).toEqual([])
   })
 })

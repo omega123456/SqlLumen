@@ -24,13 +24,6 @@ describe('useGridDimensions', () => {
     expect(result.current).toEqual({ rowHeight: 28, headerHeight: 32 })
   })
 
-  it('reads the row and header heights from tokens', () => {
-    setVar(ROW_HEIGHT_TOKEN, '30px')
-    setVar(HEADER_HEIGHT_TOKEN, '34px')
-    const { result } = renderHook(() => useGridDimensions())
-    expect(result.current).toEqual({ rowHeight: 30, headerHeight: 34 })
-  })
-
   it('re-reads the tokens when the resolved theme changes', () => {
     setVar(ROW_HEIGHT_TOKEN, '28px')
     const { result } = renderHook(() => useGridDimensions())

@@ -43,24 +43,14 @@ afterEach(() => {
 })
 
 describe('AiPanel', () => {
-  it('renders with correct data-testid', () => {
+  it('renders with correct data-testid, renders the header and 5 more checks', () => {
     render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
     expect(screen.getByTestId('ai-panel')).toBeInTheDocument()
-  })
-
-  it('renders the header', () => {
-    render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
     expect(screen.getByTestId('ai-panel-header')).toBeInTheDocument()
-  })
-
-  it('renders the messages area', () => {
-    render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
     expect(screen.getByTestId('ai-chat-messages')).toBeInTheDocument()
-  })
-
-  it('renders the input area', () => {
-    render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
     expect(screen.getByTestId('ai-chat-input')).toBeInTheDocument()
+    expect(screen.getByTestId('ai-welcome-state')).toBeInTheDocument()
+    expect(screen.queryByTestId('ai-index-waiting')).not.toBeInTheDocument()
   })
 
   it('auto-scrolls to bottom on new messages', async () => {
@@ -94,11 +84,6 @@ describe('AiPanel', () => {
     expect(panel.querySelector('[data-testid="ai-chat-input"]')).toBeInTheDocument()
   })
 
-  it('renders welcome state when no messages', () => {
-    render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
-    expect(screen.getByTestId('ai-welcome-state')).toBeInTheDocument()
-  })
-
   it('suggestion chips fill the textarea', async () => {
     const user = userEvent.setup()
     render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
@@ -118,11 +103,6 @@ describe('AiPanel', () => {
     const onTriggerDiff = vi.fn()
     render(<AiPanel tabId="tab-1" connectionId="conn-1" onTriggerDiff={onTriggerDiff} />)
     // Panel renders without error with the diff callback
-    expect(screen.getByTestId('ai-panel')).toBeInTheDocument()
-  })
-
-  it('renders without onTriggerDiff', () => {
-    render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
     expect(screen.getByTestId('ai-panel')).toBeInTheDocument()
   })
 
@@ -175,15 +155,10 @@ describe('AiPanel', () => {
     expect(screen.getByTestId('ai-index-waiting')).toBeInTheDocument()
     expect(screen.getByText('Waiting for schema index...')).toBeInTheDocument()
   })
-
-  it('does not show waiting indicator when isWaitingForIndex is false', () => {
-    render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
-    expect(screen.queryByTestId('ai-index-waiting')).not.toBeInTheDocument()
-  })
 })
 
 describe('AiPanel — setup required state', () => {
-  it('shows AiSetupRequired when AI is enabled but embedding model is empty', () => {
+  it('shows AiSetupRequired when AI is enabled but embedding model is empty and still shows the header when setup required', () => {
     useSettingsStore.setState({
       settings: {
         ...SETTINGS_DEFAULTS,
@@ -197,6 +172,7 @@ describe('AiPanel — setup required state', () => {
 
     render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
     expect(screen.getByTestId('ai-setup-required')).toBeInTheDocument()
+    expect(screen.getByTestId('ai-panel-header')).toBeInTheDocument()
   })
 
   it('does not show AiSetupRequired when embedding model is configured', () => {
@@ -223,22 +199,6 @@ describe('AiPanel — setup required state', () => {
     const textarea = screen.getByTestId('ai-chat-textarea') as HTMLTextAreaElement
     expect(textarea.disabled).toBe(true)
     expect(textarea.placeholder).toContain('Embedding model required')
-  })
-
-  it('still shows the header when setup required', () => {
-    useSettingsStore.setState({
-      settings: {
-        ...SETTINGS_DEFAULTS,
-        'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1',
-        'ai.model': 'llama3',
-        'ai.embeddingModel': '',
-      },
-      pendingChanges: {},
-    })
-
-    render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
-    expect(screen.getByTestId('ai-panel-header')).toBeInTheDocument()
   })
 
   it('does not show setup required when AI is disabled', () => {

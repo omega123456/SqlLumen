@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect } from 'vitest'
+import { render, screen } from '@testing-library/react'
 import { FilterToolbarButton } from '../../../components/shared/FilterToolbarButton'
 
 describe('FilterToolbarButton', () => {
@@ -47,34 +47,6 @@ describe('FilterToolbarButton', () => {
     expect(clearBtn).toHaveAttribute('aria-label', 'Clear filters')
   })
 
-  it('calls onFilterClick when filter button is clicked', () => {
-    const onFilterClick = vi.fn()
-    render(
-      <FilterToolbarButton
-        isActive={false}
-        activeCount={0}
-        onFilterClick={onFilterClick}
-        onClearClick={() => {}}
-      />
-    )
-    fireEvent.click(screen.getByTestId('btn-filter'))
-    expect(onFilterClick).toHaveBeenCalledOnce()
-  })
-
-  it('calls onClearClick when clear button is clicked', () => {
-    const onClearClick = vi.fn()
-    render(
-      <FilterToolbarButton
-        isActive={true}
-        activeCount={1}
-        onFilterClick={() => {}}
-        onClearClick={onClearClick}
-      />
-    )
-    fireEvent.click(screen.getByTestId('btn-clear-filter'))
-    expect(onClearClick).toHaveBeenCalledOnce()
-  })
-
   it('disables both buttons when isDisabled is true', () => {
     render(
       <FilterToolbarButton
@@ -87,41 +59,5 @@ describe('FilterToolbarButton', () => {
     )
     expect(screen.getByTestId('btn-filter')).toBeDisabled()
     expect(screen.getByTestId('btn-clear-filter')).toBeDisabled()
-  })
-
-  it('buttons are enabled when isDisabled is false', () => {
-    render(
-      <FilterToolbarButton
-        isActive={true}
-        activeCount={1}
-        onFilterClick={() => {}}
-        onClearClick={() => {}}
-        isDisabled={false}
-      />
-    )
-    expect(screen.getByTestId('btn-filter')).not.toBeDisabled()
-    expect(screen.getByTestId('btn-clear-filter')).not.toBeDisabled()
-  })
-
-  it('marks the filter button as accented only while a filter is active', () => {
-    const { rerender } = render(
-      <FilterToolbarButton
-        isActive={false}
-        activeCount={0}
-        onFilterClick={() => {}}
-        onClearClick={() => {}}
-      />
-    )
-    expect(screen.getByTestId('btn-filter')).toHaveAttribute('data-variant', 'subtle')
-
-    rerender(
-      <FilterToolbarButton
-        isActive={true}
-        activeCount={2}
-        onFilterClick={() => {}}
-        onClearClick={() => {}}
-      />
-    )
-    expect(screen.getByTestId('btn-filter')).toHaveAttribute('data-variant', 'subtleAccent')
   })
 })

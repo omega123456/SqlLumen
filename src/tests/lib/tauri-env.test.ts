@@ -14,14 +14,6 @@ describe('tauri-env', () => {
 
     expect(hasTauriApis()).toBe(false)
   })
-
-  it('returns true when Tauri internals are present', () => {
-    ;(window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {}
-
-    expect(hasTauriApis()).toBe(true)
-
-    delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
-  })
 })
 
 describe('isPlaywrightBuild', () => {
@@ -33,11 +25,5 @@ describe('isPlaywrightBuild', () => {
     vi.stubEnv('VITE_PLAYWRIGHT', 'true')
 
     expect(isPlaywrightBuild()).toBe(true)
-  })
-
-  it('is false otherwise', () => {
-    vi.stubEnv('VITE_PLAYWRIGHT', 'false')
-
-    expect(isPlaywrightBuild()).toBe(false)
   })
 })

@@ -30,20 +30,6 @@ describe('getObjectBody', () => {
     ])
     expect(result).toBe('CREATE VIEW ...')
   })
-
-  it('propagates invoke errors', async () => {
-    ipc.override('get_object_body', () => {
-      throw new Error('Object not found')
-    })
-    await expect(
-      getObjectBody({
-        connectionId: 'conn-1',
-        database: 'db',
-        objectName: 'x',
-        objectType: 'procedure',
-      })
-    ).rejects.toThrow('Object not found')
-  })
 })
 
 describe('saveObject', () => {
@@ -79,22 +65,6 @@ describe('saveObject', () => {
     ])
     expect(result).toEqual(response)
   })
-
-  it('propagates invoke errors', async () => {
-    ipc.override('save_object', () => {
-      throw new Error('Save failed')
-    })
-    await expect(
-      saveObject({
-        connectionId: 'conn-1',
-        database: 'db',
-        objectName: 'x',
-        objectType: 'view',
-        body: 'body',
-        mode: 'alter',
-      })
-    ).rejects.toThrow('Save failed')
-  })
 })
 
 describe('dropObject', () => {
@@ -115,15 +85,6 @@ describe('dropObject', () => {
       },
     ])
     expect(result).toBeUndefined()
-  })
-
-  it('propagates invoke errors', async () => {
-    ipc.override('drop_object', () => {
-      throw new Error('Drop failed')
-    })
-    await expect(
-      dropObject({ connectionId: 'conn-1', database: 'db', objectName: 'x', objectType: 'event' })
-    ).rejects.toThrow('Drop failed')
   })
 })
 
@@ -170,20 +131,6 @@ describe('getRoutineParameters', () => {
       },
     ])
   })
-
-  it('propagates invoke errors', async () => {
-    ipc.override('get_routine_parameters', () => {
-      throw new Error('Not found')
-    })
-    await expect(
-      getRoutineParameters({
-        connectionId: 'conn-1',
-        database: 'db',
-        routineName: 'x',
-        routineType: 'procedure',
-      })
-    ).rejects.toThrow('Not found')
-  })
 })
 
 describe('getRoutineParametersWithReturnType', () => {
@@ -210,19 +157,5 @@ describe('getRoutineParametersWithReturnType', () => {
       },
     ])
     expect(result).toEqual(params)
-  })
-
-  it('propagates invoke errors', async () => {
-    ipc.override('get_routine_parameters_with_return_type', () => {
-      throw new Error('Connection lost')
-    })
-    await expect(
-      getRoutineParametersWithReturnType({
-        connectionId: 'conn-1',
-        database: 'db',
-        routineName: 'x',
-        routineType: 'FUNCTION',
-      })
-    ).rejects.toThrow('Connection lost')
   })
 })

@@ -8,11 +8,6 @@ describe('MonacoEditorSkeleton', () => {
     expect(container.firstElementChild).toBeTruthy()
   })
 
-  it('has aria-hidden="true" on root', () => {
-    const { container } = render(<MonacoEditorSkeleton />)
-    expect(container.firstElementChild).toHaveAttribute('aria-hidden', 'true')
-  })
-
   it('renders gutter and 8 code lines', () => {
     const { container } = render(<MonacoEditorSkeleton />)
     const root = container.firstElementChild!

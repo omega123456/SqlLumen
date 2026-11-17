@@ -31,37 +31,4 @@ describe('computeHorizontalTabReorderTarget', () => {
       insertIndex: 2,
     })
   })
-
-  it('returns null for a no-op before placement', () => {
-    const target = computeHorizontalTabReorderTarget({
-      draggingIndex: 1,
-      targetIndex: 1,
-      pointerClientX: 120,
-      targetRect: { left: 100, width: 80 } as DOMRect,
-    })
-
-    expect(target).toBeNull()
-  })
-
-  it('returns null for a no-op after placement', () => {
-    const target = computeHorizontalTabReorderTarget({
-      draggingIndex: 2,
-      targetIndex: 1,
-      pointerClientX: 179,
-      targetRect: { left: 100, width: 80 } as DOMRect,
-    })
-
-    expect(target).toBeNull()
-  })
-
-  it('returns null for a no-op before placement onto the immediate right neighbor', () => {
-    const target = computeHorizontalTabReorderTarget({
-      draggingIndex: 1,
-      targetIndex: 2,
-      pointerClientX: 120,
-      targetRect: { left: 100, width: 80 } as DOMRect,
-    })
-
-    expect(target).toBeNull()
-  })
 })

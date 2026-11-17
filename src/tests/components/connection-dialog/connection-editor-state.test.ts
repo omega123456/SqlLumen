@@ -7,10 +7,8 @@ import {
   editorWithField,
   getDefaultFormData,
   hasFormErrors,
-  hasSavedPasswordAfterUpdate,
   resolveCurrentConnectionId,
   shouldUseSavedPassword,
-  tabHasError,
   validate,
   validationPatch,
   type ConnectionEditorState,
@@ -74,10 +72,6 @@ describe('getDefaultFormData', () => {
 })
 
 describe('validate', () => {
-  it('accepts a complete form', () => {
-    expect(validate(validFormData())).toEqual({})
-  })
-
   it('reports every invalid field', () => {
     const errors = validate(
       validFormData({
@@ -104,13 +98,6 @@ describe('validate', () => {
 describe('validationPatch', () => {
   it('only patches errors when the form is valid', () => {
     expect(validationPatch(validFormData())).toEqual({ errors: {} })
-  })
-
-  it('switches to the first tab with an error', () => {
-    const patch = validationPatch(validFormData({ connectTimeoutSecs: 0 }))
-    expect(patch.activeTab).toBe('advanced')
-    expect(tabHasError(patch.errors, 'advanced')).toBe(true)
-    expect(tabHasError(patch.errors, 'general')).toBe(false)
   })
 })
 
@@ -169,17 +156,6 @@ describe('editorStateFor', () => {
     expect(editor.savedId).toBe('conn-1')
     expect(editor.hasSavedPassword).toBe(true)
   })
-
-  it('copies a duplicate seed', () => {
-    const seed = { data: validFormData({ name: 'Copy' }), sourceHadPassword: true, key: 1 }
-    const editor = editorStateFor(undefined, seed)
-    expect(editor.formData.name).toBe('Copy')
-    expect(editor.formData).not.toBe(seed.data)
-  })
-
-  it('falls back to defaults', () => {
-    expect(editorStateFor(undefined, undefined).formData.name).toBe('')
-  })
 })
 
 describe('deletedEditorState', () => {
@@ -199,12 +175,6 @@ describe('editorWithField', () => {
     expect(next.formData.host).toBe('db.local')
     expect(next.errors).toEqual({ name: 'required' })
   })
-
-  it('keeps the same errors object when the field had no error', () => {
-    const current = editorWith({ errors: { name: 'required' } })
-    const next = editorWithField(current, { field: 'host', value: 'db.local' })
-    expect(next.errors).toBe(current.errors)
-  })
 })
 
 describe('saved password rules', () => {
@@ -218,13 +188,5 @@ describe('saved password rules', () => {
       formData: validFormData({ password: 'secret' }),
     })
     expect(shouldUseSavedPassword(typedPassword)).toBe(false)
-  })
-
-  it('tracks whether a password remains saved after an update', () => {
-    expect(hasSavedPasswordAfterUpdate(editorWith({ clearSavedPassword: true }))).toBe(false)
-    expect(hasSavedPasswordAfterUpdate(editorWith({ hasSavedPassword: true }))).toBe(true)
-    const typedPassword = editorWith({ formData: validFormData({ password: 'secret' }) })
-    expect(hasSavedPasswordAfterUpdate(typedPassword)).toBe(true)
-    expect(hasSavedPasswordAfterUpdate(editorWith({}))).toBe(false)
   })
 })

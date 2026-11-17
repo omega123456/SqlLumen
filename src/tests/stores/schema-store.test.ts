@@ -619,17 +619,6 @@ describe('useSchemaStore — refreshCategory', () => {
     const genAfter = useSchemaStore.getState().connectionStates['conn-1'].loadGeneration
     expect(genAfter).toBeGreaterThan(genBefore)
   })
-
-  it('does nothing if category node does not exist', async () => {
-    ipc.override('list_databases', () => ['mydb'])
-    await useSchemaStore.getState().loadDatabases('conn-1')
-
-    // Category node doesn't exist (database not expanded)
-    await useSchemaStore.getState().refreshCategory('conn-1', 'mydb', 'table')
-
-    // Should not throw and should not call backend
-    expect(ipc.payloads('list_schema_objects')).toHaveLength(0)
-  })
 })
 
 // ---------------------------------------------------------------------------

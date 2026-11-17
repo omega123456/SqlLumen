@@ -47,27 +47,19 @@ describe('getAllSettings', () => {
 })
 
 describe('getThemeSetting', () => {
-  it('returns "light" when setting is "light"', async () => {
+  it('reads a valid theme setting and returns null for a missing or unknown value', async () => {
     ipc.override('get_setting', () => 'light')
     expect(await getThemeSetting()).toBe('light')
-  })
 
-  it('returns "dark" when setting is "dark"', async () => {
     ipc.override('get_setting', () => 'dark')
     expect(await getThemeSetting()).toBe('dark')
-  })
 
-  it('returns "system" when setting is "system"', async () => {
     ipc.override('get_setting', () => 'system')
     expect(await getThemeSetting()).toBe('system')
-  })
 
-  it('returns null when no setting stored', async () => {
     ipc.override('get_setting', () => null)
     expect(await getThemeSetting()).toBeNull()
-  })
 
-  it('returns null for invalid/unknown values', async () => {
     ipc.override('get_setting', () => 'invalid_theme')
     expect(await getThemeSetting()).toBeNull()
   })

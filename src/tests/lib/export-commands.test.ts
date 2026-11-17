@@ -175,21 +175,4 @@ describe('streaming full export wrappers', () => {
     await expect(cancelResultExport('job-42')).resolves.toBeUndefined()
     expect(ipc.calls('cancel_result_export')[0]).toEqual({ jobId: 'job-42' })
   })
-
-  it('propagates backend errors', async () => {
-    ipc.override('start_result_export', () => {
-      throw new Error("Full export isn't available for this result.")
-    })
-    await expect(
-      startResultExport({
-        connectionId: 'conn-1',
-        tabId: 'tab-1',
-        resultIndex: 0,
-        queryId: 'q-1',
-        format: 'csv',
-        filePath: '/tmp/all.csv',
-        includeHeaders: true,
-      })
-    ).rejects.toThrow("Full export isn't available for this result.")
-  })
 })

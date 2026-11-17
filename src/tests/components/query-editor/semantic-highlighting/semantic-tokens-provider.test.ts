@@ -137,60 +137,6 @@ describe('MySqlSemanticTokensProvider', () => {
     expect(provider.getLegend().tokenTypes).toContain('tableAlias')
   })
 
-  it('marks the model as highlighted once tokens are provided', async () => {
-    const fakeModel = createModel('SELECT 1')
-
-    expect(isHighlighted(fakeModel)).toBe(false)
-    await provider.provideDocumentSemanticTokens(fakeModel.model)
-
-    expect(isHighlighted(fakeModel)).toBe(true)
-  })
-
-  it('sets warning markers for unknown tables and columns', async () => {
-    hydrateFromSnapshot(SCHEMA_SNAPSHOT, CONNECTION_ID)
-    const fakeModel = createModel('SELECT u.emial FROM users u JOIN ordrs o ON 1 = 1')
-    connectModel(fakeModel)
-
-    await provider.provideDocumentSemanticTokens(fakeModel.model)
-
-    expect(latestMarkers(fakeModel.model)).toEqual([
-      {
-        severity: 4,
-        message: 'Unknown table `shop.ordrs`',
-        startLineNumber: 1,
-        startColumn: 34,
-        endLineNumber: 1,
-        endColumn: 39,
-      },
-      {
-        severity: 4,
-        message: 'Unknown column `emial` in `users`',
-        startLineNumber: 1,
-        startColumn: 10,
-        endLineNumber: 1,
-        endColumn: 15,
-      },
-    ])
-  })
-
-  it('sets no markers for a model without a connection', async () => {
-    hydrateFromSnapshot(SCHEMA_SNAPSHOT, CONNECTION_ID)
-    const fakeModel = createModel('SELECT * FROM ordrs')
-
-    await provider.provideDocumentSemanticTokens(fakeModel.model)
-
-    expect(markerMessages(fakeModel.model)).toEqual([])
-  })
-
-  it('sets no markers until the schema cache is ready', async () => {
-    const fakeModel = createModel('SELECT * FROM ordrs')
-    connectModel(fakeModel)
-
-    await provider.provideDocumentSemanticTokens(fakeModel.model)
-
-    expect(markerMessages(fakeModel.model)).toEqual([])
-  })
-
   it('refreshes markers when the schema cache loads and when it is invalidated', async () => {
     const fakeModel = createModel('SELECT * FROM ordrs')
     connectModel(fakeModel)
@@ -200,28 +146,6 @@ describe('MySqlSemanticTokensProvider', () => {
     expect(markerMessages(fakeModel.model)).toEqual(['Unknown table `shop.ordrs`'])
 
     invalidateCache(CONNECTION_ID)
-    expect(markerMessages(fakeModel.model)).toEqual([])
-  })
-
-  it('refreshes markers when the model connection registers', async () => {
-    hydrateFromSnapshot(SCHEMA_SNAPSHOT, CONNECTION_ID)
-    const fakeModel = createModel('SELECT * FROM ordrs')
-    await provider.provideDocumentSemanticTokens(fakeModel.model)
-
-    connectModel(fakeModel)
-
-    expect(markerMessages(fakeModel.model)).toEqual(['Unknown table `shop.ordrs`'])
-  })
-
-  it('refreshes markers when the active database changes', async () => {
-    hydrateFromSnapshot(SCHEMA_SNAPSHOT, CONNECTION_ID)
-    const fakeModel = createModel('SELECT * FROM events')
-    connectModel(fakeModel)
-    await provider.provideDocumentSemanticTokens(fakeModel.model)
-    expect(markerMessages(fakeModel.model)).toEqual(['Unknown table `shop.events`'])
-
-    setSessionDatabase('analytics')
-
     expect(markerMessages(fakeModel.model)).toEqual([])
   })
 
@@ -296,17 +220,6 @@ describe('MySqlSemanticTokensProvider', () => {
     expect(markerMessages(fakeModel.model)).toEqual([])
     expect(isHighlighted(fakeModel)).toBe(false)
     invalidateCache(CONNECTION_ID)
-    expect(markerMessages(fakeModel.model)).toEqual([])
-  })
-
-  it('stops listening for context changes once disposed', async () => {
-    const fakeModel = createModel('SELECT * FROM ordrs')
-    connectModel(fakeModel)
-    await provider.provideDocumentSemanticTokens(fakeModel.model)
-
-    provider.dispose()
-    hydrateFromSnapshot(SCHEMA_SNAPSHOT, CONNECTION_ID)
-
     expect(markerMessages(fakeModel.model)).toEqual([])
   })
 

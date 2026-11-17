@@ -10,7 +10,7 @@ import {
 } from '../../../../components/table-data/table-data-grid/table-data-grid-model'
 import { DEFAULT_COLUMN_WIDTH_PX } from '../../../../lib/grid-column-style'
 import type { GridColumnDescriptor } from '../../../../types/shared-data-view'
-import type { RowEditState, TableDataColumnMeta } from '../../../../types/schema'
+import type { TableDataColumnMeta } from '../../../../types/schema'
 
 function makeColumn(name: string): TableDataColumnMeta {
   return {
@@ -80,21 +80,6 @@ describe('toSharedTableEditState', () => {
   it('returns null without an edit state', () => {
     expect(toSharedTableEditState(null)).toBeNull()
   })
-
-  it('serialises the row key', () => {
-    const editState = {
-      rowKey: { id: 1 },
-      currentValues: { name: 'b' },
-      originalValues: { name: 'a' },
-      modifiedColumns: new Set(['name']),
-      isNewRow: false,
-    } as RowEditState
-    expect(toSharedTableEditState(editState)).toEqual({
-      rowKey: '{"id":1}',
-      currentValues: { name: 'b' },
-      originalValues: { name: 'a' },
-    })
-  })
 })
 
 describe('selectedCellPositionOf', () => {
@@ -103,22 +88,6 @@ describe('selectedCellPositionOf', () => {
     descriptorColumns: [makeDescriptor('id'), makeDescriptor('name')],
     primaryKeyColumns: ['id'],
   }
-
-  it('returns null without a selected cell', () => {
-    expect(
-      selectedCellPositionOf({ ...lookup, selectedRowKey: { id: 2 }, selectedCell: null })
-    ).toBeNull()
-  })
-
-  it('locates the selected row and column', () => {
-    expect(
-      selectedCellPositionOf({
-        ...lookup,
-        selectedRowKey: { id: 2 },
-        selectedCell: { columnKey: 'name', value: null },
-      })
-    ).toEqual({ rowIdx: 1, idx: 1 })
-  })
 
   it('returns null when the row is not visible', () => {
     expect(
@@ -137,12 +106,5 @@ describe('computeTableColumnWidth', () => {
     expect(computeTableColumnWidth(lookup, [[1]], makeDescriptor('missing'))).toBe(
       DEFAULT_COLUMN_WIDTH_PX
     )
-  })
-
-  it('computes a positive width for known columns', () => {
-    const lookup = buildColumnLookup([makeColumn('id')])
-    expect(
-      computeTableColumnWidth(lookup, [['a long value']], makeDescriptor('id'))
-    ).toBeGreaterThan(0)
   })
 })

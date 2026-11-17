@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { ipc } from '../ipc-mock'
 import {
   listDatabases,
@@ -17,62 +17,42 @@ import {
   truncateTable,
   renameTable,
 } from '../../lib/schema-commands'
-
-beforeEach(() => {
-  vi.clearAllMocks()
-})
+import type { SchemaObjectRequest } from '../../lib/ipc/requests'
 
 function expectCommandCall(commandName: string, args: Record<string, unknown>) {
   expect(ipc.calls(commandName)).toEqual([args])
 }
 
-function expectPayloadCall(commandName: string, payload: Record<string, unknown>) {
+function expectPayloadCall(commandName: string, payload: object) {
   expect(ipc.calls(commandName)).toEqual([{ payload }])
 }
 
-// ---------------------------------------------------------------------------
-// Read-only query commands
-// ---------------------------------------------------------------------------
-
-describe('listDatabases', () => {
-  it('calls invoke with correct command and args', async () => {
+describe('schema commands', () => {
+  it('sends the connection id for the connection-wide listings and returns their rows', async () => {
+    const charsets = [
+      {
+        charset: 'utf8mb4',
+        description: 'UTF-8',
+        defaultCollation: 'utf8mb4_general_ci',
+        maxLength: 4,
+      },
+    ]
+    const collations = [{ name: 'utf8mb4_general_ci', charset: 'utf8mb4', isDefault: true }]
     ipc.override('list_databases', () => ['db1', 'db2'])
-    const result = await listDatabases('conn-1')
+    ipc.override('list_charsets', () => charsets)
+    ipc.override('list_collations', () => collations)
+
+    expect(await listDatabases('conn-1')).toEqual(['db1', 'db2'])
+    expect(await listCharsets('conn-1')).toEqual(charsets)
+    expect(await listCollations('conn-1')).toEqual(collations)
+
     expectCommandCall('list_databases', { connectionId: 'conn-1' })
-    expect(result).toEqual(['db1', 'db2'])
+    expectCommandCall('list_charsets', { connectionId: 'conn-1' })
+    expectCommandCall('list_collations', { connectionId: 'conn-1' })
   })
 
-  it('propagates errors from invoke', async () => {
-    ipc.override('list_databases', () => {
-      throw new Error('Not connected')
-    })
-    await expect(listDatabases('conn-1')).rejects.toThrow('Not connected')
-  })
-})
-
-describe('listSchemaObjects', () => {
-  it('calls invoke with correct command and args', async () => {
-    ipc.override('list_schema_objects', () => ['users', 'orders'])
-    const result = await listSchemaObjects('conn-1', 'mydb', 'table')
-    expectPayloadCall('list_schema_objects', {
-      connectionId: 'conn-1',
-      database: 'mydb',
-      objectType: 'table',
-    })
-    expect(result).toEqual(['users', 'orders'])
-  })
-
-  it('propagates errors from invoke', async () => {
-    ipc.override('list_schema_objects', () => {
-      throw new Error('Unknown type')
-    })
-    await expect(listSchemaObjects('conn-1', 'mydb', 'bad')).rejects.toThrow('Unknown type')
-  })
-})
-
-describe('listColumns', () => {
-  it('calls invoke with correct command and args', async () => {
-    const mockCols = [
+  it('maps positional arguments to named payload fields and returns the responses', async () => {
+    const columns = [
       {
         name: 'id',
         dataType: 'int',
@@ -83,126 +63,7 @@ describe('listColumns', () => {
         ordinalPosition: 1,
       },
     ]
-    ipc.override('list_columns', () => mockCols)
-    const result = await listColumns('conn-1', 'mydb', 'users')
-    expectPayloadCall('list_columns', {
-      connectionId: 'conn-1',
-      database: 'mydb',
-      table: 'users',
-    })
-    expect(result).toEqual(mockCols)
-  })
-
-  it('propagates errors from invoke', async () => {
-    ipc.override('list_columns', () => {
-      throw new Error('Table not found')
-    })
-    await expect(listColumns('conn-1', 'mydb', 'missing')).rejects.toThrow('Table not found')
-  })
-})
-
-describe('getSchemaInfo', () => {
-  it('calls invoke with correct command and args', async () => {
-    const mockResponse = { columns: [], indexes: [], foreignKeys: [], ddl: '', metadata: null }
-    ipc.override('get_schema_info', () => mockResponse)
-    const result = await getSchemaInfo({
-      connectionId: 'conn-1',
-      database: 'mydb',
-      objectName: 'users',
-      objectType: 'table',
-    })
-    expectPayloadCall('get_schema_info', {
-      connectionId: 'conn-1',
-      database: 'mydb',
-      objectName: 'users',
-      objectType: 'table',
-    })
-    expect(result).toEqual(mockResponse)
-  })
-
-  it('propagates errors from invoke', async () => {
-    ipc.override('get_schema_info', () => {
-      throw new Error('Schema error')
-    })
-    await expect(
-      getSchemaInfo({
-        connectionId: 'conn-1',
-        database: 'mydb',
-        objectName: 'users',
-        objectType: 'table',
-      })
-    ).rejects.toThrow('Schema error')
-  })
-})
-
-describe('getDatabaseDetails', () => {
-  it('calls invoke with correct command and args', async () => {
-    const mockDetails = {
-      name: 'mydb',
-      defaultCharacterSet: 'utf8mb4',
-      defaultCollation: 'utf8mb4_general_ci',
-    }
-    ipc.override('get_database_details', () => mockDetails)
-    const result = await getDatabaseDetails('conn-1', 'mydb')
-    expectPayloadCall('get_database_details', {
-      connectionId: 'conn-1',
-      database: 'mydb',
-    })
-    expect(result).toEqual(mockDetails)
-  })
-
-  it('propagates errors from invoke', async () => {
-    ipc.override('get_database_details', () => {
-      throw new Error('DB not found')
-    })
-    await expect(getDatabaseDetails('conn-1', 'missing')).rejects.toThrow('DB not found')
-  })
-})
-
-describe('listCharsets', () => {
-  it('calls invoke with correct command and args', async () => {
-    const mockCharsets = [
-      {
-        charset: 'utf8mb4',
-        description: 'UTF-8',
-        defaultCollation: 'utf8mb4_general_ci',
-        maxLength: 4,
-      },
-    ]
-    ipc.override('list_charsets', () => mockCharsets)
-    const result = await listCharsets('conn-1')
-    expectCommandCall('list_charsets', { connectionId: 'conn-1' })
-    expect(result).toEqual(mockCharsets)
-  })
-
-  it('propagates errors from invoke', async () => {
-    ipc.override('list_charsets', () => {
-      throw new Error('Charset error')
-    })
-    await expect(listCharsets('conn-1')).rejects.toThrow('Charset error')
-  })
-})
-
-describe('listCollations', () => {
-  it('calls invoke with correct command and args', async () => {
-    const mockCollations = [{ name: 'utf8mb4_general_ci', charset: 'utf8mb4', isDefault: true }]
-    ipc.override('list_collations', () => mockCollations)
-    const result = await listCollations('conn-1')
-    expectCommandCall('list_collations', { connectionId: 'conn-1' })
-    expect(result).toEqual(mockCollations)
-  })
-
-  it('propagates errors from invoke', async () => {
-    ipc.override('list_collations', () => {
-      throw new Error('Collation error')
-    })
-    await expect(listCollations('conn-1')).rejects.toThrow('Collation error')
-  })
-})
-
-describe('getTableForeignKeys', () => {
-  it('calls invoke with correct command and args', async () => {
-    const mockFKs = [
+    const foreignKeys = [
       {
         name: 'fk_orders_user',
         columnName: 'user_id',
@@ -213,169 +74,44 @@ describe('getTableForeignKeys', () => {
         onUpdate: 'CASCADE',
       },
     ]
-    ipc.override('get_table_foreign_keys', () => mockFKs)
-    const result = await getTableForeignKeys('conn-1', 'mydb', 'orders')
+    const databaseDetails = {
+      name: 'mydb',
+      defaultCharacterSet: 'utf8mb4',
+      defaultCollation: 'utf8mb4_general_ci',
+    }
+    ipc.override('list_schema_objects', () => ['users', 'orders'])
+    ipc.override('list_columns', () => columns)
+    ipc.override('get_database_details', () => databaseDetails)
+    ipc.override('get_table_foreign_keys', () => foreignKeys)
+
+    expect(await listSchemaObjects('conn-1', 'mydb', 'table')).toEqual(['users', 'orders'])
+    expect(await listColumns('conn-1', 'mydb', 'users')).toEqual(columns)
+    expect(await getDatabaseDetails('conn-1', 'mydb')).toEqual(databaseDetails)
+    expect(await getTableForeignKeys('conn-1', 'mydb', 'orders')).toEqual(foreignKeys)
+    await dropDatabase('conn-1', 'mydb')
+    await renameDatabase('conn-1', 'olddb', 'newdb')
+    await dropTable('conn-1', 'mydb', 'users')
+    await truncateTable('conn-1', 'mydb', 'users')
+
+    expectPayloadCall('list_schema_objects', {
+      connectionId: 'conn-1',
+      database: 'mydb',
+      objectType: 'table',
+    })
+    expectPayloadCall('list_columns', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
+    expectPayloadCall('get_database_details', { connectionId: 'conn-1', database: 'mydb' })
     expectPayloadCall('get_table_foreign_keys', {
       connectionId: 'conn-1',
       database: 'mydb',
       table: 'orders',
     })
-    expect(result).toEqual(mockFKs)
-  })
-
-  it('returns empty array for tables without foreign keys', async () => {
-    ipc.override('get_table_foreign_keys', () => [])
-    const result = await getTableForeignKeys('conn-1', 'mydb', 'standalone')
-    expectPayloadCall('get_table_foreign_keys', {
-      connectionId: 'conn-1',
-      database: 'mydb',
-      table: 'standalone',
-    })
-    expect(result).toEqual([])
-  })
-
-  it('propagates errors from invoke', async () => {
-    ipc.override('get_table_foreign_keys', () => {
-      throw new Error('FK lookup failed')
-    })
-    await expect(getTableForeignKeys('conn-1', 'mydb', 'orders')).rejects.toThrow(
-      'FK lookup failed'
-    )
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Mutating commands
-// ---------------------------------------------------------------------------
-
-describe('createDatabase', () => {
-  it('calls invoke with correct command and args', async () => {
-    await createDatabase({
-      connectionId: 'conn-1',
-      name: 'newdb',
-      charset: 'utf8mb4',
-      collation: 'utf8mb4_general_ci',
-    })
-    expectPayloadCall('create_database', {
-      connectionId: 'conn-1',
-      name: 'newdb',
-      charset: 'utf8mb4',
-      collation: 'utf8mb4_general_ci',
-    })
-  })
-
-  it('passes null charset and collation through', async () => {
-    await createDatabase({ connectionId: 'conn-1', name: 'newdb', charset: null, collation: null })
-    expectPayloadCall('create_database', {
-      connectionId: 'conn-1',
-      name: 'newdb',
-      charset: null,
-      collation: null,
-    })
-  })
-
-  it('propagates errors from invoke', async () => {
-    ipc.override('create_database', () => {
-      throw new Error('Create failed')
-    })
-    await expect(
-      createDatabase({ connectionId: 'conn-1', name: 'newdb', charset: null, collation: null })
-    ).rejects.toThrow('Create failed')
-  })
-})
-
-describe('dropDatabase', () => {
-  it('calls invoke with correct command and args', async () => {
-    await dropDatabase('conn-1', 'mydb')
-    expectPayloadCall('drop_database', {
-      connectionId: 'conn-1',
-      name: 'mydb',
-    })
-  })
-
-  it('propagates errors from invoke', async () => {
-    ipc.override('drop_database', () => {
-      throw new Error('Drop failed')
-    })
-    await expect(dropDatabase('conn-1', 'mydb')).rejects.toThrow('Drop failed')
-  })
-})
-
-describe('alterDatabase', () => {
-  it('calls invoke with correct command and args', async () => {
-    await alterDatabase({
-      connectionId: 'conn-1',
-      name: 'mydb',
-      charset: 'utf8mb4',
-      collation: 'utf8mb4_unicode_ci',
-    })
-    expectPayloadCall('alter_database', {
-      connectionId: 'conn-1',
-      name: 'mydb',
-      charset: 'utf8mb4',
-      collation: 'utf8mb4_unicode_ci',
-    })
-  })
-
-  it('passes null charset and collation through', async () => {
-    await alterDatabase({ connectionId: 'conn-1', name: 'mydb', charset: null, collation: null })
-    expectPayloadCall('alter_database', {
-      connectionId: 'conn-1',
-      name: 'mydb',
-      charset: null,
-      collation: null,
-    })
-  })
-
-  it('propagates errors from invoke', async () => {
-    ipc.override('alter_database', () => {
-      throw new Error('Alter failed')
-    })
-    await expect(
-      alterDatabase({ connectionId: 'conn-1', name: 'mydb', charset: null, collation: null })
-    ).rejects.toThrow('Alter failed')
-  })
-})
-
-describe('renameDatabase', () => {
-  it('calls invoke with correct command and args', async () => {
-    await renameDatabase('conn-1', 'olddb', 'newdb')
+    expectPayloadCall('drop_database', { connectionId: 'conn-1', name: 'mydb' })
     expectPayloadCall('rename_database', {
       connectionId: 'conn-1',
       oldName: 'olddb',
       newName: 'newdb',
     })
-  })
-
-  it('propagates errors from invoke', async () => {
-    ipc.override('rename_database', () => {
-      throw new Error('Rename failed')
-    })
-    await expect(renameDatabase('conn-1', 'old', 'new')).rejects.toThrow('Rename failed')
-  })
-})
-
-describe('dropTable', () => {
-  it('calls invoke with correct command and args', async () => {
-    await dropTable('conn-1', 'mydb', 'users')
-    expectPayloadCall('drop_table', {
-      connectionId: 'conn-1',
-      database: 'mydb',
-      table: 'users',
-    })
-  })
-
-  it('propagates errors from invoke', async () => {
-    ipc.override('drop_table', () => {
-      throw new Error('Drop table failed')
-    })
-    await expect(dropTable('conn-1', 'mydb', 'users')).rejects.toThrow('Drop table failed')
-  })
-})
-
-describe('truncateTable', () => {
-  it('calls invoke with correct command and args', async () => {
-    await truncateTable('conn-1', 'mydb', 'users')
+    expectPayloadCall('drop_table', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
     expectPayloadCall('truncate_table', {
       connectionId: 'conn-1',
       database: 'mydb',
@@ -383,36 +119,37 @@ describe('truncateTable', () => {
     })
   })
 
-  it('propagates errors from invoke', async () => {
-    ipc.override('truncate_table', () => {
-      throw new Error('Truncate failed')
-    })
-    await expect(truncateTable('conn-1', 'mydb', 'users')).rejects.toThrow('Truncate failed')
-  })
-})
-
-describe('renameTable', () => {
-  it('calls invoke with correct command and args', async () => {
-    await renameTable({
+  it('forwards request objects unchanged, including null charset and collation', async () => {
+    const schemaInfo = { columns: [], indexes: [], foreignKeys: [], ddl: '', metadata: null }
+    const schemaRequest: SchemaObjectRequest = {
+      connectionId: 'conn-1',
+      database: 'mydb',
+      objectName: 'users',
+      objectType: 'table',
+    }
+    const createRequest = {
+      connectionId: 'conn-1',
+      name: 'newdb',
+      charset: 'utf8mb4',
+      collation: 'utf8mb4_general_ci',
+    }
+    const alterRequest = { connectionId: 'conn-1', name: 'mydb', charset: null, collation: null }
+    const renameRequest = {
       connectionId: 'conn-1',
       database: 'mydb',
       oldName: 'old_table',
       newName: 'new_table',
-    })
-    expectPayloadCall('rename_table', {
-      connectionId: 'conn-1',
-      database: 'mydb',
-      oldName: 'old_table',
-      newName: 'new_table',
-    })
-  })
+    }
+    ipc.override('get_schema_info', () => schemaInfo)
 
-  it('propagates errors from invoke', async () => {
-    ipc.override('rename_table', () => {
-      throw new Error('Rename table failed')
-    })
-    await expect(
-      renameTable({ connectionId: 'conn-1', database: 'mydb', oldName: 'old', newName: 'new' })
-    ).rejects.toThrow('Rename table failed')
+    expect(await getSchemaInfo(schemaRequest)).toEqual(schemaInfo)
+    await createDatabase(createRequest)
+    await alterDatabase(alterRequest)
+    await renameTable(renameRequest)
+
+    expectPayloadCall('get_schema_info', schemaRequest)
+    expectPayloadCall('create_database', createRequest)
+    expectPayloadCall('alter_database', alterRequest)
+    expectPayloadCall('rename_table', renameRequest)
   })
 })

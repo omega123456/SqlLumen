@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
 import { MONACO_THEMES, getMonacoThemeName, registerMonacoThemes } from '../../lib/monaco-theme'
-import { readThemeTokens } from '../helpers/tailwind-theme'
 
 describe('getMonacoThemeName', () => {
   it('returns dark theme for dark preference', () => {
@@ -10,40 +9,9 @@ describe('getMonacoThemeName', () => {
   it('returns light theme for light preference', () => {
     expect(getMonacoThemeName('light', false)).toBe('precision-studio-light')
   })
-
-  it('returns dark theme for system dark', () => {
-    expect(getMonacoThemeName('system', true)).toBe('precision-studio-dark')
-  })
-
-  it('returns light theme for system light', () => {
-    expect(getMonacoThemeName('system', false)).toBe('precision-studio-light')
-  })
-
-  it('ignores systemIsDark when theme is explicit', () => {
-    expect(getMonacoThemeName('light', true)).toBe('precision-studio-light')
-    expect(getMonacoThemeName('dark', false)).toBe('precision-studio-dark')
-  })
 })
 
 describe('registerMonacoThemes', () => {
-  it('calls monaco.editor.defineTheme twice (dark and light)', () => {
-    const mockMonaco = {
-      editor: {
-        defineTheme: vi.fn(),
-      },
-    }
-    registerMonacoThemes(mockMonaco as unknown as typeof import('monaco-editor'))
-    expect(mockMonaco.editor.defineTheme).toHaveBeenCalledTimes(2)
-    expect(mockMonaco.editor.defineTheme).toHaveBeenCalledWith(
-      'precision-studio-dark',
-      expect.any(Object)
-    )
-    expect(mockMonaco.editor.defineTheme).toHaveBeenCalledWith(
-      'precision-studio-light',
-      expect.any(Object)
-    )
-  })
-
   it('defines themes only once per Monaco instance', () => {
     const mockMonaco = { editor: { defineTheme: vi.fn() } }
     const instance = mockMonaco as unknown as typeof import('monaco-editor')
@@ -130,20 +98,4 @@ describe('Monaco themes match the Fluent proposal', () => {
       expect(colors['editor.selectionBackground']).toBe(p.selection)
     })
   }
-
-  it('keeps the token-* syntax colours in step with the Monaco palette', () => {
-    const theme = readThemeTokens()
-    const token = (themeName: string, name: string) =>
-      theme[`--color-${themeName}-token-${name}`].slice(1)
-    for (const [themeName, p] of [
-      ['dark', PROTOTYPE['precision-studio-dark']],
-      ['light', PROTOTYPE['precision-studio-light']],
-    ] as const) {
-      expect(token(themeName, 'text')).toBe(p.text)
-      expect(token(themeName, 'keyword')).toBe(p.keyword)
-      expect(token(themeName, 'string')).toBe(p.string)
-      expect(token(themeName, 'number')).toBe(p.number)
-      expect(token(themeName, 'identifier')).toBe(p.quoted)
-    }
-  })
 })

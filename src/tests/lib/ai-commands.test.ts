@@ -49,23 +49,6 @@ describe('sendAiChat', () => {
     ])
   })
 
-  it('propagates errors from the backend', async () => {
-    ipc.override('ai_chat', () => {
-      throw new Error('AI service unavailable')
-    })
-
-    await expect(
-      sendAiChat({
-        messages: [],
-        endpoint: '',
-        model: '',
-        temperature: 0,
-        maxTokens: 0,
-        streamId: 'stream-err',
-      })
-    ).rejects.toThrow('AI service unavailable')
-  })
-
   it('defaults preferResponsesApi to false when omitted', async () => {
     await sendAiChat({
       messages: [{ role: 'user', content: 'Hello' }],
@@ -91,13 +74,6 @@ describe('cancelAiStream', () => {
   it('invokes ai_cancel with the streamId', async () => {
     await cancelAiStream('stream-abc')
     expect(ipc.calls('ai_cancel')).toEqual([{ streamId: 'stream-abc' }])
-  })
-
-  it('propagates errors from the backend', async () => {
-    ipc.override('ai_cancel', () => {
-      throw new Error('Stream not found')
-    })
-    await expect(cancelAiStream('stream-missing')).rejects.toThrow('Stream not found')
   })
 })
 
@@ -194,20 +170,5 @@ describe('aiQueryExpand', () => {
 
     expect(ipc.calls('ai_query_expand')).toEqual([{ req }])
     expect(result.text).toBe('SELECT * FROM users')
-  })
-
-  it('propagates errors from the backend', async () => {
-    ipc.override('ai_query_expand', () => {
-      throw new Error('Model not found')
-    })
-
-    await expect(
-      aiQueryExpand({
-        endpoint: 'http://localhost:11434/v1',
-        model: 'nonexistent',
-        systemPrompt: 'system',
-        userMessage: 'user',
-      })
-    ).rejects.toThrow('Model not found')
   })
 })

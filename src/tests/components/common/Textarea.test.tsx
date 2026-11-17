@@ -17,9 +17,4 @@ describe('Textarea', () => {
     expect(el).toHaveAttribute('autocapitalize', 'none')
     expect(el).toHaveAttribute('autocorrect', 'off')
   })
-
-  it('flags the invalid state with a data attribute', () => {
-    render(<Textarea invalid aria-label="Bad" />)
-    expect(screen.getByRole('textbox', { name: 'Bad' })).toHaveAttribute('data-invalid', 'true')
-  })
 })

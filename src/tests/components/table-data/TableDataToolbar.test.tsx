@@ -61,28 +61,16 @@ beforeEach(() => {
 })
 
 describe('TableDataToolbar', () => {
-  it('renders with data-testid="table-data-toolbar"', () => {
+  it('renders the writable toolbar with its controls in the shared data-view order', async () => {
+    const user = userEvent.setup()
     setupConnection()
-    setupTabState()
+    setupTabState({ selectedRowKey: { id: 1 } })
     render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByTestId('table-data-toolbar')).toBeInTheDocument()
-  })
 
-  it('leaves the success status and timing to the status bar', () => {
-    setupConnection()
-    setupTabState({ executionTimeMs: 15 })
-    render(<TableDataToolbar tabId="tab-1" />)
     const toolbar = screen.getByTestId('table-data-toolbar')
     expect(toolbar).not.toHaveTextContent('Success')
     expect(toolbar).not.toHaveTextContent('15 ms')
     expect(screen.queryByTestId('status-area')).not.toBeInTheDocument()
-  })
-
-  it('places its controls in the shared data-view order', () => {
-    setupConnection()
-    setupTabState({ selectedRowKey: { id: 1 } })
-    render(<TableDataToolbar tabId="tab-1" />)
-    const toolbar = screen.getByTestId('table-data-toolbar')
     const orderedTestIds = [
       'view-mode-grid',
       'btn-add-row',
@@ -99,56 +87,64 @@ describe('TableDataToolbar', () => {
     )
     expect(positions.every((position) => position >= 0)).toBe(true)
     expect([...positions].sort((left, right) => left - right)).toEqual(positions)
+
+    const rowActionNames = ['Add row', 'Clone row', 'Delete row']
+    const buttonNames = screen
+      .getAllByRole('button')
+      .map((button) => button.getAttribute('aria-label') ?? '')
+      .filter((name) => rowActionNames.includes(name))
+    expect(buttonNames).toEqual(['Add row', 'Clone row', 'Delete row'])
+    expect(screen.getByTestId('btn-clone-row')).toHaveAttribute(
+      'title',
+      'Clone selected row; primary key fields are left blank.'
+    )
+
+    expect(screen.getByTestId('view-mode-grid')).toHaveAttribute('data-active')
+    expect(screen.getByTestId('btn-add-row')).not.toBeDisabled()
+    expect(screen.getByTestId('btn-delete-row')).not.toBeDisabled()
+    expect(screen.getByTestId('btn-export')).not.toBeDisabled()
+    expect(screen.getByTestId('pagination-prev')).toBeDisabled()
+    expect(screen.getByTestId('pagination-next')).not.toBeDisabled()
+    expect(screen.queryByTestId('readonly-badge')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('filter-badge')).not.toBeInTheDocument()
+
+    await user.click(screen.getByTestId('page-size-select'))
+    const labels = screen.getAllByRole('option').map((option) => option.getAttribute('aria-label'))
+    expect(labels).toEqual(['100', '500', '1000', '5000'])
   })
 
-  it('Add Row button is disabled when no PK', () => {
+  it('disables Add Row and shows the no-PK badge when the table has no primary key', () => {
     setupConnection()
     setupTabState({ primaryKey: null })
     render(<TableDataToolbar tabId="tab-1" />)
     expect(screen.getByTestId('btn-add-row')).toBeDisabled()
+    expect(screen.getByTestId('nopk-badge')).toBeInTheDocument()
   })
 
-  it('Add Row button is disabled when read-only', () => {
-    setupConnection(true) // readOnly=true
-    setupTabState()
+  it('disables Add Row, shows the read-only badge and disables copying when read-only with no checked rows', () => {
+    setupConnection(true)
+    setupTabState({ checkedRowKeys: [] })
     render(<TableDataToolbar tabId="tab-1" />)
     expect(screen.getByTestId('btn-add-row')).toBeDisabled()
+    expect(screen.getByTestId('readonly-badge')).toBeInTheDocument()
+    const copyButton = screen.getByTestId('btn-copy-selected-rows')
+    expect(copyButton).toBeDisabled()
+    expect(copyButton).toHaveAttribute('title', 'Copy selected rows to clipboard')
+    expect(copyButton).toHaveAccessibleName('Copy selected rows to clipboard')
   })
 
-  it('Add Row button is enabled when writable with PK', () => {
-    setupConnection(false)
-    setupTabState()
-    render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByTestId('btn-add-row')).not.toBeDisabled()
-  })
-
-  it('Save button is disabled when no editState', () => {
+  it('disables Save, Discard, Clone and Delete without an edit state or selected row', () => {
     setupConnection()
-    setupTabState({ editState: null })
+    setupTabState({ editState: null, selectedRowKey: null })
     render(<TableDataToolbar tabId="tab-1" />)
     expect(screen.getByTestId('btn-save')).toBeDisabled()
-  })
-
-  it('Discard button is disabled when no editState', () => {
-    setupConnection()
-    setupTabState({ editState: null })
-    render(<TableDataToolbar tabId="tab-1" />)
     expect(screen.getByTestId('btn-discard')).toBeDisabled()
-  })
+    expect(screen.getByTestId('btn-clone-row')).toBeDisabled()
+    expect(screen.getByTestId('btn-delete-row')).toBeDisabled()
 
-  it('Save button is disabled when editState has no modifications', () => {
-    setupConnection()
-    setupTabState({
-      editState: {
-        rowKey: { id: 1 },
-        originalValues: { id: 1, name: 'Alice' },
-        currentValues: { id: 1, name: 'Alice' },
-        modifiedColumns: new Set<string>(),
-        isNewRow: false,
-      },
-    })
-    render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByTestId('btn-save')).toBeDisabled()
+    fireEvent.click(screen.getByTestId('btn-delete-row'))
+
+    expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument()
   })
 
   it('Save button stays enabled for new rows seeded only by defaults', () => {
@@ -167,57 +163,14 @@ describe('TableDataToolbar', () => {
     expect(screen.getByTestId('btn-save')).not.toBeDisabled()
   })
 
-  it('Pagination prev disabled on page 1', () => {
-    setupConnection()
-    setupTabState({ currentPage: 1 })
-    render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByTestId('pagination-prev')).toBeDisabled()
-  })
-
-  it('Pagination next remains enabled on last known page', () => {
+  it('enables both pagination buttons and shows the editable page input on a middle page', () => {
     setupConnection()
     setupTabState({ currentPage: 3 })
     render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByTestId('pagination-next')).not.toBeDisabled()
-  })
-
-  it('Pagination prev enabled when not on first page', () => {
-    setupConnection()
-    setupTabState({ currentPage: 2 })
-    render(<TableDataToolbar tabId="tab-1" />)
     expect(screen.getByTestId('pagination-prev')).not.toBeDisabled()
-  })
-
-  it('Pagination next enabled when not on last page', () => {
-    setupConnection()
-    setupTabState({ currentPage: 1 })
-    render(<TableDataToolbar tabId="tab-1" />)
     expect(screen.getByTestId('pagination-next')).not.toBeDisabled()
-  })
-
-  it('shows editable page input instead of total-page indicator', () => {
-    setupConnection()
-    setupTabState({ currentPage: 2 })
-    render(<TableDataToolbar tabId="tab-1" />)
     expect(screen.queryByTestId('page-indicator')).not.toBeInTheDocument()
-    expect(screen.getByTestId('pagination-page-input')).toHaveValue('2')
-  })
-
-  it('shows read-only badge when connection is read-only', () => {
-    setupConnection(true)
-    setupTabState()
-    render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByTestId('readonly-badge')).toBeInTheDocument()
-  })
-
-  it('disables copying when no rows are checked', () => {
-    setupConnection(true)
-    setupTabState({ checkedRowKeys: [] })
-    render(<TableDataToolbar tabId="tab-1" />)
-    const copyButton = screen.getByTestId('btn-copy-selected-rows')
-    expect(copyButton).toBeDisabled()
-    expect(copyButton).toHaveAttribute('title', 'Copy selected rows to clipboard')
-    expect(copyButton).toHaveAccessibleName('Copy selected rows to clipboard')
+    expect(screen.getByTestId('pagination-page-input')).toHaveValue('3')
   })
 
   it('copies checked rows from a read-only keyless table in display order', async () => {
@@ -302,23 +255,6 @@ describe('TableDataToolbar', () => {
     writeText.mockRestore()
   })
 
-  it('does not show read-only badge when connection is writable', () => {
-    setupConnection(false)
-    setupTabState()
-    render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.queryByTestId('readonly-badge')).not.toBeInTheDocument()
-  })
-
-  it('page size selector has correct options', async () => {
-    const user = userEvent.setup()
-    setupConnection()
-    setupTabState()
-    render(<TableDataToolbar tabId="tab-1" />)
-    await user.click(screen.getByTestId('page-size-select'))
-    const labels = screen.getAllByRole('option').map((o) => o.getAttribute('aria-label'))
-    expect(labels).toEqual(['100', '500', '1000', '5000'])
-  })
-
   it('page size change updates store', async () => {
     const user = userEvent.setup()
     setupConnection()
@@ -332,21 +268,6 @@ describe('TableDataToolbar', () => {
     })
   })
 
-  it('view mode buttons exist', () => {
-    setupConnection()
-    setupTabState()
-    render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByTestId('view-mode-grid')).toBeInTheDocument()
-    expect(screen.getByTestId('view-mode-form')).toBeInTheDocument()
-  })
-
-  it('export button exists', () => {
-    setupConnection()
-    setupTabState()
-    render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByTestId('btn-export')).toBeInTheDocument()
-  })
-
   it('export button opens export dialog', async () => {
     const user = userEvent.setup()
     setupConnection()
@@ -355,13 +276,6 @@ describe('TableDataToolbar', () => {
     await user.click(screen.getByTestId('btn-export'))
     const tab = useTableDataStore.getState().tabs['tab-1']
     expect(tab?.isExportDialogOpen).toBe(true)
-  })
-
-  it('shows no-PK badge when no primary key', () => {
-    setupConnection()
-    setupTabState({ primaryKey: null })
-    render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByTestId('nopk-badge')).toBeInTheDocument()
   })
 
   it('clicking Add Row calls insertNewRow', async () => {
@@ -374,32 +288,6 @@ describe('TableDataToolbar', () => {
     const state = useTableDataStore.getState().tabs['tab-1']
     // A new row editState should be created
     expect(state?.editState?.isNewRow).toBe(true)
-  })
-
-  it('shows Clone between Add and Delete', () => {
-    setupConnection()
-    setupTabState({ selectedRowKey: { id: 1 } })
-    render(<TableDataToolbar tabId="tab-1" />)
-
-    const rowActionNames = ['Add row', 'Clone row', 'Delete row']
-    const buttonNames = screen
-      .getAllByRole('button')
-      .map((button) => button.getAttribute('aria-label') ?? '')
-      .filter((name) => rowActionNames.includes(name))
-
-    expect(buttonNames).toEqual(['Add row', 'Clone row', 'Delete row'])
-    expect(screen.getByTestId('btn-clone-row')).toHaveAttribute(
-      'title',
-      'Clone selected row; primary key fields are left blank.'
-    )
-  })
-
-  it('Clone button is disabled when no persisted row is selected', () => {
-    setupConnection()
-    setupTabState({ selectedRowKey: null })
-    render(<TableDataToolbar tabId="tab-1" />)
-
-    expect(screen.getByTestId('btn-clone-row')).toBeDisabled()
   })
 
   it('Clone button is disabled when read-only, loading, or editing a draft row', () => {
@@ -469,23 +357,7 @@ describe('TableDataToolbar', () => {
     })
   })
 
-  it('Add Row button is disabled when already editing a new row', () => {
-    setupConnection()
-    setupTabState({
-      editState: {
-        rowKey: { __tempId: 'temp-1' },
-        originalValues: {},
-        currentValues: {},
-        modifiedColumns: new Set(),
-        isNewRow: true,
-        tempId: 'temp-1',
-      },
-    })
-    render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByTestId('btn-add-row')).toBeDisabled()
-  })
-
-  it('clicking Delete Row shows confirmation dialog', async () => {
+  it('clicking Delete Row shows the confirmation dialog and confirming deletes the row', async () => {
     const user = userEvent.setup()
     setupConnection()
     setupTabState({
@@ -501,35 +373,16 @@ describe('TableDataToolbar', () => {
     render(<TableDataToolbar tabId="tab-1" />)
     const deleteBtn = screen.getByTestId('btn-delete-row')
     expect(deleteBtn).not.toBeDisabled()
+
     await user.click(deleteBtn)
-    // Confirmation dialog should appear
+
     expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Delete row' })).toBeInTheDocument()
     expect(screen.getByText('Delete this row from users?')).toBeInTheDocument()
     expect(screen.getByTestId('confirm-confirm-button')).toHaveTextContent('Delete row')
-  })
 
-  it('confirming delete dialog calls deleteRow', async () => {
-    const user = userEvent.setup()
-    setupConnection()
-    setupTabState({
-      selectedRowKey: { id: 1 },
-      editState: {
-        rowKey: { id: 1 },
-        originalValues: { id: 1 },
-        currentValues: { id: 1 },
-        modifiedColumns: new Set(),
-        isNewRow: false,
-      },
-    })
-    render(<TableDataToolbar tabId="tab-1" />)
-    await user.click(screen.getByTestId('btn-delete-row'))
-    expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
-
-    // Click confirm
     await user.click(screen.getByTestId('confirm-confirm-button'))
 
-    // Dialog should close
     expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument()
     await waitFor(() => {
       expect(ipc.payloads('delete_table_row').length).toBeGreaterThan(0)
@@ -560,7 +413,7 @@ describe('TableDataToolbar', () => {
     expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument()
   })
 
-  it('Delete button disabled when selected row is a new row', () => {
+  it('disables Add Row and Delete while a new row is being edited', () => {
     setupConnection()
     setupTabState({
       selectedRowKey: { __tempId: 'temp-1' },
@@ -574,24 +427,12 @@ describe('TableDataToolbar', () => {
       },
     })
     render(<TableDataToolbar tabId="tab-1" />)
+    expect(screen.getByTestId('btn-add-row')).toBeDisabled()
     expect(screen.getByTestId('btn-delete-row')).toBeDisabled()
   })
 
-  it('Delete button disabled when no row is selected', () => {
-    setupConnection()
-    setupTabState({ editState: null, selectedRowKey: null })
-    render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByTestId('btn-delete-row')).toBeDisabled()
-  })
-
-  it('Delete button enabled when row selected without editState', () => {
-    setupConnection()
-    setupTabState({ editState: null, selectedRowKey: { id: 2 } })
-    render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByTestId('btn-delete-row')).not.toBeDisabled()
-  })
-
-  it('Delete button is enabled and shows the checked count for bulk selection', () => {
+  it('bulk delete shows the checked count, confirms the row count and deletes all checked rows', async () => {
+    const user = userEvent.setup()
     setupConnection()
     setupTabState({
       editState: null,
@@ -603,19 +444,8 @@ describe('TableDataToolbar', () => {
     expect(deleteBtn).not.toBeDisabled()
     expect(deleteBtn).toHaveAccessibleName('Delete 2 rows')
     expect(screen.getByTestId('delete-count-badge')).toHaveTextContent('2')
-  })
 
-  it('bulk delete confirmation shows the row count and deletes all checked rows', async () => {
-    const user = userEvent.setup()
-    setupConnection()
-    setupTabState({
-      editState: null,
-      selectedRowKey: null,
-      checkedRowKeys: [{ id: 1 }, { id: 2 }],
-    })
-    render(<TableDataToolbar tabId="tab-1" />)
-
-    await user.click(screen.getByTestId('btn-delete-row'))
+    await user.click(deleteBtn)
     expect(screen.getByText('Delete rows')).toBeInTheDocument()
     expect(screen.getByText('Delete 2 rows from users?')).toBeInTheDocument()
 
@@ -624,7 +454,6 @@ describe('TableDataToolbar', () => {
     await waitFor(() => {
       expect(ipc.payloads('delete_table_row').length).toBe(2)
     })
-    // Checked selection is cleared after the bulk delete.
     expect(useTableDataStore.getState().tabs['tab-1'].checkedRowKeys).toEqual([])
   })
 
@@ -742,20 +571,19 @@ describe('TableDataToolbar', () => {
     })
   })
 
-  it('clicking Grid View toggles view mode', () => {
+  it('clicking Grid View and Form View switches the view mode', async () => {
+    const user = userEvent.setup()
     setupConnection()
     setupTabState({ viewMode: 'form' })
     render(<TableDataToolbar tabId="tab-1" />)
-    fireEvent.click(screen.getByTestId('view-mode-grid'))
-    // No crash — view mode toggled via requestNavigationAction
-  })
+    expect(screen.getByTestId('view-mode-form')).toHaveAttribute('data-active')
 
-  it('clicking Form View toggles view mode', () => {
-    setupConnection()
-    setupTabState({ viewMode: 'grid' })
-    render(<TableDataToolbar tabId="tab-1" />)
-    fireEvent.click(screen.getByTestId('view-mode-form'))
-    // No crash
+    await user.click(screen.getByTestId('view-mode-grid'))
+    expect(useTableDataStore.getState().tabs['tab-1'].viewMode).toBe('grid')
+    expect(screen.getByTestId('view-mode-grid')).toHaveAttribute('data-active')
+
+    await user.click(screen.getByTestId('view-mode-form'))
+    expect(useTableDataStore.getState().tabs['tab-1'].viewMode).toBe('form')
   })
 
   it('clicking Next Page fetches next page', async () => {
@@ -805,46 +633,15 @@ describe('TableDataToolbar', () => {
     })
   })
 
-  it('swaps Refresh for Cancel while loading', () => {
-    setupConnection()
-    setupTabState({ isLoading: true })
-    render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByTestId('btn-cancel-load')).toBeInTheDocument()
-    expect(screen.queryByTestId('btn-refresh')).not.toBeInTheDocument()
-  })
-
-  it('export button stays enabled when table data is loaded without total rows', () => {
-    setupConnection()
-    setupTabState()
-    render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByTestId('btn-export')).not.toBeDisabled()
-  })
-
-  it('export button is disabled when table data has not loaded', () => {
+  it('disables Export and Filter when the table data has not loaded', () => {
     setupConnection()
     setupTabState({ columns: [] })
     render(<TableDataToolbar tabId="tab-1" />)
     expect(screen.getByTestId('btn-export')).toBeDisabled()
+    expect(screen.getByTestId('btn-filter')).toBeDisabled()
   })
 
-  it('export button is disabled when loading', () => {
-    setupConnection()
-    setupTabState({ isLoading: true })
-    render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByTestId('btn-export')).toBeDisabled()
-  })
-
-  it('buttons are disabled while loading', () => {
-    setupConnection()
-    setupTabState({ isLoading: true })
-    render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByTestId('btn-add-row')).toBeDisabled()
-    // While loading, the refresh button is replaced by the cancel button.
-    expect(screen.queryByTestId('btn-refresh')).not.toBeInTheDocument()
-    expect(screen.getByTestId('btn-cancel-load')).toBeInTheDocument()
-  })
-
-  it('cancel button replaces refresh while loading and invokes cancelLoad', async () => {
+  it('cancel button replaces refresh while loading, disables the other actions and invokes cancelLoad', async () => {
     const user = userEvent.setup()
     const cancelLoad = vi.fn()
     setupConnection()
@@ -855,6 +652,9 @@ describe('TableDataToolbar', () => {
     }))
     render(<TableDataToolbar tabId="tab-1" />)
 
+    expect(screen.queryByTestId('btn-refresh')).not.toBeInTheDocument()
+    expect(screen.getByTestId('btn-add-row')).toBeDisabled()
+    expect(screen.getByTestId('btn-export')).toBeDisabled()
     const cancelButton = screen.getByTestId('btn-cancel-load')
     expect(cancelButton).toBeEnabled()
     await user.click(cancelButton)
@@ -884,6 +684,7 @@ describe('TableDataToolbar', () => {
     })
     render(<TableDataToolbar tabId="tab-1" />)
     expect(screen.getByTestId('btn-discard')).toBeDisabled()
+    expect(screen.getByTestId('btn-save')).toBeDisabled()
   })
 
   it('Discard button is enabled when editState has modifications', () => {
@@ -916,30 +717,12 @@ describe('TableDataToolbar', () => {
     expect(screen.getByTestId('btn-discard')).not.toBeDisabled()
   })
 
-  it('grid view button is marked active when viewMode is grid', () => {
-    setupConnection()
-    setupTabState({ viewMode: 'grid' })
-    render(<TableDataToolbar tabId="tab-1" />)
-    const gridBtn = screen.getByTestId('view-mode-grid')
-    expect(gridBtn).toHaveAttribute('data-active')
-  })
-
   it('form view button is marked active when viewMode is form', () => {
     setupConnection()
     setupTabState({ viewMode: 'form' })
     render(<TableDataToolbar tabId="tab-1" />)
     const formBtn = screen.getByTestId('view-mode-form')
     expect(formBtn).toHaveAttribute('data-active')
-  })
-
-  it('handleDeleteRow no-ops when no selectedRowKey and no editState', () => {
-    setupConnection()
-    setupTabState({ editState: null, selectedRowKey: null })
-    render(<TableDataToolbar tabId="tab-1" />)
-    // Delete button is already disabled, but verify clicking doesn't crash
-    const deleteBtn = screen.getByTestId('btn-delete-row')
-    fireEvent.click(deleteBtn) // no-op since disabled
-    // Should not crash
   })
 })
 
@@ -1145,28 +928,6 @@ describe('TableDataToolbar — Save validation', () => {
 // ---------------------------------------------------------------------------
 
 describe('TableDataToolbar — Filter button', () => {
-  it('filter button renders', () => {
-    setupConnection()
-    setupTabState()
-    render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByTestId('btn-filter')).toBeInTheDocument()
-  })
-
-  it('badge is hidden when no conditions', () => {
-    setupConnection()
-    setupTabState()
-    render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.queryByTestId('filter-badge')).not.toBeInTheDocument()
-  })
-
-  it('clicking filter button opens FilterDialog', () => {
-    setupConnection()
-    setupTabState()
-    render(<TableDataToolbar tabId="tab-1" />)
-    fireEvent.click(screen.getByTestId('btn-filter'))
-    expect(screen.getByTestId('filter-dialog')).toBeInTheDocument()
-  })
-
   it('applying conditions sets the badge count', async () => {
     setupConnection()
     setupTabState()
@@ -1192,56 +953,6 @@ describe('TableDataToolbar — Filter button', () => {
     expect(badge.textContent).toBe('1')
   })
 
-  it('badge shows count when conditions exist', async () => {
-    setupConnection()
-    setupTabState()
-    render(<TableDataToolbar tabId="tab-1" />)
-
-    // Open and add 2 conditions
-    fireEvent.click(screen.getByTestId('btn-filter'))
-    fireEvent.click(screen.getByTestId('filter-add-button'))
-    fireEvent.click(screen.getByTestId('filter-add-button'))
-    fireEvent.click(screen.getByTestId('filter-apply-button'))
-
-    await waitFor(() => {
-      expect(screen.queryByTestId('filter-dialog')).not.toBeInTheDocument()
-    })
-
-    const badge = screen.getByTestId('filter-badge')
-    expect(badge.textContent).toBe('2')
-  })
-
-  it('icon weight is regular when no conditions and fill when conditions exist', async () => {
-    setupConnection()
-    setupTabState()
-    render(<TableDataToolbar tabId="tab-1" />)
-
-    // Initially regular weight — the Funnel icon should not have "fill" weight
-    const filterBtn = screen.getByTestId('btn-filter')
-    // Check that the SVG exists (Phosphor renders an SVG)
-    const svg = filterBtn.querySelector('svg')
-    expect(svg).toBeTruthy()
-
-    // Apply one condition
-    fireEvent.click(filterBtn)
-    fireEvent.click(screen.getByTestId('filter-add-button'))
-    fireEvent.click(screen.getByTestId('filter-apply-button'))
-
-    await waitFor(() => {
-      expect(screen.queryByTestId('filter-dialog')).not.toBeInTheDocument()
-    })
-
-    // Badge should exist, indicating active filters
-    expect(screen.getByTestId('filter-badge')).toBeInTheDocument()
-  })
-
-  it('filter button is disabled when columns are empty', () => {
-    setupConnection()
-    setupTabState({ columns: [] })
-    render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByTestId('btn-filter')).toBeDisabled()
-  })
-
   it('cancelling FilterDialog does not change badge state', () => {
     setupConnection()
     setupTabState()
@@ -1262,36 +973,16 @@ describe('TableDataToolbar — Filter button', () => {
 // ---------------------------------------------------------------------------
 
 describe('TableDataToolbar — isView mode', () => {
-  it('shows VIEW badge when isView=true', () => {
+  it('shows the VIEW badge and hides the mutation buttons and the NO KEY badge for a view', () => {
     setupConnection()
-    setupTabState()
+    setupTabState({ primaryKey: null })
     render(<TableDataToolbar tabId="tab-1" isView={true} />)
     expect(screen.getByTestId('view-badge')).toBeInTheDocument()
-  })
-
-  it('hides mutation buttons when isView=true', () => {
-    setupConnection()
-    setupTabState()
-    render(<TableDataToolbar tabId="tab-1" isView={true} />)
+    expect(screen.queryByTestId('nopk-badge')).not.toBeInTheDocument()
     expect(screen.queryByTestId('btn-add-row')).not.toBeInTheDocument()
     expect(screen.queryByTestId('btn-delete-row')).not.toBeInTheDocument()
     expect(screen.queryByTestId('btn-save')).not.toBeInTheDocument()
     expect(screen.queryByTestId('btn-discard')).not.toBeInTheDocument()
-  })
-
-  it('hides NO KEY badge when isView=true even if no PK', () => {
-    setupConnection()
-    setupTabState({ primaryKey: null })
-    render(<TableDataToolbar tabId="tab-1" isView={true} />)
-    expect(screen.queryByTestId('nopk-badge')).not.toBeInTheDocument()
-    expect(screen.getByTestId('view-badge')).toBeInTheDocument()
-  })
-
-  it('shows mutation buttons when isView=false/undefined', () => {
-    setupConnection()
-    setupTabState()
-    render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByTestId('btn-add-row')).toBeInTheDocument()
   })
 })
 
@@ -1415,21 +1106,6 @@ describe('filter button and dialog', () => {
       await waitFor(() => {
         expect(screen.getByTestId('filter-value-input')).toHaveFocus()
       })
-    })
-
-    it('filter dialog auto-populates with IS NULL when cell value is null', () => {
-      setupConnection()
-      setupTabState({
-        selectedCell: { columnKey: 'name', value: null },
-      })
-      render(<TableDataToolbar tabId="tab-1" />)
-
-      fireEvent.click(screen.getByTestId('btn-filter'))
-      expect(screen.getByTestId('filter-dialog')).toBeInTheDocument()
-
-      // Should have a filter row
-      expect(screen.queryByTestId('filter-empty-state')).not.toBeInTheDocument()
-      expect(screen.getByTestId('filter-row')).toBeInTheDocument()
     })
 
     it('filter dialog uses existing filterModel when filters are active (ignores selectedCell)', () => {

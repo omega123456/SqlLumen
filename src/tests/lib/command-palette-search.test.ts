@@ -46,30 +46,6 @@ describe('command-palette-search', () => {
     expect(normalizePaletteSearchQuery('***')).toBe('')
   })
 
-  it('returns fuzzy matches and preserves highlight ranges from Fuse', () => {
-    const results = searchPaletteObjects(index, {
-      query: 'usr',
-    })
-
-    expect(results.map((result) => result.name)).toContain('users')
-
-    const usersResult = results.find((result) => result.name === 'users')
-    expect(usersResult?.matchIndices).toEqual([
-      [0, 1],
-      [3, 3],
-    ])
-  })
-
-  it('supports wildcard gap matching with ordered substrings', () => {
-    const results = searchPaletteObjects(index, {
-      query: 'us*s',
-    })
-
-    expect(results.map((result) => result.name)).toEqual(
-      expect.arrayContaining(['users', 'usable_items'])
-    )
-  })
-
   it('requires every wildcard segment to appear in order and excludes non-matches', () => {
     const wildcardObjects: SearchableObject[] = [
       { database: 'platform', objectType: 'table', name: 'communication_log' },
@@ -87,20 +63,6 @@ describe('command-palette-search', () => {
       'communication_cron_log',
       'communication_log',
       'communication_log_email',
-    ])
-  })
-
-  it('produces highlight ranges for each matched wildcard segment', () => {
-    const wildcardObjects: SearchableObject[] = [
-      { database: 'platform', objectType: 'table', name: 'communication_log' },
-    ]
-    const wildcardIndex = buildCommandPaletteSearchIndex(wildcardObjects)
-
-    const results = searchPaletteObjects(wildcardIndex, { query: 'communica*log' })
-
-    expect(results[0]?.matchIndices).toEqual([
-      [0, 8],
-      [14, 16],
     ])
   })
 

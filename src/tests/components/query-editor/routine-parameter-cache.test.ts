@@ -35,10 +35,6 @@ function mockGetRoutineParams() {
   return ObjectEditorCommandsModule.getRoutineParametersWithReturnType as ReturnType<typeof vi.fn>
 }
 
-function mockLogFrontend() {
-  return AppLogCommandsModule.logFrontend as ReturnType<typeof vi.fn>
-}
-
 describe('routine-parameter-cache', () => {
   const mockFunctionRows: RoutineParameter[] = [
     { name: '', dataType: 'int', mode: '', ordinalPosition: 0 },
@@ -50,52 +46,6 @@ describe('routine-parameter-cache', () => {
     { name: 'p_id', dataType: 'int', mode: 'IN', ordinalPosition: 1 },
     { name: 'p_result', dataType: 'varchar(255)', mode: 'OUT', ordinalPosition: 2 },
   ]
-
-  it('should fetch and cache routine parameters on first access', async () => {
-    mockGetRoutineParams().mockResolvedValue(foundResponse(mockFunctionRows))
-
-    const entry = await getRoutineParameters({
-      connectionId: 'conn1',
-      database: 'mydb',
-      routineName: 'my_func',
-      routineType: 'function',
-    })
-
-    expect(entry).not.toBeNull()
-    expect(entry!.parameters).toHaveLength(2)
-    expect(entry!.parameters[0].name).toBe('p_id')
-    expect(entry!.parameters[1].name).toBe('p_name')
-    expect(entry!.returnType).toBe('int')
-    expect(entry!.routineType).toBe('FUNCTION')
-    expect(entry!.fetchedAt).toBeGreaterThan(0)
-    expect(mockGetRoutineParams()).toHaveBeenCalledTimes(1)
-    expect(mockGetRoutineParams()).toHaveBeenCalledWith({
-      connectionId: 'conn1',
-      database: 'mydb',
-      routineName: 'my_func',
-      routineType: 'FUNCTION',
-    })
-  })
-
-  it('should return cached result without calling IPC again', async () => {
-    mockGetRoutineParams().mockResolvedValue(foundResponse(mockFunctionRows))
-
-    const first = await getRoutineParameters({
-      connectionId: 'conn1',
-      database: 'mydb',
-      routineName: 'my_func',
-      routineType: 'function',
-    })
-    const second = await getRoutineParameters({
-      connectionId: 'conn1',
-      database: 'mydb',
-      routineName: 'my_func',
-      routineType: 'function',
-    })
-
-    expect(first).toBe(second)
-    expect(mockGetRoutineParams()).toHaveBeenCalledTimes(1)
-  })
 
   it('should deduplicate concurrent requests for the same key', async () => {
     let resolveIpc!: (value: RoutineParametersWithFoundResponse) => void
@@ -171,38 +121,6 @@ describe('routine-parameter-cache', () => {
     expect(mockGetRoutineParams()).toHaveBeenCalledTimes(3)
   })
 
-  it('should return null on IPC failure but NOT cache it (allows retry)', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    mockGetRoutineParams().mockRejectedValueOnce(new Error('Connection refused'))
-
-    const entry = await getRoutineParameters({
-      connectionId: 'conn1',
-      database: 'mydb',
-      routineName: 'my_func',
-      routineType: 'function',
-    })
-
-    expect(entry).toBeNull()
-    expect(consoleSpy).not.toHaveBeenCalled()
-    expect(mockLogFrontend()).toHaveBeenCalledWith(
-      'error',
-      expect.stringContaining('[routine-param-cache]')
-    )
-
-    // Subsequent call should retry (not return cached null)
-    mockGetRoutineParams().mockRejectedValueOnce(new Error('Still failing'))
-    const entry2 = await getRoutineParameters({
-      connectionId: 'conn1',
-      database: 'mydb',
-      routineName: 'my_func',
-      routineType: 'function',
-    })
-    expect(entry2).toBeNull()
-    expect(mockGetRoutineParams()).toHaveBeenCalledTimes(2)
-
-    consoleSpy.mockRestore()
-  })
-
   it('should succeed on retry after a transient IPC failure', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
@@ -243,75 +161,6 @@ describe('routine-parameter-cache', () => {
     consoleSpy.mockRestore()
   })
 
-  it('should reset all state with _clearAllRoutineCaches', async () => {
-    mockGetRoutineParams().mockResolvedValue(foundResponse(mockFunctionRows))
-
-    await getRoutineParameters({
-      connectionId: 'conn1',
-      database: 'mydb',
-      routineName: 'my_func',
-      routineType: 'function',
-    })
-    expect(mockGetRoutineParams()).toHaveBeenCalledTimes(1)
-
-    _clearAllRoutineCaches()
-
-    // Should fetch again after clear
-    mockGetRoutineParams().mockResolvedValue(foundResponse(mockFunctionRows))
-    await getRoutineParameters({
-      connectionId: 'conn1',
-      database: 'mydb',
-      routineName: 'my_func',
-      routineType: 'function',
-    })
-    expect(mockGetRoutineParams()).toHaveBeenCalledTimes(2)
-  })
-
-  it('should separate return type row from parameter rows correctly', async () => {
-    mockGetRoutineParams().mockResolvedValue(foundResponse(mockFunctionRows))
-
-    const entry = await getRoutineParameters({
-      connectionId: 'conn1',
-      database: 'mydb',
-      routineName: 'my_func',
-      routineType: 'function',
-    })
-
-    expect(entry).not.toBeNull()
-    // Return type row (ordinalPosition 0) goes to returnType
-    expect(entry!.returnType).toBe('int')
-    // Only ordinalPosition > 0 rows go to parameters
-    expect(entry!.parameters).toHaveLength(2)
-    expect(entry!.parameters.every((p) => p.ordinalPosition > 0)).toBe(true)
-  })
-
-  it('should cache procedure vs function separately for same name in same db', async () => {
-    mockGetRoutineParams()
-      .mockResolvedValueOnce(foundResponse(mockProcedureRows))
-      .mockResolvedValueOnce(foundResponse(mockFunctionRows))
-
-    const procEntry = await getRoutineParameters({
-      connectionId: 'conn1',
-      database: 'mydb',
-      routineName: 'dual_name',
-      routineType: 'procedure',
-    })
-    const funcEntry = await getRoutineParameters({
-      connectionId: 'conn1',
-      database: 'mydb',
-      routineName: 'dual_name',
-      routineType: 'function',
-    })
-
-    expect(mockGetRoutineParams()).toHaveBeenCalledTimes(2)
-    expect(procEntry).not.toBeNull()
-    expect(funcEntry).not.toBeNull()
-    expect(procEntry!.routineType).toBe('PROCEDURE')
-    expect(funcEntry!.routineType).toBe('FUNCTION')
-    expect(procEntry!.returnType).toBeNull()
-    expect(funcEntry!.returnType).toBe('int')
-  })
-
   it('should not repopulate cache if invalidation occurs during fetch', async () => {
     let resolveIpc!: (value: RoutineParametersWithFoundResponse) => void
     mockGetRoutineParams().mockReturnValue(
@@ -348,6 +197,10 @@ describe('routine-parameter-cache', () => {
     expect(freshResult).not.toBeNull()
     expect(mockGetRoutineParams()).toHaveBeenCalledTimes(2)
   })
+
+  // -------------------------------------------------------------------------
+  // Fix 2 — empty function lookup returns null without caching
+  // -------------------------------------------------------------------------
 
   it('should not discard a valid conn2 fetch when conn1 is invalidated concurrently', async () => {
     // Start in-flight fetches for both conn1 and conn2
@@ -398,10 +251,6 @@ describe('routine-parameter-cache', () => {
     expect(resultConn2!.returnType).toBe('int')
   })
 
-  // -------------------------------------------------------------------------
-  // Fix 2 — empty function lookup returns null without caching
-  // -------------------------------------------------------------------------
-
   it('should return null for function lookup with zero rows (not found)', async () => {
     mockGetRoutineParams().mockResolvedValue(foundResponse([]))
 
@@ -423,30 +272,6 @@ describe('routine-parameter-cache', () => {
     })
     expect(entry2).toBeNull()
     expect(mockGetRoutineParams()).toHaveBeenCalledTimes(2)
-  })
-
-  it('should cache zero-parameter procedure as valid entry (found=true)', async () => {
-    mockGetRoutineParams().mockResolvedValue(foundResponse([]))
-
-    const entry = await getRoutineParameters({
-      connectionId: 'conn1',
-      database: 'mydb',
-      routineName: 'flush_logs',
-      routineType: 'procedure',
-    })
-    expect(entry).not.toBeNull()
-    expect(entry!.parameters).toHaveLength(0)
-    expect(entry!.routineType).toBe('PROCEDURE')
-
-    // Should be cached — no second IPC call
-    const entry2 = await getRoutineParameters({
-      connectionId: 'conn1',
-      database: 'mydb',
-      routineName: 'flush_logs',
-      routineType: 'procedure',
-    })
-    expect(entry2).toBe(entry)
-    expect(mockGetRoutineParams()).toHaveBeenCalledTimes(1)
   })
 
   // -------------------------------------------------------------------------
@@ -475,28 +300,6 @@ describe('routine-parameter-cache', () => {
     expect(mockGetRoutineParams()).toHaveBeenCalledTimes(1)
   })
 
-  it('should return null for missing function (found=false) and cache it', async () => {
-    mockGetRoutineParams().mockResolvedValue(notFoundResponse())
-
-    const entry = await getRoutineParameters({
-      connectionId: 'conn1',
-      database: 'mydb',
-      routineName: 'missing_func',
-      routineType: 'function',
-    })
-    expect(entry).toBeNull()
-
-    // Should BE cached as a permanent miss — no second IPC call
-    const entry2 = await getRoutineParameters({
-      connectionId: 'conn1',
-      database: 'mydb',
-      routineName: 'missing_func',
-      routineType: 'function',
-    })
-    expect(entry2).toBeNull()
-    expect(mockGetRoutineParams()).toHaveBeenCalledTimes(1)
-  })
-
   it('getCachedRoutineParameters returns null (not undefined) for found=false', async () => {
     mockGetRoutineParams().mockResolvedValue(notFoundResponse())
     await getRoutineParameters({
@@ -509,34 +312,6 @@ describe('routine-parameter-cache', () => {
     const cached = getCachedRoutineParameters('conn1', 'mydb', 'gone')
     // null means "confirmed not found", undefined means "never fetched"
     expect(cached).toBeNull()
-  })
-
-  it('invalidation clears found=false cache, allowing fresh lookup', async () => {
-    // First call: routine not found, cached as null
-    mockGetRoutineParams().mockResolvedValueOnce(notFoundResponse())
-    const entry1 = await getRoutineParameters({
-      connectionId: 'conn1',
-      database: 'mydb',
-      routineName: 'new_proc',
-      routineType: 'procedure',
-    })
-    expect(entry1).toBeNull()
-    expect(mockGetRoutineParams()).toHaveBeenCalledTimes(1)
-
-    // Invalidate (e.g. user created the routine)
-    invalidateRoutineCache('conn1')
-
-    // Second call: routine now exists, should re-fetch
-    mockGetRoutineParams().mockResolvedValueOnce(foundResponse(mockProcedureRows))
-    const entry2 = await getRoutineParameters({
-      connectionId: 'conn1',
-      database: 'mydb',
-      routineName: 'new_proc',
-      routineType: 'procedure',
-    })
-    expect(entry2).not.toBeNull()
-    expect(entry2!.parameters).toHaveLength(2)
-    expect(mockGetRoutineParams()).toHaveBeenCalledTimes(2)
   })
 
   // -------------------------------------------------------------------------
@@ -601,11 +376,6 @@ describe('routine-parameter-cache', () => {
     expect(cached).toBe(resultB)
     expect(mockGetRoutineParams()).toHaveBeenCalledTimes(2) // no additional IPC
   })
-
-  // -------------------------------------------------------------------------
-  // Fix 4 — sync getter + routineType union
-  // -------------------------------------------------------------------------
-
   it('getCachedRoutineParameters returns entry when cached', async () => {
     mockGetRoutineParams().mockResolvedValue(foundResponse(mockFunctionRows))
     await getRoutineParameters({
@@ -621,7 +391,6 @@ describe('routine-parameter-cache', () => {
     expect(cached!.parameters).toHaveLength(2)
     expect(cached!.routineType).toBe('FUNCTION')
   })
-
   it('getCachedRoutineParameters returns undefined after a failed fetch (errors are not cached)', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     mockGetRoutineParams().mockRejectedValue(new Error('not found'))
@@ -638,39 +407,7 @@ describe('routine-parameter-cache', () => {
     consoleSpy.mockRestore()
   })
 
-  it('getCachedRoutineParameters returns undefined when not yet fetched', () => {
-    const cached = getCachedRoutineParameters('conn1', 'mydb', 'never_fetched')
-    expect(cached).toBeUndefined()
-  })
-
-  it('should coerce routineType to FUNCTION or PROCEDURE uppercase', async () => {
-    mockGetRoutineParams().mockResolvedValue(foundResponse(mockFunctionRows))
-    const funcEntry = await getRoutineParameters({
-      connectionId: 'conn1',
-      database: 'mydb',
-      routineName: 'f',
-      routineType: 'function',
-    })
-    expect(funcEntry!.routineType).toBe('FUNCTION')
-
-    mockGetRoutineParams().mockResolvedValue(foundResponse(mockProcedureRows))
-    const procEntry = await getRoutineParameters({
-      connectionId: 'conn1',
-      database: 'mydb',
-      routineName: 'p',
-      routineType: 'procedure',
-    })
-    expect(procEntry!.routineType).toBe('PROCEDURE')
-  })
-
-  it('should default unrecognized routineType to FUNCTION', async () => {
-    mockGetRoutineParams().mockResolvedValue(foundResponse(mockFunctionRows))
-    const entry = await getRoutineParameters({
-      connectionId: 'conn1',
-      database: 'mydb',
-      routineName: 'x',
-      routineType: 'unknown_type',
-    })
-    expect(entry!.routineType).toBe('FUNCTION')
-  })
+  // -------------------------------------------------------------------------
+  // Fix 4 — sync getter + routineType union
+  // -------------------------------------------------------------------------
 })

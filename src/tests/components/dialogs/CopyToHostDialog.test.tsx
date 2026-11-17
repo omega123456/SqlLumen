@@ -3,38 +3,14 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent, { type UserEvent } from '@testing-library/user-event'
 import CopyToHostDialog from '../../../components/dialogs/CopyToHostDialog'
 import { useConnectionStore } from '../../../stores/connection-store'
-import type { ActiveConnection, SavedConnection } from '../../../types/connection'
+import type { ActiveConnection } from '../../../types/connection'
 import type { CopyableObjects, CopyProgress } from '../../../lib/copy-to-host-commands'
 import { expectToast, ipc } from '../../ipc-mock'
+import { makeSavedConnection } from '../../helpers/connection-test-utils'
 
 // ---------------------------------------------------------------------------
 // Test data
 // ---------------------------------------------------------------------------
-
-function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedConnection {
-  return {
-    id: 'conn-1',
-    name: 'Test DB',
-    host: '127.0.0.1',
-    port: 3306,
-    username: 'root',
-    hasPassword: true,
-    defaultDatabase: null,
-    sslEnabled: false,
-    sslCaPath: null,
-    sslCertPath: null,
-    sslKeyPath: null,
-    color: '#3b82f6',
-    groupId: null,
-    readOnly: false,
-    sortOrder: 0,
-    connectTimeoutSecs: 10,
-    keepaliveIntervalSecs: 30,
-    createdAt: '2025-01-01T00:00:00Z',
-    updatedAt: '2025-01-01T00:00:00Z',
-    ...overrides,
-  }
-}
 
 function makeActiveConnection(overrides: Partial<ActiveConnection> = {}): ActiveConnection {
   return {

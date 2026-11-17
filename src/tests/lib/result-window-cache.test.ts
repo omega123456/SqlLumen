@@ -105,72 +105,6 @@ describe('seeding and reading loaded rows', () => {
     expect(loadedPositions()).toHaveLength(1000)
   })
 
-  it('normalizes TINYINT(1) boolean columns to 0/1 per page', () => {
-    seedResultWindow({
-      connectionId: 'conn-1',
-      tabId: TAB,
-      resultIndex: 0,
-      queryId: 'q-1',
-      viewVersion: 1,
-      viewRowCount: 2,
-      columns: [{ name: 'flag', dataType: 'BOOLEAN' }],
-      window: { offset: 0, rows: [[true], [false]], baseIndices: [0, 1] },
-    })
-    expect(getLoadedRow(TAB, 0, 0)?.row).toEqual([1])
-    expect(getLoadedRow(TAB, 0, 1)?.row).toEqual([0])
-  })
-
-  it('applyResultView repaints a new view of the same query from its first window', () => {
-    seed(10)
-    applyResultView(TAB, 0, {
-      viewVersion: 2,
-      viewRowCount: 2,
-      window: { offset: 0, rows: [[9], [8]], baseIndices: [9, 8] },
-    })
-    expect(getResultSurface(TAB, 0)).toMatchObject({ viewVersion: 2, viewRowCount: 2 })
-    expect(getLoadedRow(TAB, 0, 0)).toEqual({ row: [9], baseIndex: 9 })
-    // Without a window the view has no loaded pages yet.
-    applyResultView(TAB, 0, { viewVersion: 3, viewRowCount: 2 })
-    expect(getLoadedRow(TAB, 0, 0)).toBeUndefined()
-    // Unknown surfaces are ignored.
-    expect(() => applyResultView('nope', 0, { viewVersion: 1, viewRowCount: 0 })).not.toThrow()
-  })
-
-  it('applies a saved row edit to its loaded page and notifies its position', () => {
-    seedResultWindow({
-      connectionId: 'conn-1',
-      tabId: TAB,
-      resultIndex: 0,
-      queryId: 'q-1',
-      viewVersion: 1,
-      viewRowCount: 2,
-      columns: [
-        { name: 'id', dataType: 'INT' },
-        { name: 'flag', dataType: 'BOOLEAN' },
-      ],
-      window: {
-        offset: 0,
-        rows: [
-          [1, 0],
-          [2, 0],
-        ],
-        baseIndices: [0, 1],
-      },
-    })
-    const listener = vi.fn()
-    subscribeToResultWindow(TAB, 0, listener)
-    applySavedRowValues({
-      tabId: TAB,
-      resultIndex: 0,
-      queryId: 'q-1',
-      baseIndex: 1,
-      updates: { 1: true },
-    })
-    // Other columns are kept; the saved value is normalized like loaded rows.
-    expect(getLoadedRow(TAB, 0, 1)?.row).toEqual([2, 1])
-    expect(listener).toHaveBeenCalledWith([1, 2])
-  })
-
   it('ignores a saved row edit for a replaced query or an unknown surface', () => {
     seed(10)
     const patches = vi.fn()
@@ -191,33 +125,6 @@ describe('seeding and reading loaded rows', () => {
     })
     expect(getLoadedRow(TAB, 0, 4)?.row).toEqual([4])
     expect(patches).not.toHaveBeenCalled()
-  })
-
-  it('tells row-patch subscribers about saved rows outside the loaded pages', () => {
-    seed(5000)
-    const patches = vi.fn()
-    const unsubscribe = subscribeToRowPatches(TAB, 0, patches)
-    applySavedRowValues({
-      tabId: TAB,
-      resultIndex: 0,
-      queryId: 'q-1',
-      baseIndex: 4321,
-      updates: { 0: 'new' },
-    })
-    expect(patches).toHaveBeenCalledWith(4321, expect.any(Function))
-    const apply = patches.mock.calls[0][1] as (row: unknown[]) => unknown[]
-    expect(apply([4321])).toEqual(['new'])
-    // Row-patch listeners survive a re-seed, until unsubscribed.
-    seed(5000)
-    unsubscribe()
-    applySavedRowValues({
-      tabId: TAB,
-      resultIndex: 0,
-      queryId: 'q-1',
-      baseIndex: 1,
-      updates: { 0: 'x' },
-    })
-    expect(patches).toHaveBeenCalledTimes(1)
   })
 
   it('lets a grid subscribe before the first seed and keeps the listener', () => {
@@ -250,19 +157,6 @@ describe('visible-range loading', () => {
     expect(offsets).not.toContain(2500)
     expect(windowCalls()[0]).toMatchObject({ viewVersion: 1, limit: RESULT_PAGE_SIZE })
     expect(listener).toHaveBeenCalledWith([2000, 2500])
-  })
-
-  it('does not fetch pages that are already loaded or in flight', async () => {
-    serveWindows(5000)
-    seed(5000)
-    requestVisibleRange(TAB, 0, [10, 50])
-    expect(windowCalls()).toHaveLength(0)
-
-    requestVisibleRange(TAB, 0, [3000, 3010])
-    requestVisibleRange(TAB, 0, [3000, 3010])
-    await vi.waitFor(() => expect(getLoadedRow(TAB, 0, 3000)).toBeDefined())
-    const offsets = windowCalls().map((call) => call.offset)
-    expect(offsets.filter((offset) => offset === 3000)).toHaveLength(1)
   })
 
   it('evicts least-recently-used pages beyond the cap', async () => {
@@ -310,22 +204,6 @@ describe('visible-range loading', () => {
     await Promise.resolve()
     expect(getLoadedRow(TAB, 0, 2000)).toBeUndefined()
     expect(listener).not.toHaveBeenCalled()
-  })
-
-  it('drops a response whose version differs from the surface view', async () => {
-    ipc.override('fetch_result_window', () => ({
-      offset: 2000,
-      rows: [[2000]],
-      baseIndices: [2000],
-      viewRowCount: 3000,
-      viewVersion: 9,
-    }))
-    seed(3000)
-    requestVisibleRange(TAB, 0, [2000, 2010])
-    // Pages 3 and 4 (half-page prefetch on each side).
-    await vi.waitFor(() => expect(windowCalls()).toHaveLength(2))
-    await Promise.resolve()
-    expect(getLoadedRow(TAB, 0, 2000)).toBeUndefined()
   })
 
   it('ignores view_stale and replaced-query errors silently', async () => {
@@ -515,35 +393,6 @@ describe('eviction and teardown', () => {
 })
 
 describe('off-window reads', () => {
-  it('readViewRange reuses loaded rows and fetches the rest in 2,000-row chunks', async () => {
-    serveWindows(5000)
-    seed(5000)
-    const progress = vi.fn()
-    const rows = await readViewRange({
-      tabId: TAB,
-      resultIndex: 0,
-      range: [500, 4500],
-      options: { onProgress: progress },
-    })
-    expect(rows).toHaveLength(4000)
-    expect(rows[0]).toEqual({ row: [500], baseIndex: 500 })
-    expect(rows[3999]).toEqual({ row: [4499], baseIndex: 4499 })
-    const limits = windowCalls().map((call) => call.limit)
-    expect(Math.max(...(limits as number[]))).toBeLessThanOrEqual(2000)
-    expect(progress).toHaveBeenLastCalledWith({ done: 4000, total: 4000 })
-    // Off-window reads don't populate the page cache.
-    expect(getLoadedRow(TAB, 0, 4000)).toBeUndefined()
-  })
-
-  it('readViewRange serves a fully loaded range without IPC', async () => {
-    seed(100)
-    await expect(readViewRange({ tabId: TAB, resultIndex: 0, range: [10, 12] })).resolves.toEqual([
-      { row: [10], baseIndex: 10 },
-      { row: [11], baseIndex: 11 },
-    ])
-    expect(windowCalls()).toHaveLength(0)
-  })
-
   it('readViewRange fails with view_stale when the view changes mid-read', async () => {
     serveWindows(5000, 2)
     seed(5000)

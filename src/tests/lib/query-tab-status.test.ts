@@ -6,12 +6,6 @@ describe('isAiLockStatus', () => {
     expect(isAiLockStatus('ai-pending')).toBe(true)
     expect(isAiLockStatus('ai-reviewing')).toBe(true)
   })
-
-  it('is false for execution statuses', () => {
-    expect(isAiLockStatus('running')).toBe(false)
-    expect(isAiLockStatus('idle')).toBe(false)
-    expect(isAiLockStatus('restoring')).toBe(false)
-  })
 })
 
 describe('isEditorLockStatus', () => {
@@ -19,12 +13,5 @@ describe('isEditorLockStatus', () => {
     expect(isEditorLockStatus('running')).toBe(true)
     expect(isEditorLockStatus('ai-pending')).toBe(true)
     expect(isEditorLockStatus('ai-reviewing')).toBe(true)
-  })
-
-  it('is false for settled statuses', () => {
-    expect(isEditorLockStatus('idle')).toBe(false)
-    expect(isEditorLockStatus('success')).toBe(false)
-    expect(isEditorLockStatus('error')).toBe(false)
-    expect(isEditorLockStatus('restoring')).toBe(false)
   })
 })

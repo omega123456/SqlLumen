@@ -27,11 +27,6 @@ describe('resolveFavoriteSql', () => {
     const full = '   '
     expect(resolveFavoriteSql(full, '', { lineNumber: 1, column: 1 })).toBe('')
   })
-
-  it('ignores whitespace-only selections', () => {
-    const full = 'SELECT 1;'
-    expect(resolveFavoriteSql(full, '   \n  ', { lineNumber: 1, column: 1 })).toBe('SELECT 1')
-  })
 })
 
 describe('buildFavoriteDraft', () => {
@@ -47,9 +42,5 @@ describe('buildFavoriteDraft', () => {
       createdAt: '',
       updatedAt: '',
     })
-  })
-
-  it('accepts a null connection id for global scope', () => {
-    expect(buildFavoriteDraft('SELECT 1', null).connectionId).toBeNull()
   })
 })

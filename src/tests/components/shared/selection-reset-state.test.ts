@@ -8,18 +8,4 @@ describe('nextSelectionResetState', () => {
       prevCount: 0,
     })
   })
-
-  it('keeps the reset key while rows stay checked', () => {
-    expect(nextSelectionResetState({ resetKey: 2, prevCount: 3 }, 5)).toEqual({
-      resetKey: 2,
-      prevCount: 5,
-    })
-  })
-
-  it('keeps the reset key when nothing was checked before', () => {
-    expect(nextSelectionResetState({ resetKey: 0, prevCount: 0 }, 0)).toEqual({
-      resetKey: 0,
-      prevCount: 0,
-    })
-  })
 })

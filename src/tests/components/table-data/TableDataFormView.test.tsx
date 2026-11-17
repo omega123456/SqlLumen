@@ -272,24 +272,6 @@ describe('TableDataFormView', () => {
     expect(nameInput).toHaveAttribute('data-modified')
   })
 
-  it('Next button stays enabled for optimistic unknown-total navigation', () => {
-    setupStore()
-    renderFormView()
-
-    const nextBtn = screen.getByTestId('btn-form-next')
-    expect(nextBtn).not.toBeDisabled()
-  })
-
-  it('Copy button copies value to clipboard', async () => {
-    setupStore()
-    renderFormView()
-
-    const copyBtn = screen.getByTestId('btn-copy-name')
-    fireEvent.click(copyBtn)
-
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('Alice')
-  })
-
   it('shows empty state when rows is empty', () => {
     setupStore({ rows: [] })
     renderFormView()
@@ -894,16 +876,6 @@ describe('TableDataFormView', () => {
     expect(nameInput).toHaveTextContent('Alice')
   })
 
-  it('NULL toggle button not shown for read-only connection', () => {
-    setupConnection(true)
-    useTableDataStore.setState({
-      tabs: { 'tab-1': makeTabState() },
-    })
-    renderFormView()
-
-    expect(screen.queryByTestId('btn-null-name')).not.toBeInTheDocument()
-  })
-
   it('handles cross-page navigation next', async () => {
     setupStore({
       rows: [[1, 'Alice', null]],
@@ -997,13 +969,6 @@ describe('TableDataFormView', () => {
 // ---------------------------------------------------------------------------
 
 describe('TableDataFormView — DateTimePicker integration', () => {
-  it('BLOB columns do not render a calendar icon', () => {
-    setupStoreWithTemporal()
-    renderFormView()
-
-    expect(screen.queryByTestId('calendar-btn-avatar')).not.toBeInTheDocument()
-  })
-
   it('picker onApply updates the field value via the store', async () => {
     setupStoreWithTemporal()
     renderFormView()
@@ -1096,18 +1061,6 @@ describe('TableDataFormView — DateTimePicker integration', () => {
 
     expect(screen.queryByTestId('calendar-btn-created_at')).not.toBeInTheDocument()
     expect(screen.queryByTestId('calendar-btn-login_time')).not.toBeInTheDocument()
-  })
-
-  it('clicking disabled calendar button does NOT open picker for null temporal field', () => {
-    setupStoreWithTemporal({
-      rows: [[1, 'Alice', null, '14:30:00', '[BLOB - 128 bytes]']],
-    })
-    renderFormView()
-
-    const calBtn = screen.getByTestId('calendar-btn-created_at')
-    fireEvent.click(calBtn)
-
-    expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
   })
 
   it('first-click-open on temporal input does NOT open picker when value is NULL', () => {

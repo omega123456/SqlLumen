@@ -91,14 +91,14 @@ describe('zoom-store', () => {
       expect(appliedZoom()).toEqual({ label: 'main', value: 1 })
       expect(ipc.payloads('set_setting')).toHaveLength(0)
     })
+  })
 
+  describe('zoomIn', () => {
     it('revertPreview is no-op when no snapshot', () => {
       useZoomStore.getState().revertPreview()
       expect(useZoomStore.getState().zoomLevel).toBe(100)
     })
-  })
 
-  describe('zoomIn', () => {
     it('steps to next higher level', async () => {
       ipc.override('set_setting', () => null)
       useZoomStore.setState({ zoomLevel: 100 })
@@ -106,7 +106,9 @@ describe('zoom-store', () => {
       expect(useZoomStore.getState().zoomLevel).toBe(110)
       expect(appliedZoom()).toEqual({ label: 'main', value: 1.1 })
     })
+  })
 
+  describe('zoomOut', () => {
     it('no-op at max level', async () => {
       ipc.override('set_setting', () => null)
       const max = ZOOM_LEVELS[ZOOM_LEVELS.length - 1]
@@ -115,9 +117,7 @@ describe('zoom-store', () => {
       expect(useZoomStore.getState().zoomLevel).toBe(max)
       expect(ipc.payloads('set_setting')).toHaveLength(0)
     })
-  })
 
-  describe('zoomOut', () => {
     it('steps to next lower level', async () => {
       ipc.override('set_setting', () => null)
       useZoomStore.setState({ zoomLevel: 100 })
@@ -125,7 +125,9 @@ describe('zoom-store', () => {
       expect(useZoomStore.getState().zoomLevel).toBe(90)
       expect(appliedZoom()).toEqual({ label: 'main', value: 0.9 })
     })
+  })
 
+  describe('resetZoom', () => {
     it('no-op at min level', async () => {
       ipc.override('set_setting', () => null)
       const min = ZOOM_LEVELS[0]
@@ -134,9 +136,7 @@ describe('zoom-store', () => {
       expect(useZoomStore.getState().zoomLevel).toBe(min)
       expect(ipc.payloads('set_setting')).toHaveLength(0)
     })
-  })
 
-  describe('resetZoom', () => {
     it('resets to 100 and persists', async () => {
       ipc.override('set_setting', () => null)
       useZoomStore.setState({ zoomLevel: 150 })

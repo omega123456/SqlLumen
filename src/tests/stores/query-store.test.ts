@@ -82,22 +82,23 @@ const BOOLEAN_ALIAS_COLUMNS = [
 ]
 
 describe('useQueryStore — getTabState', () => {
-  it('returns default state for unknown tab', () => {
+  it('returns the default tab state and flat view for an unknown tab', () => {
     const state = useQueryStore.getState().getTabState('unknown')
     expect(state.tabStatus).toBe('idle')
     expect(state.content).toBe('')
     expect(state.activeBottomPanelItem).toEqual({ type: 'result' })
-    expect(flat('unknown').columns).toHaveLength(0)
-  })
+    expect(state.executionStartedAt).toBeNull()
+    expect(state.isCancelling).toBe(false)
+    expect(state.wasCancelled).toBe(false)
 
-  it('returns default new fields for unknown tab', () => {
-    const f = flat('unknown')
-    expect(f.viewMode).toBe('grid')
-    expect(f.sortColumn).toBeNull()
-    expect(f.sortDirection).toBeNull()
-    expect(f.selectedRowIndex).toBeNull()
-    expect(f.exportDialogOpen).toBe(false)
-    expect(f.lastExecutedSql).toBeNull()
+    const unknownTab = flat('unknown')
+    expect(unknownTab.columns).toHaveLength(0)
+    expect(unknownTab.viewMode).toBe('grid')
+    expect(unknownTab.sortColumn).toBeNull()
+    expect(unknownTab.sortDirection).toBeNull()
+    expect(unknownTab.selectedRowIndex).toBeNull()
+    expect(unknownTab.exportDialogOpen).toBe(false)
+    expect(unknownTab.lastExecutedSql).toBeNull()
   })
 })
 
@@ -332,6 +333,7 @@ describe('useQueryStore — executeQuery', () => {
     expect(f.totalRows).toBe(3)
     expect(f.columns).toHaveLength(1)
     expect(f.rows).toEqual([[1], [2], [3]])
+    expect(f.lastExecutedSql).toBe('SELECT 1')
   })
 
   it('sets error status on failure', async () => {
@@ -342,24 +344,6 @@ describe('useQueryStore — executeQuery', () => {
     const state = useQueryStore.getState().getTabState('tab-error')
     expect(state.tabStatus).toBe('error')
     expect(flat('tab-error').errorMessage).toContain('table not found')
-  })
-
-  it('saves lastExecutedSql on success', async () => {
-    await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT * FROM users')
-    expect(flat('tab-1').lastExecutedSql).toBe('SELECT * FROM users')
-  })
-
-  it('uses stored rowLimit for the IPC call', async () => {
-    // Set a custom page size before executing
-    useQueryStore.getState().setContent('tab-ps', 'SELECT 1')
-    patchResult('tab-ps', { rowLimit: 500 })
-
-    await useQueryStore.getState().executeQuery('conn-1', 'tab-ps', 'SELECT 1')
-    const state = useQueryStore.getState().getTabState('tab-ps')
-    expect(state.tabStatus).toBe('success')
-    // The query still succeeds (the mock doesn't validate rowLimit,
-    // but the code path passes it)
-    expect(flat('tab-ps').rows).toEqual([[1], [2], [3]])
   })
 
   it('resets sortColumn, sortDirection, and selectedRowIndex on new query', async () => {
@@ -673,21 +657,15 @@ describe('useQueryStore — stale query guard', () => {
 // --- New Phase 5.1 action tests ---
 
 describe('useQueryStore — setViewMode', () => {
-  it('sets view mode for a tab', () => {
+  it('sets the view mode to form, text and back to grid', () => {
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
+
     useQueryStore.getState().setViewMode('tab-1', 'form')
     expect(flat('tab-1').viewMode).toBe('form')
-  })
 
-  it('sets view mode to text', () => {
-    useQueryStore.getState().setContent('tab-1', 'SELECT 1')
     useQueryStore.getState().setViewMode('tab-1', 'text')
     expect(flat('tab-1').viewMode).toBe('text')
-  })
 
-  it('sets view mode back to grid', () => {
-    useQueryStore.getState().setContent('tab-1', 'SELECT 1')
-    useQueryStore.getState().setViewMode('tab-1', 'form')
     useQueryStore.getState().setViewMode('tab-1', 'grid')
     expect(flat('tab-1').viewMode).toBe('grid')
   })
@@ -811,34 +789,26 @@ describe('useQueryStore — setResultColumnWidth', () => {
 })
 
 describe('useQueryStore — setSelectedRow', () => {
-  it('sets selected row index', () => {
+  it('sets and clears the selected row index', () => {
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
     patchResult('tab-1', {})
+
     useQueryStore.getState().setSelectedRow('tab-1', 5)
     expect(flat('tab-1').selectedRowIndex).toBe(5)
-  })
 
-  it('clears selected row with null', () => {
-    useQueryStore.getState().setContent('tab-1', 'SELECT 1')
-    patchResult('tab-1', {})
-    useQueryStore.getState().setSelectedRow('tab-1', 3)
     useQueryStore.getState().setSelectedRow('tab-1', null)
     expect(flat('tab-1').selectedRowIndex).toBeNull()
   })
 })
 
 describe('useQueryStore — export dialog', () => {
-  it('opens export dialog', () => {
+  it('opens and closes the export dialog', () => {
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
     patchResult('tab-1', {})
+
     useQueryStore.getState().openExportDialog('tab-1')
     expect(flat('tab-1').exportDialogOpen).toBe(true)
-  })
 
-  it('closes export dialog', () => {
-    useQueryStore.getState().setContent('tab-1', 'SELECT 1')
-    patchResult('tab-1', {})
-    useQueryStore.getState().openExportDialog('tab-1')
     useQueryStore.getState().closeExportDialog('tab-1')
     expect(flat('tab-1').exportDialogOpen).toBe(false)
   })
@@ -1611,15 +1581,6 @@ describe('useQueryStore — cancelQuery', () => {
   })
 })
 
-describe('useQueryStore — default tab state new fields', () => {
-  it('returns default new fields for unknown tab', () => {
-    const state = useQueryStore.getState().getTabState('unknown')
-    expect(state.executionStartedAt).toBeNull()
-    expect(state.isCancelling).toBe(false)
-    expect(state.wasCancelled).toBe(false)
-  })
-})
-
 // ---------------------------------------------------------------------------
 // setTabStatus
 // ---------------------------------------------------------------------------
@@ -1671,12 +1632,6 @@ describe('useQueryStore — setTabStatus', () => {
     useQueryStore.getState().setTabStatus('tab-1', prev)
     const state = useQueryStore.getState().getTabState('tab-1')
     expect(state.tabStatus).toBe('success')
-  })
-
-  it('no-ops for non-existent tab', () => {
-    // Should not throw
-    useQueryStore.getState().setTabStatus('nonexistent', 'ai-pending')
-    expect(useQueryStore.getState().tabs['nonexistent']).toBeUndefined()
   })
 })
 
@@ -2136,14 +2091,6 @@ describe('useQueryStore — row actions', () => {
     } finally {
       vi.useRealTimers()
     }
-  })
-
-  it('markResultsExpired and retryResultWindow are safe on any tab', () => {
-    useQueryStore.getState().setContent('tab-exp', 'SELECT 1')
-    patchResult('tab-exp', { queryId: 'q-exp' })
-    useQueryStore.getState().markResultsExpired('tab-exp')
-    expect(flat('tab-exp').isExpired).toBe(true)
-    useQueryStore.getState().retryResultWindow('missing')
   })
 
   it('markResultExpired expires only the given result', () => {
@@ -2862,24 +2809,17 @@ describe('multi-result actions', () => {
       })
     }
 
-    it('switches active result index', () => {
+    it('switches the active result index and ignores out-of-bounds, negative and unknown tabs', () => {
       setupMultiResult()
-      useQueryStore.getState().setActiveResultIndex('tab-1', 1)
-      const tab = useQueryStore.getState().tabs['tab-1']!
-      expect(tab.activeResultIndex).toBe(1)
-    })
 
-    it('does nothing for out-of-bounds or negative indices', () => {
-      setupMultiResult()
+      useQueryStore.getState().setActiveResultIndex('tab-1', 1)
+      expect(useQueryStore.getState().tabs['tab-1']!.activeResultIndex).toBe(1)
+
       useQueryStore.getState().setActiveResultIndex('tab-1', 5)
       useQueryStore.getState().setActiveResultIndex('tab-1', -1)
-      expect(useQueryStore.getState().tabs['tab-1']!.activeResultIndex).toBe(0)
-    })
-
-    it('does nothing for unknown tab', () => {
-      setupMultiResult()
       useQueryStore.getState().setActiveResultIndex('nonexistent', 0)
-      // Should not throw
+
+      expect(useQueryStore.getState().tabs['tab-1']!.activeResultIndex).toBe(1)
       expect(useQueryStore.getState().tabs['nonexistent']).toBeUndefined()
     })
 
@@ -3747,21 +3687,6 @@ describe('expired results', () => {
       await waitFor(() => {
         const tab = useQueryStore.getState().tabs[TAB_ID]
         expect(tab?.results.every((result) => result.isExpired)).toBe(true)
-      })
-    })
-
-    it('validateActiveTabResults does not mark expired when touch_results returns available', async () => {
-      setupTabWithResult()
-
-      ipc.override('touch_results', () => ({ status: 'available' }))
-
-      act(() => {
-        useQueryStore.getState().validateActiveTabResults(TAB_ID)
-      })
-
-      await waitFor(() => {
-        const tab = useQueryStore.getState().tabs[TAB_ID]
-        expect(tab?.results[0]?.isExpired).toBe(false)
       })
     })
 

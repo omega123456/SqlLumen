@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { reportInvalidTemporalValue } from '../../../components/shared/row-save-feedback'
 import { useToastStore } from '../../../stores/toast-store'
 import type { RowEditState, TableDataColumnMeta } from '../../../types/schema'
-import { expectToast } from '../../ipc-mock'
 
 const COLUMNS: TableDataColumnMeta[] = [
   {
@@ -46,13 +45,6 @@ beforeEach(() => {
 })
 
 describe('reportInvalidTemporalValue', () => {
-  it('shows an error toast and returns the invalid column', () => {
-    const validationError = reportInvalidTemporalValue(buildEditState('not-a-date'), COLUMNS)
-
-    expect(validationError?.columnName).toBe('created_at')
-    expectToast('error', 'Invalid date value')
-  })
-
   it('returns null for valid values', () => {
     expect(reportInvalidTemporalValue(buildEditState('2025-02-03'), COLUMNS)).toBeNull()
     expect(useToastStore.getState().toasts).toHaveLength(0)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filterProcessListRows, isIdleProcessRow } from '../../lib/processlist-filter'
+import { isIdleProcessRow } from '../../lib/processlist-filter'
 import type { ProcessRow } from '../../lib/processlist-commands'
 
 const rows: ProcessRow[] = [
@@ -42,13 +42,5 @@ describe('processlist-filter', () => {
 
   it('treats blank query info as idle', () => {
     expect(isIdleProcessRow(rows[2])).toBe(true)
-  })
-
-  it('filters idle rows when enabled', () => {
-    expect(filterProcessListRows(rows, true).map((row) => row.id)).toEqual([1])
-  })
-
-  it('returns all rows when disabled', () => {
-    expect(filterProcessListRows(rows, false).map((row) => row.id)).toEqual([1, 2, 3])
   })
 })

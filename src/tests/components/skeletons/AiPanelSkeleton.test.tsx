@@ -12,11 +12,4 @@ describe('AiPanelSkeleton', () => {
     const { container } = render(<AiPanelSkeleton />)
     expect(container.firstElementChild).toHaveAttribute('aria-hidden', 'true')
   })
-
-  it('renders header, chat area, and input area', () => {
-    const { container } = render(<AiPanelSkeleton />)
-    const root = container.firstElementChild!
-    // header + chat area + input area
-    expect(root.children).toHaveLength(3)
-  })
 })

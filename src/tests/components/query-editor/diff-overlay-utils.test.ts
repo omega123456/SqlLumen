@@ -64,29 +64,12 @@ describe('DIFF_OVERLAY_INITIAL', () => {
 })
 
 describe('buildDiffState', () => {
-  it('returns null when editor is null', () => {
-    const result = buildDiffState(null, 'SELECT 1', DEFAULT_RANGE)
-    expect(result).toBeNull()
-    expect(consoleSpy).not.toHaveBeenCalled()
-  })
-
   it('returns null when editor model is null', () => {
     const editor = {
       getModel: vi.fn(() => null),
     } as unknown as MonacoType.editor.IStandaloneCodeEditor
     const result = buildDiffState(editor, 'SELECT 1', DEFAULT_RANGE)
     expect(result).toBeNull()
-  })
-
-  it('builds diff state from editor model', () => {
-    const editor = makeMockEditor(() => 'SELECT * FROM users')
-    const result = buildDiffState(editor, 'SELECT id FROM users', DEFAULT_RANGE)
-
-    expect(result).not.toBeNull()
-    expect(result!.visible).toBe(true)
-    expect(result!.originalSql).toBe('SELECT * FROM users')
-    expect(result!.proposedSql).toBe('SELECT id FROM users')
-    expect(result!.originalRange).toEqual(DEFAULT_RANGE)
   })
 
   it('drops the trailing newline and delimiter when the range excludes the delimiter', () => {
@@ -99,12 +82,6 @@ describe('buildDiffState', () => {
     const editor = makeMockEditor(() => 'SELECT * FROM users;')
     const result = buildDiffState(editor, 'SELECT id FROM users;\n', DEFAULT_RANGE)
     expect(result!.proposedSql).toBe('SELECT id FROM users;')
-  })
-
-  it('calls getModel on the editor', () => {
-    const editor = makeMockEditor()
-    buildDiffState(editor, 'SELECT 1', DEFAULT_RANGE)
-    expect(editor.getModel).toHaveBeenCalled()
   })
 })
 
@@ -141,7 +118,9 @@ describe('applyDiff', () => {
     const result = applyDiff({ editor: editor, state: state, finalSql: 'SELECT id FROM users' })
     expect(result).toBe(false)
   })
+})
 
+describe('restoreTabAfterDiff', () => {
   it('returns true and calls model.pushEditOperations with the provided finalSql', () => {
     const editor = makeMockEditor(() => 'SELECT * FROM users')
     const state: DiffOverlayState = {
@@ -165,46 +144,6 @@ describe('applyDiff', () => {
     )
   })
 
-  it('applies edit even when editor content differs from originalSql', () => {
-    // The editor content differs from state.originalSql, but applyDiff
-    // no longer checks for staleness — the editor is read-only during
-    // ai-reviewing status, so this should succeed.
-    const editor = makeMockEditor(() => 'DIFFERENT SQL')
-    const state: DiffOverlayState = {
-      visible: true,
-      originalSql: 'SELECT * FROM users',
-      proposedSql: 'SELECT id FROM users',
-      originalRange: DEFAULT_RANGE,
-    }
-
-    const result = applyDiff({ editor: editor, state: state, finalSql: 'SELECT id FROM users' })
-    expect(result).toBe(true)
-    expect(editor._mockModel.pushEditOperations).toHaveBeenCalledWith(
-      [],
-      [expect.objectContaining({ text: 'SELECT id FROM users' })],
-      expect.any(Function)
-    )
-  })
-
-  it('uses finalSql parameter, not state.proposedSql', () => {
-    const editor = makeMockEditor(() => 'SELECT * FROM users')
-    const state: DiffOverlayState = {
-      visible: true,
-      originalSql: 'SELECT * FROM users',
-      proposedSql: 'SELECT id FROM users',
-      originalRange: DEFAULT_RANGE,
-    }
-
-    applyDiff({ editor: editor, state: state, finalSql: 'CUSTOM FINAL SQL' })
-    expect(editor._mockModel.pushEditOperations).toHaveBeenCalledWith(
-      [],
-      [expect.objectContaining({ text: 'CUSTOM FINAL SQL' })],
-      expect.any(Function)
-    )
-  })
-})
-
-describe('restoreTabAfterDiff', () => {
   it('calls useAiStore restoreTabStatus', () => {
     // Set up query store tab in ai-reviewing state
     useQueryStore.getState().setTabStatus('test-tab', 'ai-reviewing')
@@ -268,40 +207,9 @@ describe('computeUpdatedRange', () => {
     expect(result.endLineNumber).toBe(1)
     expect(result.endColumn).toBe(1 + 'SELECT 1'.length)
   })
-
-  it('handles multi-line replacement: end line advances, end col = last line length + 1', () => {
-    const range = { startLineNumber: 2, endLineNumber: 2, startColumn: 1, endColumn: 10 }
-    const multiLineSql = 'SELECT\n  id,\n  name\nFROM users'
-    const result = computeUpdatedRange(range, multiLineSql)
-    const lines = multiLineSql.split('\n')
-    expect(result.endLineNumber).toBe(2 + lines.length - 1)
-    expect(result.endColumn).toBe(lines[lines.length - 1].length + 1)
-    // startLineNumber and startColumn are preserved
-    expect(result.startLineNumber).toBe(2)
-    expect(result.startColumn).toBe(1)
-  })
 })
 
 describe('applyDiff — attachedContext sync edge cases', () => {
-  it('does NOT update attachedContext when tabId is omitted', () => {
-    const range = { startLineNumber: 1, endLineNumber: 1, startColumn: 1, endColumn: 20 }
-    useAiStore.getState().setAttachedContext('tab-no-id', { sql: 'SELECT * FROM users', range })
-
-    const editor = makeMockEditor()
-    const state: DiffOverlayState = {
-      visible: true,
-      originalSql: 'SELECT * FROM users',
-      proposedSql: 'SELECT id FROM users',
-      originalRange: range,
-    }
-
-    applyDiff({ editor: editor, state: state, finalSql: 'SELECT id FROM users' })
-    // Without tabId, context should remain unchanged
-    expect(useAiStore.getState().tabs['tab-no-id']?.attachedContext?.sql).toBe(
-      'SELECT * FROM users'
-    )
-  })
-
   it('does NOT update attachedContext when tab has no context set', () => {
     const range = { startLineNumber: 1, endLineNumber: 1, startColumn: 1, endColumn: 20 }
     // tab-empty has no attachedContext

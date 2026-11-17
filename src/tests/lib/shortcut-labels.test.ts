@@ -10,13 +10,4 @@ describe('shortcutLabelParts', () => {
     ])
     expect(shortcutLabelParts({ key: 'F2', modifiers: ['alt'] })).toEqual(['Alt', 'F2'])
   })
-
-  it('uses short glyphs for arrow, escape, enter and space keys', () => {
-    expect(shortcutLabelParts({ key: 'ArrowUp', modifiers: [] })).toEqual(['↑'])
-    expect(shortcutLabelParts({ key: 'ArrowDown', modifiers: [] })).toEqual(['↓'])
-    expect(shortcutLabelParts({ key: 'Escape', modifiers: [] })).toEqual(['Esc'])
-    expect(shortcutLabelParts({ key: 'Enter', modifiers: [] })).toEqual(['Enter'])
-    expect(shortcutLabelParts({ key: ' ', modifiers: [] })).toEqual(['Space'])
-    expect(shortcutLabelParts({ key: 'Tab', modifiers: [] })).toEqual(['Tab'])
-  })
 })

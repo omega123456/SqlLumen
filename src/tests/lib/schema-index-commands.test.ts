@@ -39,22 +39,14 @@ beforeEach(() => {
 })
 
 describe('schema-index-commands', () => {
-  describe('buildSchemaIndex', () => {
-    it('invokes build_schema_index with correct sessionId', async () => {
+  describe('index commands', () => {
+    it('sends the schema index commands with their session id and returns the results', async () => {
       await buildSchemaIndex('session-123')
       expect(ipc.calls('build_schema_index')).toEqual([{ sessionId: 'session-123' }])
-    })
-  })
 
-  describe('forceRebuildSchemaIndex', () => {
-    it('invokes force_rebuild_schema_index with correct sessionId', async () => {
       await forceRebuildSchemaIndex('session-123')
       expect(ipc.calls('force_rebuild_schema_index')).toEqual([{ sessionId: 'session-123' }])
-    })
-  })
 
-  describe('semanticSearch', () => {
-    it('invokes semantic_search with correct args and returns results', async () => {
       const results = await semanticSearch('session-1', ['query1', 'query2'])
       expect(ipc.payloads('semantic_search')).toEqual([
         { sessionId: 'session-1', queries: ['query1', 'query2'], hints: null },
@@ -62,28 +54,16 @@ describe('schema-index-commands', () => {
       expect(results).toHaveLength(1)
       expect(results[0].chunkKey).toBe('db.users:table')
       expect(results[0].score).toBe(0.95)
-    })
-  })
 
-  describe('getIndexStatus', () => {
-    it('invokes get_index_status with correct args and returns status', async () => {
       const status = await getIndexStatus('session-1')
       expect(ipc.calls('get_index_status')).toEqual([{ sessionId: 'session-1' }])
       expect(status.status).toBe('ready')
-    })
-  })
 
-  describe('invalidateSchemaIndex', () => {
-    it('invokes invalidate_schema_index with correct args', async () => {
       await invalidateSchemaIndex('session-1', ['db.users', 'db.orders'])
       expect(ipc.payloads('invalidate_schema_index')).toEqual([
         { sessionId: 'session-1', tables: ['db.users', 'db.orders'] },
       ])
-    })
-  })
 
-  describe('listIndexedTables', () => {
-    it('invokes list_indexed_tables with correct args and returns table list', async () => {
       const tables = await listIndexedTables('session-1')
       expect(ipc.calls('list_indexed_tables')).toEqual([{ sessionId: 'session-1' }])
       expect(tables).toHaveLength(1)

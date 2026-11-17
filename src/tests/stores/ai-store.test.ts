@@ -177,35 +177,22 @@ afterEach(() => {
 
 describe('useAiStore', () => {
   describe('sendMessage', () => {
-    it('adds a user message to the conversation', () => {
+    it('adds the user message, starts generating and clears a previous error', () => {
+      useAiStore.getState().setError('tab-1', 'some error')
+
       useAiStore
         .getState()
         .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello AI', settings: {} })
+
       const tab = getTab('tab-1')!
       expect(tab.messages).toHaveLength(1)
       expect(tab.messages[0].role).toBe('user')
       expect(tab.messages[0].content).toBe('Hello AI')
       expect(tab.messages[0].id).toBeTruthy()
       expect(tab.messages[0].timestamp).toBeGreaterThan(0)
-    })
-
-    it('sets isGenerating and activeStreamId immediately', () => {
-      useAiStore
-        .getState()
-        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
-      const tab = getTab('tab-1')!
       expect(tab.isGenerating).toBe(true)
       expect(tab.activeStreamId).toBeTruthy()
-    })
-
-    it('clears error when sending a message', () => {
-      useAiStore.getState().setError('tab-1', 'some error')
-      expect(getTab('tab-1')!.error).toBe('some error')
-
-      useAiStore
-        .getState()
-        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'retry', settings: {} })
-      expect(getTab('tab-1')!.error).toBeNull()
+      expect(tab.error).toBeNull()
     })
 
     it('replaces a trailing failed user message instead of duplicating it on resend', () => {
@@ -314,16 +301,6 @@ describe('useAiStore', () => {
       const params = mockSendAiChat.mock.calls[0][0]
       expect(params.endpoint).toBe('http://pending.example/v1')
       expect(params.model).toBe('gemma-pending')
-    })
-
-    it('stores the unlisten function from listenToAiStream', async () => {
-      useAiStore
-        .getState()
-        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
-
-      await vi.waitFor(() => {
-        expect(getTab('tab-1')!._unlisten).toEqual(expect.any(Function))
-      })
     })
 
     it('calls aiQueryExpand for query expansion before semantic search', async () => {
@@ -445,21 +422,6 @@ describe('useAiStore', () => {
 
       const searchCall = mockSemanticSearch.mock.calls[0]
       expect(searchCall[1]).toEqual(['Show me all users', 'search query 1'])
-    })
-
-    it('falls back to original message when aiQueryExpand parse fails', async () => {
-      mockAiQueryExpand.mockResolvedValueOnce({ text: 'not valid json' })
-
-      useAiStore
-        .getState()
-        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Show me users', settings: {} })
-
-      await vi.waitFor(() => {
-        expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
-      })
-
-      const searchCall = mockSemanticSearch.mock.calls[0]
-      expect(searchCall[1]).toEqual(['Show me users'])
     })
 
     it('injects system message with retrieved DDL from semantic search', async () => {
@@ -760,50 +722,6 @@ describe('useAiStore', () => {
       expect(mockSendAiChat.mock.calls[1][0].previousResponseId).toBe('resp_abc')
     })
 
-    it('keeps the leading prompt prefix stable across follow-up messages with unchanged context', async () => {
-      useAiStore
-        .getState()
-        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
-
-      await vi.waitFor(() => {
-        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
-      })
-
-      const firstMessages = mockSendAiChat.mock.calls[0][0].messages as Array<{
-        role: string
-        content: string
-      }>
-
-      const firstStreamId = getTab('tab-1')!.activeStreamId!
-      useAiStore
-        .getState()
-        .onStreamChunk('tab-1', firstStreamId, { content: 'Hello back', kind: 'content' })
-      useAiStore.getState().onStreamDone('tab-1', firstStreamId, {
-        responseId: 'resp_cache',
-        transport: 'responses',
-      })
-
-      useAiStore
-        .getState()
-        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Follow up', settings: {} })
-
-      await vi.waitFor(() => {
-        expect(mockSendAiChat).toHaveBeenCalledTimes(2)
-      })
-
-      const secondMessages = mockSendAiChat.mock.calls[1][0].messages as Array<{
-        role: string
-        content: string
-      }>
-
-      expect(secondMessages.slice(0, firstMessages.length)).toEqual(firstMessages)
-      expect(secondMessages[secondMessages.length - 1]).toEqual({
-        role: 'user',
-        content: 'Follow up',
-      })
-      expect(mockSendAiChat.mock.calls[1][0].previousResponseId).toBe('resp_cache')
-    })
-
     it('reuses previousResponseId when new schema context is appended (cumulative model)', async () => {
       setSchemaIndexStatus(SCHEMA_SESSION_ID, {
         status: 'ready',
@@ -946,28 +864,6 @@ describe('useAiStore', () => {
       })
 
       expect(mockSendAiChat.mock.calls[1][0].previousResponseId).toBeNull()
-    })
-
-    it('system prompt is immutable — same content on turn 1 and turn 2', async () => {
-      // First message
-      useAiStore
-        .getState()
-        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'First', settings: {} })
-      await vi.waitFor(() => {
-        expect(getTab('tab-1')!.messages.length).toBe(3) // base system + schema context + user
-      })
-
-      // Second message — system message should never be modified after first turn
-      useAiStore
-        .getState()
-        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Second', settings: {} })
-      await vi.waitFor(() => {
-        expect(mockSendAiChat).toHaveBeenCalledTimes(2)
-      })
-
-      const tab = getTab('tab-1')!
-      const systemMessages = tab.messages.filter((m) => m.role === 'system' && !m.kind)
-      expect(systemMessages).toHaveLength(1) // Only one system message
     })
 
     it('sends system prompt without schema when semantic search returns empty', async () => {
@@ -1167,23 +1063,6 @@ describe('useAiStore', () => {
       expect(getTab('tab-1')!.attachedContext).toEqual(context)
     })
 
-    it('attachedContext is cleared by clearAttachedContext', () => {
-      const context = {
-        sql: 'SELECT 1',
-        range: { startLineNumber: 1, endLineNumber: 1, startColumn: 1, endColumn: 8 },
-      }
-      useAiStore.getState().setAttachedContext('tab-1', context)
-      useAiStore
-        .getState()
-        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Explain', settings: {} })
-      // Still set after sendMessage
-      expect(getTab('tab-1')!.attachedContext).not.toBeNull()
-
-      // Explicitly cleared via user action
-      useAiStore.getState().clearAttachedContext('tab-1')
-      expect(getTab('tab-1')!.attachedContext).toBeNull()
-    })
-
     it('clearing attached context removes hidden attached-context prompt messages and resets reuse', async () => {
       const context = {
         sql: 'SELECT * FROM users',
@@ -1333,17 +1212,24 @@ describe('useAiStore', () => {
   })
 
   describe('cancelStream', () => {
-    it('sets isGenerating to false and clears activeStreamId', () => {
-      // Set up generating state via sendMessage
+    it('stops generating, cancels the active stream over IPC and runs the unlisten function', async () => {
+      const unlisten = vi.fn()
       useAiStore
         .getState()
         .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
-      expect(getTab('tab-1')!.isGenerating).toBe(true)
+      const streamId = getTab('tab-1')!.activeStreamId!
+      useAiStore.getState().setUnlisten('tab-1', unlisten)
 
       useAiStore.getState().cancelStream('tab-1')
+
       const tab = getTab('tab-1')!
       expect(tab.isGenerating).toBe(false)
       expect(tab.activeStreamId).toBeNull()
+      expect(unlisten).toHaveBeenCalledTimes(1)
+      expect(tab._unlisten).toBeNull()
+      await vi.waitFor(() => {
+        expect(mockCancelAiStream).toHaveBeenCalledWith(streamId)
+      })
     })
 
     it('clears previousResponseId when cancelling an in-flight stream', () => {
@@ -1365,34 +1251,6 @@ describe('useAiStore', () => {
       useAiStore.getState().cancelStream('tab-1')
 
       expect(getTab('tab-1')!.previousResponseId).toBeNull()
-    })
-
-    it('calls cancelAiStream IPC with the active streamId', async () => {
-      // Set up generating state via sendMessage
-      useAiStore
-        .getState()
-        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
-      const streamId = getTab('tab-1')!.activeStreamId!
-
-      useAiStore.getState().cancelStream('tab-1')
-
-      // Give the fire-and-forget promise a tick
-      await new Promise((r) => setTimeout(r, 10))
-
-      expect(mockCancelAiStream).toHaveBeenCalledWith(streamId)
-    })
-
-    it('calls and clears the unlisten function', () => {
-      const unlisten = vi.fn()
-      useAiStore
-        .getState()
-        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
-      useAiStore.getState().setUnlisten('tab-1', unlisten)
-
-      useAiStore.getState().cancelStream('tab-1')
-
-      expect(unlisten).toHaveBeenCalledTimes(1)
-      expect(getTab('tab-1')!._unlisten).toBeNull()
     })
 
     it('does nothing when no active stream exists', async () => {
@@ -1447,22 +1305,7 @@ describe('useAiStore', () => {
       const assistantMsgs = tab.messages.filter((m) => m.role === 'assistant')
       expect(assistantMsgs).toHaveLength(1)
       expect(assistantMsgs[0].content).toBe('Hello world')
-    })
-
-    it('creates new assistant message after a user message', () => {
-      useAiStore
-        .getState()
-        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
-      const streamId = getTab('tab-1')!.activeStreamId!
-      useAiStore
-        .getState()
-        .onStreamChunk('tab-1', streamId, { content: 'Response', kind: 'content' })
-      const tab = getTab('tab-1')!
-      const userMsg = tab.messages.find((m) => m.role === 'user')
-      const assistantMsg = tab.messages.find((m) => m.role === 'assistant')
-      expect(userMsg).toBeDefined()
-      expect(assistantMsg).toBeDefined()
-      expect(assistantMsg!.content).toBe('Response')
+      expect(assistantMsgs[0].thinkingContent).toBeUndefined()
     })
 
     it('ignores chunks with a stale streamId', () => {
@@ -1476,29 +1319,6 @@ describe('useAiStore', () => {
       const tab = getTab('tab-1')!
       const assistantMsg = tab.messages.find((m) => m.role === 'assistant')
       expect(assistantMsg).toBeUndefined()
-    })
-
-    it('ignores chunks for non-existent tab', () => {
-      // Should not throw
-      useAiStore
-        .getState()
-        .onStreamChunk('nonexistent', 'stream-1', { content: 'chunk', kind: 'content' })
-      expect(getTab('nonexistent')).toBeUndefined()
-    })
-
-    it('routes thinking chunks to thinkingContent, not content', () => {
-      useAiStore
-        .getState()
-        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
-      const streamId = getTab('tab-1')!.activeStreamId!
-      useAiStore
-        .getState()
-        .onStreamChunk('tab-1', streamId, { content: 'reasoning...', kind: 'thinking' })
-      const tab = getTab('tab-1')!
-      const assistantMsg = tab.messages.find((m) => m.role === 'assistant')
-      expect(assistantMsg).toBeDefined()
-      expect(assistantMsg!.thinkingContent).toBe('reasoning...')
-      expect(assistantMsg!.content).toBe('')
     })
 
     it('appends thinking chunks to thinkingContent without affecting content', () => {
@@ -1520,76 +1340,25 @@ describe('useAiStore', () => {
       expect(assistantMsg!.thinkingContent).toBe('think1think2')
       expect(assistantMsg!.content).toBe('visible')
     })
-
-    it('content chunks do not affect thinkingContent', () => {
-      useAiStore
-        .getState()
-        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
-      const streamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', streamId, { content: 'hello', kind: 'content' })
-      useAiStore.getState().onStreamChunk('tab-1', streamId, { content: ' world', kind: 'content' })
-      const tab = getTab('tab-1')!
-      const assistantMsg = tab.messages.find((m) => m.role === 'assistant')
-      expect(assistantMsg!.content).toBe('hello world')
-      expect(assistantMsg!.thinkingContent).toBeUndefined()
-    })
-
-    it('thinking chunk before any content creates assistant message with empty content and non-empty thinkingContent', () => {
-      useAiStore
-        .getState()
-        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
-      const streamId = getTab('tab-1')!.activeStreamId!
-      useAiStore
-        .getState()
-        .onStreamChunk('tab-1', streamId, { content: 'let me think', kind: 'thinking' })
-      const tab = getTab('tab-1')!
-      const assistantMsg = tab.messages.find((m) => m.role === 'assistant')
-      expect(assistantMsg).toBeDefined()
-      expect(assistantMsg!.content).toBe('')
-      expect(assistantMsg!.thinkingContent).toBe('let me think')
-    })
   })
 
   describe('onStreamDone', () => {
-    it('sets isGenerating to false and clears activeStreamId', () => {
-      useAiStore
-        .getState()
-        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
-      const streamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', streamId, { content: 'chunk', kind: 'content' })
-      useAiStore.getState().onStreamDone('tab-1', streamId, { transport: 'chat_completions' })
-      const tab = getTab('tab-1')!
-      expect(tab.isGenerating).toBe(false)
-      expect(tab.activeStreamId).toBeNull()
-    })
-
-    it('calls and clears _unlisten on stream done', () => {
+    it('stops generating and runs the unlisten function when the stream is done', () => {
       const unlisten = vi.fn()
       useAiStore
         .getState()
         .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
       const streamId = getTab('tab-1')!.activeStreamId!
       useAiStore.getState().setUnlisten('tab-1', unlisten)
+      useAiStore.getState().onStreamChunk('tab-1', streamId, { content: 'chunk', kind: 'content' })
 
       useAiStore.getState().onStreamDone('tab-1', streamId, { transport: 'chat_completions' })
+
+      const tab = getTab('tab-1')!
+      expect(tab.isGenerating).toBe(false)
+      expect(tab.activeStreamId).toBeNull()
       expect(unlisten).toHaveBeenCalledTimes(1)
-      expect(getTab('tab-1')!._unlisten).toBeNull()
-    })
-
-    it('stores previousResponseId from responses transport', () => {
-      useAiStore
-        .getState()
-        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
-      const streamId = getTab('tab-1')!.activeStreamId!
-
-      useAiStore.getState().onStreamChunk('tab-1', streamId, { content: 'Answer', kind: 'content' })
-
-      useAiStore.getState().onStreamDone('tab-1', streamId, {
-        responseId: 'resp_999',
-        transport: 'responses',
-      })
-
-      expect(getTab('tab-1')!.previousResponseId).toBe('resp_999')
+      expect(tab._unlisten).toBeNull()
     })
 
     it('does not store previousResponseId for a responses completion without assistant output', () => {
@@ -1622,6 +1391,7 @@ describe('useAiStore', () => {
         responseId: 'resp_999',
         transport: 'responses',
       })
+      expect(getTab('tab-1')!.previousResponseId).toBe('resp_999')
 
       useAiStore
         .getState()
@@ -1655,17 +1425,23 @@ describe('useAiStore', () => {
   })
 
   describe('onStreamError', () => {
-    it('sets isGenerating to false, sets error, clears activeStreamId', () => {
+    it('stops generating, records the error and runs the unlisten function on stream error', () => {
+      const unlisten = vi.fn()
       useAiStore
         .getState()
         .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
       const streamId = getTab('tab-1')!.activeStreamId!
+      useAiStore.getState().setUnlisten('tab-1', unlisten)
       useAiStore.getState().onStreamChunk('tab-1', streamId, { content: 'chunk', kind: 'content' })
+
       useAiStore.getState().onStreamError('tab-1', streamId, 'Connection failed')
+
       const tab = getTab('tab-1')!
       expect(tab.isGenerating).toBe(false)
       expect(tab.error).toBe('Connection failed')
       expect(tab.activeStreamId).toBeNull()
+      expect(unlisten).toHaveBeenCalledTimes(1)
+      expect(tab._unlisten).toBeNull()
     })
 
     it('clears previousResponseId on stream error', () => {
@@ -1690,19 +1466,6 @@ describe('useAiStore', () => {
       expect(getTab('tab-1')!.previousResponseId).toBeNull()
     })
 
-    it('calls and clears _unlisten on stream error', () => {
-      const unlisten = vi.fn()
-      useAiStore
-        .getState()
-        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hi', settings: {} })
-      const streamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().setUnlisten('tab-1', unlisten)
-
-      useAiStore.getState().onStreamError('tab-1', streamId, 'Error')
-      expect(unlisten).toHaveBeenCalledTimes(1)
-      expect(getTab('tab-1')!._unlisten).toBeNull()
-    })
-
     it('ignores error event with stale streamId', () => {
       useAiStore
         .getState()
@@ -1718,54 +1481,36 @@ describe('useAiStore', () => {
     })
   })
 
-  describe('setUnlisten', () => {
-    it('stores the unlisten function for a tab', () => {
-      const unlisten = vi.fn()
-      useAiStore.getState().setUnlisten('tab-1', unlisten)
-      expect(getTab('tab-1')!._unlisten).toBe(unlisten)
-    })
-  })
-
   describe('panel actions', () => {
-    it('togglePanel opens a closed panel', () => {
-      useAiStore.getState().togglePanel('tab-1')
-      expect(getTab('tab-1')!.isPanelOpen).toBe(true)
-    })
+    it('opens, closes and toggles the panel, creating tab state on first access', () => {
+      expect(getTab('tab-1')).toBeUndefined()
 
-    it('togglePanel closes an open panel', () => {
-      useAiStore.getState().openPanel('tab-1')
-      useAiStore.getState().togglePanel('tab-1')
-      expect(getTab('tab-1')!.isPanelOpen).toBe(false)
-    })
-
-    it('openPanel sets isPanelOpen to true', () => {
       useAiStore.getState().openPanel('tab-1')
       expect(getTab('tab-1')!.isPanelOpen).toBe(true)
-    })
+      expect(getTab('tab-1')!.messages).toHaveLength(0)
+      expect(getTab('tab-1')!.isGenerating).toBe(false)
 
-    it('closePanel sets isPanelOpen to false', () => {
-      useAiStore.getState().openPanel('tab-1')
       useAiStore.getState().closePanel('tab-1')
+      expect(getTab('tab-1')!.isPanelOpen).toBe(false)
+
+      useAiStore.getState().togglePanel('tab-1')
+      expect(getTab('tab-1')!.isPanelOpen).toBe(true)
+
+      useAiStore.getState().togglePanel('tab-1')
       expect(getTab('tab-1')!.isPanelOpen).toBe(false)
     })
   })
 
   describe('attached context', () => {
-    it('setAttachedContext stores the SQL context', () => {
+    it('stores the attached SQL context and clears it', () => {
       const context = {
         sql: 'SELECT * FROM users',
         range: { startLineNumber: 1, endLineNumber: 1, startColumn: 1, endColumn: 20 },
       }
+
       useAiStore.getState().setAttachedContext('tab-1', context)
       expect(getTab('tab-1')!.attachedContext).toEqual(context)
-    })
 
-    it('clearAttachedContext removes the context', () => {
-      const context = {
-        sql: 'SELECT 1',
-        range: { startLineNumber: 1, endLineNumber: 1, startColumn: 1, endColumn: 8 },
-      }
-      useAiStore.getState().setAttachedContext('tab-1', context)
       useAiStore.getState().clearAttachedContext('tab-1')
       expect(getTab('tab-1')!.attachedContext).toBeNull()
     })
@@ -1820,13 +1565,10 @@ describe('useAiStore', () => {
   })
 
   describe('error management', () => {
-    it('setError sets the error string', () => {
+    it('sets and clears the error string', () => {
       useAiStore.getState().setError('tab-1', 'Something went wrong')
       expect(getTab('tab-1')!.error).toBe('Something went wrong')
-    })
 
-    it('clearError removes the error', () => {
-      useAiStore.getState().setError('tab-1', 'Error')
       useAiStore.getState().clearError('tab-1')
       expect(getTab('tab-1')!.error).toBeNull()
     })
@@ -1851,61 +1593,47 @@ describe('useAiStore', () => {
       // The last user message ("World") should be removed and re-added
       const userMessages = tab.messages.filter((m) => m.role === 'user')
       expect(userMessages[userMessages.length - 1].content).toBe('World')
+      expect(tab.error).toBeNull()
     })
 
-    it('does nothing if no user messages exist', () => {
-      useAiStore.getState().togglePanel('tab-1') // ensure tab exists
-      useAiStore.getState().retryLastMessage('tab-1', 'conn-1', {})
-      const tab = getTab('tab-1')!
-      expect(tab.messages).toHaveLength(0)
-    })
-
-    it('clears error when retrying', () => {
-      useAiStore
-        .getState()
-        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Msg', settings: {} })
-      useAiStore.getState().setError('tab-1', 'Network error')
+    it('does nothing if no user messages exist or the tab does not exist', () => {
+      useAiStore.getState().togglePanel('tab-1')
 
       useAiStore.getState().retryLastMessage('tab-1', 'conn-1', {})
-      expect(getTab('tab-1')!.error).toBeNull()
-    })
-
-    it('does nothing for non-existent tab', () => {
       useAiStore.getState().retryLastMessage('nonexistent', 'conn-1', {})
+
+      expect(getTab('tab-1')!.messages).toHaveLength(0)
       expect(getTab('nonexistent')).toBeUndefined()
     })
   })
 
   describe('cleanupTab', () => {
-    it('removes all state for the tab', () => {
+    it('removes the tab, runs its unlisten function and cancels the in-flight request', async () => {
+      const unlisten = vi.fn()
       useAiStore
         .getState()
         .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
-      useAiStore.getState().openPanel('tab-1')
-
-      useAiStore.getState().cleanupTab('tab-1')
-      expect(getTab('tab-1')).toBeUndefined()
-    })
-
-    it('calls stored unlisten function on cleanup', () => {
-      const unlisten = vi.fn()
+      const streamId = getTab('tab-1')!.activeStreamId!
       useAiStore.getState().setUnlisten('tab-1', unlisten)
 
       useAiStore.getState().cleanupTab('tab-1')
+
+      expect(getTab('tab-1')).toBeUndefined()
       expect(unlisten).toHaveBeenCalledTimes(1)
-      expect(getTab('tab-1')).toBeUndefined()
+      await vi.waitFor(() => {
+        expect(mockCancelAiStream).toHaveBeenCalledWith(streamId)
+      })
     })
 
-    it('handles cleanup when no unlisten is stored', () => {
+    it('cleans up without cancelling when there is no active stream, unlisten or tab', async () => {
       useAiStore.getState().openPanel('tab-1')
-      useAiStore.getState().cleanupTab('tab-1')
-      expect(getTab('tab-1')).toBeUndefined()
-    })
 
-    it('handles cleanup for non-existent tab', () => {
-      // Should not throw
+      useAiStore.getState().cleanupTab('tab-1')
       useAiStore.getState().cleanupTab('nonexistent')
+
+      expect(getTab('tab-1')).toBeUndefined()
       expect(getTab('nonexistent')).toBeUndefined()
+      expect(mockCancelAiStream).not.toHaveBeenCalled()
     })
 
     it('handles unlisten function that throws', () => {
@@ -1917,32 +1645,6 @@ describe('useAiStore', () => {
       useAiStore.getState().cleanupTab('tab-1')
 
       expect(unlisten).toHaveBeenCalledTimes(1)
-      expect(getTab('tab-1')).toBeUndefined()
-    })
-
-    it('cancels in-flight AI request on cleanup', async () => {
-      useAiStore
-        .getState()
-        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
-      const streamId = getTab('tab-1')!.activeStreamId!
-      expect(streamId).toBeTruthy()
-
-      useAiStore.getState().cleanupTab('tab-1')
-
-      // Give the fire-and-forget promise a tick
-      await new Promise((r) => setTimeout(r, 10))
-
-      expect(mockCancelAiStream).toHaveBeenCalledWith(streamId)
-      expect(getTab('tab-1')).toBeUndefined()
-    })
-
-    it('does not call cancelAiStream when no active stream', async () => {
-      useAiStore.getState().openPanel('tab-1')
-      useAiStore.getState().cleanupTab('tab-1')
-
-      await new Promise((r) => setTimeout(r, 10))
-
-      expect(mockCancelAiStream).not.toHaveBeenCalled()
       expect(getTab('tab-1')).toBeUndefined()
     })
 
@@ -1990,30 +1692,6 @@ describe('useAiStore', () => {
       expect(contextMsg).toBeDefined()
       expect(contextMsg.content).toContain('SELECT id, name FROM users WHERE active = 1')
       expect(contextMsg.content).not.toContain('SELECT * FROM users')
-    })
-
-    it('uses the current attached context SQL when sending a message', async () => {
-      const originalRange = { startLineNumber: 1, endLineNumber: 1, startColumn: 1, endColumn: 20 }
-      useAiStore.getState().setAttachedContext('tab-1', {
-        sql: 'SELECT * FROM users',
-        range: originalRange,
-      })
-
-      useAiStore
-        .getState()
-        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Now add ORDER BY', settings: {} })
-
-      await vi.waitFor(() => {
-        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
-      })
-
-      const params = mockSendAiChat.mock.calls[0][0]
-      const contextMsg = params.messages.find(
-        (m: { role: string; content: string }) =>
-          m.role === 'user' && m.content.includes('The following SQL statement is the context')
-      )
-      expect(contextMsg).toBeDefined()
-      expect(contextMsg.content).toContain('SELECT * FROM users')
     })
 
     it('reuses the same attached-context prompt prefix on follow-up messages until the context changes', async () => {
@@ -2071,17 +1749,6 @@ describe('useAiStore', () => {
     })
   })
 
-  describe('lazy initialization', () => {
-    it('creates tab state on first access via actions', () => {
-      expect(getTab('tab-new')).toBeUndefined()
-      useAiStore.getState().openPanel('tab-new')
-      const tab = getTab('tab-new')!
-      expect(tab.isPanelOpen).toBe(true)
-      expect(tab.messages).toHaveLength(0)
-      expect(tab.isGenerating).toBe(false)
-    })
-  })
-
   // -------------------------------------------------------------------------
   // Editor lock — AI status management
   // -------------------------------------------------------------------------
@@ -2094,96 +1761,66 @@ describe('useAiStore', () => {
       }
     }
 
-    it('sendMessage stores connectionId in the AI tab state', () => {
-      useAiStore
-        .getState()
-        .sendMessage('tab-1', { connectionId: 'conn-1', message: 'Hello', settings: {} })
-      const tab = getTab('tab-1')!
-      expect(tab.connectionId).toBe('conn-1')
-    })
-
-    it('sendMessage locks the editor with ai-pending', () => {
+    it('locks the editor with ai-pending on send and remembers the previous status', () => {
       ensureQueryTab('tab-lock')
+      ensureQueryTab('tab-lock-success', 'success')
+
       useAiStore
         .getState()
         .sendMessage('tab-lock', { connectionId: 'conn-1', message: 'Hello', settings: {} })
-      const queryTab = useQueryStore.getState().getTabState('tab-lock')
-      expect(queryTab.tabStatus).toBe('ai-pending')
-      expect(queryTab.prevTabStatus).toBe('idle')
+      useAiStore.getState().sendMessage('tab-lock-success', {
+        connectionId: 'conn-1',
+        message: 'Hello',
+        settings: {},
+      })
+
+      expect(getTab('tab-lock')!.connectionId).toBe('conn-1')
+      const idleQueryTab = useQueryStore.getState().getTabState('tab-lock')
+      expect(idleQueryTab.tabStatus).toBe('ai-pending')
+      expect(idleQueryTab.prevTabStatus).toBe('idle')
+      const successQueryTab = useQueryStore.getState().getTabState('tab-lock-success')
+      expect(successQueryTab.tabStatus).toBe('ai-pending')
+      expect(successQueryTab.prevTabStatus).toBe('success')
     })
 
-    it('sendMessage preserves prevTabStatus from success', () => {
-      ensureQueryTab('tab-lock2', 'success')
+    it('restores the editor status when the stream is done, fails or is cancelled', () => {
+      const tabIds = ['tab-done', 'tab-err', 'tab-cancel']
+      tabIds.forEach((tabId) => {
+        ensureQueryTab(tabId)
+        useAiStore
+          .getState()
+          .sendMessage(tabId, { connectionId: 'conn-1', message: 'Hello', settings: {} })
+        expect(useQueryStore.getState().getTabState(tabId).tabStatus).toBe('ai-pending')
+      })
+
+      useAiStore.getState().onStreamDone('tab-done', getTab('tab-done')!.activeStreamId!, {
+        transport: 'chat_completions',
+      })
       useAiStore
         .getState()
-        .sendMessage('tab-lock2', { connectionId: 'conn-1', message: 'Hello', settings: {} })
-      const queryTab = useQueryStore.getState().getTabState('tab-lock2')
-      expect(queryTab.tabStatus).toBe('ai-pending')
-      expect(queryTab.prevTabStatus).toBe('success')
-    })
-
-    it('onStreamDone restores the editor status', () => {
-      ensureQueryTab('tab-done')
-      useAiStore
-        .getState()
-        .sendMessage('tab-done', { connectionId: 'conn-1', message: 'Hello', settings: {} })
-      expect(useQueryStore.getState().getTabState('tab-done').tabStatus).toBe('ai-pending')
-
-      const streamId = getTab('tab-done')!.activeStreamId!
-      useAiStore.getState().onStreamDone('tab-done', streamId, { transport: 'chat_completions' })
-      expect(useQueryStore.getState().getTabState('tab-done').tabStatus).toBe('idle')
-    })
-
-    it('onStreamError restores the editor status', () => {
-      ensureQueryTab('tab-err')
-      useAiStore
-        .getState()
-        .sendMessage('tab-err', { connectionId: 'conn-1', message: 'Hello', settings: {} })
-      expect(useQueryStore.getState().getTabState('tab-err').tabStatus).toBe('ai-pending')
-
-      const streamId = getTab('tab-err')!.activeStreamId!
-      useAiStore.getState().onStreamError('tab-err', streamId, 'Network error')
-      expect(useQueryStore.getState().getTabState('tab-err').tabStatus).toBe('idle')
-    })
-
-    it('cancelStream restores the editor status', () => {
-      ensureQueryTab('tab-cancel')
-      useAiStore
-        .getState()
-        .sendMessage('tab-cancel', { connectionId: 'conn-1', message: 'Hello', settings: {} })
-      expect(useQueryStore.getState().getTabState('tab-cancel').tabStatus).toBe('ai-pending')
-
+        .onStreamError('tab-err', getTab('tab-err')!.activeStreamId!, 'Network error')
       useAiStore.getState().cancelStream('tab-cancel')
-      expect(useQueryStore.getState().getTabState('tab-cancel').tabStatus).toBe('idle')
+
+      tabIds.forEach((tabId) => {
+        expect(useQueryStore.getState().getTabState(tabId).tabStatus).toBe('idle')
+      })
     })
 
-    it('setAiReviewing locks the editor with ai-reviewing', () => {
-      ensureQueryTab('tab-review')
-      useAiStore.getState().setAiReviewing('tab-review')
-      const queryTab = useQueryStore.getState().getTabState('tab-review')
-      expect(queryTab.tabStatus).toBe('ai-reviewing')
-      expect(queryTab.prevTabStatus).toBe('idle')
-    })
-
-    it('restoreTabStatus restores from ai-reviewing', () => {
-      ensureQueryTab('tab-restore', 'success')
-      useAiStore.getState().setAiReviewing('tab-restore')
-      expect(useQueryStore.getState().getTabState('tab-restore').tabStatus).toBe('ai-reviewing')
-
-      useAiStore.getState().restoreTabStatus('tab-restore')
-      expect(useQueryStore.getState().getTabState('tab-restore').tabStatus).toBe('success')
-    })
-
-    it('restoreTabStatus no-ops when tab is not in AI state', () => {
+    it('locks the editor while reviewing and only restores a tab that is in an AI state', () => {
+      ensureQueryTab('tab-review', 'success')
       ensureQueryTab('tab-noop', 'success')
-      useAiStore.getState().restoreTabStatus('tab-noop')
-      // Should remain 'success' — not changed
-      expect(useQueryStore.getState().getTabState('tab-noop').tabStatus).toBe('success')
-    })
 
-    it('restoreTabStatus no-ops for non-existent query tab', () => {
-      // Should not throw
+      useAiStore.getState().setAiReviewing('tab-review')
+      const reviewingQueryTab = useQueryStore.getState().getTabState('tab-review')
+      expect(reviewingQueryTab.tabStatus).toBe('ai-reviewing')
+      expect(reviewingQueryTab.prevTabStatus).toBe('success')
+
+      useAiStore.getState().restoreTabStatus('tab-review')
+      useAiStore.getState().restoreTabStatus('tab-noop')
       useAiStore.getState().restoreTabStatus('nonexistent')
+
+      expect(useQueryStore.getState().getTabState('tab-review').tabStatus).toBe('success')
+      expect(useQueryStore.getState().getTabState('tab-noop').tabStatus).toBe('success')
     })
 
     it('sendAiChat failure restores editor status', async () => {

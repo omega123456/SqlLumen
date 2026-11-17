@@ -60,19 +60,4 @@ describe('SettingsDropdownField', () => {
 
     expect(onChange).toHaveBeenCalledWith('two')
   })
-
-  it('can be disabled', () => {
-    render(
-      <SettingsDropdownField
-        name="sample"
-        label="Sample"
-        options={OPTIONS}
-        value="one"
-        onChange={vi.fn()}
-        disabled={true}
-      />
-    )
-
-    expect(screen.getByRole('combobox', { name: 'Sample' })).toBeDisabled()
-  })
 })

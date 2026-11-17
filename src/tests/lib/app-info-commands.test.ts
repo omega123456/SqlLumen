@@ -13,7 +13,7 @@ beforeEach(() => {
 })
 
 describe('getAppInfo', () => {
-  it('calls invoke with get_app_info and returns typed result', async () => {
+  it('returns the app info including the Rust log override', async () => {
     const result = await getAppInfo()
 
     expect(result).toEqual({
@@ -21,17 +21,15 @@ describe('getAppInfo', () => {
       appVersion: '1.2.3',
     })
     expect(ipc.calls('get_app_info')).toEqual([{}])
-  })
 
-  it('returns AppInfo with rustLogOverride true', async () => {
     mockGetAppInfoFn.mockReturnValue({
       rustLogOverride: true,
       appVersion: '0.1.0',
     })
 
-    const result = await getAppInfo()
+    const getAppInfoResult = await getAppInfo()
 
-    expect(result.rustLogOverride).toBe(true)
-    expect(result.appVersion).toBe('0.1.0')
+    expect(getAppInfoResult.rustLogOverride).toBe(true)
+    expect(getAppInfoResult.appVersion).toBe('0.1.0')
   })
 })

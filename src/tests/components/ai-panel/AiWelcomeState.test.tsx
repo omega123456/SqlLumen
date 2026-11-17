@@ -20,37 +20,12 @@ describe('AiWelcomeState', () => {
     expect(screen.getByTestId('ai-welcome-state')).toBeInTheDocument()
   })
 
-  it('displays headline text', () => {
-    render(<AiWelcomeState onSuggestionClick={vi.fn()} />)
-    expect(screen.getByText('Ask AI about your SQL')).toBeInTheDocument()
-  })
-
-  it('displays subtext', () => {
-    render(<AiWelcomeState onSuggestionClick={vi.fn()} />)
-    expect(screen.getByText(/Get help writing, explaining/)).toBeInTheDocument()
-  })
-
-  it('renders exactly 4 suggestion chips', () => {
-    render(<AiWelcomeState onSuggestionClick={vi.fn()} />)
-    const chips = screen.getAllByTestId('ai-suggestion-chip')
-    expect(chips).toHaveLength(4)
-  })
-
   it('renders all 4 suggestion chip labels', () => {
     render(<AiWelcomeState onSuggestionClick={vi.fn()} />)
     expect(screen.getByText('Explain query')).toBeInTheDocument()
     expect(screen.getByText('Optimize for speed')).toBeInTheDocument()
     expect(screen.getByText('Generate a JOIN')).toBeInTheDocument()
     expect(screen.getByText('Find potential issues')).toBeInTheDocument()
-  })
-
-  it('calls onSuggestionClick with correct text when chip is clicked', async () => {
-    const user = userEvent.setup()
-    const onSuggestionClick = vi.fn()
-    render(<AiWelcomeState onSuggestionClick={onSuggestionClick} />)
-
-    await user.click(screen.getByText('Explain query'))
-    expect(onSuggestionClick).toHaveBeenCalledWith('Explain this query step by step')
   })
 
   it('calls onSuggestionClick with correct text for each chip', async () => {

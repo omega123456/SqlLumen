@@ -515,36 +515,6 @@ describe('ObjectBrowserContextMenu', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
-  it('shows correct items for view node (writable)', () => {
-    const { nodes, viewId } = makeNodes()
-    setNodes(nodes)
-    const onAlterObject = vi.fn()
-    const onDropObject = vi.fn()
-
-    render(
-      <ObjectBrowserContextMenu
-        visible
-        x={100}
-        y={100}
-        nodeId={viewId}
-        connectionId={CONN_ID}
-        isReadOnly={false}
-        onClose={vi.fn()}
-        onAlterObject={onAlterObject}
-        onDropObject={onDropObject}
-      />
-    )
-
-    expect(screen.getByText('Schema info')).toBeInTheDocument()
-    expect(screen.getByText('Copy name')).toBeInTheDocument()
-    expect(screen.getByText('Refresh')).toBeInTheDocument()
-    // Alter View and Drop View should be enabled when callbacks are provided
-    const alterView = screen.getByText('Alter view...')
-    expect(alterView.closest('button')).toBeEnabled()
-    const dropView = screen.getByText('Drop view...')
-    expect(dropView.closest('button')).toBeEnabled()
-  })
-
   it('shows read-only view menu (no mutating items)', () => {
     const { nodes, viewId } = makeNodes()
     setNodes(nodes)
@@ -566,70 +536,6 @@ describe('ObjectBrowserContextMenu', () => {
     expect(screen.getByText('Refresh')).toBeInTheDocument()
     expect(screen.queryByText('Alter view...')).not.toBeInTheDocument()
     expect(screen.queryByText('Drop view...')).not.toBeInTheDocument()
-  })
-
-  it('shows correct items for procedure node (writable)', () => {
-    const { nodes, procId } = makeNodes()
-    setNodes(nodes)
-    const onAlterObject = vi.fn()
-    const onDropObject = vi.fn()
-    const onExecuteRoutine = vi.fn()
-
-    render(
-      <ObjectBrowserContextMenu
-        visible
-        x={100}
-        y={100}
-        nodeId={procId}
-        connectionId={CONN_ID}
-        isReadOnly={false}
-        onClose={vi.fn()}
-        onAlterObject={onAlterObject}
-        onDropObject={onDropObject}
-        onExecuteRoutine={onExecuteRoutine}
-      />
-    )
-
-    expect(screen.getByText('Schema info')).toBeInTheDocument()
-    expect(screen.getByText('Copy name')).toBeInTheDocument()
-    expect(screen.getByText('Refresh')).toBeInTheDocument()
-    // Execute is enabled when onExecuteRoutine is provided
-    const execute = screen.getByText('Execute')
-    expect(execute.closest('button')).toBeEnabled()
-    // Alter and Drop enabled when callbacks provided
-    const alterProc = screen.getByText('Alter procedure...')
-    expect(alterProc.closest('button')).toBeEnabled()
-    const dropProc = screen.getByText('Drop procedure...')
-    expect(dropProc.closest('button')).toBeEnabled()
-  })
-
-  it('shows correct items for trigger node (writable)', () => {
-    const { nodes, triggerId } = makeNodes()
-    setNodes(nodes)
-    const onAlterObject = vi.fn()
-    const onDropObject = vi.fn()
-
-    render(
-      <ObjectBrowserContextMenu
-        visible
-        x={100}
-        y={100}
-        nodeId={triggerId}
-        connectionId={CONN_ID}
-        isReadOnly={false}
-        onClose={vi.fn()}
-        onAlterObject={onAlterObject}
-        onDropObject={onDropObject}
-      />
-    )
-
-    expect(screen.getByText('Schema info')).toBeInTheDocument()
-    expect(screen.getByText('Copy name')).toBeInTheDocument()
-    expect(screen.getByText('Refresh')).toBeInTheDocument()
-    const alterTrigger = screen.getByText('Alter trigger...')
-    expect(alterTrigger.closest('button')).toBeEnabled()
-    const dropTrigger = screen.getByText('Drop trigger...')
-    expect(dropTrigger.closest('button')).toBeEnabled()
   })
 
   it('shows correct items for category node', () => {
@@ -711,235 +617,48 @@ describe('ObjectBrowserContextMenu', () => {
   // Phase 8.4 — Alter, Create, Drop for all object types
   // ---------------------------------------------------------------------------
 
-  it('"Alter view..." calls onAlterObject with correct args', async () => {
+  it('calls onAlterObject and onDropObject with the schema, name and kind of each object node', async () => {
     const user = userEvent.setup()
-    const { nodes, viewId } = makeNodes()
+    const { nodes, viewId, procId, funcId, triggerId, eventId } = makeNodes()
     setNodes(nodes)
-    const onAlterObject = vi.fn()
-    const onClose = vi.fn()
+    const objectNodes = [
+      { nodeId: viewId, kind: 'view', name: 'user_stats' },
+      { nodeId: procId, kind: 'procedure', name: 'sp_example' },
+      { nodeId: funcId, kind: 'function', name: 'calc_total' },
+      { nodeId: triggerId, kind: 'trigger', name: 'before_insert' },
+      { nodeId: eventId, kind: 'event', name: 'cleanup_job' },
+    ]
 
-    render(
-      <ObjectBrowserContextMenu
-        visible
-        x={100}
-        y={100}
-        nodeId={viewId}
-        connectionId={CONN_ID}
-        isReadOnly={false}
-        onClose={onClose}
-        onAlterObject={onAlterObject}
-      />
-    )
+    for (const objectNode of objectNodes) {
+      const onAlterObject = vi.fn()
+      const onDropObject = vi.fn()
+      const { unmount } = render(
+        <ObjectBrowserContextMenu
+          visible
+          x={100}
+          y={100}
+          nodeId={objectNode.nodeId}
+          connectionId={CONN_ID}
+          isReadOnly={false}
+          onClose={vi.fn()}
+          onAlterObject={onAlterObject}
+          onDropObject={onDropObject}
+          onExecuteRoutine={vi.fn()}
+        />
+      )
 
-    await user.click(screen.getByText('Alter view...'))
-    expect(onAlterObject).toHaveBeenCalledWith('testdb', 'user_stats', 'view')
-  })
+      expect(screen.getByText('Schema info')).toBeInTheDocument()
+      expect(screen.getByText('Copy name')).toBeInTheDocument()
+      expect(screen.getByText('Refresh')).toBeInTheDocument()
+      expect(screen.getByText(`Alter ${objectNode.kind}...`).closest('button')).toBeEnabled()
+      expect(screen.getByText(`Drop ${objectNode.kind}...`).closest('button')).toBeEnabled()
+      await user.click(screen.getByText(`Alter ${objectNode.kind}...`))
+      await user.click(screen.getByText(`Drop ${objectNode.kind}...`))
 
-  it('"Drop view..." calls onDropObject with correct args', async () => {
-    const user = userEvent.setup()
-    const { nodes, viewId } = makeNodes()
-    setNodes(nodes)
-    const onDropObject = vi.fn()
-
-    render(
-      <ObjectBrowserContextMenu
-        visible
-        x={100}
-        y={100}
-        nodeId={viewId}
-        connectionId={CONN_ID}
-        isReadOnly={false}
-        onClose={vi.fn()}
-        onDropObject={onDropObject}
-      />
-    )
-
-    await user.click(screen.getByText('Drop view...'))
-    expect(onDropObject).toHaveBeenCalledWith('testdb', 'user_stats', 'view')
-  })
-
-  it('"Alter Procedure..." calls onAlterObject with correct args', async () => {
-    const user = userEvent.setup()
-    const { nodes, procId } = makeNodes()
-    setNodes(nodes)
-    const onAlterObject = vi.fn()
-
-    render(
-      <ObjectBrowserContextMenu
-        visible
-        x={100}
-        y={100}
-        nodeId={procId}
-        connectionId={CONN_ID}
-        isReadOnly={false}
-        onClose={vi.fn()}
-        onAlterObject={onAlterObject}
-      />
-    )
-
-    await user.click(screen.getByText('Alter procedure...'))
-    expect(onAlterObject).toHaveBeenCalledWith('testdb', 'sp_example', 'procedure')
-  })
-
-  it('"Drop Procedure..." calls onDropObject with correct args', async () => {
-    const user = userEvent.setup()
-    const { nodes, procId } = makeNodes()
-    setNodes(nodes)
-    const onDropObject = vi.fn()
-
-    render(
-      <ObjectBrowserContextMenu
-        visible
-        x={100}
-        y={100}
-        nodeId={procId}
-        connectionId={CONN_ID}
-        isReadOnly={false}
-        onClose={vi.fn()}
-        onDropObject={onDropObject}
-      />
-    )
-
-    await user.click(screen.getByText('Drop procedure...'))
-    expect(onDropObject).toHaveBeenCalledWith('testdb', 'sp_example', 'procedure')
-  })
-
-  it('"Alter Function..." calls onAlterObject for function node', async () => {
-    const user = userEvent.setup()
-    const { nodes, funcId } = makeNodes()
-    setNodes(nodes)
-    const onAlterObject = vi.fn()
-
-    render(
-      <ObjectBrowserContextMenu
-        visible
-        x={100}
-        y={100}
-        nodeId={funcId}
-        connectionId={CONN_ID}
-        isReadOnly={false}
-        onClose={vi.fn()}
-        onAlterObject={onAlterObject}
-      />
-    )
-
-    await user.click(screen.getByText('Alter function...'))
-    expect(onAlterObject).toHaveBeenCalledWith('testdb', 'calc_total', 'function')
-  })
-
-  it('"Drop Function..." calls onDropObject for function node', async () => {
-    const user = userEvent.setup()
-    const { nodes, funcId } = makeNodes()
-    setNodes(nodes)
-    const onDropObject = vi.fn()
-
-    render(
-      <ObjectBrowserContextMenu
-        visible
-        x={100}
-        y={100}
-        nodeId={funcId}
-        connectionId={CONN_ID}
-        isReadOnly={false}
-        onClose={vi.fn()}
-        onDropObject={onDropObject}
-      />
-    )
-
-    await user.click(screen.getByText('Drop function...'))
-    expect(onDropObject).toHaveBeenCalledWith('testdb', 'calc_total', 'function')
-  })
-
-  it('"Alter Trigger..." calls onAlterObject for trigger node', async () => {
-    const user = userEvent.setup()
-    const { nodes, triggerId } = makeNodes()
-    setNodes(nodes)
-    const onAlterObject = vi.fn()
-
-    render(
-      <ObjectBrowserContextMenu
-        visible
-        x={100}
-        y={100}
-        nodeId={triggerId}
-        connectionId={CONN_ID}
-        isReadOnly={false}
-        onClose={vi.fn()}
-        onAlterObject={onAlterObject}
-      />
-    )
-
-    await user.click(screen.getByText('Alter trigger...'))
-    expect(onAlterObject).toHaveBeenCalledWith('testdb', 'before_insert', 'trigger')
-  })
-
-  it('"Drop Trigger..." calls onDropObject for trigger node', async () => {
-    const user = userEvent.setup()
-    const { nodes, triggerId } = makeNodes()
-    setNodes(nodes)
-    const onDropObject = vi.fn()
-
-    render(
-      <ObjectBrowserContextMenu
-        visible
-        x={100}
-        y={100}
-        nodeId={triggerId}
-        connectionId={CONN_ID}
-        isReadOnly={false}
-        onClose={vi.fn()}
-        onDropObject={onDropObject}
-      />
-    )
-
-    await user.click(screen.getByText('Drop trigger...'))
-    expect(onDropObject).toHaveBeenCalledWith('testdb', 'before_insert', 'trigger')
-  })
-
-  it('"Alter Event..." calls onAlterObject for event node', async () => {
-    const user = userEvent.setup()
-    const { nodes, eventId } = makeNodes()
-    setNodes(nodes)
-    const onAlterObject = vi.fn()
-
-    render(
-      <ObjectBrowserContextMenu
-        visible
-        x={100}
-        y={100}
-        nodeId={eventId}
-        connectionId={CONN_ID}
-        isReadOnly={false}
-        onClose={vi.fn()}
-        onAlterObject={onAlterObject}
-      />
-    )
-
-    await user.click(screen.getByText('Alter event...'))
-    expect(onAlterObject).toHaveBeenCalledWith('testdb', 'cleanup_job', 'event')
-  })
-
-  it('"Drop Event..." calls onDropObject for event node', async () => {
-    const user = userEvent.setup()
-    const { nodes, eventId } = makeNodes()
-    setNodes(nodes)
-    const onDropObject = vi.fn()
-
-    render(
-      <ObjectBrowserContextMenu
-        visible
-        x={100}
-        y={100}
-        nodeId={eventId}
-        connectionId={CONN_ID}
-        isReadOnly={false}
-        onClose={vi.fn()}
-        onDropObject={onDropObject}
-      />
-    )
-
-    await user.click(screen.getByText('Drop event...'))
-    expect(onDropObject).toHaveBeenCalledWith('testdb', 'cleanup_job', 'event')
+      expect(onAlterObject).toHaveBeenCalledWith('testdb', objectNode.name, objectNode.kind)
+      expect(onDropObject).toHaveBeenCalledWith('testdb', objectNode.name, objectNode.kind)
+      unmount()
+    }
   })
 
   it('Execute is disabled for procedures when onExecuteRoutine is not provided', () => {

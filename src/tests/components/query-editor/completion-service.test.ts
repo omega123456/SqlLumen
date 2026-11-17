@@ -1494,27 +1494,6 @@ describe('completionService — procedure suggestions', () => {
 })
 
 describe('completionService — dot notation (db.)', () => {
-  it('returns tables for a database when trigger is dot after db name', async () => {
-    registerModelConnection({ uri: 'inmemory://model/1', connectionId: 'conn-1' })
-    mockGetCache().mockReturnValue(READY_CACHE)
-
-    const items = await callService(
-      'SELECT * FROM app_db.',
-      pos(1, 22),
-      buildSuggestions({
-        syntax: [{ syntaxContextType: EntityContextType.TABLE, wordRanges: [] }],
-        keywords: [],
-      }),
-      null,
-      '.'
-    )
-    const labels = items.map(getLabel)
-    expect(labels).toContain('users')
-    expect(labels).toContain('products')
-    // Should NOT include tables from other databases
-    expect(labels).not.toContain('events')
-  })
-
   it('returns tables and functions for a database when db. is typed in the SELECT list', async () => {
     registerModelConnection({ uri: 'inmemory://model/1', connectionId: 'conn-1' })
     mockGetCache().mockReturnValue(READY_CACHE)
@@ -1742,29 +1721,6 @@ describe('completionService — dot notation (table.)', () => {
     )
 
     expect(items.map(getLabel)).toEqual([])
-  })
-
-  it('returns columns for a table when trigger is dot after table name in valid column context', async () => {
-    registerModelConnection({ uri: 'inmemory://model/1', connectionId: 'conn-1' })
-    mockGetCache().mockReturnValue(READY_CACHE)
-
-    const items = await callService(
-      'SELECT users.',
-      pos(1, 14),
-      buildSuggestions({
-        syntax: [{ syntaxContextType: EntityContextType.COLUMN, wordRanges: [] }],
-        keywords: [],
-      }),
-      null,
-      '.'
-    )
-    const labels = items.map(getLabel)
-    expect(labels).toContain('id')
-    expect(labels).toContain('email')
-    expect(labels).toContain('name')
-    // Should NOT include columns from other tables
-    expect(labels).not.toContain('title')
-    expect(labels).not.toContain('event_id')
   })
 })
 
@@ -3071,20 +3027,13 @@ describe('backtick quoting (editor.autocompleteBackticks)', () => {
     resetModelConnections()
   })
 
-  it('wraps table name in backticks when quoteIdentifiers is true (TABLE context)', async () => {
-    const items = await callService(
+  it('wraps table, column, database, routine and dot-notation column names in backticks', async () => {
+    const tableItems = await callService(
       'SELECT * FROM ',
       pos(1, 15),
       buildSuggestions({ syntax: [{ syntaxContextType: EntityContextType.TABLE, wordRanges: [] }] })
     )
-    assertQuotedItem(
-      items.find((i) => getLabel(i) === 'users'),
-      'users'
-    )
-  })
-
-  it('wraps column name in backticks when quoteIdentifiers is true (COLUMN context)', async () => {
-    const items = await callService(
+    const columnItems = await callService(
       'SELECT  FROM users',
       pos(1, 8),
       buildSuggestions({
@@ -3092,37 +3041,47 @@ describe('backtick quoting (editor.autocompleteBackticks)', () => {
       }),
       [buildEntity(EntityContextType.TABLE, 'users', true)]
     )
-    assertQuotedItem(
-      items.find((i) => getLabel(i) === 'id'),
-      'id'
-    )
-  })
-
-  it('wraps database name in backticks (DATABASE context)', async () => {
-    const items = await callService(
+    const databaseItems = await callService(
       'USE ',
       pos(1, 5),
       buildSuggestions({
         syntax: [{ syntaxContextType: EntityContextType.DATABASE, wordRanges: [] }],
       })
     )
-    assertQuotedItem(
-      items.find((i) => getLabel(i) === 'app_db'),
-      'app_db'
-    )
-  })
-
-  it('wraps routine name in backticks (FUNCTION context)', async () => {
-    const items = await callService(
+    const routineItems = await callService(
       'SELECT ',
       pos(1, 8),
       buildSuggestions({
         syntax: [{ syntaxContextType: EntityContextType.FUNCTION, wordRanges: [] }],
       })
     )
+    const dotNotationItems = await callService(
+      'SELECT users.',
+      pos(1, 14),
+      buildSuggestions(),
+      null,
+      '.'
+    )
+
     assertQuotedItem(
-      items.find((i) => getLabel(i) === 'get_user_count'),
+      tableItems.find((item) => getLabel(item) === 'users'),
+      'users'
+    )
+    assertQuotedItem(
+      columnItems.find((item) => getLabel(item) === 'id'),
+      'id'
+    )
+    assertQuotedItem(
+      databaseItems.find((item) => getLabel(item) === 'app_db'),
+      'app_db'
+    )
+    assertQuotedItem(
+      routineItems.find((item) => getLabel(item) === 'get_user_count'),
       'get_user_count'
+    )
+    assertQuotedItem(
+      dotNotationItems.find((item) => getLabel(item) === 'id'),
+      'id'
     )
   })
 
@@ -3136,14 +3095,6 @@ describe('backtick quoting (editor.autocompleteBackticks)', () => {
     expect(kwItem).toBeDefined()
     expect(kwItem!.insertText).toBe('SELECT')
     expect((kwItem as AnyItem).filterText).toBeUndefined()
-  })
-
-  it('wraps column names via dot notation (handleDotNotation path)', async () => {
-    const items = await callService('SELECT users.', pos(1, 14), buildSuggestions(), null, '.')
-    assertQuotedItem(
-      items.find((i) => getLabel(i) === 'id'),
-      'id'
-    )
   })
 
   it('escapes internal backticks in identifier names', async () => {

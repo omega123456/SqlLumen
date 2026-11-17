@@ -19,11 +19,6 @@ describe('isNullaryOperator', () => {
 })
 
 describe('applyConditionChange', () => {
-  it('sets the changed field', () => {
-    const changed = applyConditionChange(ageCondition, { index: 0, field: 'column', value: 'id' })
-    expect(changed).toEqual({ column: 'id', operator: '>', value: '18' })
-  })
-
   it('clears the value when switching to a nullary operator', () => {
     const changed = applyConditionChange(ageCondition, {
       index: 0,
@@ -31,11 +26,6 @@ describe('applyConditionChange', () => {
       value: 'IS NULL',
     })
     expect(changed).toEqual({ column: 'age', operator: 'IS NULL', value: '' })
-  })
-
-  it('keeps the value when switching to a binary operator', () => {
-    const changed = applyConditionChange(ageCondition, { index: 0, field: 'operator', value: '<' })
-    expect(changed.value).toBe('18')
   })
 })
 

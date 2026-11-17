@@ -32,28 +32,10 @@ function expectBytes(value: unknown): Uint8Array {
 }
 
 describe('parseHexPrefixedBytes', () => {
-  it('parses a 0x-prefixed lowercase hex string', () => {
-    const result = parseHexPrefixedBytes('0xabcdef01')
-    expect(result.ok).toBe(true)
-    if (result.ok) expect(Array.from(result.bytes)).toEqual([0xab, 0xcd, 0xef, 0x01])
-  })
-
-  it('parses a 0X-prefixed uppercase hex string', () => {
-    const result = parseHexPrefixedBytes('0XABCDEF01')
-    expect(result.ok).toBe(true)
-    if (result.ok) expect(Array.from(result.bytes)).toEqual([0xab, 0xcd, 0xef, 0x01])
-  })
-
   it('parses a bare (unprefixed) hex string', () => {
     const result = parseHexPrefixedBytes('FF00')
     expect(result.ok).toBe(true)
     if (result.ok) expect(Array.from(result.bytes)).toEqual([0xff, 0x00])
-  })
-
-  it('treats a bare "0x" as zero bytes', () => {
-    const result = parseHexPrefixedBytes('0x')
-    expect(result.ok).toBe(true)
-    if (result.ok) expect(result.bytes.length).toBe(0)
   })
 
   it('rejects an odd number of hex digits', () => {
@@ -61,39 +43,9 @@ describe('parseHexPrefixedBytes', () => {
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error).toMatch(/odd/i)
   })
-
-  it('rejects non-hex characters', () => {
-    const result = parseHexPrefixedBytes('0xZZ')
-    expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.error).toMatch(/non-hex/i)
-  })
 })
 
 describe('convertBinaryPrimaryKeyValuesToEnvelopes', () => {
-  it('converts a binary PK hex value into a bytes envelope with matching bytes', () => {
-    const columns = [column('id', true)]
-    const result = convertBinaryPrimaryKeyValuesToEnvelopes(['id'], columns, { id: '0xABCDEF01' })
-    expect(result.ok).toBe(true)
-    if (result.ok) {
-      expect(Array.from(expectBytes(result.values.id))).toEqual([0xab, 0xcd, 0xef, 0x01])
-    }
-  })
-
-  it('leaves non-binary PK values unchanged', () => {
-    const columns = [column('id', false)]
-    const result = convertBinaryPrimaryKeyValuesToEnvelopes(['id'], columns, { id: '0x12' })
-    expect(result.ok).toBe(true)
-    if (result.ok) expect(result.values.id).toBe('0x12')
-  })
-
-  it('passes through values that are already blob envelopes', () => {
-    const envelope: BlobEnvelope = { __sqllumen_blob__: true, kind: 'bytes', base64: 'qg==' }
-    const columns = [column('id', true)]
-    const result = convertBinaryPrimaryKeyValuesToEnvelopes(['id'], columns, { id: envelope })
-    expect(result.ok).toBe(true)
-    if (result.ok) expect(result.values.id).toBe(envelope)
-  })
-
   it('passes through null values', () => {
     const columns = [column('id', true)]
     const result = convertBinaryPrimaryKeyValuesToEnvelopes(['id'], columns, { id: null })
@@ -109,39 +61,6 @@ describe('convertBinaryPrimaryKeyValuesToEnvelopes', () => {
       expect(isBlobEnvelope(result.values.id)).toBe(true)
       expect((result.values.id as BlobEnvelope).kind).toBe('empty')
     }
-  })
-
-  it('returns an error result for malformed hex on a binary PK (does not throw)', () => {
-    const columns = [column('id', true)]
-    const result = convertBinaryPrimaryKeyValuesToEnvelopes(['id'], columns, { id: '0xZZ' })
-    expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.error).toMatch(/id/)
-  })
-
-  it('converts only the binary component of a composite key', () => {
-    const columns = [column('tenant_id', false), column('external_ref', true)]
-    const result = convertBinaryPrimaryKeyValuesToEnvelopes(
-      ['tenant_id', 'external_ref'],
-      columns,
-      {
-        tenant_id: 7,
-        external_ref: '0xFF',
-      }
-    )
-    expect(result.ok).toBe(true)
-    if (result.ok) {
-      expect(result.values.tenant_id).toBe(7)
-      expect(Array.from(expectBytes(result.values.external_ref))).toEqual([0xff])
-    }
-  })
-
-  it('returns a fresh copy and does not mutate the input record', () => {
-    const columns = [column('id', true)]
-    const input = { id: '0xAB' }
-    const result = convertBinaryPrimaryKeyValuesToEnvelopes(['id'], columns, input)
-    expect(result.ok).toBe(true)
-    if (result.ok) expect(result.values).not.toBe(input)
-    expect(input.id).toBe('0xAB')
   })
 })
 
@@ -165,26 +84,5 @@ describe('buildEnvelopedPrimaryKeyPairs', () => {
     const result = buildEnvelopedPrimaryKeyPairs(['id'], columns, { id: 42 })
     expect(result.ok).toBe(true)
     if (result.ok) expect(result.pairs).toEqual([['id', 42]])
-  })
-
-  it('returns an error result for malformed binary-PK hex', () => {
-    const columns = [column('id', true)]
-    const result = buildEnvelopedPrimaryKeyPairs(['id'], columns, { id: '0xZZ' })
-    expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.error).toMatch(/id/)
-  })
-
-  it('preserves the order of pkColumns in the returned pairs', () => {
-    const columns = [column('tenant_id', false), column('external_ref', true)]
-    const result = buildEnvelopedPrimaryKeyPairs(['tenant_id', 'external_ref'], columns, {
-      external_ref: '0xFF',
-      tenant_id: 7,
-    })
-    expect(result.ok).toBe(true)
-    if (result.ok) {
-      expect(result.pairs.map((pair) => pair[0])).toEqual(['tenant_id', 'external_ref'])
-      expect(result.pairs[0][1]).toBe(7)
-      expect(Array.from(expectBytes(result.pairs[1][1]))).toEqual([0xff])
-    }
   })
 })

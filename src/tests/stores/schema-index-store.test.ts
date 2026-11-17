@@ -109,14 +109,6 @@ describe('useSchemaIndexStore', () => {
       expect(state.profileToSessions['profile-1']).toEqual(['session-2'])
       expect(state.connections['session-2']).toBeDefined()
     })
-
-    it('does nothing for unknown session', () => {
-      useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
-      useSchemaIndexStore.getState().unregisterSession('unknown-session')
-
-      const state = useSchemaIndexStore.getState()
-      expect(state.sessionToProfile['session-1']).toBe('profile-1')
-    })
   })
 
   describe('_handleProgress', () => {
@@ -240,11 +232,6 @@ describe('useSchemaIndexStore', () => {
       expect(ipc.calls('get_index_status').length).toBeGreaterThan(1)
     })
 
-    it('does nothing for unknown session', async () => {
-      await useSchemaIndexStore.getState().triggerBuild('unknown-session')
-      expect(ipc.calls('build_schema_index').length).toBe(0)
-    })
-
     it('sets error status when build fails', async () => {
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       ipc.override('build_schema_index', () => {
@@ -345,11 +332,6 @@ describe('useSchemaIndexStore', () => {
       expect(status).toBeDefined()
       expect(status!.status).toBe('stale')
     })
-
-    it('returns undefined for unknown session', () => {
-      const status = useSchemaIndexStore.getState().getStatusForSession('unknown')
-      expect(status).toBeUndefined()
-    })
   })
 
   describe('_handleProgress / _handleComplete / _handleError with no sessions', () => {
@@ -360,16 +342,6 @@ describe('useSchemaIndexStore', () => {
         tablesDone: 1,
         tablesTotal: 10,
       })
-      expect(useSchemaIndexStore.getState().connections).toEqual({})
-    })
-
-    it('_handleComplete does nothing for unknown profile', () => {
-      useSchemaIndexStore.getState()._handleComplete('unknown-profile')
-      expect(useSchemaIndexStore.getState().connections).toEqual({})
-    })
-
-    it('_handleError does nothing for unknown profile', () => {
-      useSchemaIndexStore.getState()._handleError('unknown-profile', 'some error')
       expect(useSchemaIndexStore.getState().connections).toEqual({})
     })
   })

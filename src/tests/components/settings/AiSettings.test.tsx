@@ -21,6 +21,10 @@ async function renderAiSettings() {
   return result
 }
 
+function toggleCheckbox(testId: string): HTMLInputElement {
+  return screen.getByTestId(testId).querySelector('input[type="checkbox"]') as HTMLInputElement
+}
+
 let consoleSpy: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
@@ -49,169 +53,110 @@ afterEach(() => {
 })
 
 describe('AiSettings', () => {
-  it('renders the AI settings section with all fields', async () => {
+  it('renders the disabled AI section with its labels, defaults and toggles', async () => {
     await renderAiSettings()
+
     expect(screen.getByTestId('settings-ai')).toBeInTheDocument()
-    expect(screen.getByTestId('settings-ai-enabled')).toBeInTheDocument()
-    expect(screen.getByTestId('settings-ai-endpoint')).toBeInTheDocument()
-    expect(screen.getByTestId('settings-ai-temperature')).toBeInTheDocument()
-    expect(screen.getByTestId('settings-ai-max-tokens')).toBeInTheDocument()
-  })
+    expect(screen.getByText('Enable AI')).toBeInTheDocument()
+    expect(
+      within(screen.getByTestId('settings-section-connection')).getByText('Connection')
+    ).toBeInTheDocument()
+    expect(screen.getByText('Generation')).toBeInTheDocument()
+    expect(screen.getByText('Enable AI assistant')).toBeInTheDocument()
+    expect(screen.getByText('Chat Base URL')).toBeInTheDocument()
+    expect(screen.getByText('Embedding Base URL (optional)')).toBeInTheDocument()
+    expect(screen.getByText('Temperature')).toBeInTheDocument()
+    expect(screen.getByText('Max tokens')).toBeInTheDocument()
 
-  it('does NOT render a free-text model name input', async () => {
-    useSettingsStore.setState({
-      settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true' },
-      pendingChanges: {},
-      isDirty: false,
-    })
+    expect(toggleCheckbox('settings-ai-enabled')).not.toBeChecked()
+    expect(toggleCheckbox('settings-ai-enable-reasoning')).toBeChecked()
+    expect(toggleCheckbox('settings-ai-prefer-responses-api')).not.toBeChecked()
 
-    await renderAiSettings()
-    expect(screen.queryByTestId('settings-ai-model')).not.toBeInTheDocument()
-    expect(screen.queryByText('Model name')).not.toBeInTheDocument()
-  })
-
-  it('shows the enable toggle with correct default (off)', async () => {
-    await renderAiSettings()
-    const toggle = screen.getByTestId('settings-ai-enabled')
-    const checkbox = toggle.querySelector('input[type="checkbox"]') as HTMLInputElement
-    expect(checkbox).not.toBeNull()
-    expect(checkbox.checked).toBe(false)
-  })
-
-  it('disables connection and generation fields when AI is disabled', async () => {
-    await renderAiSettings()
-    const endpointInput = screen.getByTestId('settings-ai-endpoint') as HTMLInputElement
-    const tempInput = screen.getByTestId('settings-ai-temperature') as HTMLInputElement
-    const maxTokensInput = screen.getByTestId('settings-ai-max-tokens') as HTMLInputElement
-
-    expect(endpointInput).toBeDisabled()
-    expect(tempInput).toBeDisabled()
-    expect(maxTokensInput).toBeDisabled()
-  })
-
-  it('enables connection and generation fields when AI is enabled', async () => {
-    useSettingsStore.setState({
-      settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true' },
-      pendingChanges: {},
-      isDirty: false,
-    })
-
-    await renderAiSettings()
-
-    const endpointInput = screen.getByTestId('settings-ai-endpoint') as HTMLInputElement
-    const tempInput = screen.getByTestId('settings-ai-temperature') as HTMLInputElement
-    const maxTokensInput = screen.getByTestId('settings-ai-max-tokens') as HTMLInputElement
-
-    expect(endpointInput).not.toBeDisabled()
-    expect(tempInput).not.toBeDisabled()
-    expect(maxTokensInput).not.toBeDisabled()
-  })
-
-  it('toggling AI on enables the other fields', async () => {
-    const user = userEvent.setup()
-    await renderAiSettings()
-
-    // Initially disabled
     expect(screen.getByTestId('settings-ai-endpoint')).toBeDisabled()
+    expect(screen.getByTestId('settings-ai-temperature')).toBeDisabled()
+    expect(screen.getByTestId('settings-ai-temperature')).toHaveDisplayValue('0.3')
+    expect(screen.getByTestId('settings-ai-max-tokens')).toBeDisabled()
+    expect(screen.getByTestId('settings-ai-max-tokens')).toHaveDisplayValue('32000')
+    expect(screen.getByTestId('settings-ai').children[1]).toHaveAttribute('data-state', 'disabled')
+    expect(screen.queryByTestId('ai-model-list-section')).not.toBeInTheDocument()
+  })
 
-    // Toggle on
-    const toggle = screen.getByTestId('settings-ai-enabled')
-    const checkbox = toggle.querySelector('input[type="checkbox"]') as HTMLInputElement
-    await user.click(checkbox)
-
-    // Now enabled
-    await waitFor(() => {
-      expect(screen.getByTestId('settings-ai-endpoint')).not.toBeDisabled()
+  it('renders the enabled AI section with editable fields, helper text and the model list', async () => {
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'ai.enabled': 'true',
+        'ai.endpoint': 'http://localhost:11434/v1',
+      },
+      pendingChanges: {},
+      isDirty: false,
     })
+
+    await renderAiSettings()
+
+    expect(screen.getByTestId('settings-ai-endpoint')).not.toBeDisabled()
     expect(screen.getByTestId('settings-ai-temperature')).not.toBeDisabled()
     expect(screen.getByTestId('settings-ai-max-tokens')).not.toBeDisabled()
-
-    // Store should reflect the change
-    expect(useSettingsStore.getState().pendingChanges['ai.enabled']).toBe('true')
+    expect(screen.getByTestId('settings-ai').children[1]).toHaveAttribute('data-state', 'enabled')
+    expect(screen.queryByTestId('settings-ai-model')).not.toBeInTheDocument()
+    expect(screen.queryByText('Model name')).not.toBeInTheDocument()
+    expect(screen.getByTestId('ai-helper-text')).toHaveTextContent(
+      'Models will be grouped by type: chat for conversation, embedding for schema search'
+    )
+    expect(screen.getByTestId('ai-model-list-section')).toBeInTheDocument()
   })
 
-  it('toggling AI off disables the other fields', async () => {
+  it('toggling AI off disables the other fields and toggling it on enables them again', async () => {
     const user = userEvent.setup()
     useSettingsStore.setState({
       settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true' },
       pendingChanges: {},
       isDirty: false,
     })
-
     await renderAiSettings()
     expect(screen.getByTestId('settings-ai-endpoint')).not.toBeDisabled()
+    const checkbox = toggleCheckbox('settings-ai-enabled')
 
-    const toggle = screen.getByTestId('settings-ai-enabled')
-    const checkbox = toggle.querySelector('input[type="checkbox"]') as HTMLInputElement
     await user.click(checkbox)
 
     await waitFor(() => {
       expect(screen.getByTestId('settings-ai-endpoint')).toBeDisabled()
     })
     expect(useSettingsStore.getState().pendingChanges['ai.enabled']).toBe('false')
+
+    await user.click(checkbox)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-ai-endpoint')).not.toBeDisabled()
+    })
+    expect(screen.getByTestId('settings-ai-temperature')).not.toBeDisabled()
+    expect(screen.getByTestId('settings-ai-max-tokens')).not.toBeDisabled()
+    expect(useSettingsStore.getState().pendingChanges['ai.enabled']).toBe('true')
   })
 
-  it('sets pending change when endpoint is modified', async () => {
+  it('sets pending changes when the endpoint, temperature and max tokens are modified', async () => {
     const user = userEvent.setup()
     useSettingsStore.setState({
       settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true' },
       pendingChanges: {},
       isDirty: false,
     })
-
     await renderAiSettings()
 
-    const endpointInput = screen.getByTestId('settings-ai-endpoint') as HTMLInputElement
+    const endpointInput = screen.getByTestId('settings-ai-endpoint')
     await user.clear(endpointInput)
     await user.type(endpointInput, 'https://api.example.com/v1')
-
-    expect(useSettingsStore.getState().pendingChanges['ai.endpoint']).toBe(
-      'https://api.example.com/v1'
-    )
-  })
-
-  it('sets pending change when temperature is modified', async () => {
-    const user = userEvent.setup()
-    useSettingsStore.setState({
-      settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true' },
-      pendingChanges: {},
-      isDirty: false,
-    })
-
-    await renderAiSettings()
-
-    const tempInput = screen.getByTestId('settings-ai-temperature') as HTMLInputElement
+    const tempInput = screen.getByTestId('settings-ai-temperature')
     await user.clear(tempInput)
     await user.type(tempInput, '0.7')
-
-    expect(useSettingsStore.getState().pendingChanges['ai.temperature']).toBe('0.7')
-  })
-
-  it('sets pending change when max tokens is modified', async () => {
-    const user = userEvent.setup()
-    useSettingsStore.setState({
-      settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true' },
-      pendingChanges: {},
-      isDirty: false,
-    })
-
-    await renderAiSettings()
-
-    const maxTokensInput = screen.getByTestId('settings-ai-max-tokens') as HTMLInputElement
+    const maxTokensInput = screen.getByTestId('settings-ai-max-tokens')
     await user.clear(maxTokensInput)
     await user.type(maxTokensInput, '4096')
 
-    expect(useSettingsStore.getState().pendingChanges['ai.maxTokens']).toBe('4096')
-  })
-
-  it('displays default values correctly', async () => {
-    await renderAiSettings()
-
-    const tempInput = screen.getByTestId('settings-ai-temperature') as HTMLInputElement
-    const maxTokensInput = screen.getByTestId('settings-ai-max-tokens') as HTMLInputElement
-
-    expect(tempInput.value).toBe('0.3')
-    expect(maxTokensInput.value).toBe('32000')
+    const { pendingChanges } = useSettingsStore.getState()
+    expect(pendingChanges['ai.endpoint']).toBe('https://api.example.com/v1')
+    expect(pendingChanges['ai.temperature']).toBe('0.7')
+    expect(pendingChanges['ai.maxTokens']).toBe('4096')
   })
 
   it('reset section restores AI defaults', async () => {
@@ -241,85 +186,19 @@ describe('AiSettings', () => {
     expect(state.isDirty).toBe(true)
   })
 
-  it('renders section headings', async () => {
-    await renderAiSettings()
-    expect(screen.getByText('Enable AI')).toBeInTheDocument()
-    expect(
-      within(screen.getByTestId('settings-section-connection')).getByText('Connection')
-    ).toBeInTheDocument()
-    expect(screen.getByText('Generation')).toBeInTheDocument()
-  })
-
-  it('shows correct label text for fields', async () => {
-    await renderAiSettings()
-    expect(screen.getByText('Enable AI assistant')).toBeInTheDocument()
-    expect(screen.getByText('Chat Base URL')).toBeInTheDocument()
-    expect(screen.getByText('Embedding Base URL (optional)')).toBeInTheDocument()
-    expect(screen.getByText('Temperature')).toBeInTheDocument()
-    expect(screen.getByText('Max tokens')).toBeInTheDocument()
-  })
-
-  it('renders the reasoning toggle checked by default', async () => {
-    await renderAiSettings()
-    const toggle = screen.getByTestId('settings-ai-enable-reasoning')
-    expect(toggle).toBeInTheDocument()
-    const checkbox = toggle.querySelector('input[type="checkbox"]') as HTMLInputElement
-    expect(checkbox).not.toBeNull()
-    expect(checkbox.checked).toBe(true)
-  })
-
-  it('renders prefer responses api toggle unchecked by default', async () => {
-    await renderAiSettings()
-    const toggle = screen.getByTestId('settings-ai-prefer-responses-api')
-    expect(toggle).toBeInTheDocument()
-    const checkbox = toggle.querySelector('input[type="checkbox"]') as HTMLInputElement
-    expect(checkbox).not.toBeNull()
-    expect(checkbox.checked).toBe(false)
-  })
-
-  it('toggling reasoning off calls setPendingChange with false', async () => {
-    const user = userEvent.setup()
-    // Enable AI first so the reasoning toggle is not disabled
-    useSettingsStore.setState({
-      settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'true' },
-    })
-    await renderAiSettings()
-    const toggle = screen.getByTestId('settings-ai-enable-reasoning')
-    const checkbox = toggle.querySelector('input[type="checkbox"]') as HTMLInputElement
-    await user.click(checkbox)
-    expect(useSettingsStore.getState().pendingChanges['ai.enableReasoning']).toBe('false')
-  })
-
-  it('toggling prefer responses api on calls setPendingChange with true', async () => {
+  it('toggling reasoning off and the responses api on sets pending changes', async () => {
     const user = userEvent.setup()
     useSettingsStore.setState({
       settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'true' },
     })
     await renderAiSettings()
-    const toggle = screen.getByTestId('settings-ai-prefer-responses-api')
-    const checkbox = toggle.querySelector('input[type="checkbox"]') as HTMLInputElement
-    await user.click(checkbox)
-    expect(useSettingsStore.getState().pendingChanges['ai.preferResponsesApi']).toBe('true')
-  })
 
-  it('marks the AI settings group disabled when AI is off', async () => {
-    await renderAiSettings()
-    const aiContainer = screen.getByTestId('settings-ai')
-    const disabledWrapper = aiContainer.children[1] as HTMLElement
-    expect(disabledWrapper).toHaveAttribute('data-state', 'disabled')
-  })
+    await user.click(toggleCheckbox('settings-ai-enable-reasoning'))
+    await user.click(toggleCheckbox('settings-ai-prefer-responses-api'))
 
-  it('marks the AI settings group enabled when AI is on', async () => {
-    useSettingsStore.setState({
-      settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true' },
-      pendingChanges: {},
-      isDirty: false,
-    })
-
-    await renderAiSettings()
-    const aiContainer = screen.getByTestId('settings-ai')
-    const wrapper = aiContainer.children[1] as HTMLElement
-    expect(wrapper).toHaveAttribute('data-state', 'enabled')
+    const { pendingChanges } = useSettingsStore.getState()
+    expect(pendingChanges['ai.enableReasoning']).toBe('false')
+    expect(pendingChanges['ai.preferResponsesApi']).toBe('true')
   })
 
   it('shows pending values over saved values', async () => {
@@ -333,24 +212,6 @@ describe('AiSettings', () => {
     const endpointInput = screen.getByTestId('settings-ai-endpoint') as HTMLInputElement
     expect(endpointInput.value).toBe('https://pending.com')
   })
-
-  it('shows helper text when AI is enabled and endpoint is set', async () => {
-    useSettingsStore.setState({
-      settings: {
-        ...SETTINGS_DEFAULTS,
-        'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1',
-      },
-      pendingChanges: {},
-      isDirty: false,
-    })
-
-    await renderAiSettings()
-    expect(screen.getByTestId('ai-helper-text')).toBeInTheDocument()
-    expect(screen.getByTestId('ai-helper-text')).toHaveTextContent(
-      'Models will be grouped by type: chat for conversation, embedding for schema search'
-    )
-  })
 })
 
 // ---------------------------------------------------------------------------
@@ -358,11 +219,6 @@ describe('AiSettings', () => {
 // ---------------------------------------------------------------------------
 
 describe('AiSettings - Model Categories', () => {
-  it('does not show model list section when AI is disabled', async () => {
-    await renderAiSettings()
-    expect(screen.queryByTestId('ai-model-list-section')).not.toBeInTheDocument()
-  })
-
   it('does not show model list section when endpoint is empty', async () => {
     useSettingsStore.setState({
       settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true', 'ai.endpoint': '' },
@@ -372,21 +228,6 @@ describe('AiSettings - Model Categories', () => {
 
     await renderAiSettings()
     expect(screen.queryByTestId('ai-model-list-section')).not.toBeInTheDocument()
-  })
-
-  it('shows model list section when AI is enabled and endpoint has value', async () => {
-    useSettingsStore.setState({
-      settings: {
-        ...SETTINGS_DEFAULTS,
-        'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1',
-      },
-      pendingChanges: {},
-      isDirty: false,
-    })
-
-    await renderAiSettings()
-    expect(screen.getByTestId('ai-model-list-section')).toBeInTheDocument()
   })
 
   it('auto-fetches models when AI is enabled and endpoint is set', async () => {
@@ -559,14 +400,15 @@ describe('AiSettings - Model Categories', () => {
     expect(screen.getByTestId('ai-category-embedding')).toBeInTheDocument()
   })
 
-  it('renders chat models in the Chat section', async () => {
+  it('renders the chat and embedding models in labelled radio groups with the selected cards checked', async () => {
     ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
-
     useSettingsStore.setState({
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
         'ai.endpoint': 'http://localhost:11434/v1',
+        'ai.model': 'llama3',
+        'ai.embeddingModel': 'nomic-embed-text',
       },
       pendingChanges: {},
       isDirty: false,
@@ -574,36 +416,34 @@ describe('AiSettings - Model Categories', () => {
 
     await renderAiSettings()
 
-    await waitFor(() => {
-      expect(screen.getByTestId('ai-chat-model-grid')).toBeInTheDocument()
-    })
-
-    const chatGrid = screen.getByTestId('ai-chat-model-grid')
+    const chatGrid = await screen.findByTestId('ai-chat-model-grid')
+    const embeddingGrid = screen.getByTestId('ai-embedding-model-grid')
     expect(chatGrid).toContainElement(screen.getByTestId('ai-model-card-llama3'))
     expect(chatGrid).toContainElement(screen.getByTestId('ai-model-card-mistral'))
-  })
-
-  it('renders embedding models in the Embedding section', async () => {
-    ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
-
-    useSettingsStore.setState({
-      settings: {
-        ...SETTINGS_DEFAULTS,
-        'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1',
-      },
-      pendingChanges: {},
-      isDirty: false,
-    })
-
-    await renderAiSettings()
-
-    await waitFor(() => {
-      expect(screen.getByTestId('ai-embedding-model-grid')).toBeInTheDocument()
-    })
-
-    const embeddingGrid = screen.getByTestId('ai-embedding-model-grid')
     expect(embeddingGrid).toContainElement(screen.getByTestId('ai-model-card-nomic-embed-text'))
+    expect(screen.getByTestId('ai-category-chat-count')).toHaveTextContent('2')
+    expect(screen.getByTestId('ai-category-embedding-count')).toHaveTextContent('1')
+    expect(screen.getByTestId('ai-category-chat-label')).toHaveTextContent('Chat models')
+    expect(screen.getByTestId('ai-category-embedding-label')).toHaveTextContent('Embedding models')
+
+    expect(chatGrid).toHaveAttribute('role', 'radiogroup')
+    expect(chatGrid).toHaveAttribute('aria-labelledby', 'ai-category-chat-label')
+    expect(embeddingGrid).toHaveAttribute('role', 'radiogroup')
+    expect(embeddingGrid).toHaveAttribute('aria-labelledby', 'ai-category-embedding-label')
+
+    const llama3Card = screen.getByTestId('ai-model-card-llama3')
+    const mistralCard = screen.getByTestId('ai-model-card-mistral')
+    const embedCard = screen.getByTestId('ai-model-card-nomic-embed-text')
+    expect(llama3Card).toHaveAttribute('role', 'radio')
+    expect(llama3Card).toHaveAttribute('tabindex', '0')
+    expect(llama3Card).toHaveAttribute('aria-checked', 'true')
+    expect(mistralCard).toHaveAttribute('role', 'radio')
+    expect(mistralCard).toHaveAttribute('aria-checked', 'false')
+    expect(embedCard).toHaveAttribute('role', 'radio')
+    expect(embedCard).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByTestId('ai-model-check-llama3')).toBeInTheDocument()
+    expect(screen.getByTestId('ai-model-check-nomic-embed-text')).toBeInTheDocument()
+    expect(screen.queryByTestId('ai-model-check-mistral')).not.toBeInTheDocument()
   })
 
   it('clicking a chat model card updates ai.model setting', async () => {
@@ -715,170 +555,6 @@ describe('AiSettings - Model Categories', () => {
     expect(screen.getByTestId('ai-chat-empty-state')).toHaveTextContent('No chat models found')
   })
 
-  it('category headers show correct count in badge', async () => {
-    ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
-
-    useSettingsStore.setState({
-      settings: {
-        ...SETTINGS_DEFAULTS,
-        'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1',
-      },
-      pendingChanges: {},
-      isDirty: false,
-    })
-
-    await renderAiSettings()
-
-    await waitFor(() => {
-      expect(screen.getByTestId('ai-category-chat-count')).toBeInTheDocument()
-    })
-
-    expect(screen.getByTestId('ai-category-chat-count')).toHaveTextContent('2')
-    expect(screen.getByTestId('ai-category-embedding-count')).toHaveTextContent('1')
-  })
-
-  it('category headers show correct labels', async () => {
-    ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
-
-    useSettingsStore.setState({
-      settings: {
-        ...SETTINGS_DEFAULTS,
-        'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1',
-      },
-      pendingChanges: {},
-      isDirty: false,
-    })
-
-    await renderAiSettings()
-
-    await waitFor(() => {
-      expect(screen.getByTestId('ai-category-chat-label')).toBeInTheDocument()
-    })
-
-    expect(screen.getByTestId('ai-category-chat-label')).toHaveTextContent('Chat models')
-    expect(screen.getByTestId('ai-category-embedding-label')).toHaveTextContent('Embedding models')
-  })
-
-  it('ARIA: category sections have role="radiogroup" with aria-labelledby', async () => {
-    ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
-
-    useSettingsStore.setState({
-      settings: {
-        ...SETTINGS_DEFAULTS,
-        'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1',
-      },
-      pendingChanges: {},
-      isDirty: false,
-    })
-
-    await renderAiSettings()
-
-    await waitFor(() => {
-      expect(screen.getByTestId('ai-chat-model-grid')).toBeInTheDocument()
-    })
-
-    const chatGrid = screen.getByTestId('ai-chat-model-grid')
-    expect(chatGrid).toHaveAttribute('role', 'radiogroup')
-    expect(chatGrid).toHaveAttribute('aria-labelledby', 'ai-category-chat-label')
-
-    const embeddingGrid = screen.getByTestId('ai-embedding-model-grid')
-    expect(embeddingGrid).toHaveAttribute('role', 'radiogroup')
-    expect(embeddingGrid).toHaveAttribute('aria-labelledby', 'ai-category-embedding-label')
-  })
-
-  it('ARIA: model cards have role="radio" and correct aria-checked', async () => {
-    ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
-
-    useSettingsStore.setState({
-      settings: {
-        ...SETTINGS_DEFAULTS,
-        'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1',
-        'ai.model': 'llama3',
-        'ai.embeddingModel': 'nomic-embed-text',
-      },
-      pendingChanges: {},
-      isDirty: false,
-    })
-
-    await renderAiSettings()
-
-    await waitFor(() => {
-      expect(screen.getByTestId('ai-model-card-llama3')).toBeInTheDocument()
-    })
-
-    // Chat card: llama3 is selected
-    const llama3Card = screen.getByTestId('ai-model-card-llama3')
-    expect(llama3Card).toHaveAttribute('role', 'radio')
-    expect(llama3Card).toHaveAttribute('aria-checked', 'true')
-
-    // Chat card: mistral is not selected
-    const mistralCard = screen.getByTestId('ai-model-card-mistral')
-    expect(mistralCard).toHaveAttribute('role', 'radio')
-    expect(mistralCard).toHaveAttribute('aria-checked', 'false')
-
-    // Embedding card: nomic-embed-text is selected
-    const embedCard = screen.getByTestId('ai-model-card-nomic-embed-text')
-    expect(embedCard).toHaveAttribute('role', 'radio')
-    expect(embedCard).toHaveAttribute('aria-checked', 'true')
-  })
-
-  it('selected models show checkmark icons', async () => {
-    ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
-
-    useSettingsStore.setState({
-      settings: {
-        ...SETTINGS_DEFAULTS,
-        'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1',
-        'ai.model': 'llama3',
-        'ai.embeddingModel': 'nomic-embed-text',
-      },
-      pendingChanges: {},
-      isDirty: false,
-    })
-
-    await renderAiSettings()
-
-    await waitFor(() => {
-      expect(screen.getByTestId('ai-model-card-llama3')).toBeInTheDocument()
-    })
-
-    // Selected models should have checkmarks
-    expect(screen.getByTestId('ai-model-check-llama3')).toBeInTheDocument()
-    expect(screen.getByTestId('ai-model-check-nomic-embed-text')).toBeInTheDocument()
-
-    // Non-selected model should not have checkmark
-    expect(screen.queryByTestId('ai-model-check-mistral')).not.toBeInTheDocument()
-  })
-
-  it('model cards expose radio semantics and are keyboard focusable', async () => {
-    ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
-
-    useSettingsStore.setState({
-      settings: {
-        ...SETTINGS_DEFAULTS,
-        'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1',
-      },
-      pendingChanges: {},
-      isDirty: false,
-    })
-
-    await renderAiSettings()
-
-    await waitFor(() => {
-      expect(screen.getByTestId('ai-model-card-llama3')).toBeInTheDocument()
-    })
-
-    const card = screen.getByTestId('ai-model-card-llama3')
-    expect(card).toHaveAttribute('role', 'radio')
-    expect(card).toHaveAttribute('tabindex', '0')
-  })
-
   it('models without category default to chat', async () => {
     ipc.override('list_ai_models', () => ({
       models: [
@@ -929,33 +605,6 @@ describe('AiSettings - Model Categories', () => {
     expect(screen.getByTestId('ai-models-error')).toHaveTextContent(
       'No models found at this endpoint.'
     )
-  })
-
-  it('selected chat card is the only checked radio', async () => {
-    ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
-
-    useSettingsStore.setState({
-      settings: {
-        ...SETTINGS_DEFAULTS,
-        'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1',
-        'ai.model': 'llama3',
-      },
-      pendingChanges: {},
-      isDirty: false,
-    })
-
-    await renderAiSettings()
-
-    await waitFor(() => {
-      expect(screen.getByTestId('ai-model-card-llama3')).toBeInTheDocument()
-    })
-
-    const selectedCard = screen.getByTestId('ai-model-card-llama3')
-    expect(selectedCard).toHaveAttribute('aria-checked', 'true')
-
-    const unselectedCard = screen.getByTestId('ai-model-card-mistral')
-    expect(unselectedCard).toHaveAttribute('aria-checked', 'false')
   })
 })
 

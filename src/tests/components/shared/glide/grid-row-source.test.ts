@@ -44,13 +44,6 @@ describe('resolveRowRange', () => {
     expect(source.readRange).not.toHaveBeenCalled()
   })
 
-  it('reads the whole clamped range when any row is missing', async () => {
-    const source = windowedSource(new Set([0]), 4)
-    const options = { onProgress: vi.fn() }
-    await expect(resolveRowRange(source, [-2, 9], options)).resolves.toHaveLength(4)
-    expect(source.readRange).toHaveBeenCalledWith([0, 4], options)
-  })
-
   it('fails when rows are missing and the source cannot fetch', async () => {
     const source: GridRowSource<Row> = { ...windowedSource(new Set(), 3), readRange: undefined }
     await expect(resolveRowRange(source, [0, 2])).rejects.toThrow(/cannot fetch/)

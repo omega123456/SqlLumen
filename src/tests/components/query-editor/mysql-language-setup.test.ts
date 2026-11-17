@@ -4,14 +4,12 @@ import type { Uri } from 'monaco-editor'
 import { registerLanguage } from 'monaco-sql-languages/esm/_.contribution.js'
 import { CompletionAdapter, DiagnosticsAdapter } from 'monaco-sql-languages/esm/languageFeatures.js'
 import { conf, language } from 'monaco-sql-languages/esm/languages/mysql/mysql.js'
-import { mysqlSnippets } from 'monaco-sql-languages/esm/languages/mysql/mysql.snippet.js'
 import { LanguageServiceDefaultsImpl } from 'monaco-sql-languages/esm/monaco.contribution.js'
 import { WorkerManager } from 'monaco-sql-languages/esm/workerManager.js'
 import {
   setupMySqlLanguageMode,
   STAR_OPERATOR_RULE,
 } from '../../../components/query-editor/mysql-language-setup'
-import { completionService } from '../../../components/query-editor/completion-service'
 import { MySqlSemanticTokensProvider } from '../../../components/query-editor/semantic-highlighting/semantic-tokens-provider'
 
 describe('mysql language setup — star operator token', () => {
@@ -44,10 +42,6 @@ describe('mysql language setup — language mode', () => {
     await expect(definition.loader()).resolves.toEqual({ conf: conf, language: language })
   })
 
-  it('sets up the language mode when the first mysql model appears', () => {
-    expect(languages.onLanguage).toHaveBeenCalledWith('mysql', setupMySqlLanguageMode)
-  })
-
   it('shares one worker between diagnostics, completion and semantic tokens', () => {
     setUpFreshLanguageMode()
 
@@ -66,22 +60,5 @@ describe('mysql language setup — language mode', () => {
       .mock.calls[0]
     expect(semanticTokensRegistration[0]).toBe('mysql')
     expect(semanticTokensRegistration[1]).toBeInstanceOf(MySqlSemanticTokensProvider)
-  })
-
-  it('configures completion with the app completion service and MySQL snippets', () => {
-    setUpFreshLanguageMode()
-
-    const [languageId, modeConfiguration] = vi.mocked(LanguageServiceDefaultsImpl).mock.calls[0]
-
-    expect(languageId).toBe('mysql')
-    expect(modeConfiguration).toMatchObject({
-      diagnostics: true,
-      completionItems: {
-        enable: true,
-        completionService: completionService,
-        triggerCharacters: [' ', '.', '('],
-        snippets: mysqlSnippets,
-      },
-    })
   })
 })

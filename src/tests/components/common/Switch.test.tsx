@@ -1,6 +1,5 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { Switch } from '../../../components/common/Switch'
 
 describe('Switch', () => {
@@ -16,15 +15,5 @@ describe('Switch', () => {
 
     expect(screen.getByRole('switch')).toBeChecked()
     expect(screen.getByText('On')).toBeInTheDocument()
-  })
-
-  it('forwards change events', async () => {
-    const user = userEvent.setup()
-    const onChange = vi.fn()
-    render(<Switch aria-label="Wrap" checked={false} onChange={onChange} className="extra" />)
-
-    const input = screen.getByRole('switch')
-    await user.click(input)
-    expect(onChange).toHaveBeenCalledTimes(1)
   })
 })

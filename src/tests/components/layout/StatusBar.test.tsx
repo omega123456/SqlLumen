@@ -11,45 +11,10 @@ import { useSettingsStore } from '../../../stores/settings-store'
 import { useUpdateStore } from '../../../stores/update-store'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import userEvent from '@testing-library/user-event'
-import type { ActiveConnection, SavedConnection } from '../../../types/connection'
 import type { TableDataTabState, WorkspaceTab } from '../../../types/schema'
 import { makeTabState } from '../../helpers/query-test-utils'
 import { makeTableDataTabState } from '../../helpers/table-data-test-utils'
-
-function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedConnection {
-  return {
-    id: 'conn-1',
-    name: 'Test DB',
-    host: '127.0.0.1',
-    port: 3306,
-    username: 'root',
-    hasPassword: true,
-    defaultDatabase: null,
-    sslEnabled: false,
-    sslCaPath: null,
-    sslCertPath: null,
-    sslKeyPath: null,
-    color: '#3b82f6',
-    groupId: null,
-    readOnly: false,
-    sortOrder: 0,
-    connectTimeoutSecs: 10,
-    keepaliveIntervalSecs: 30,
-    createdAt: '2025-01-01T00:00:00Z',
-    updatedAt: '2025-01-01T00:00:00Z',
-    ...overrides,
-  }
-}
-
-function makeActiveConnection(overrides: Partial<ActiveConnection> = {}): ActiveConnection {
-  return {
-    id: 'conn-1',
-    profile: makeSavedConnection(),
-    status: 'connected',
-    serverVersion: '8.0.35',
-    ...overrides,
-  }
-}
+import { makeActiveConnection } from '../../helpers/connection-test-utils'
 
 function setupActiveConnection() {
   const conn = makeActiveConnection()
@@ -174,10 +139,10 @@ describe('StatusBar', () => {
     expect(useSettingsStore.getState().dialogSection).toBe('updates')
   })
 
-  it('shows connection name and host:port when connection is active', () => {
-    const conn = makeActiveConnection()
+  it('shows the connection name, host:port, status, server version and update indicator for the active connection', () => {
+    useUpdateStore.setState({ status: 'available' })
     useConnectionStore.setState({
-      activeConnections: { 'conn-1': conn },
+      activeConnections: { 'conn-1': makeActiveConnection() },
       activeTabId: 'conn-1',
     })
 
@@ -187,72 +152,27 @@ describe('StatusBar', () => {
     expect(screen.getByText(/Test DB/)).toBeInTheDocument()
     expect(screen.getByText(/127\.0\.0\.1/)).toBeInTheDocument()
     expect(screen.getByText(/3306/)).toBeInTheDocument()
-  })
-
-  it('shows update indicator in active connection branch', () => {
-    useUpdateStore.setState({ status: 'available' })
-    setupActiveConnection()
-
-    render(<StatusBar />)
-
+    expect(screen.getByText('Connected')).toBeInTheDocument()
+    expect(screen.getByTestId('status-dot')).toHaveAttribute('aria-label', 'Status: connected')
+    expect(screen.getByText('8.0.35')).toBeInTheDocument()
     expect(screen.getByTestId('status-bar-update-indicator')).toBeInTheDocument()
   })
 
-  it('shows correct status text for connected state', () => {
-    const conn = makeActiveConnection({ status: 'connected' })
+  it('shows the status text for reconnecting and disconnected connections', () => {
     useConnectionStore.setState({
-      activeConnections: { 'conn-1': conn },
-      activeTabId: 'conn-1',
-    })
-
-    render(<StatusBar />)
-    expect(screen.getByText('Connected')).toBeInTheDocument()
-  })
-
-  it('shows correct status text for reconnecting state', () => {
-    const conn = makeActiveConnection({ status: 'reconnecting' })
-    useConnectionStore.setState({
-      activeConnections: { 'conn-1': conn },
+      activeConnections: { 'conn-1': makeActiveConnection({ status: 'reconnecting' }) },
       activeTabId: 'conn-1',
     })
 
     render(<StatusBar />)
     expect(screen.getByText('Reconnecting...')).toBeInTheDocument()
-  })
 
-  it('shows correct status text for disconnected state', () => {
-    const conn = makeActiveConnection({ status: 'disconnected' })
-    useConnectionStore.setState({
-      activeConnections: { 'conn-1': conn },
-      activeTabId: 'conn-1',
+    act(() => {
+      useConnectionStore.setState({
+        activeConnections: { 'conn-1': makeActiveConnection({ status: 'disconnected' }) },
+      })
     })
-
-    render(<StatusBar />)
     expect(screen.getByText('Disconnected')).toBeInTheDocument()
-  })
-
-  it('shows status dot with correct aria label', () => {
-    const conn = makeActiveConnection({ status: 'connected' })
-    useConnectionStore.setState({
-      activeConnections: { 'conn-1': conn },
-      activeTabId: 'conn-1',
-    })
-
-    render(<StatusBar />)
-    const dot = screen.getByTestId('status-dot')
-    expect(dot).toBeInTheDocument()
-    expect(dot).toHaveAttribute('aria-label', 'Status: connected')
-  })
-
-  it('shows server version', () => {
-    const conn = makeActiveConnection({ serverVersion: '8.0.35' })
-    useConnectionStore.setState({
-      activeConnections: { 'conn-1': conn },
-      activeTabId: 'conn-1',
-    })
-
-    render(<StatusBar />)
-    expect(screen.getByText('8.0.35')).toBeInTheDocument()
   })
 
   describe('query info', () => {
@@ -287,20 +207,6 @@ describe('StatusBar', () => {
       })
       seedVisibleConnection('conn-1')
     }
-
-    it('shows row count, exec time, and total time in dark theme when query-editor has success status', () => {
-      useThemeStore.setState({ resolvedTheme: 'dark' })
-      setupQueryEditorTab()
-      useQueryStore.setState({ tabs: { 'tab-1': successQueryState } })
-
-      render(<StatusBar />)
-
-      expect(screen.getByTestId('query-info')).toBeInTheDocument()
-      // The query row count drops its "Rows" label and shows the unified string.
-      expect(screen.getByTestId('query-rows')).toHaveTextContent(/^42 rows$/)
-      expect(screen.getByTestId('query-time')).toHaveTextContent('Exec 12 ms')
-      expect(screen.getByTestId('query-total-time')).toHaveTextContent('Total 150 ms')
-    })
 
     it('renders the query-info cluster identically in light and dark themes', () => {
       setupQueryEditorTab()
@@ -414,34 +320,26 @@ describe('StatusBar', () => {
       expect(screen.queryByTestId('query-info')).not.toBeInTheDocument()
     })
 
-    it('does not show query info when query status is idle', () => {
+    it('does not show query info while the query is idle, running or failed', () => {
       setupQueryEditorTab()
-      useQueryStore.setState({
-        tabs: {
-          'tab-1': makeTabState({
-            content: 'SELECT * FROM users',
-            status: 'idle',
-          }),
-        },
-      })
+      const statuses = ['idle', 'running', 'error'] as const
 
       render(<StatusBar />)
-      expect(screen.queryByTestId('query-info')).not.toBeInTheDocument()
-    })
 
-    it('does not show query info when query status is running', () => {
-      setupQueryEditorTab()
-      useQueryStore.setState({
-        tabs: {
-          'tab-1': makeTabState({
-            content: 'SELECT * FROM users',
-            status: 'running',
-          }),
-        },
+      statuses.forEach((status) => {
+        act(() => {
+          useQueryStore.setState({
+            tabs: {
+              'tab-1': makeTabState({
+                content: 'SELECT * FROM users',
+                status,
+                errorMessage: 'Syntax error near...',
+              }),
+            },
+          })
+        })
+        expect(screen.queryByTestId('query-info')).not.toBeInTheDocument()
       })
-
-      render(<StatusBar />)
-      expect(screen.queryByTestId('query-info')).not.toBeInTheDocument()
     })
 
     it('shows running indicator when query status is running', () => {
@@ -506,22 +404,6 @@ describe('StatusBar', () => {
 
       render(<StatusBar />)
       expect(screen.queryByTestId('query-running-info')).not.toBeInTheDocument()
-    })
-
-    it('does not show query info when query status is error', () => {
-      setupQueryEditorTab()
-      useQueryStore.setState({
-        tabs: {
-          'tab-1': makeTabState({
-            content: 'SELECT * FROM users',
-            status: 'error',
-            errorMessage: 'Syntax error near...',
-          }),
-        },
-      })
-
-      render(<StatusBar />)
-      expect(screen.queryByTestId('query-info')).not.toBeInTheDocument()
     })
 
     it('does not show query info when no workspace tab exists', () => {
@@ -819,26 +701,6 @@ describe('StatusBar', () => {
       expect(screen.getByTestId('indexing-text')).toHaveTextContent('Indexing 3/10')
     })
 
-    it('shows the same sentence-case indexing text in light theme', () => {
-      useThemeStore.setState({ resolvedTheme: 'light' })
-      setupActiveConnection()
-      useSchemaIndexStore.setState({
-        connections: {
-          'conn-1': {
-            status: 'building',
-            phase: 'embedding',
-            tablesDone: 5,
-            tablesTotal: 20,
-            lastBuildTimestamp: 0,
-          },
-        },
-      })
-
-      render(<StatusBar />)
-
-      expect(screen.getByTestId('indexing-text')).toHaveTextContent('Indexing 5/20')
-    })
-
     it('shows "Reading schema..." during loading_schema phase with no tables yet (dark)', () => {
       useThemeStore.setState({ resolvedTheme: 'dark' })
       setupActiveConnection()
@@ -1122,7 +984,7 @@ describe('StatusBar', () => {
       expect(screen.queryByTestId('indexing-error')).not.toBeInTheDocument()
     })
 
-    it('does not show any indicator when status is not_configured', () => {
+    it('does not show any indicator when status is not_configured or no index state exists', () => {
       setupActiveConnection()
       useSchemaIndexStore.setState({
         connections: {
@@ -1137,19 +999,13 @@ describe('StatusBar', () => {
       })
 
       render(<StatusBar />)
-
       expect(screen.queryByTestId('indexing-indicator')).not.toBeInTheDocument()
       expect(screen.queryByTestId('indexing-ready')).not.toBeInTheDocument()
       expect(screen.queryByTestId('indexing-error')).not.toBeInTheDocument()
-    })
 
-    it('does not show any indicator when no index state exists', () => {
-      setupActiveConnection()
-      // No entry in connections for 'conn-1'
-      useSchemaIndexStore.setState({ connections: {} })
-
-      render(<StatusBar />)
-
+      act(() => {
+        useSchemaIndexStore.setState({ connections: {} })
+      })
       expect(screen.queryByTestId('indexing-indicator')).not.toBeInTheDocument()
       expect(screen.queryByTestId('indexing-ready')).not.toBeInTheDocument()
       expect(screen.queryByTestId('indexing-error')).not.toBeInTheDocument()

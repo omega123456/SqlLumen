@@ -169,28 +169,14 @@ afterEach(() => {
 })
 
 describe('useSessionRestoreStore — isEnabled', () => {
-  it('returns true when session.restore setting is "true"', () => {
-    useSettingsStore.setState({
-      settings: { 'session.restore': 'true' },
-      pendingChanges: {},
-    })
+  it('reads the session.restore setting and defaults to enabled when it is missing', () => {
+    useSettingsStore.setState({ settings: { 'session.restore': 'true' }, pendingChanges: {} })
     expect(useSessionRestoreStore.getState().isEnabled()).toBe(true)
-  })
 
-  it('returns false when session.restore setting is "false"', () => {
-    useSettingsStore.setState({
-      settings: { 'session.restore': 'false' },
-      pendingChanges: {},
-    })
+    useSettingsStore.setState({ settings: { 'session.restore': 'false' }, pendingChanges: {} })
     expect(useSessionRestoreStore.getState().isEnabled()).toBe(false)
-  })
 
-  it('returns true by default (SETTINGS_DEFAULTS fallback)', () => {
-    // When settings are empty, getSetting falls back to SETTINGS_DEFAULTS
-    useSettingsStore.setState({
-      settings: {},
-      pendingChanges: {},
-    })
+    useSettingsStore.setState({ settings: {}, pendingChanges: {} })
     expect(useSessionRestoreStore.getState().isEnabled()).toBe(true)
   })
 })
@@ -2052,16 +2038,11 @@ describe('useSessionRestoreStore — native session reconciliation', () => {
 })
 
 describe('registerCloseHandler', () => {
-  it('returns immediately when __TAURI_INTERNALS__ is absent', async () => {
-    // In jsdom, __TAURI_INTERNALS__ is not defined, so canUseTauriWindow returns false
-    await registerCloseHandler()
-    // Should complete without error — covers lines 348-368
-  })
+  it('returns immediately when __TAURI_INTERNALS__ is absent or null', async () => {
+    await expect(registerCloseHandler()).resolves.toBeUndefined()
 
-  it('returns immediately when __TAURI_INTERNALS__ is null', async () => {
     ;(window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = null
-    await registerCloseHandler()
-    // Covers the null check in canUseTauriWindow
+    await expect(registerCloseHandler()).resolves.toBeUndefined()
   })
 
   it('destroys the window without replacing the saved session when restore is incomplete', async () => {

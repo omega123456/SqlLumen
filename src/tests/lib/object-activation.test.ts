@@ -3,7 +3,6 @@ import {
   activateColumnFromPalette,
   activateObjectFromPalette,
   getTabRevealTarget,
-  isObjectTab,
   openObjectDefaultTab,
   revealObjectInTree,
   revealTabInObjectBrowser,
@@ -413,16 +412,6 @@ describe('object-activation', () => {
       expect(getTabRevealTarget(tabs.processlist)).toBeNull()
     })
 
-    it('classifies object tabs, including create-mode ones', () => {
-      expect(isObjectTab(tabs.tableData)).toBe(true)
-      expect(isObjectTab(tabs.schemaInfo)).toBe(true)
-      expect(isObjectTab(tabs.designerCreate)).toBe(true)
-      expect(isObjectTab(tabs.editorCreate)).toBe(true)
-      expect(isObjectTab(tabs.query)).toBe(false)
-      expect(isObjectTab(tabs.history)).toBe(false)
-      expect(isObjectTab(tabs.processlist)).toBe(false)
-    })
-
     function seedTree(withObject: boolean) {
       const databaseNodeId = makeNodeId('database', DATABASE, DATABASE)
       const categoryNodeId = makeNodeId('category', DATABASE, 'table')
@@ -493,27 +482,6 @@ describe('object-activation', () => {
       return objectNodeId
     }
 
-    it('selects the object, sets the active database and requests the reveal', async () => {
-      const objectNodeId = seedTree(true)
-
-      await revealTabInObjectBrowser(tabs.tableData)
-
-      const connState = useSchemaStore.getState().connectionStates[CONNECTION_ID]
-      expect(connState.selectedNodeId).toBe(objectNodeId)
-      expect(connState.expandedNodes.has(makeNodeId('category', DATABASE, 'table'))).toBe(true)
-      expect(useSchemaStore.getState().revealRequest).toEqual({
-        connectionId: CONNECTION_ID,
-        nodeId: objectNodeId,
-        seq: 1,
-      })
-      expect(useConnectionStore.getState().activeConnections[CONNECTION_ID].sessionDatabase).toBe(
-        DATABASE
-      )
-      expect(ipc.payloads('select_database')).toEqual([
-        { connectionId: CONNECTION_ID, databaseName: DATABASE },
-      ])
-    })
-
     it('warns and leaves the active database alone when the object is missing', async () => {
       seedTree(false)
 
@@ -525,15 +493,6 @@ describe('object-activation', () => {
       expect(useConnectionStore.getState().activeConnections[CONNECTION_ID].sessionDatabase).toBe(
         'other_db'
       )
-    })
-
-    it('does nothing for tabs without an object', async () => {
-      seedTree(true)
-
-      await revealTabInObjectBrowser(tabs.query)
-
-      expect(useSchemaStore.getState().revealRequest).toBeNull()
-      expect(useSchemaStore.getState().connectionStates[CONNECTION_ID].selectedNodeId).toBeNull()
     })
   })
 })

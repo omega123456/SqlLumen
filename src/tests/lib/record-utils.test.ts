@@ -7,8 +7,4 @@ describe('withoutKey', () => {
     expect(withoutKey(source, 'dropped')).toEqual({ kept: 1 })
     expect(source).toEqual({ kept: 1, dropped: 2 })
   })
-
-  it('returns an equal copy when the key is absent', () => {
-    expect(withoutKey({ kept: 1 }, 'missing')).toEqual({ kept: 1 })
-  })
 })

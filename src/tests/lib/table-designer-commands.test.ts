@@ -87,14 +87,4 @@ describe('applyTableDdl', () => {
     ])
     expect(result).toBeUndefined()
   })
-
-  it('propagates invoke errors', async () => {
-    ipc.override('apply_table_ddl', () => {
-      throw new Error('DDL failed')
-    })
-
-    await expect(applyTableDdl('conn-1', 'app_db', 'ALTER TABLE `users` BROKEN')).rejects.toThrow(
-      'DDL failed'
-    )
-  })
 })

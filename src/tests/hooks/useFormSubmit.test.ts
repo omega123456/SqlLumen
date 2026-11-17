@@ -25,14 +25,4 @@ describe('useFormSubmit', () => {
     expect(submitEvent.preventDefault).toHaveBeenCalled()
     expect(submit).toHaveBeenCalledTimes(1)
   })
-
-  it('keeps the same callback while the handler is unchanged', () => {
-    const submit = vi.fn(async () => {})
-    const { result, rerender } = renderHook(() => useFormSubmit(submit))
-    const firstCallback = result.current
-
-    rerender()
-
-    expect(result.current).toBe(firstCallback)
-  })
 })

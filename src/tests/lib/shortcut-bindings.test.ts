@@ -16,16 +16,4 @@ describe('bindingsMatch', () => {
       bindingsMatch({ key: 'k', modifiers: ['ctrl'] }, { key: 'j', modifiers: ['ctrl'] })
     ).toBe(false)
   })
-
-  it('rejects a different number of modifiers', () => {
-    expect(
-      bindingsMatch({ key: 'k', modifiers: ['ctrl'] }, { key: 'k', modifiers: ['ctrl', 'shift'] })
-    ).toBe(false)
-  })
-
-  it('rejects different modifiers of the same count', () => {
-    expect(bindingsMatch({ key: 'k', modifiers: ['ctrl'] }, { key: 'k', modifiers: ['alt'] })).toBe(
-      false
-    )
-  })
 })

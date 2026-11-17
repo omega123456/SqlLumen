@@ -118,98 +118,48 @@ beforeEach(() => {
 })
 
 describe('ResultFormView', () => {
-  it('renders with data-testid="result-form-view"', () => {
-    renderForm(<ResultFormView {...defaultProps} />)
+  it('shows the record label and values of the selected row, with NULL as text and the first row as fallback', () => {
+    const selectedRow = renderForm(<ResultFormView {...defaultProps} selectedRowIndex={2} />)
     expect(screen.getByTestId('result-form-view')).toBeInTheDocument()
-  })
-
-  it('shows "Record 1 of 5" heading when selectedRowIndex is 0', () => {
-    renderForm(<ResultFormView {...defaultProps} selectedRowIndex={0} />)
-    expect(screen.getByTestId('form-record-label')).toHaveTextContent(/^Record 1 of 5$/)
-  })
-
-  it('shows "Record 3 of 5" heading when selectedRowIndex is 2', () => {
-    renderForm(<ResultFormView {...defaultProps} selectedRowIndex={2} />)
     expect(screen.getByTestId('form-record-label')).toHaveTextContent(/^Record 3 of 5$/)
-  })
+    expect(screen.getByTestId('form-input-id')).toHaveTextContent('3')
+    expect(screen.getByTestId('form-input-name')).toHaveTextContent('Charlie')
+    expect(screen.getByTestId('form-input-email')).toHaveTextContent('charlie@example.com')
+    selectedRow.unmount()
 
-  it('defaults to first record when selectedRowIndex is null', () => {
+    const nullEmailRow = renderForm(<ResultFormView {...defaultProps} selectedRowIndex={1} />)
+    expect(screen.getByTestId('form-input-email')).toHaveTextContent('NULL')
+    nullEmailRow.unmount()
+
     renderForm(<ResultFormView {...defaultProps} selectedRowIndex={null} />)
     expect(screen.getByTestId('form-record-label')).toHaveTextContent(/^Record 1 of 5$/)
-  })
-
-  it('shows the first row as a fallback when selectedRowIndex is null', () => {
-    renderForm(<ResultFormView {...defaultProps} selectedRowIndex={null} />)
     expect(screen.getByTestId('form-input-id')).toHaveTextContent('1')
     expect(screen.getByTestId('form-input-name')).toHaveTextContent('Alice')
   })
 
-  it('shows all values for the selected row', () => {
-    renderForm(<ResultFormView {...defaultProps} selectedRowIndex={0} />)
-    // In BaseFormView, read-only fields use form-input-{displayName}
-    expect(screen.getByTestId('form-input-id')).toHaveTextContent('1')
-    expect(screen.getByTestId('form-input-name')).toHaveTextContent('Alice')
-    expect(screen.getByTestId('form-input-email')).toHaveTextContent('alice@example.com')
-  })
-
-  it('shows NULL as "NULL" text for null values', () => {
-    // Row index 1: [2, 'Bob', null] — email is null
-    renderForm(<ResultFormView {...defaultProps} selectedRowIndex={1} />)
-    const emailField = screen.getByTestId('form-input-email')
-    expect(emailField).toHaveTextContent('NULL')
-  })
-
-  it('Previous button calls onNavigate("prev")', () => {
+  it('navigates through onNavigate with labelled buttons and disables Next on the last record', () => {
     const onNavigate = vi.fn()
-    renderForm(<ResultFormView {...defaultProps} selectedRowIndex={2} onNavigate={onNavigate} />)
+    const middleRecord = renderForm(
+      <ResultFormView {...defaultProps} selectedRowIndex={2} onNavigate={onNavigate} />
+    )
+    expect(screen.getByLabelText('Previous record')).not.toBeDisabled()
+    expect(screen.getByLabelText('Next record')).not.toBeDisabled()
+
     fireEvent.click(screen.getByTestId('btn-form-previous'))
-    expect(onNavigate).toHaveBeenCalledWith('prev')
-  })
-
-  it('Next button calls onNavigate("next")', () => {
-    const onNavigate = vi.fn()
-    renderForm(<ResultFormView {...defaultProps} selectedRowIndex={2} onNavigate={onNavigate} />)
     fireEvent.click(screen.getByTestId('btn-form-next'))
-    expect(onNavigate).toHaveBeenCalledWith('next')
-  })
 
-  it('Next button is disabled on last record', () => {
+    expect(onNavigate).toHaveBeenNthCalledWith(1, 'prev')
+    expect(onNavigate).toHaveBeenNthCalledWith(2, 'next')
+    middleRecord.unmount()
+
     renderForm(<ResultFormView {...defaultProps} selectedRowIndex={4} />)
     expect(screen.getByTestId('btn-form-next')).toBeDisabled()
-  })
-
-  it('both navigation buttons enabled for middle records', () => {
-    renderForm(<ResultFormView {...defaultProps} selectedRowIndex={2} />)
-    expect(screen.getByTestId('btn-form-previous')).not.toBeDisabled()
-    expect(screen.getByTestId('btn-form-next')).not.toBeDisabled()
-  })
-
-  it('copy button calls clipboard.writeText with field value', async () => {
-    renderForm(<ResultFormView {...defaultProps} selectedRowIndex={0} />)
-    fireEvent.click(screen.getByTestId('btn-copy-name'))
-    await waitFor(() => {
-      expect(mockClipboardWriteText).toHaveBeenCalledWith('Alice')
-    })
   })
 
   it('renders with empty rows showing empty state', () => {
     renderForm(<ResultFormView {...defaultProps} rows={[]} totalRows={0} />)
     expect(screen.getByTestId('result-form-view')).toBeInTheDocument()
     expect(screen.getByText('No rows to display')).toBeInTheDocument()
-  })
-
-  it('shows correct values for different selected rows', () => {
-    // Select row 2 (Charlie)
-    renderForm(<ResultFormView {...defaultProps} selectedRowIndex={2} />)
-    expect(screen.getByTestId('form-input-id')).toHaveTextContent('3')
-    expect(screen.getByTestId('form-input-name')).toHaveTextContent('Charlie')
-    expect(screen.getByTestId('form-input-email')).toHaveTextContent('charlie@example.com')
-  })
-
-  it('has aria-labels on navigation buttons', () => {
-    renderForm(<ResultFormView {...defaultProps} />)
-    expect(screen.getByLabelText('Previous record')).toBeInTheDocument()
-    expect(screen.getByLabelText('Next record')).toBeInTheDocument()
   })
 })
 

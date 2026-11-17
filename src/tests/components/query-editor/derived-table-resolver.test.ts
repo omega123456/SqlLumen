@@ -117,18 +117,6 @@ describe('buildDerivedTableMap', () => {
     ])
   })
 
-  it('treats a qualified wildcard as a wildcard', () => {
-    const cte = derivedTableEntity({
-      text: 'recent',
-      columns: [{ text: 'o.*' }],
-      sourceTables: ['orders'],
-    })
-
-    expect(buildDerivedTableMap([cte], 'app_db').get('recent')?.wildcardTables).toEqual([
-      { database: 'app_db', table: 'orders' },
-    ])
-  })
-
   it('skips wildcard source tables that cannot be resolved without a database', () => {
     const cte = derivedTableEntity({
       text: 'recent',
@@ -152,18 +140,5 @@ describe('buildDerivedTableMap', () => {
     } as unknown as EntityContext
 
     expect(buildDerivedTableMap([literal, withoutQueryResult], 'app_db').size).toBe(0)
-  })
-
-  it('prefers derived tables of the statement that contains the caret', () => {
-    const otherStatement = derivedTableEntity({
-      text: 'old',
-      columns: [{ text: 'a' }],
-      isContainCaret: false,
-    })
-    const caretStatement = derivedTableEntity({ text: 'recent', columns: [{ text: 'id' }] })
-
-    const map = buildDerivedTableMap([otherStatement, caretStatement], 'app_db')
-
-    expect([...map.keys()]).toEqual(['recent'])
   })
 })

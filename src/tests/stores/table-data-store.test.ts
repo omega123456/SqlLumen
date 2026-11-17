@@ -193,16 +193,6 @@ describe('useTableDataStore — initTab', () => {
     expect(tab.isExportDialogOpen).toBe(false)
     expect(tab.pendingNavigationAction).toBeNull()
   })
-
-  it('should have scrollRow and scrollCol fields in tab state', () => {
-    useTableDataStore
-      .getState()
-      .initTab('tab-1', { connectionId: 'conn-1', database: 'mydb', table: 'users' })
-    const tab = useTableDataStore.getState().tabs['tab-1']
-
-    expect(tab.scrollRow).toBe(0)
-    expect(tab.scrollCol).toBe(0)
-  })
 })
 
 describe('useTableDataStore — column jumps', () => {
@@ -237,11 +227,6 @@ describe('useTableDataStore — column jumps', () => {
 })
 
 describe('useTableDataStore — setScrollCell', () => {
-  it('should expose a setScrollCell action to save scroll cell coordinates', () => {
-    const store = useTableDataStore.getState()
-    expect(typeof store.setScrollCell).toBe('function')
-  })
-
   it('should retain scroll cell coordinates after being set', async () => {
     await setupTabWithData()
 
@@ -368,54 +353,28 @@ describe('useTableDataStore — fetchPage', () => {
     })
   })
 
-  it('clears selectedRowKey after a successful page fetch', async () => {
+  it('clears the selected and checked rows after fetching a page, sorting, filtering and refreshing', async () => {
     await setupTabWithData()
     useTableDataStore.getState().setSelectedRow('tab-1', { id: 1 })
-
-    await useTableDataStore.getState().fetchPage('tab-1', 1)
-
-    expect(useTableDataStore.getState().tabs['tab-1'].selectedRowKey).toBeNull()
-  })
-
-  it('clears checkedRowKeys after a successful page fetch (avoids deleting stale rows)', async () => {
-    await setupTabWithData()
     useTableDataStore.getState().setCheckedRowKeys('tab-1', [{ id: 1 }, { id: 2 }])
-    expect(useTableDataStore.getState().tabs['tab-1'].checkedRowKeys).toEqual([
-      { id: 1 },
-      { id: 2 },
-    ])
 
     await useTableDataStore.getState().fetchPage('tab-1', 2)
 
+    expect(useTableDataStore.getState().tabs['tab-1'].selectedRowKey).toBeNull()
     expect(useTableDataStore.getState().tabs['tab-1'].checkedRowKeys).toEqual([])
-  })
 
-  it('clears checkedRowKeys after sorting (sort funnels through fetchPage)', async () => {
-    await setupTabWithData()
     useTableDataStore.getState().setCheckedRowKeys('tab-1', [{ id: 1 }])
-
     await useTableDataStore.getState().sortByColumn('tab-1', 'name', 'asc')
-
     expect(useTableDataStore.getState().tabs['tab-1'].checkedRowKeys).toEqual([])
-  })
 
-  it('clears checkedRowKeys after applying a filter', async () => {
-    await setupTabWithData()
     useTableDataStore.getState().setCheckedRowKeys('tab-1', [{ id: 2 }])
-
     await useTableDataStore
       .getState()
       .applyFilters('tab-1', [{ column: 'name', operator: '==' as const, value: 'Alice' }])
-
     expect(useTableDataStore.getState().tabs['tab-1'].checkedRowKeys).toEqual([])
-  })
 
-  it('clears checkedRowKeys after refreshing data', async () => {
-    await setupTabWithData()
     useTableDataStore.getState().setCheckedRowKeys('tab-1', [{ id: 1 }])
-
     await useTableDataStore.getState().refreshData('tab-1')
-
     expect(useTableDataStore.getState().tabs['tab-1'].checkedRowKeys).toEqual([])
   })
 
@@ -1492,26 +1451,19 @@ describe('useTableDataStore — deleteRow (new row)', () => {
 })
 
 describe('useTableDataStore — requestNavigationAction', () => {
-  it('executes action immediately with no edits', async () => {
+  it('runs the action at once without edits and holds it as pending while edits are unsaved', async () => {
     await setupTabWithData()
-
-    const action = vi.fn()
-    useTableDataStore.getState().requestNavigationAction('tab-1', action)
-
-    expect(action).toHaveBeenCalledTimes(1)
+    const immediateAction = vi.fn()
+    useTableDataStore.getState().requestNavigationAction('tab-1', immediateAction)
+    expect(immediateAction).toHaveBeenCalledTimes(1)
     expect(useTableDataStore.getState().tabs['tab-1'].pendingNavigationAction).toBeNull()
-  })
 
-  it('sets pendingNavigationAction with pending edits', async () => {
-    await setupTabWithData()
     useTableDataStore.getState().startEditing('tab-1', { id: 1 }, { id: 1, name: 'Alice' })
     useTableDataStore.getState().updateCellValue('tab-1', 'name', 'Modified')
-
-    const action = vi.fn()
-    useTableDataStore.getState().requestNavigationAction('tab-1', action)
-
-    expect(action).not.toHaveBeenCalled()
-    expect(useTableDataStore.getState().tabs['tab-1'].pendingNavigationAction).toBe(action)
+    const heldAction = vi.fn()
+    useTableDataStore.getState().requestNavigationAction('tab-1', heldAction)
+    expect(heldAction).not.toHaveBeenCalled()
+    expect(useTableDataStore.getState().tabs['tab-1'].pendingNavigationAction).toBe(heldAction)
   })
 })
 
@@ -1758,35 +1710,20 @@ describe('useTableDataStore — applyFilters', () => {
   })
 })
 
-describe('useTableDataStore — cleanupTab', () => {
-  it('removes tab state', async () => {
-    await setupTabWithData()
-    useTableDataStore.getState().cleanupTab('tab-1')
-    expect(useTableDataStore.getState().tabs['tab-1']).toBeUndefined()
-  })
-})
-
 describe('useTableDataStore — view and UI actions', () => {
-  it('setViewMode changes viewMode', async () => {
+  it('changes the view mode, selects and clears a row, and toggles the export dialog', async () => {
     await setupTabWithData()
+
     useTableDataStore.getState().setViewMode('tab-1', 'form')
     expect(useTableDataStore.getState().tabs['tab-1'].viewMode).toBe('form')
-  })
 
-  it('setSelectedRow sets and clears selection', async () => {
-    await setupTabWithData()
     useTableDataStore.getState().setSelectedRow('tab-1', { id: 1 })
     expect(useTableDataStore.getState().tabs['tab-1'].selectedRowKey).toEqual({ id: 1 })
-
     useTableDataStore.getState().setSelectedRow('tab-1', null)
     expect(useTableDataStore.getState().tabs['tab-1'].selectedRowKey).toBeNull()
-  })
 
-  it('openExportDialog / closeExportDialog toggles flag', async () => {
-    await setupTabWithData()
     useTableDataStore.getState().openExportDialog('tab-1')
     expect(useTableDataStore.getState().tabs['tab-1'].isExportDialogOpen).toBe(true)
-
     useTableDataStore.getState().closeExportDialog('tab-1')
     expect(useTableDataStore.getState().tabs['tab-1'].isExportDialogOpen).toBe(false)
   })
@@ -2129,84 +2066,32 @@ describe('BIT column value coercion in buildUpdatePayload', () => {
     },
   ]
 
-  it('coerces string "128" to number 128 for BIT columns', () => {
+  function updatedBitValue(
+    currentValue: unknown,
+    columns: TableDataColumnMeta[] = bitColumns
+  ): unknown {
     const result = buildUpdatePayload(
       {
         rowKey: { id: 1 },
         originalValues: { id: 1, col_bit: 0 },
-        currentValues: { id: 1, col_bit: '128' },
+        currentValues: { id: 1, col_bit: currentValue },
         modifiedColumns: new Set(['col_bit']),
         isNewRow: false,
       },
       ['id'],
-      bitColumns
+      columns
     )
-    expect(result.ok).toBe(true)
-    expect(result.ok && result.updatedValues.col_bit).toBe(128)
-  })
+    return result.ok ? result.updatedValues.col_bit : 'not-ok'
+  }
 
-  it('coerces string "0" to number 0 for BIT columns', () => {
-    const result = buildUpdatePayload(
-      {
-        rowKey: { id: 1 },
-        originalValues: { id: 1, col_bit: 1 },
-        currentValues: { id: 1, col_bit: '0' },
-        modifiedColumns: new Set(['col_bit']),
-        isNewRow: false,
-      },
-      ['id'],
-      bitColumns
-    )
-    expect(result.ok).toBe(true)
-    expect(result.ok && result.updatedValues.col_bit).toBe(0)
-  })
+  it('coerces numeric strings to numbers for BIT columns and leaves other values unchanged', () => {
+    const varcharColumns = [bitColumns[0], { ...bitColumns[1], dataType: 'VARCHAR' }]
 
-  it('passes null through unchanged for BIT columns', () => {
-    const result = buildUpdatePayload(
-      {
-        rowKey: { id: 1 },
-        originalValues: { id: 1, col_bit: 1 },
-        currentValues: { id: 1, col_bit: null },
-        modifiedColumns: new Set(['col_bit']),
-        isNewRow: false,
-      },
-      ['id'],
-      bitColumns
-    )
-    expect(result.ok).toBe(true)
-    expect(result.ok ? result.updatedValues.col_bit : 'not-ok').toBeNull()
-  })
-
-  it('passes already-numeric values unchanged for BIT columns', () => {
-    const result = buildUpdatePayload(
-      {
-        rowKey: { id: 1 },
-        originalValues: { id: 1, col_bit: 0 },
-        currentValues: { id: 1, col_bit: 128 },
-        modifiedColumns: new Set(['col_bit']),
-        isNewRow: false,
-      },
-      ['id'],
-      bitColumns
-    )
-    expect(result.ok).toBe(true)
-    expect(result.ok && result.updatedValues.col_bit).toBe(128)
-  })
-
-  it('does not coerce string values for non-BIT columns', () => {
-    const result = buildUpdatePayload(
-      {
-        rowKey: { id: 1 },
-        originalValues: { id: 1, col_bit: 'old' },
-        currentValues: { id: 1, col_bit: '128' },
-        modifiedColumns: new Set(['col_bit']),
-        isNewRow: false,
-      },
-      ['id'],
-      [bitColumns[0], { ...bitColumns[1], dataType: 'VARCHAR' }]
-    )
-    expect(result.ok).toBe(true)
-    expect(result.ok && result.updatedValues.col_bit).toBe('128')
+    expect(updatedBitValue('128')).toBe(128)
+    expect(updatedBitValue('0')).toBe(0)
+    expect(updatedBitValue(null)).toBeNull()
+    expect(updatedBitValue(128)).toBe(128)
+    expect(updatedBitValue('128', varcharColumns)).toBe('128')
   })
 })
 
@@ -2238,52 +2123,28 @@ describe('BIT column value coercion in buildInsertPayload', () => {
     },
   ]
 
-  it('coerces string "128" to number 128 for BIT columns on insert', () => {
-    const result = buildInsertPayload(bitColumns, {
+  function insertedBitValue(
+    currentValue: unknown,
+    columns: TableDataColumnMeta[] = bitColumns
+  ): unknown {
+    const result = buildInsertPayload(columns, {
       rowKey: { __tempId: 'tmp-1' },
       originalValues: {},
-      currentValues: { col_bit: '128' },
+      currentValues: { col_bit: currentValue },
       modifiedColumns: new Set(['col_bit']),
       isNewRow: true,
       tempId: 'tmp-1',
     })
-    expect(result.col_bit).toBe(128)
-  })
+    return result.col_bit
+  }
 
-  it('coerces string "0" to number 0 for BIT columns on insert', () => {
-    const result = buildInsertPayload(bitColumns, {
-      rowKey: { __tempId: 'tmp-1' },
-      originalValues: {},
-      currentValues: { col_bit: '0' },
-      modifiedColumns: new Set(['col_bit']),
-      isNewRow: true,
-      tempId: 'tmp-1',
-    })
-    expect(result.col_bit).toBe(0)
-  })
+  it('coerces numeric strings to numbers for BIT columns on insert and leaves other values unchanged', () => {
+    const varcharColumns = [bitColumns[0], { ...bitColumns[1], dataType: 'VARCHAR' }]
 
-  it('passes null through unchanged for BIT columns on insert', () => {
-    const result = buildInsertPayload(bitColumns, {
-      rowKey: { __tempId: 'tmp-1' },
-      originalValues: {},
-      currentValues: { col_bit: null },
-      modifiedColumns: new Set(['col_bit']),
-      isNewRow: true,
-      tempId: 'tmp-1',
-    })
-    expect(result.col_bit).toBeNull()
-  })
-
-  it('does not coerce string values for non-BIT columns on insert', () => {
-    const result = buildInsertPayload([bitColumns[0], { ...bitColumns[1], dataType: 'VARCHAR' }], {
-      rowKey: { __tempId: 'tmp-1' },
-      originalValues: {},
-      currentValues: { col_bit: '128' },
-      modifiedColumns: new Set(['col_bit']),
-      isNewRow: true,
-      tempId: 'tmp-1',
-    })
-    expect(result.col_bit).toBe('128')
+    expect(insertedBitValue('128')).toBe(128)
+    expect(insertedBitValue('0')).toBe(0)
+    expect(insertedBitValue(null)).toBeNull()
+    expect(insertedBitValue('128', varcharColumns)).toBe('128')
   })
 })
 

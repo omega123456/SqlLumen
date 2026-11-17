@@ -7,7 +7,7 @@ beforeEach(() => {
 })
 
 describe('log-commands', () => {
-  it('calls list_logs with the requested page and filter', async () => {
+  it('sends the log listing and export requests with their filters', async () => {
     const response = {
       entries: [
         {
@@ -31,18 +31,16 @@ describe('log-commands', () => {
       level: 'warn',
     })
     expect(result).toEqual(response)
-  })
 
-  it('calls export_logs with the requested date range and file path', async () => {
     ipc.override('export_logs', () => 42)
 
-    const result = await exportLogs('2026-06-01', '2026-06-07', '/tmp/logs.csv')
+    const exportLogsResult = await exportLogs('2026-06-01', '2026-06-07', '/tmp/logs.csv')
 
     expect(ipc.payloads('export_logs')[0]).toEqual({
       startTimestamp: '2026-06-01',
       endTimestamp: '2026-06-07',
       filePath: '/tmp/logs.csv',
     })
-    expect(result).toBe(42)
+    expect(exportLogsResult).toBe(42)
   })
 })

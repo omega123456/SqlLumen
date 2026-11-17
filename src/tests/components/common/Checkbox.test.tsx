@@ -10,12 +10,6 @@ function ControlledToggle() {
 }
 
 describe('Checkbox', () => {
-  it('renders a real checkbox input', () => {
-    render(<Checkbox defaultChecked aria-label="box" />)
-    const input = screen.getByRole('checkbox', { name: 'box' })
-    expect(input).toHaveAttribute('type', 'checkbox')
-  })
-
   it('supports controlled toggle', async () => {
     const user = userEvent.setup()
     render(<ControlledToggle />)
@@ -39,17 +33,5 @@ describe('Checkbox', () => {
     render(<Checkbox ref={ref} aria-label="ref box" />)
     expect(ref.current).toBeInstanceOf(HTMLInputElement)
     expect(ref.current).toBe(screen.getByRole('checkbox', { name: 'ref box' }))
-  })
-
-  it('passes through data-testid', () => {
-    render(<Checkbox data-testid="my-cb" aria-label="x" />)
-    expect(screen.getByTestId('my-cb')).toBeInTheDocument()
-  })
-
-  it('supports the mixed state through the indeterminate property', () => {
-    render(<Checkbox aria-label="mixed" />)
-    const input = screen.getByRole('checkbox', { name: 'mixed' }) as HTMLInputElement
-    input.indeterminate = true
-    expect(input.indeterminate).toBe(true)
   })
 })

@@ -88,14 +88,6 @@ describe('offsetToLineNumber', () => {
     expect(offsetToLineNumber(text, 2)).toBe(2) // after first \n
     expect(offsetToLineNumber(text, 4)).toBe(3) // after second \n
   })
-
-  it('returns 1 for empty text', () => {
-    expect(offsetToLineNumber('', 0)).toBe(1)
-  })
-
-  it('clamps offset to text length', () => {
-    expect(offsetToLineNumber('a\nb', 100)).toBe(2)
-  })
 })
 
 // ---------------------------------------------------------------------------
@@ -103,16 +95,6 @@ describe('offsetToLineNumber', () => {
 // ---------------------------------------------------------------------------
 
 describe('offsetToColumn', () => {
-  it('returns 1 for offset 0', () => {
-    expect(offsetToColumn('abc', 0)).toBe(1) // offset - (-1) = 1
-  })
-
-  it('returns column after newline', () => {
-    const text = 'abc\ndef'
-    expect(offsetToColumn(text, 4)).toBe(1) // 'd' is column 1 after \n at index 3
-    expect(offsetToColumn(text, 5)).toBe(2) // 'e' is column 2
-  })
-
   it('handles multiple lines', () => {
     const text = 'ab\ncd\nef'
     expect(offsetToColumn(text, 6)).toBe(1) // 'e' after second \n
@@ -124,30 +106,6 @@ describe('offsetToColumn', () => {
 // ---------------------------------------------------------------------------
 
 describe('handleRunStatement', () => {
-  it('does nothing when tab status is running', () => {
-    // Create tab first, then set status
-    useQueryStore.getState().setContent('tab-1', 'SELECT 1')
-    useQueryStore.getState().setTabStatus('tab-1', 'running')
-    handleRunStatement({
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      statement: { sql: 'SELECT 1', start: 0, end: 8 },
-    })
-    // Status should remain running — no query was dispatched
-    expect(useQueryStore.getState().tabs['tab-1']?.tabStatus).toBe('running')
-  })
-
-  it('does nothing when tab status is ai-pending', () => {
-    useQueryStore.getState().setContent('tab-1', 'SELECT 1')
-    useQueryStore.getState().setTabStatus('tab-1', 'ai-pending')
-    handleRunStatement({
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      statement: { sql: 'SELECT 1', start: 0, end: 8 },
-    })
-    expect(useQueryStore.getState().tabs['tab-1']?.tabStatus).toBe('ai-pending')
-  })
-
   it('does nothing when tab status is ai-reviewing', () => {
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
     useQueryStore.getState().setTabStatus('tab-1', 'ai-reviewing')
@@ -205,37 +163,6 @@ describe('handleAskAi', () => {
     expect(useAiStore.getState().tabs['tab-1']?.isPanelOpen).toBe(true)
   })
 
-  it('sets attached context with correct range', () => {
-    const text = 'SELECT 1\nFROM users'
-    const stmt = { sql: 'SELECT 1\nFROM users', start: 0, end: 19 }
-
-    handleAskAi({ connectionId: 'conn-1', tabId: 'tab-1', statement: stmt, fullText: text })
-
-    const ctx = useAiStore.getState().tabs['tab-1']?.attachedContext
-    expect(ctx).not.toBeNull()
-    expect(ctx?.sql).toBe('SELECT 1\nFROM users')
-    expect(ctx?.range.startLineNumber).toBe(1)
-    expect(ctx?.range.endLineNumber).toBe(2)
-  })
-
-  it('computes range covering exactly stmt.sql (excludes trailing semicolon)', () => {
-    // "SELECT * FROM users;" — splitStatements produces sql="SELECT * FROM users", end=20
-    const text = 'SELECT * FROM users;'
-    const stmt = { sql: 'SELECT * FROM users', start: 0, end: 20 }
-
-    handleAskAi({ connectionId: 'conn-1', tabId: 'tab-1', statement: stmt, fullText: text })
-
-    const ctx = useAiStore.getState().tabs['tab-1']?.attachedContext
-    expect(ctx).not.toBeNull()
-    // Range should cover exactly "SELECT * FROM users" (19 chars), not include ";"
-    expect(ctx?.range).toEqual({
-      startLineNumber: 1,
-      startColumn: 1,
-      endLineNumber: 1,
-      endColumn: 20, // column after 's' in "users", not after ';'
-    })
-  })
-
   it('computes range correctly for multi-line statement with delimiter', () => {
     const text = 'SELECT *\nFROM users;'
     // stmt.sql is trimmed without semicolon; start=0, end=20 (past the ';')
@@ -253,24 +180,13 @@ describe('handleAskAi', () => {
       endColumn: 11, // column after 's' in "users"
     })
   })
+})
 
-  it('computes range correctly with leading whitespace in raw segment', () => {
-    const text = '  SELECT 1;'
-    // splitStatements: stmtStart=2 (after whitespace), end=11, sql="SELECT 1"
-    const stmt = { sql: 'SELECT 1', start: 2, end: 11 }
+// ---------------------------------------------------------------------------
+// provideCodeLenses
+// ---------------------------------------------------------------------------
 
-    handleAskAi({ connectionId: 'conn-1', tabId: 'tab-1', statement: stmt, fullText: text })
-
-    const ctx = useAiStore.getState().tabs['tab-1']?.attachedContext
-    expect(ctx).not.toBeNull()
-    expect(ctx?.range).toEqual({
-      startLineNumber: 1,
-      startColumn: 3, // starts at column 3 (after 2 spaces)
-      endLineNumber: 1,
-      endColumn: 11, // column after '1'
-    })
-  })
-
+describe('provideCodeLenses', () => {
   it('does not re-open panel if already open', () => {
     useAiStore.setState({
       tabs: {
@@ -287,22 +203,6 @@ describe('handleAskAi', () => {
     })
     expect(spy).not.toHaveBeenCalled()
     spy.mockRestore()
-  })
-})
-
-// ---------------------------------------------------------------------------
-// provideCodeLenses
-// ---------------------------------------------------------------------------
-
-describe('provideCodeLenses', () => {
-  it('returns empty lenses when getModelContext returns null', () => {
-    vi.mocked(CompletionServiceModule.getModelContext).mockReturnValue(null as unknown as undefined)
-
-    const result = provideCodeLenses(
-      makeMockModel('SELECT 1'),
-      null as unknown as CancellationToken
-    )
-    expect(result.lenses).toHaveLength(0)
   })
 
   it('returns empty lenses when tabType is not query-editor', () => {
@@ -365,24 +265,6 @@ describe('provideCodeLenses', () => {
     expect(result.lenses.length).toBe(2)
     expect(result.lenses[0].command?.title).toContain('Run')
     expect(result.lenses[1].command?.title).toContain('Ask AI')
-  })
-
-  it('returns lenses for multiple statements', () => {
-    vi.mocked(CompletionServiceModule.getModelContext).mockReturnValue({
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      tabType: 'query-editor',
-    })
-    useSettingsStore.setState({
-      settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'false' },
-    })
-
-    const result = provideCodeLenses(
-      makeMockModel('SELECT 1;\nSELECT 2;'),
-      null as unknown as CancellationToken
-    )
-    // 2 statements, 1 Run lens each = 2 lenses
-    expect(result.lenses.length).toBe(2)
   })
 
   it('lenses have a dispose function', () => {

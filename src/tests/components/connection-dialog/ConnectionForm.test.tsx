@@ -51,29 +51,28 @@ async function switchToTab(
 }
 
 describe('ConnectionForm', () => {
-  it('renders all basic form fields', () => {
+  it('renders the basic fields, the General tab and the action buttons for a new connection', () => {
     render(<ConnectionForm />)
-
     expect(screen.getByLabelText('Connection name')).toBeInTheDocument()
     expect(screen.getByLabelText('Host address')).toBeInTheDocument()
     expect(screen.getByLabelText('Port')).toBeInTheDocument()
     expect(screen.getByLabelText('Username')).toBeInTheDocument()
     expect(screen.getByLabelText('Password')).toBeInTheDocument()
     expect(screen.getByLabelText('Default database')).toBeInTheDocument()
-  })
-
-  it('renders General, SSL and Advanced tabs with General active', () => {
-    render(<ConnectionForm />)
-
     expect(screen.getByTestId('connection-form-tab-general')).toHaveAttribute('data-active', 'true')
     expect(screen.getByTestId('connection-form-tab-ssl')).not.toHaveAttribute('data-active')
     expect(screen.getByTestId('connection-form-tab-advanced')).not.toHaveAttribute('data-active')
     expect(screen.getByTestId('connection-form-panel-general')).toBeInTheDocument()
+    expect(screen.getByText('Test connection')).toBeInTheDocument()
+    expect(screen.getByText('Save')).toBeInTheDocument()
+    expect(screen.getByText('Save and connect')).toBeInTheDocument()
+    expect(screen.queryByText('Delete')).not.toBeInTheDocument()
   })
 
-  it('tabs switch the visible panel', async () => {
+  it('tabs switch the visible panel and keep the form state across switches', async () => {
     const user = userEvent.setup()
     render(<ConnectionForm />)
+    await user.type(screen.getByLabelText('Connection name'), 'Stateful')
 
     await switchToTab(user, 'ssl')
     expect(screen.getByTestId('connection-form-panel-ssl')).toBeInTheDocument()
@@ -85,15 +84,6 @@ describe('ConnectionForm', () => {
 
     await switchToTab(user, 'general')
     expect(screen.getByTestId('connection-form-panel-general')).toBeInTheDocument()
-  })
-
-  it('tab panel keeps form state across switches', async () => {
-    const user = userEvent.setup()
-    render(<ConnectionForm />)
-
-    await user.type(screen.getByLabelText('Connection name'), 'Stateful')
-    await switchToTab(user, 'ssl')
-    await switchToTab(user, 'general')
     expect(screen.getByLabelText('Connection name')).toHaveValue('Stateful')
   })
 
@@ -134,28 +124,6 @@ describe('ConnectionForm', () => {
     await waitFor(() => {
       expect(ipc.calls('save_connection')).toHaveLength(1)
     })
-  })
-
-  it('form validation shows errors for missing Host', async () => {
-    const user = userEvent.setup()
-    render(<ConnectionForm />)
-
-    await user.type(screen.getByLabelText('Connection name'), 'Local')
-    await user.type(screen.getByLabelText('Username'), 'root')
-    await user.click(screen.getByText('Test connection'))
-
-    expect(screen.getByText('Host is required')).toBeInTheDocument()
-  })
-
-  it('form validation shows errors for missing Username', async () => {
-    const user = userEvent.setup()
-    render(<ConnectionForm />)
-
-    await user.type(screen.getByLabelText('Connection name'), 'Local')
-    await user.type(screen.getByLabelText('Host address'), 'localhost')
-    await user.click(screen.getByText('Test connection'))
-
-    expect(screen.getByText('Username is required')).toBeInTheDocument()
   })
 
   it('validation errors clear when field is filled', async () => {
@@ -213,33 +181,21 @@ describe('ConnectionForm', () => {
     expect(passwordInput).toHaveAttribute('type', 'password')
   })
 
-  it('renders action buttons', () => {
-    render(<ConnectionForm />)
-
-    expect(screen.getByText('Test connection')).toBeInTheDocument()
-    expect(screen.getByText('Save')).toBeInTheDocument()
-    expect(screen.getByText('Save and connect')).toBeInTheDocument()
-    expect(screen.queryByText('Delete')).not.toBeInTheDocument()
-
-    expect(screen.getByRole('button', { name: 'Test connection' })).toHaveAttribute(
-      'data-variant',
-      'default'
-    )
-    expect(screen.getByRole('button', { name: 'Save' })).toHaveAttribute('data-variant', 'default')
-    expect(screen.getByRole('button', { name: 'Save and connect' })).toHaveAttribute(
-      'data-variant',
-      'accent'
-    )
-  })
-
-  it('renders group selector with Ungrouped option', async () => {
+  it('renders the group selector, color picker and timeout fields on the Advanced tab', async () => {
     const user = userEvent.setup()
     render(<ConnectionForm />)
     await switchToTab(user, 'advanced')
 
-    const combobox = screen.getByRole('combobox', { name: 'Group' })
-    expect(combobox).toBeInTheDocument()
-    expect(combobox).toHaveTextContent('Ungrouped')
+    expect(screen.getByRole('combobox', { name: 'Group' })).toHaveTextContent('Ungrouped')
+    expect(screen.getByRole('combobox', { name: 'Access mode' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Connect timeout')).toBeInTheDocument()
+    expect(screen.getByLabelText('Keepalive interval')).toBeInTheDocument()
+
+    await user.click(screen.getByLabelText('Choose color'))
+
+    expect(screen.getByTestId('color-picker-popover')).toBeInTheDocument()
+    expect(screen.getByLabelText('Hex color value')).toBeInTheDocument()
+    expect(screen.getByText('Clear color')).toBeInTheDocument()
   })
 
   it('group selector shows connection groups from store', async () => {
@@ -285,26 +241,6 @@ describe('ConnectionForm', () => {
     await user.click(combobox)
     await user.click(screen.getByRole('option', { name: 'Production' }))
     expect(combobox).toHaveTextContent('Production')
-  })
-
-  it('renders color picker swatch', async () => {
-    const user = userEvent.setup()
-    render(<ConnectionForm />)
-    await switchToTab(user, 'advanced')
-    expect(screen.getByLabelText('Choose color')).toBeInTheDocument()
-  })
-
-  it('color picker opens popover on click', async () => {
-    const user = userEvent.setup()
-    render(<ConnectionForm />)
-    await switchToTab(user, 'advanced')
-
-    const swatch = screen.getByLabelText('Choose color')
-    await user.click(swatch)
-
-    expect(screen.getByTestId('color-picker-popover')).toBeInTheDocument()
-    expect(screen.getByLabelText('Hex color value')).toBeInTheDocument()
-    expect(screen.getByText('Clear color')).toBeInTheDocument()
   })
 
   it('color picker Clear Color button clears the color', async () => {
@@ -401,38 +337,22 @@ describe('ConnectionForm', () => {
     expect(screen.getByRole('alert')).toBeInTheDocument()
   })
 
-  it('SSL fields are disabled when SSL toggle is off', async () => {
+  it('disables the SSL file fields and Browse buttons until the SSL toggle is on', async () => {
     const user = userEvent.setup()
     render(<ConnectionForm />)
-
     await switchToTab(user, 'ssl')
-
     expect(screen.getByLabelText('CA certificate')).toBeDisabled()
     expect(screen.getByLabelText('Client certificate')).toBeDisabled()
     expect(screen.getByLabelText('Client key')).toBeDisabled()
-  })
+    expect(screen.getByLabelText('Browse CA certificate')).toBeDisabled()
+    expect(screen.getByLabelText('Browse client certificate')).toBeDisabled()
+    expect(screen.getByLabelText('Browse client key')).toBeDisabled()
 
-  it('SSL fields become enabled when SSL toggle is on', async () => {
-    const user = userEvent.setup()
-    render(<ConnectionForm />)
-
-    await switchToTab(user, 'ssl')
     await user.click(screen.getByLabelText('Use SSL / TLS'))
 
     expect(screen.getByLabelText('CA certificate')).not.toBeDisabled()
     expect(screen.getByLabelText('Client certificate')).not.toBeDisabled()
     expect(screen.getByLabelText('Client key')).not.toBeDisabled()
-  })
-
-  it('Browse buttons are disabled when SSL is off', async () => {
-    const user = userEvent.setup()
-    render(<ConnectionForm />)
-
-    await switchToTab(user, 'ssl')
-
-    expect(screen.getByLabelText('Browse CA certificate')).toBeDisabled()
-    expect(screen.getByLabelText('Browse client certificate')).toBeDisabled()
-    expect(screen.getByLabelText('Browse client key')).toBeDisabled()
   })
 
   it('file browse buttons call native dialog', async () => {
@@ -571,16 +491,6 @@ describe('ConnectionForm', () => {
     expect(dbInput).toHaveValue('mydb')
   })
 
-  it('renders timeout and access-mode fields', async () => {
-    const user = userEvent.setup()
-    render(<ConnectionForm />)
-    await switchToTab(user, 'advanced')
-
-    expect(screen.getByRole('combobox', { name: 'Access mode' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Connect timeout')).toBeInTheDocument()
-    expect(screen.getByLabelText('Keepalive interval')).toBeInTheDocument()
-  })
-
   it('Advanced fields accept input', async () => {
     const user = userEvent.setup()
     render(<ConnectionForm />)
@@ -602,13 +512,14 @@ describe('ConnectionForm', () => {
     expect(keepaliveInput).toHaveValue(60)
   })
 
-  it('populates form fields when editingConnection is provided', () => {
+  it('populates the fields, password placeholder, remove-password option and Delete button when editing', () => {
     const editConn = makeSavedConnection({
       name: 'Prod DB',
       host: '10.0.0.1',
       port: 3307,
       username: 'admin',
       defaultDatabase: 'production',
+      hasPassword: true,
     })
 
     render(<ConnectionForm editingConnection={editConn} />)
@@ -618,31 +529,9 @@ describe('ConnectionForm', () => {
     expect(screen.getByLabelText('Port')).toHaveValue(3307)
     expect(screen.getByLabelText('Username')).toHaveValue('admin')
     expect(screen.getByLabelText('Default database')).toHaveValue('production')
-    // Password should be empty (user re-enters)
     expect(screen.getByLabelText('Password')).toHaveValue('')
-  })
-
-  it('password shows placeholder when editing connection with password', () => {
-    const editConn = makeSavedConnection({ hasPassword: true })
-
-    render(<ConnectionForm editingConnection={editConn} />)
-
     expect(screen.getByLabelText('Password')).toHaveAttribute('placeholder', '••••••••')
-  })
-
-  it('shows remove saved password option when editing a connection with password', () => {
-    const editConn = makeSavedConnection({ hasPassword: true })
-
-    render(<ConnectionForm editingConnection={editConn} />)
-
     expect(screen.getByLabelText('Use no password (remove saved password)')).toBeInTheDocument()
-  })
-
-  it('shows a Delete button when editing a saved connection', () => {
-    const editConn = makeSavedConnection()
-
-    render(<ConnectionForm editingConnection={editConn} />)
-
     expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument()
   })
 

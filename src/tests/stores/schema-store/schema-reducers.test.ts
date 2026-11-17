@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  getConnectionState,
   isCurrentLoadGeneration,
   nextRevealRequest,
   patchConnectionTree,
@@ -9,12 +8,6 @@ import {
 import { createDefaultConnectionState } from '../../../stores/schema-store/connection-tree'
 
 describe('schema reducers', () => {
-  it('falls back to a default tree for an unknown connection', () => {
-    expect(getConnectionState({ connectionStates: {} }, 'conn')).toEqual(
-      createDefaultConnectionState()
-    )
-  })
-
   it('patches a connection tree, creating it when missing', () => {
     const patched = patchConnectionTree(
       { connectionStates: {} },

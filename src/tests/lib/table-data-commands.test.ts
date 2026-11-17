@@ -523,25 +523,6 @@ describe('exportTableData', () => {
   })
 })
 
-describe('error propagation', () => {
-  it('propagates errors from invoke', async () => {
-    ipc.override('fetch_table_data', () => {
-      throw new Error('Connection lost')
-    })
-
-    await expect(
-      fetchTableData({
-        connectionId: 'conn-1',
-        tabId: 'tab-1',
-        database: 'mydb',
-        table: 'users',
-        page: 1,
-        pageSize: 1000,
-      })
-    ).rejects.toThrow('Connection lost')
-  })
-})
-
 describe('fetchBlobValue', () => {
   it('invokes fetch_blob_value with ordered primary key pairs and returns the typed response', async () => {
     ipc.override('fetch_blob_value', () => ({

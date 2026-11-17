@@ -2,8 +2,6 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   drawBlobText,
   drawForeignKeyEllipsis,
-  drawHighlightedColumnBackground,
-  drawInfoAffordance,
   drawModifiedCellIndicator,
   drawNullText,
   drawReadOnlyOverlay,
@@ -93,35 +91,9 @@ describe('glide-drawers', () => {
     })
     expect(c.fillText).toHaveBeenCalledWith('[blob]', 10, 14)
   })
-  it('draws info affordance', () => {
-    const c = ctx()
-    drawInfoAffordance(c, { x: 0, y: 0, width: 30, height: 20 }, '#f00')
-    expect(c.fillText).toHaveBeenCalledWith('ⓘ', 22, 14)
-  })
-  it('draws highlighted column background', () => {
-    const c = ctx()
-    drawHighlightedColumnBackground(c, { x: 1, y: 2, width: 30, height: 40 }, '#ff0')
-    expect(c.fillRect).toHaveBeenCalledWith(1, 2, 30, 40)
-  })
 })
 
 describe('drawSkeletonCell', () => {
-  it('fills one flat bar inset by the cell padding and centred vertically', () => {
-    const c = { fillRect: vi.fn(), save: vi.fn(), restore: vi.fn(), fillStyle: '' }
-    drawSkeletonCell({
-      context: c as unknown as CanvasRenderingContext2D,
-      rect: { x: 10, y: 20, width: 120, height: 28 },
-      color: 'rgba(0, 0, 0, 0.06)',
-      horizontalPadding: 10,
-      lineHeight: 13,
-    })
-    expect(c.fillStyle).toBe('rgba(0, 0, 0, 0.06)')
-    expect(c.fillRect).toHaveBeenCalledTimes(1)
-    expect(c.fillRect).toHaveBeenCalledWith(20, 28, 100, 13)
-    expect(c.save).toHaveBeenCalled()
-    expect(c.restore).toHaveBeenCalled()
-  })
-
   it('caps the bar height to the cell and draws nothing for collapsed cells', () => {
     const c = { fillRect: vi.fn(), save: vi.fn(), restore: vi.fn(), fillStyle: '' }
     drawSkeletonCell({

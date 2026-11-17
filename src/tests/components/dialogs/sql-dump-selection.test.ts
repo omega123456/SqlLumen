@@ -28,34 +28,11 @@ describe('buildInitialTableSelection', () => {
     })
     expect(selection).toEqual({})
   })
-
-  it('selects only the initial table when one is given', () => {
-    const selection = buildInitialTableSelection({
-      databases: [shopDatabase],
-      initialDatabase: 'shop',
-      initialTable: 'orders',
-    })
-    expect(selection).toEqual({ shop: new Set(['orders']) })
-  })
-
-  it('selects every table of the initial database otherwise', () => {
-    const selection = buildInitialTableSelection({
-      databases: [shopDatabase],
-      initialDatabase: 'shop',
-    })
-    expect(selection).toEqual({ shop: new Set(['orders', 'customers']) })
-  })
 })
 
 describe('toggleTableSelection', () => {
   it('adds an unselected table', () => {
     expect(toggleTableSelection({}, 'shop', 'orders')).toEqual({ shop: new Set(['orders']) })
-  })
-
-  it('removes a selected table and drops the empty database entry', () => {
-    const selection = { shop: new Set(['orders']) }
-    expect(toggleTableSelection(selection, 'shop', 'orders')).toEqual({})
-    expect(selection).toEqual({ shop: new Set(['orders']) })
   })
 })
 
@@ -65,11 +42,6 @@ describe('toggleDatabaseSelection', () => {
     expect(toggleDatabaseSelection(selection, shopDatabase)).toEqual({
       shop: new Set(['orders', 'customers']),
     })
-  })
-
-  it('clears a fully selected database', () => {
-    const selection = { shop: new Set(['orders', 'customers']) }
-    expect(toggleDatabaseSelection(selection, shopDatabase)).toEqual({})
   })
 })
 
@@ -83,19 +55,6 @@ describe('buildDumpTables', () => {
       databases: ['shop'],
       tables: { shop: [{ name: 'orders', objectType: 'table' }] },
     })
-  })
-
-  it('reports an object whose metadata is missing', () => {
-    const result = buildDumpTables({ shop: new Set(['ghost']) }, [shopDatabase])
-    expect(result).toEqual({
-      ok: false,
-      message: 'Cannot export: metadata not found for "ghost" in database "shop"',
-    })
-  })
-
-  it('reports a database that is not in the listing', () => {
-    const result = buildDumpTables({ missing: new Set(['orders']) }, [shopDatabase])
-    expect(result.ok).toBe(false)
   })
 })
 

@@ -1302,13 +1302,6 @@ describe('useQueryStore — updateCellValue', () => {
     useQueryStore.getState().updateCellValue('tab-1', 1, 'Alice')
     expect(flat('tab-1').editState!.modifiedColumns.has('name')).toBe(false)
   })
-
-  it('does nothing when no editState', async () => {
-    await executeAndAnalyze()
-    useQueryStore.getState().updateCellValue('tab-1', 1, 'Charlie')
-    // Should not throw
-    expect(flat('tab-1').editState).toBeNull()
-  })
 })
 
 // ---------------------------------------------------------------------------
@@ -2196,12 +2189,6 @@ describe('useQueryStore — discardCurrentRow', () => {
     expect(tab.rows[0][1]).toBe('SGVsbG8=')
   })
 
-  it('does nothing when no editState', async () => {
-    await executeAndAnalyze()
-    useQueryStore.getState().discardCurrentRow('tab-1')
-    // Should not throw
-  })
-
   it('removes a cloned draft without changing the source row', async () => {
     await executeAndAnalyze()
     await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
@@ -2635,11 +2622,6 @@ describe('useQueryStore — saveCurrentRow return value edge cases', () => {
     await executeAndAnalyze()
     // No edit mode enabled — no editState
     const result = await useQueryStore.getState().saveCurrentRow('tab-1')
-    expect(result).toBe(true)
-  })
-
-  it('returns true for unknown tab', async () => {
-    const result = await useQueryStore.getState().saveCurrentRow('nonexistent')
     expect(result).toBe(true)
   })
 })

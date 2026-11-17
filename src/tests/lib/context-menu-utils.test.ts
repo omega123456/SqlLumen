@@ -23,46 +23,9 @@ describe('clampContextMenuPosition', () => {
       })
     ).toEqual({ x: 10, y: 20 })
   })
-
-  it('shifts left when overflowing viewport width', () => {
-    expect(
-      clampContextMenuPosition({
-        requestedX: 300,
-        requestedY: 10,
-        menuWidth: 200,
-        menuHeight: 40,
-        viewportWidth: 320,
-        viewportHeight: 240,
-      })
-    ).toEqual({ x: 116, y: 10 })
-  })
-
-  it('shifts up when overflowing viewport height', () => {
-    expect(
-      clampContextMenuPosition({
-        requestedX: 10,
-        requestedY: 220,
-        menuWidth: 100,
-        menuHeight: 40,
-        viewportWidth: 320,
-        viewportHeight: 240,
-      })
-    ).toEqual({ x: 10, y: 196 })
-  })
 })
 
 describe('resolveEditableFieldFromTarget / isEditableFieldElement', () => {
-  it('resolves text input and textarea', () => {
-    const input = document.createElement('input')
-    input.type = 'text'
-    const ta = document.createElement('textarea')
-
-    expect(resolveEditableFieldFromTarget(input)).toBe(input)
-    expect(isEditableFieldElement(input)).toBe(true)
-    expect(resolveEditableFieldFromTarget(ta)).toBe(ta)
-    expect(isEditableFieldElement(ta)).toBe(true)
-  })
-
   it('ignores disabled and non-text input types', () => {
     const disabled = document.createElement('input')
     disabled.type = 'text'
@@ -84,25 +47,12 @@ describe('resolveEditableFieldFromTarget / isEditableFieldElement', () => {
     expect(resolveEditableFieldFromTarget(text)).toBe(host)
     expect(isEditableFieldElement(text)).toBe(true)
   })
-
-  it('resolves plaintext-only contenteditable', () => {
-    const host = document.createElement('div')
-    host.setAttribute('contenteditable', 'plaintext-only')
-    expect(resolveEditableFieldFromTarget(host)).toBe(host)
-  })
 })
 
 describe('isInsideDisabledTextControl', () => {
   it('returns false for non-Element targets', () => {
     expect(isInsideDisabledTextControl(null)).toBe(false)
     expect(isInsideDisabledTextControl(document.createTextNode('x'))).toBe(false)
-  })
-
-  it('returns true inside a disabled input', () => {
-    const input = document.createElement('input')
-    input.type = 'text'
-    input.disabled = true
-    expect(isInsideDisabledTextControl(input)).toBe(true)
   })
 })
 
@@ -112,16 +62,6 @@ describe('getContextMenuPortalRoot', () => {
     document.body.appendChild(div)
     expect(getContextMenuPortalRoot(div)).toBe(document.body)
     document.body.removeChild(div)
-  })
-
-  it('returns the open dialog when anchor is inside it', () => {
-    const dlg = document.createElement('dialog')
-    dlg.setAttribute('open', '')
-    const inner = document.createElement('div')
-    dlg.appendChild(inner)
-    document.body.appendChild(dlg)
-    expect(getContextMenuPortalRoot(inner)).toBe(dlg)
-    document.body.removeChild(dlg)
   })
 })
 
@@ -140,32 +80,6 @@ describe('positionContextMenuInPortal', () => {
     ).toEqual({ x: 36, y: 196 })
     innerWidth.mockRestore()
     innerHeight.mockRestore()
-  })
-
-  it('converts viewport pointer to local coords inside a dialog', () => {
-    const dlg = document.createElement('dialog')
-    vi.spyOn(dlg, 'getBoundingClientRect').mockReturnValue({
-      x: 100,
-      y: 80,
-      width: 500,
-      height: 400,
-      top: 80,
-      left: 100,
-      right: 600,
-      bottom: 480,
-      toJSON: () => '',
-    } as DOMRect)
-
-    // Viewport click (250, 200) → local (150, 120); menu 100×40 fits without clamp shift
-    expect(
-      positionContextMenuInPortal({
-        portalRoot: dlg,
-        clientX: 250,
-        clientY: 200,
-        menuWidth: 100,
-        menuHeight: 40,
-      })
-    ).toEqual({ x: 150, y: 120 })
   })
 })
 

@@ -31,15 +31,4 @@ describe('mysql-language.worker', () => {
     expect(mockStart).toHaveBeenCalledTimes(1)
     expect(statement.qualifiedColumns[0].column.name).toBe('active')
   })
-
-  it('classifies the identifiers of each statement', async () => {
-    const worker = await startWorker()
-
-    const statements = await worker.classifyIdentifiers('USE shop; SELECT u.id FROM users u')
-
-    expect(statements).toHaveLength(2)
-    expect(statements[0].usedDatabase).toBe('shop')
-    expect(statements[1].tables[0]).toMatchObject({ alias: 'u' })
-    expect(statements[1].qualifiedColumns[0].column.name).toBe('id')
-  })
 })

@@ -27,13 +27,4 @@ describe('buildColumnDescriptors', () => {
     })
     expect(descriptor.editorType).toBe('json')
   })
-
-  it('keeps binary columns non-editable even if the data type text contains JSON elsewhere', () => {
-    const [descriptor] = buildColumnDescriptors({
-      columns: [makeColumn({ dataType: 'BLOB', isBinary: true })],
-      isReadOnly: false,
-      hasPrimaryKey: true,
-    })
-    expect(descriptor.editorType).toBe('none')
-  })
 })

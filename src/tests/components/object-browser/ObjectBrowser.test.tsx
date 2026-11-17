@@ -11,41 +11,7 @@ import { ipc } from '../../ipc-mock'
 import type { ActiveConnection, SavedConnection } from '../../../types/connection'
 import type { TreeNode as TreeNodeType, WorkspaceTab } from '../../../types/schema'
 import * as objectActivation from '../../../lib/object-activation'
-
-function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedConnection {
-  return {
-    id: 'conn-1',
-    name: 'Test DB',
-    host: '127.0.0.1',
-    port: 3306,
-    username: 'root',
-    hasPassword: true,
-    defaultDatabase: null,
-    sslEnabled: false,
-    sslCaPath: null,
-    sslCertPath: null,
-    sslKeyPath: null,
-    color: '#3b82f6',
-    groupId: null,
-    readOnly: false,
-    sortOrder: 0,
-    connectTimeoutSecs: 10,
-    keepaliveIntervalSecs: 30,
-    createdAt: '2025-01-01T00:00:00Z',
-    updatedAt: '2025-01-01T00:00:00Z',
-    ...overrides,
-  }
-}
-
-function makeActiveConnection(overrides: Partial<ActiveConnection> = {}): ActiveConnection {
-  return {
-    id: 'conn-1',
-    profile: makeSavedConnection(),
-    status: 'connected',
-    serverVersion: '8.0.35',
-    ...overrides,
-  }
-}
+import { makeActiveConnection, makeSavedConnection } from '../../helpers/connection-test-utils'
 
 const CONN_ID = 'conn-1'
 
@@ -386,29 +352,20 @@ beforeEach(() => {
 })
 
 describe('ObjectBrowser', () => {
-  it('renders with data-testid="object-browser"', () => {
-    setupConnectedState()
-    render(
-      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
-    )
-    expect(screen.getByTestId('object-browser')).toBeInTheDocument()
-  })
-
-  it('exposes data-testid="object-browser-scroll" on tree scroller', () => {
+  it('renders the object browser with its header, filter input, scroller and database nodes', () => {
     setupConnectedState()
     setupDatabaseNodes()
-    render(
-      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
-    )
-    expect(screen.getByTestId('object-browser-scroll')).toBeInTheDocument()
-  })
 
-  it('renders ConnectionHeader', () => {
-    setupConnectedState()
     render(
       <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
     )
+
+    expect(screen.getByTestId('object-browser')).toBeInTheDocument()
+    expect(screen.getByTestId('object-browser-scroll')).toBeInTheDocument()
     expect(screen.getByTestId('connection-header')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Filter objects')).toBeInTheDocument()
+    expect(screen.getByText('ecommerce_db')).toBeInTheDocument()
+    expect(screen.getByText('analytics_db')).toBeInTheDocument()
   })
 
   it('shows empty state when no databases loaded', () => {
@@ -431,17 +388,6 @@ describe('ObjectBrowser', () => {
       <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
     )
     expect(screen.getByText('No databases loaded')).toBeInTheDocument()
-  })
-
-  it('renders database nodes from store', () => {
-    setupConnectedState()
-    setupDatabaseNodes()
-
-    render(
-      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
-    )
-    expect(screen.getByText('ecommerce_db')).toBeInTheDocument()
-    expect(screen.getByText('analytics_db')).toBeInTheDocument()
   })
 
   it('filter input changes filterText in store', async () => {
@@ -772,14 +718,6 @@ describe('ObjectBrowser', () => {
       <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
     )
     expect(screen.getByText('Not connected')).toBeInTheDocument()
-  })
-
-  it('renders filter input with placeholder', () => {
-    setupConnectedState()
-    render(
-      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
-    )
-    expect(screen.getByPlaceholderText('Filter objects')).toBeInTheDocument()
   })
 
   it('right-clicking a tree node shows context menu', async () => {
@@ -1353,27 +1291,6 @@ describe('ObjectBrowser', () => {
   // ---------------------------------------------------------------------------
 
   describe('dialog: Drop Database', () => {
-    it('opens confirm dialog via context menu', async () => {
-      const user = userEvent.setup()
-      setupConnectedState()
-      setupDatabaseNodes()
-
-      render(
-        <ObjectBrowser
-          connectionId={CONN_ID}
-          favouritesOpen={false}
-          onToggleFavourites={() => {}}
-        />
-      )
-      await openContextMenu(user, 'ecommerce_db')
-
-      await user.click(screen.getByText('Drop database...'))
-
-      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
-      // The dialog message references the database name
-      expect(screen.getByRole('heading', { name: /Drop database/ })).toBeInTheDocument()
-    })
-
     it('drops database, closes tabs, and refreshes tree on confirm', async () => {
       const user = userEvent.setup()
       setupConnectedState()
@@ -1390,6 +1307,8 @@ describe('ObjectBrowser', () => {
       )
       await openContextMenu(user, 'ecommerce_db')
       await user.click(screen.getByText('Drop database...'))
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: /Drop database/ })).toBeInTheDocument()
       await user.click(screen.getByTestId('confirm-confirm-button'))
 
       await waitFor(() => {
@@ -1431,27 +1350,6 @@ describe('ObjectBrowser', () => {
   })
 
   describe('dialog: Drop Table', () => {
-    it('opens confirm dialog via context menu', async () => {
-      const user = userEvent.setup()
-      setupConnectedState()
-      setupDatabaseNodes()
-      expandToTable()
-
-      render(
-        <ObjectBrowser
-          connectionId={CONN_ID}
-          favouritesOpen={false}
-          onToggleFavourites={() => {}}
-        />
-      )
-      await openContextMenu(user, 'users')
-      await user.click(screen.getByText('Drop table...'))
-
-      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
-      // The message references the fully-qualified table name
-      expect(screen.getByRole('heading', { name: /Drop table/ })).toBeInTheDocument()
-    })
-
     it('drops table, closes tabs, and refreshes on confirm', async () => {
       const user = userEvent.setup()
       setupConnectedState()
@@ -1469,6 +1367,8 @@ describe('ObjectBrowser', () => {
       )
       await openContextMenu(user, 'users')
       await user.click(screen.getByText('Drop table...'))
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: /Drop table/ })).toBeInTheDocument()
       await user.click(screen.getByTestId('confirm-confirm-button'))
 
       await waitFor(() => {
@@ -1485,26 +1385,6 @@ describe('ObjectBrowser', () => {
   })
 
   describe('dialog: Truncate Table', () => {
-    it('opens confirm dialog via context menu', async () => {
-      const user = userEvent.setup()
-      setupConnectedState()
-      setupDatabaseNodes()
-      expandToTable()
-
-      render(
-        <ObjectBrowser
-          connectionId={CONN_ID}
-          favouritesOpen={false}
-          onToggleFavourites={() => {}}
-        />
-      )
-      await openContextMenu(user, 'users')
-      await user.click(screen.getByText('Truncate table...'))
-
-      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
-      expect(screen.getByRole('heading', { name: /Truncate table/ })).toBeInTheDocument()
-    })
-
     it('truncates table on confirm', async () => {
       const user = userEvent.setup()
       setupConnectedState()
@@ -1520,6 +1400,8 @@ describe('ObjectBrowser', () => {
       )
       await openContextMenu(user, 'users')
       await user.click(screen.getByText('Truncate table...'))
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: /Truncate table/ })).toBeInTheDocument()
       await user.click(screen.getByTestId('confirm-confirm-button'))
 
       await waitFor(() => {
@@ -1533,26 +1415,6 @@ describe('ObjectBrowser', () => {
   })
 
   describe('dialog: Rename Table', () => {
-    it('opens rename dialog via context menu', async () => {
-      const user = userEvent.setup()
-      setupConnectedState()
-      setupDatabaseNodes()
-      expandToTable()
-
-      render(
-        <ObjectBrowser
-          connectionId={CONN_ID}
-          favouritesOpen={false}
-          onToggleFavourites={() => {}}
-        />
-      )
-      await openContextMenu(user, 'users')
-      await user.click(screen.getByText('Rename table...'))
-
-      expect(screen.getByTestId('rename-dialog')).toBeInTheDocument()
-      expect(screen.getByDisplayValue('users')).toBeInTheDocument()
-    })
-
     it('renames table, updates tabs, and refreshes on confirm', async () => {
       const user = userEvent.setup()
       setupConnectedState()
@@ -1570,6 +1432,8 @@ describe('ObjectBrowser', () => {
       )
       await openContextMenu(user, 'users')
       await user.click(screen.getByText('Rename table...'))
+      expect(screen.getByTestId('rename-dialog')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('users')).toBeInTheDocument()
 
       const input = screen.getByTestId('rename-name-input')
       await user.clear(input)
@@ -1621,24 +1485,6 @@ describe('ObjectBrowser', () => {
   })
 
   describe('dialog: Create Database', () => {
-    it('opens create database dialog via context menu', async () => {
-      const user = userEvent.setup()
-      setupConnectedState()
-      setupDatabaseNodes()
-
-      render(
-        <ObjectBrowser
-          connectionId={CONN_ID}
-          favouritesOpen={false}
-          onToggleFavourites={() => {}}
-        />
-      )
-      await openContextMenu(user, 'ecommerce_db')
-      await user.click(screen.getByText('Create database...'))
-
-      expect(screen.getByTestId('create-database-dialog')).toBeInTheDocument()
-    })
-
     it('opening and closing create database dialog does not trigger a hook-order crash', async () => {
       const user = userEvent.setup()
       setupConnectedState()
@@ -1698,26 +1544,6 @@ describe('ObjectBrowser', () => {
   })
 
   describe('dialog: Rename Database', () => {
-    it('opens rename dialog with warning via context menu', async () => {
-      const user = userEvent.setup()
-      setupConnectedState()
-      setupDatabaseNodes()
-
-      render(
-        <ObjectBrowser
-          connectionId={CONN_ID}
-          favouritesOpen={false}
-          onToggleFavourites={() => {}}
-        />
-      )
-      await openContextMenu(user, 'ecommerce_db')
-      await user.click(screen.getByText('Rename database...'))
-
-      expect(screen.getByTestId('rename-dialog')).toBeInTheDocument()
-      expect(screen.getByTestId('rename-dialog-warning')).toBeInTheDocument()
-      expect(screen.getByDisplayValue('ecommerce_db')).toBeInTheDocument()
-    })
-
     it('renames database, updates tabs, and refreshes on confirm', async () => {
       const user = userEvent.setup()
       setupConnectedState()
@@ -1734,6 +1560,9 @@ describe('ObjectBrowser', () => {
       )
       await openContextMenu(user, 'ecommerce_db')
       await user.click(screen.getByText('Rename database...'))
+      expect(screen.getByTestId('rename-dialog')).toBeInTheDocument()
+      expect(screen.getByTestId('rename-dialog-warning')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('ecommerce_db')).toBeInTheDocument()
 
       const input = screen.getByTestId('rename-name-input')
       await user.clear(input)

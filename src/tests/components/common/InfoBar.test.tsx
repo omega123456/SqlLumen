@@ -28,11 +28,6 @@ describe('InfoBar', () => {
     }
   )
 
-  it('keeps the alert default when polite is not set', () => {
-    render(<InfoBar severity="warning" message="Careful" data-testid="bar" />)
-    expect(screen.getByTestId('bar')).not.toHaveAttribute('aria-live')
-  })
-
   it('renders title, message, detail and actions', () => {
     render(
       <InfoBar

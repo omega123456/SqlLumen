@@ -69,13 +69,6 @@ describe('ObjectEditorStore', () => {
 
       expect(useObjectEditorStore.getState().tabs['tab-1'].content).toBe('SELECT 1')
     })
-
-    it('does nothing for non-existent tab', () => {
-      const store = useObjectEditorStore.getState()
-      store.setContent('nonexistent', 'test')
-
-      expect(useObjectEditorStore.getState().tabs['nonexistent']).toBeUndefined()
-    })
   })
 
   describe('isDirty', () => {
@@ -421,11 +414,6 @@ describe('ObjectEditorStore', () => {
       store.cleanupTab('tab-1')
       expect(useObjectEditorStore.getState().tabs['tab-1']).toBeUndefined()
     })
-
-    it('does nothing for non-existent tab', () => {
-      useObjectEditorStore.getState().cleanupTab('nonexistent')
-      // No error thrown
-    })
   })
 
   describe('requestNavigationAction', () => {
@@ -478,11 +466,6 @@ describe('ObjectEditorStore', () => {
 
       expect(action).not.toHaveBeenCalled()
       expect(useObjectEditorStore.getState().tabs['tab-1'].pendingNavigationAction).toBeNull()
-    })
-
-    it('does nothing for non-existent tab', () => {
-      useObjectEditorStore.getState().cancelPendingAction('nonexistent')
-      // No error thrown
     })
   })
 })

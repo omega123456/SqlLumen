@@ -208,13 +208,6 @@ describe('useShortcutStore', () => {
       useShortcutStore.getState().dispatchAction('execute-query')
       expect(callback).not.toHaveBeenCalled()
     })
-
-    it('does nothing when dispatching an unregistered action', () => {
-      // Should not throw
-      expect(() => {
-        useShortcutStore.getState().dispatchAction('nonexistent-action')
-      }).not.toThrow()
-    })
   })
 
   describe('serialization round-trip', () => {

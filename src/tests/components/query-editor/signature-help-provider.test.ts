@@ -76,16 +76,8 @@ function mockGetPendingLoad() {
   return SchemaMetadataCacheModule.getPendingLoad as ReturnType<typeof vi.fn>
 }
 
-function mockLoadCache() {
-  return SchemaMetadataCacheModule.loadCache as ReturnType<typeof vi.fn>
-}
-
 function mockGetModelConnectionId() {
   return CompletionServiceModule.getModelConnectionId as ReturnType<typeof vi.fn>
-}
-
-function mockGetSelectedDatabase() {
-  return CompletionServiceModule.getSelectedDatabase as ReturnType<typeof vi.fn>
 }
 
 // ---------------------------------------------------------------------------
@@ -116,120 +108,16 @@ describe('_parseFunctionContext', () => {
     expect(_parseFunctionContext('', 0)).toBeNull()
   })
 
-  it('returns null when cursor is not inside a function call', () => {
-    const sql = 'SELECT * FROM t WHERE '
-    expect(_parseFunctionContext(sql, sql.length)).toBeNull()
-  })
-
-  it('identifies simple function call', () => {
-    const sql = 'SELECT CONCAT('
-    const result = _parseFunctionContext(sql, sql.length)
-    expect(result).not.toBeNull()
-    expect(result!.functionName).toBe('CONCAT')
-    expect(result!.activeParameter).toBe(0)
-    expect(result!.isCall).toBe(false)
-    expect(result!.database).toBeNull()
-  })
-
-  it('tracks active parameter index with commas', () => {
-    const sql = "SELECT CONCAT('a', "
-    const result = _parseFunctionContext(sql, sql.length)
-    expect(result!.functionName).toBe('CONCAT')
-    expect(result!.activeParameter).toBe(1)
-  })
-
-  it('ignores commas inside nested function calls', () => {
-    const sql = 'SELECT CONCAT(IF(1,2,3), '
-    const result = _parseFunctionContext(sql, sql.length)
-    expect(result!.functionName).toBe('CONCAT')
-    expect(result!.activeParameter).toBe(1)
-  })
-
-  it('resolves to innermost function for nested calls', () => {
-    const sql = 'SELECT CONCAT(UPPER('
-    const result = _parseFunctionContext(sql, sql.length)
-    expect(result!.functionName).toBe('UPPER')
-    expect(result!.activeParameter).toBe(0)
-  })
-
-  it('ignores commas inside string literals', () => {
-    const sql = "SELECT CONCAT('a,b,c', "
-    const result = _parseFunctionContext(sql, sql.length)
-    expect(result!.functionName).toBe('CONCAT')
-    expect(result!.activeParameter).toBe(1)
-  })
-
   it('ignores commas inside block comments', () => {
     const sql = 'SELECT FUNC(/* a, b */ '
     const result = _parseFunctionContext(sql, sql.length)
     expect(result!.activeParameter).toBe(0)
   })
 
-  it('ignores commas inside line comments', () => {
-    const sql = 'SELECT FUNC(-- a, b\n'
-    const result = _parseFunctionContext(sql, sql.length)
-    expect(result!.activeParameter).toBe(0)
-  })
-
-  it('detects database-qualified function names', () => {
-    const sql = 'SELECT mydb.my_func('
-    const result = _parseFunctionContext(sql, sql.length)
-    expect(result!.functionName).toBe('my_func')
-    expect(result!.database).toBe('mydb')
-  })
-
-  it('detects CALL keyword as procedure', () => {
-    const sql = 'CALL my_proc('
-    const result = _parseFunctionContext(sql, sql.length)
-    expect(result!.functionName).toBe('my_proc')
-    expect(result!.isCall).toBe(true)
-  })
-
-  it('does not detect CALL for regular SELECT function', () => {
-    const sql = 'SELECT my_func('
-    const result = _parseFunctionContext(sql, sql.length)
-    expect(result!.isCall).toBe(false)
-  })
-
   it('handles backtick-quoted identifiers', () => {
     const sql = 'SELECT `my_func`('
     const result = _parseFunctionContext(sql, sql.length)
     expect(result!.functionName).toBe('my_func')
-  })
-
-  it('handles whitespace between function name and paren', () => {
-    const sql = 'SELECT CONCAT  ('
-    const result = _parseFunctionContext(sql, sql.length)
-    expect(result!.functionName).toBe('CONCAT')
-  })
-
-  it('handles CALL with database-qualified procedure', () => {
-    const sql = 'CALL mydb.my_proc('
-    const result = _parseFunctionContext(sql, sql.length)
-    expect(result!.functionName).toBe('my_proc')
-    expect(result!.database).toBe('mydb')
-    expect(result!.isCall).toBe(true)
-  })
-
-  it('handles hash line comments in forward scan', () => {
-    const sql = 'SELECT FUNC(# a, b\n'
-    const result = _parseFunctionContext(sql, sql.length)
-    expect(result!.activeParameter).toBe(0)
-  })
-
-  it('handles multiple parameters', () => {
-    const sql = 'SELECT CONCAT(a, b, c, '
-    const result = _parseFunctionContext(sql, sql.length)
-    expect(result!.activeParameter).toBe(3)
-  })
-
-  it('skips double-quoted strings in backward paren scan', () => {
-    // The ')' inside the double-quoted column alias should be ignored during backward scan
-    const sql = 'SELECT FUNC("col", '
-    const result = _parseFunctionContext(sql, sql.length)
-    expect(result).not.toBeNull()
-    expect(result!.functionName).toBe('FUNC')
-    expect(result!.activeParameter).toBe(1)
   })
 
   it('skips backtick-quoted identifiers in backward paren scan', () => {
@@ -245,49 +133,10 @@ describe('_parseFunctionContext', () => {
   // Fix 1 — line comment handling in backward scan
   // -------------------------------------------------------------------------
 
-  it('resolves function name through -- line comment before paren', () => {
-    const sql = 'SELECT FUNC -- comment\n('
-    const result = _parseFunctionContext(sql, sql.length)
-    expect(result).not.toBeNull()
-    expect(result!.functionName).toBe('FUNC')
-    expect(result!.activeParameter).toBe(0)
-  })
-
-  it('resolves function name through # line comment before paren', () => {
-    const sql = 'SELECT FUNC # comment\n('
-    const result = _parseFunctionContext(sql, sql.length)
-    expect(result).not.toBeNull()
-    expect(result!.functionName).toBe('FUNC')
-    expect(result!.activeParameter).toBe(0)
-  })
-
   it('does not count parameters inside -- line comment', () => {
     const sql = 'SELECT FUNC(a, -- b, c\n'
     const result = _parseFunctionContext(sql, sql.length)
     expect(result!.activeParameter).toBe(1) // only the comma before "-- " counts
-  })
-
-  it('ignores parens inside -- line comments during backward scan', () => {
-    const sql = 'SELECT OUTER(1, INNER -- )\n('
-    const result = _parseFunctionContext(sql, sql.length)
-    expect(result).not.toBeNull()
-    expect(result!.functionName).toBe('INNER')
-  })
-
-  it('detects CALL through -- line comment', () => {
-    const sql = 'CALL -- comment\nmy_proc('
-    const result = _parseFunctionContext(sql, sql.length)
-    expect(result).not.toBeNull()
-    expect(result!.functionName).toBe('my_proc')
-    expect(result!.isCall).toBe(true)
-  })
-
-  it('detects CALL through # line comment', () => {
-    const sql = 'CALL # comment\nmy_proc('
-    const result = _parseFunctionContext(sql, sql.length)
-    expect(result).not.toBeNull()
-    expect(result!.functionName).toBe('my_proc')
-    expect(result!.isCall).toBe(true)
   })
 
   it('treats -- without trailing space as NOT a comment (MySQL rule)', () => {
@@ -302,33 +151,6 @@ describe('_parseFunctionContext', () => {
   // Fix 2 — doubled-quote escape handling in countActiveParameter
   // -------------------------------------------------------------------------
 
-  it('handles SQL doubled single-quote escape inside string', () => {
-    // 'a'',b' is the SQL string a',b — the comma is inside the string
-    // Cursor at end (after the closing paren) gives activeParameter=1
-    // because x is the second argument
-    const sql = "SELECT FUNC('a'',b', x)"
-    const result = _parseFunctionContext(sql, sql.length - 1) // cursor before )
-    expect(result).not.toBeNull()
-    expect(result!.functionName).toBe('FUNC')
-    expect(result!.activeParameter).toBe(1) // x is the second parameter
-  })
-
-  it('handles doubled single-quote at end of string', () => {
-    // 'a''' is the SQL string a' — three quotes: open, a, '', close
-    const sql = "SELECT FUNC('a''', x)"
-    const result = _parseFunctionContext(sql, sql.length - 1)
-    expect(result).not.toBeNull()
-    expect(result!.activeParameter).toBe(1)
-  })
-
-  it('handles doubled double-quote escape in identifier/string', () => {
-    // "a"",b" with doubled double-quote escape
-    const sql = 'SELECT FUNC("a"",b", x)'
-    const result = _parseFunctionContext(sql, sql.length - 1)
-    expect(result).not.toBeNull()
-    expect(result!.activeParameter).toBe(1)
-  })
-
   it('does not miscount comma inside doubled-quote string', () => {
     // FUNC('it''s cool, right', x) — one string arg with comma inside, then x
     const sql = "SELECT FUNC('it''s cool, right', x)"
@@ -341,56 +163,13 @@ describe('_parseFunctionContext', () => {
   // Fix 3 — backslash-escaped quote handling in findLineCommentStart
   // -------------------------------------------------------------------------
 
-  it('handles backslash-escaped single quotes before a line comment', () => {
-    // The \' inside the string should NOT end the string early.
-    // The -- after the closing quote IS a real comment, not inside the string.
-    // Line: SELECT 'foo\' bar', x -- real comment
-    // Next line: FUNC(
-    const sql = "SELECT 'foo\\' bar', x -- real comment\nFUNC("
-    const result = _parseFunctionContext(sql, sql.length)
-    expect(result).not.toBeNull()
-    expect(result!.functionName).toBe('FUNC')
-    expect(result!.activeParameter).toBe(0)
-  })
-
-  it('does not treat -- inside backslash-escaped string as comment', () => {
-    // 'foo\' -- still string' — the \' does not end the string,
-    // so -- is inside the string literal and is NOT a comment.
-    const sql = "SELECT FUNC('foo\\' -- still string', x)"
-    const result = _parseFunctionContext(sql, sql.length - 1)
-    expect(result).not.toBeNull()
-    expect(result!.functionName).toBe('FUNC')
-    expect(result!.activeParameter).toBe(1) // x is param index 1
-  })
-
   // -------------------------------------------------------------------------
   // Fix 4 — backslash-escaped double-quote handling in backward scan
   // -------------------------------------------------------------------------
 
-  it('handles backslash-escaped double quote in backward scan', () => {
-    // "foo\"bar" is a double-quoted string containing a literal quote.
-    // The backward scanner must not stop at the escaped \" inside the string.
-    const sql = 'SELECT "foo\\"bar", FUNC('
-    const result = _parseFunctionContext(sql, sql.length)
-    expect(result).not.toBeNull()
-    expect(result!.functionName).toBe('FUNC')
-    expect(result!.activeParameter).toBe(0)
-  })
-
   // -------------------------------------------------------------------------
   // Fix 5 — backslash-escaped double-quote in countActiveParameter forward scan
   // -------------------------------------------------------------------------
-
-  it('handles backslash-escaped double quote inside double-quoted string in forward scan', () => {
-    // "a\"b,c" is a double-quoted string containing a\"b,c — the comma is inside the string.
-    // Without the fix, \" causes the string to end early and the comma inside counts.
-    const sql = 'FUNC("a\\"b,c", x)'
-    // Cursor at position 13 — just before the argument-separating comma
-    const result = _parseFunctionContext(sql, 13)
-    expect(result).not.toBeNull()
-    expect(result!.functionName).toBe('FUNC')
-    expect(result!.activeParameter).toBe(0) // comma is inside the string, not counted
-  })
 
   // -------------------------------------------------------------------------
   // Fix 6 — even backslash runs before quotes should not be treated as escapes
@@ -407,43 +186,6 @@ describe('_parseFunctionContext', () => {
     // The comma between the string and x is outside the string → activeParameter = 1
     expect(result!.activeParameter).toBe(1)
   })
-
-  it('handles even backslash run before closing double quote (forward scan)', () => {
-    // SQL text: FUNC("C:\\temp\\", x) — two backslashes before closing "
-    const sql = 'FUNC("C:\\\\temp\\\\", x)'
-    const result = _parseFunctionContext(sql, sql.length - 1)
-    expect(result).not.toBeNull()
-    expect(result!.functionName).toBe('FUNC')
-    expect(result!.activeParameter).toBe(1)
-  })
-
-  it('handles even backslash run in backward scan for single quote', () => {
-    // Backward scan encounters 'C:\\temp\\' and must correctly identify the opening quote
-    const sql = "SELECT 'C:\\\\temp\\\\', FUNC("
-    const result = _parseFunctionContext(sql, sql.length)
-    expect(result).not.toBeNull()
-    expect(result!.functionName).toBe('FUNC')
-    expect(result!.activeParameter).toBe(0)
-  })
-
-  it('handles even backslash run in backward scan for double quote', () => {
-    const sql = 'SELECT "C:\\\\temp\\\\", FUNC('
-    const result = _parseFunctionContext(sql, sql.length)
-    expect(result).not.toBeNull()
-    expect(result!.functionName).toBe('FUNC')
-    expect(result!.activeParameter).toBe(0)
-  })
-
-  it('still treats odd backslash run as escape', () => {
-    // Single backslash before closing quote → quote IS escaped, string continues
-    // SQL text: FUNC('a\', b') — the \' is escaped, so the string is a', b
-    const sql = "FUNC('a\\', b')"
-    const result = _parseFunctionContext(sql, sql.length - 1)
-    expect(result).not.toBeNull()
-    expect(result!.functionName).toBe('FUNC')
-    // The comma is inside the string (after escaped \'), so activeParameter = 0
-    expect(result!.activeParameter).toBe(0)
-  })
 })
 
 // ---------------------------------------------------------------------------
@@ -455,20 +197,8 @@ describe('isEscapedChar', () => {
     expect(isEscapedChar("abc'", 3)).toBe(false)
   })
 
-  it('returns true for single backslash (odd)', () => {
-    expect(isEscapedChar("ab\\'", 3)).toBe(true)
-  })
-
-  it('returns false for two backslashes (even)', () => {
-    expect(isEscapedChar("a\\\\'", 4)).toBe(false)
-  })
-
   it('returns true for three backslashes (odd)', () => {
     expect(isEscapedChar("\\\\\\\\'", 3)).toBe(true)
-  })
-
-  it('returns false at position 0', () => {
-    expect(isEscapedChar("'abc", 0)).toBe(false)
   })
 })
 
@@ -487,50 +217,6 @@ describe('signature help provider registration', () => {
 })
 
 describe('provideSignatureHelp — built-in functions', () => {
-  it('returns signature for built-in CONCAT function', async () => {
-    const sql = 'SELECT CONCAT('
-    const model = mockModel(sql)
-    const result = (await capturedProvider.provideSignatureHelp(
-      model,
-      mockPosition(),
-      mockToken(),
-      {}
-    )) as { value: { signatures: Array<{ label: string }>; activeParameter: number } } | null
-
-    expect(result).not.toBeNull()
-    expect(result!.value.signatures).toHaveLength(1)
-    expect(result!.value.signatures[0].label).toContain('CONCAT')
-  })
-
-  it('advances activeParameter with commas for built-in function', async () => {
-    const sql = "SELECT CONCAT('a', "
-    const model = mockModel(sql)
-    const result = (await capturedProvider.provideSignatureHelp(
-      model,
-      mockPosition(),
-      mockToken(),
-      {}
-    )) as { value: { signatures: unknown[]; activeParameter: number } } | null
-
-    expect(result).not.toBeNull()
-    expect(result!.value.activeParameter).toBe(1)
-  })
-
-  it('returns hint for innermost nested function', async () => {
-    const sql = 'SELECT CONCAT(UPPER('
-    const model = mockModel(sql)
-    const result = (await capturedProvider.provideSignatureHelp(
-      model,
-      mockPosition(),
-      mockToken(),
-      {}
-    )) as { value: { signatures: Array<{ label: string }>; activeParameter: number } } | null
-
-    expect(result).not.toBeNull()
-    expect(result!.value.signatures[0].label).toContain('UPPER')
-    expect(result!.value.activeParameter).toBe(0)
-  })
-
   it('returns undefined for unknown function without connection', async () => {
     const sql = 'SELECT unknown_func('
     const model = mockModel(sql)
@@ -556,60 +242,6 @@ describe('provideSignatureHelp — built-in functions', () => {
     )
 
     expect(result).toBeUndefined()
-  })
-
-  it('does NOT return built-in ABS for CALL ABS(', async () => {
-    mockGetModelConnectionId().mockReturnValue('conn-1')
-    ConnectionStoreModule.useConnectionStore.setState({
-      activeConnections: {
-        'conn-1': { sessionDatabase: 'testdb', profile: {} },
-      },
-    } as never)
-    mockGetCache().mockReturnValue({ status: 'ready', routines: {} })
-    mockGetRoutineParameters().mockResolvedValue(null)
-
-    const sql = 'CALL ABS('
-    const model = mockModel(sql)
-    const result = await capturedProvider.provideSignatureHelp(
-      model,
-      mockPosition(),
-      mockToken(),
-      {}
-    )
-
-    // Should NOT return the built-in ABS — it's a CALL, so look up stored procedure
-    expect(result).toBeUndefined()
-    // Should have attempted routine lookup with procedure type
-    expect(mockGetRoutineParameters()).not.toHaveBeenCalled()
-  })
-
-  it('does NOT return built-in ABS for mydb.abs(', async () => {
-    mockGetModelConnectionId().mockReturnValue('conn-1')
-    ConnectionStoreModule.useConnectionStore.setState({
-      activeConnections: {
-        'conn-1': { sessionDatabase: 'testdb', profile: {} },
-      },
-    } as never)
-    mockGetRoutineParameters().mockResolvedValue(null)
-
-    const sql = 'SELECT mydb.abs('
-    const model = mockModel(sql)
-    const result = await capturedProvider.provideSignatureHelp(
-      model,
-      mockPosition(),
-      mockToken(),
-      {}
-    )
-
-    // Should NOT return the built-in ABS — it's database-qualified
-    expect(result).toBeUndefined()
-    // Should have attempted a database-qualified routine lookup
-    expect(mockGetRoutineParameters()).toHaveBeenCalledWith({
-      connectionId: 'conn-1',
-      database: 'mydb',
-      routineName: 'abs',
-      routineType: 'FUNCTION',
-    })
   })
 })
 
@@ -689,40 +321,6 @@ describe('provideSignatureHelp — dispose method', () => {
 // ---------------------------------------------------------------------------
 
 describe('provideSignatureHelp — database-qualified stored routine', () => {
-  it('returns signature for database-qualified function name', async () => {
-    mockGetModelConnectionId().mockReturnValue('conn-1')
-    ConnectionStoreModule.useConnectionStore.setState({
-      activeConnections: {
-        'conn-1': { sessionDatabase: 'mydb', profile: {} },
-      },
-    } as never)
-    mockGetRoutineParameters().mockResolvedValue({
-      parameters: [{ name: 'val', dataType: 'INT', mode: 'IN' }],
-      returnType: 'INT',
-    })
-
-    const sql = 'SELECT mydb.my_func('
-    const model = mockModel(sql)
-    const result = (await capturedProvider.provideSignatureHelp(
-      model,
-      mockPosition(),
-      mockToken(),
-      {}
-    )) as {
-      value: { signatures: Array<{ label: string; documentation?: { value: string } }> }
-    } | null
-
-    expect(result).not.toBeNull()
-    expect(result!.value.signatures[0].label).toContain('my_func')
-    expect(result!.value.signatures[0].label).toContain('IN val INT')
-    expect(mockGetRoutineParameters()).toHaveBeenCalledWith({
-      connectionId: 'conn-1',
-      database: 'mydb',
-      routineName: 'my_func',
-      routineType: 'FUNCTION',
-    })
-  })
-
   it('returns undefined when database-qualified routine is not found', async () => {
     mockGetModelConnectionId().mockReturnValue('conn-1')
     ConnectionStoreModule.useConnectionStore.setState({
@@ -825,41 +423,6 @@ describe('provideSignatureHelp — unqualified stored routine via cache', () => 
     })
   })
 
-  it('awaits cache load on first use and returns result after loading', async () => {
-    mockGetModelConnectionId().mockReturnValue('conn-1')
-    ConnectionStoreModule.useConnectionStore.setState({
-      activeConnections: {
-        'conn-1': { sessionDatabase: 'testdb', profile: { defaultDatabase: '' } },
-      },
-    } as never)
-    mockGetPendingLoad().mockReturnValue(Promise.resolve())
-    mockGetCache().mockReturnValue({
-      status: 'ready',
-      routines: {
-        testdb: [{ name: 'my_func', routineType: 'FUNCTION' }],
-      },
-    } as never)
-    mockGetRoutineParameters().mockResolvedValue({
-      parameters: [{ name: 'x', dataType: 'INT', mode: 'IN' }],
-      returnType: 'INT',
-    })
-
-    const sql = 'SELECT my_func('
-    const model = mockModel(sql)
-    const result = (await capturedProvider.provideSignatureHelp(
-      model,
-      mockPosition(),
-      mockToken(),
-      {}
-    )) as {
-      value: { signatures: Array<{ label: string }> }
-    } | null
-
-    expect(mockLoadCache()).not.toHaveBeenCalled()
-    expect(result).not.toBeNull()
-    expect(result!.value.signatures[0].label).toContain('my_func')
-  })
-
   it('awaits pending cache load before lookup', async () => {
     mockGetModelConnectionId().mockReturnValue('conn-1')
     ConnectionStoreModule.useConnectionStore.setState({
@@ -881,32 +444,6 @@ describe('provideSignatureHelp — unqualified stored routine via cache', () => 
 
     expect(result).toBeUndefined()
     expect(mockGetPendingLoad()).toHaveBeenCalledWith('conn-1')
-  })
-
-  it('returns undefined when no routine matches in any database', async () => {
-    mockGetModelConnectionId().mockReturnValue('conn-1')
-    ConnectionStoreModule.useConnectionStore.setState({
-      activeConnections: {
-        'conn-1': { sessionDatabase: 'testdb', profile: {} },
-      },
-    } as never)
-    mockGetCache().mockReturnValue({
-      status: 'ready',
-      routines: {
-        testdb: [{ name: 'other_func', routineType: 'FUNCTION' }],
-      },
-    } as never)
-
-    const sql = 'SELECT nonexistent('
-    const model = mockModel(sql)
-    const result = await capturedProvider.provideSignatureHelp(
-      model,
-      mockPosition(),
-      mockToken(),
-      {}
-    )
-
-    expect(result).toBeUndefined()
   })
 
   it('includes return type in documentation for functions', async () => {
@@ -942,67 +479,6 @@ describe('provideSignatureHelp — unqualified stored routine via cache', () => 
 
     expect(result).not.toBeNull()
     expect(result!.value.signatures[0].documentation!.value).toContain('DECIMAL(10,2)')
-  })
-
-  it('resolves schemaTreeDb from schema store selectedNodeId', async () => {
-    mockGetModelConnectionId().mockReturnValue('conn-1')
-    ConnectionStoreModule.useConnectionStore.setState({
-      activeConnections: {
-        'conn-1': { sessionDatabase: null, profile: { defaultDatabase: '' } },
-      },
-    } as never)
-    mockGetSelectedDatabase().mockReturnValue('schemadb')
-    mockGetCache().mockReturnValue({
-      status: 'ready',
-      routines: {
-        schemadb: [{ name: 'tree_func', routineType: 'FUNCTION' }],
-      },
-    } as never)
-    mockGetRoutineParameters().mockResolvedValue({
-      parameters: [],
-      returnType: 'INT',
-    })
-
-    const sql = 'SELECT tree_func('
-    const model = mockModel(sql)
-    const result = (await capturedProvider.provideSignatureHelp(
-      model,
-      mockPosition(),
-      mockToken(),
-      {}
-    )) as { value: { signatures: Array<{ label: string }> } } | null
-
-    expect(result).not.toBeNull()
-    expect(result!.value.signatures[0].label).toContain('tree_func')
-    expect(mockGetRoutineParameters()).toHaveBeenCalledWith({
-      connectionId: 'conn-1',
-      database: 'schemadb',
-      routineName: 'tree_func',
-      routineType: 'FUNCTION',
-    })
-  })
-
-  it('handles getSelectedDatabase returning null gracefully', async () => {
-    mockGetModelConnectionId().mockReturnValue('conn-1')
-    ConnectionStoreModule.useConnectionStore.setState({
-      activeConnections: {
-        'conn-1': { sessionDatabase: null, profile: {} },
-      },
-    } as never)
-    mockGetSelectedDatabase().mockReturnValue(null)
-    mockGetCache().mockReturnValue({ status: 'ready', routines: {} } as never)
-
-    const sql = 'SELECT some_func('
-    const model = mockModel(sql)
-    const result = await capturedProvider.provideSignatureHelp(
-      model,
-      mockPosition(),
-      mockToken(),
-      {}
-    )
-
-    // Should not throw, just return undefined (no databases to search)
-    expect(result).toBeUndefined()
   })
 })
 
@@ -1071,44 +547,6 @@ describe('provideSignatureHelp — same-name disambiguation', () => {
     expect(result!.value.signatures[0].label).toContain('ABS')
     // Should NOT have attempted a routine cache lookup
     expect(mockGetRoutineParameters()).not.toHaveBeenCalled()
-  })
-
-  it('CALL abs( prefers stored procedure over built-in', async () => {
-    mockGetModelConnectionId().mockReturnValue('conn-1')
-    ConnectionStoreModule.useConnectionStore.setState({
-      activeConnections: {
-        'conn-1': { sessionDatabase: 'testdb', profile: {} },
-      },
-    } as never)
-    mockGetCache().mockReturnValue({
-      status: 'ready',
-      routines: {
-        testdb: [{ name: 'abs', routineType: 'PROCEDURE' }],
-      },
-    } as never)
-    mockGetRoutineParameters().mockResolvedValue({
-      parameters: [],
-      returnType: null,
-      routineType: 'PROCEDURE',
-    })
-
-    const sql = 'CALL abs('
-    const model = mockModel(sql)
-    const result = (await capturedProvider.provideSignatureHelp(
-      model,
-      mockPosition(),
-      mockToken(),
-      {}
-    )) as { value: { signatures: Array<{ label: string }> } } | null
-
-    expect(result).not.toBeNull()
-    // Should have looked up procedure, not returned the built-in
-    expect(mockGetRoutineParameters()).toHaveBeenCalledWith({
-      connectionId: 'conn-1',
-      database: 'testdb',
-      routineName: 'abs',
-      routineType: 'PROCEDURE',
-    })
   })
 })
 

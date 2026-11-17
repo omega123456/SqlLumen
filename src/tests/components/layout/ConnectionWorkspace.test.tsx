@@ -9,32 +9,8 @@ import { useQueryStore } from '../../../stores/query-store'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import { useTableDesignerStore } from '../../../stores/table-designer-store'
 import { useFavoritesStore } from '../../../stores/favorites-store'
-import type { ActiveConnection, SavedConnection } from '../../../types/connection'
-
-function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedConnection {
-  return {
-    id: 'conn-1',
-    name: 'Test DB',
-    host: '127.0.0.1',
-    port: 3306,
-    username: 'root',
-    hasPassword: true,
-    defaultDatabase: null,
-    sslEnabled: false,
-    sslCaPath: null,
-    sslCertPath: null,
-    sslKeyPath: null,
-    color: '#3b82f6',
-    groupId: null,
-    readOnly: false,
-    sortOrder: 0,
-    connectTimeoutSecs: 10,
-    keepaliveIntervalSecs: 30,
-    createdAt: '2025-01-01T00:00:00Z',
-    updatedAt: '2025-01-01T00:00:00Z',
-    ...overrides,
-  }
-}
+import type { ActiveConnection } from '../../../types/connection'
+import { makeSavedConnection } from '../../helpers/connection-test-utils'
 
 function makeActiveConnection(sessionId: string): ActiveConnection {
   return {

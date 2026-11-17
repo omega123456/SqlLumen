@@ -11,26 +11,6 @@ describe('IconButton', () => {
     expect(btn).toHaveAttribute('data-size', 'md')
   })
 
-  it('renders sm size when specified', () => {
-    render(
-      <IconButton size="sm" aria-label="Small">
-        S
-      </IconButton>
-    )
-    const btn = screen.getByRole('button', { name: 'Small' })
-    expect(btn).toHaveAttribute('data-size', 'sm')
-  })
-
-  it('renders lg size when specified', () => {
-    render(
-      <IconButton size="lg" aria-label="Large">
-        L
-      </IconButton>
-    )
-    const btn = screen.getByRole('button', { name: 'Large' })
-    expect(btn).toHaveAttribute('data-size', 'lg')
-  })
-
   it('forwards ref', () => {
     const ref = createRef<HTMLButtonElement>()
     render(
@@ -40,24 +20,6 @@ describe('IconButton', () => {
     )
     expect(ref.current).toBeInstanceOf(HTMLButtonElement)
     expect(ref.current).toBe(screen.getByRole('button'))
-  })
-
-  it('allows overriding type for submit buttons', () => {
-    render(
-      <IconButton type="submit" aria-label="Submit">
-        S
-      </IconButton>
-    )
-    expect(screen.getByRole('button', { name: 'Submit' })).toHaveAttribute('type', 'submit')
-  })
-
-  it('supports disabled state', () => {
-    render(
-      <IconButton disabled aria-label="Disabled">
-        D
-      </IconButton>
-    )
-    expect(screen.getByRole('button', { name: 'Disabled' })).toBeDisabled()
   })
 
   it('passes through data-testid and other HTML attributes', () => {

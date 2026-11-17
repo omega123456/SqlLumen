@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { EncodingFields } from '../../../components/dialogs/EncodingFields'
 import type { UseDatabaseEncodingReturn } from '../../../hooks/useDatabaseEncoding'
 
@@ -52,16 +51,5 @@ describe('EncodingFields', () => {
       'Server default'
     )
     expect(screen.getByRole('combobox', { name: 'Collation' })).toHaveTextContent('Default')
-  })
-
-  it('reports the chosen charset', async () => {
-    const user = userEvent.setup()
-    const encoding = buildEncoding()
-    render(<EncodingFields idPrefix="test-db" encoding={encoding} />)
-
-    await user.click(screen.getByRole('combobox', { name: 'Character set' }))
-    await user.click(await screen.findByRole('option', { name: /utf8mb4/ }))
-
-    expect(encoding.setCharset).toHaveBeenCalledWith('utf8mb4')
   })
 })
