@@ -439,6 +439,22 @@ test.describe('Monaco SQL autocomplete', () => {
     await expect(suggestWidget).not.toContainText('create-table-as-select')
   })
 
+  test('a statement after an unfinished one still suggests statement keywords', async ({
+    page,
+  }) => {
+    await waitForApp(page)
+    await openQueryEditorTab(page)
+
+    await typeQuery(
+      page,
+      "-- note\n\nSELECT 1\n\nselect\n\nSELECT * FROM users u WHERE u.name = '';\n\nca"
+    )
+
+    const suggestWidget = await openAutocomplete(page, 'CALL')
+    expectAutocomplete(suggestWidget)
+    await expect(suggestWidget).toContainText('CALL')
+  })
+
   test('autocomplete suggests built-in SQL functions in expression context', async ({ page }) => {
     await waitForApp(page)
     await openQueryEditorTab(page)

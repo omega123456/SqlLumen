@@ -57,4 +57,33 @@ describe('EditorMySQLParser', () => {
     expect(errorListener).toHaveBeenCalled()
     consoleError.mockRestore()
   })
+
+  it('keeps lexer errors out of the console', () => {
+    const parser = new EditorMySQLParser()
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    parser.createParser('SELECT 1 ~~ ¬').program()
+
+    expect(consoleError).not.toHaveBeenCalled()
+    consoleError.mockRestore()
+  })
+
+  describe('after an unfinished statement earlier in the editor', () => {
+    const sql = "-- note\n\nSELECT 1\n\nselect\n\nSELECT * FROM t WHERE t.name = '';\n\nca"
+    const caretPosition = { lineNumber: 9, column: 3 }
+
+    it('suggests statement keywords for the next statement', () => {
+      const parser = new EditorMySQLParser()
+
+      const suggestions = parser.getSuggestionAtCaretPosition(sql, caretPosition)
+
+      expect(suggestions?.keywords).toContain('CALL')
+    })
+
+    it('reports the syntax errors', () => {
+      const parser = new EditorMySQLParser()
+
+      expect(parser.validate(sql).length).toBeGreaterThan(0)
+    })
+  })
 })

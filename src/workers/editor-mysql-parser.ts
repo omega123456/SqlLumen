@@ -1,14 +1,12 @@
 import { MySQL } from 'dt-sql-parser/dist/parser/mysql'
 import { MySqlLexer } from 'dt-sql-parser/dist/lib/mysql/MySqlLexer'
+import { MySqlParser } from 'dt-sql-parser/dist/lib/mysql/MySqlParser'
 
 type CharStream = ConstructorParameters<typeof MySqlLexer>[0]
+type TokenStream = ConstructorParameters<typeof MySqlParser>[0]
 type Token = ReturnType<MySqlLexer['nextToken']>
-type ParseErrorListener = NonNullable<Parameters<MySQL['createParser']>[1]>
-type MySqlParser = ReturnType<MySQL['createParser']>
 
 const KEYWORD_TOKEN_NAME_PREFIX = 'KW_'
-
-const SILENT_PARSE_ERROR_LISTENER: ParseErrorListener = () => {}
 
 function isKeywordTokenName(symbolicName: string | null): boolean {
   if (symbolicName === null) {
@@ -51,12 +49,17 @@ class QualifiedNameMySqlLexer extends MySqlLexer {
   }
 }
 
+// dt-sql-parser re-parses inside its own error listener, so a parser built without one must stay listener-free; this drops only antlr's console listener
 export class EditorMySQLParser extends MySQL {
   protected override createLexerFromCharStream(charStreams: CharStream): MySqlLexer {
-    return new QualifiedNameMySqlLexer(charStreams)
+    const lexer = new QualifiedNameMySqlLexer(charStreams)
+    lexer.removeErrorListeners()
+    return lexer
   }
 
-  override createParser(input: string, errorListener?: ParseErrorListener): MySqlParser {
-    return super.createParser(input, errorListener ?? SILENT_PARSE_ERROR_LISTENER)
+  protected override createParserFromTokenStream(tokenStream: TokenStream): MySqlParser {
+    const parser = new MySqlParser(tokenStream)
+    parser.removeErrorListeners()
+    return parser
   }
 }
