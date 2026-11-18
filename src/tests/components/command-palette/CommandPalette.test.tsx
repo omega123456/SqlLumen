@@ -38,7 +38,8 @@ function makeActiveConnection(): ActiveConnection {
       username: 'root',
       hasPassword: false,
       defaultDatabase: null,
-      sslEnabled: false,
+      sslMode: 'disabled',
+      lastConnectedAt: null,
       sslCaPath: null,
       sslCertPath: null,
       sslKeyPath: null,
@@ -110,7 +111,6 @@ describe('CommandPalette', () => {
       activeConnections: {},
       activeConnectionOrder: [],
       activeTabId: null,
-      dialogOpen: false,
       error: null,
     })
     useCommandPaletteRecentsStore.setState({

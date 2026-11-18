@@ -29,7 +29,7 @@ const sampleFormData: ConnectionFormData = {
   username: 'root',
   password: 'secret',
   defaultDatabase: 'mydb',
-  sslEnabled: false,
+  sslMode: 'disabled',
   sslCaPath: null,
   sslCertPath: null,
   sslKeyPath: null,
@@ -89,7 +89,7 @@ describe('connection profile commands', () => {
           password: 'secret',
           profileId: 'conn-42',
           defaultDatabase: 'mydb',
-          sslEnabled: false,
+          sslMode: 'disabled',
           sslCaPath: null,
           sslCertPath: null,
           sslKeyPath: null,
@@ -125,7 +125,9 @@ describe('connection profile commands', () => {
 
     expect(ipc.calls('get_connection')).toEqual([{ id: 'abc' }])
     expect(ipc.calls('create_connection_group')).toEqual([{ name: 'Production' }])
-    expect(ipc.calls('open_connection')).toEqual([{ payload: { profileId: 'conn-1' } }])
+    expect(ipc.calls('open_connection')).toEqual([
+      { payload: { profileId: 'conn-1', password: null } },
+    ])
     expect(ipc.calls('get_connection_status')).toEqual([{ connectionId: 'conn-1' }])
     expect(ipc.calls('delete_connection')).toEqual([{ id: 'abc' }])
     expect(ipc.payloads('update_connection_group')).toEqual([{ id: 'grp-1', name: 'New name' }])

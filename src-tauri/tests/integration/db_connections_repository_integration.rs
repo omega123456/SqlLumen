@@ -1,10 +1,11 @@
 //! Connection rows (`db/connections.rs`).
 
 use crate::common;
+use sqllumen_lib::db::ssl_mode::SslMode;
 
 use sqllumen_lib::db::connections::{
-    delete_connection, get_connection, insert_connection, list_connections, update_connection,
-    NewConnectionData, UpdateConnectionData,
+    delete_connection, get_connection, insert_connection, list_connections, record_connected,
+    update_connection, NewConnectionData, UpdateConnectionData,
 };
 
 fn sample_new_connection() -> NewConnectionData {
@@ -14,7 +15,7 @@ fn sample_new_connection() -> NewConnectionData {
         port: 3306,
         username: "root".to_string(),
         default_database: Some("mydb".to_string()),
-        ssl_enabled: false,
+        ssl_mode: SslMode::Disabled,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,
@@ -72,11 +73,12 @@ fn test_get_connection_returns_record() {
         "non-null keychain_ref acts as saved-password marker"
     );
     assert_eq!(record.default_database, Some("mydb".to_string()));
-    assert!(!record.ssl_enabled);
+    assert_eq!(record.ssl_mode, SslMode::Disabled);
     assert_eq!(record.color, Some("#ff0000".to_string()));
     assert!(!record.read_only);
     assert!(!record.created_at.is_empty());
     assert!(!record.updated_at.is_empty());
+    assert!(record.last_connected_at.is_none());
 }
 
 #[test]
@@ -113,10 +115,12 @@ fn test_list_connections_returns_all() {
 }
 
 #[test]
-fn test_update_connection_modifies_fields() {
+fn test_update_connection_modifies_fields_and_keeps_last_connected() {
     let conn = common::test_db();
     let data = sample_new_connection();
     let id = insert_connection(&conn, &data).expect("should insert");
+    let connected_at = "2026-11-18T09:30:00.000000+00:00";
+    record_connected(&conn, &id, connected_at).expect("should record the connect time");
 
     let update = UpdateConnectionData {
         name: "Updated DB".to_string(),
@@ -124,7 +128,7 @@ fn test_update_connection_modifies_fields() {
         port: 3307,
         username: "admin".to_string(),
         default_database: None,
-        ssl_enabled: true,
+        ssl_mode: SslMode::VerifyIdentity,
         ssl_ca_path: Some("/path/to/ca.pem".to_string()),
         ssl_cert_path: None,
         ssl_key_path: None,
@@ -147,8 +151,9 @@ fn test_update_connection_modifies_fields() {
     assert_eq!(record.port, 3307);
     assert_eq!(record.username, "admin");
     assert_eq!(record.default_database, None);
-    assert!(record.ssl_enabled);
+    assert_eq!(record.ssl_mode, SslMode::VerifyIdentity);
     assert_eq!(record.ssl_ca_path, Some("/path/to/ca.pem".to_string()));
+    assert_eq!(record.last_connected_at.as_deref(), Some(connected_at));
     assert!(record.read_only);
     assert_eq!(record.connect_timeout_secs, Some(30));
     assert_eq!(record.keepalive_interval_secs, Some(120));
@@ -163,7 +168,7 @@ fn test_update_connection_errors_for_missing() {
         port: 3306,
         username: "root".to_string(),
         default_database: None,
-        ssl_enabled: false,
+        ssl_mode: SslMode::Disabled,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,
@@ -177,6 +182,8 @@ fn test_update_connection_errors_for_missing() {
 
     let result = update_connection(&conn, "nonexistent", &update);
     assert!(result.is_err());
+    let recorded = record_connected(&conn, "nonexistent", "2026-11-18T09:30:00.000000+00:00");
+    assert!(recorded.is_err());
 }
 
 #[test]

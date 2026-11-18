@@ -15,7 +15,8 @@ function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedCon
     username: 'root',
     hasPassword: true,
     defaultDatabase: null,
-    sslEnabled: false,
+    sslMode: 'disabled',
+    lastConnectedAt: null,
     sslCaPath: null,
     sslCertPath: null,
     sslKeyPath: null,
@@ -45,7 +46,6 @@ beforeEach(() => {
   useConnectionStore.setState({
     activeConnections: {},
     activeTabId: null,
-    dialogOpen: false,
     error: null,
   })
   useSchemaStore.setState({

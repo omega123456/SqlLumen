@@ -8,6 +8,7 @@
 
 use crate::common;
 use sqllumen_lib::commands::processlist::{get_processlist_impl, kill_queries_impl};
+use sqllumen_lib::db::ssl_mode::SslMode;
 
 #[cfg(not(coverage))]
 use crate::common::mock_mysql_server::{MockCell, MockColumnDef, MockMySqlServer, MockQueryStep};
@@ -37,7 +38,7 @@ fn save_input(port: u16) -> SaveConnectionInput {
         username: "root".to_string(),
         password: None,
         default_database: None,
-        ssl_enabled: false,
+        ssl_mode: SslMode::Disabled,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,
@@ -127,7 +128,7 @@ async fn open_session(state: &AppState, port: u16, read_only: bool) -> String {
         save_input(port)
     };
     let profile_id = save_connection_impl(state, input).expect("save");
-    let result = open_connection_impl(state, &profile_id)
+    let result = open_connection_impl(state, crate::common::open_payload(&profile_id))
         .await
         .expect("open");
     result.session_id
@@ -266,14 +267,10 @@ fn register_mock_session(state: &AppState, session: MockSession<'_>) {
                 has_password: false,
                 keychain_ref: None,
                 default_database: None,
-                ssl: SslSettings {
-                    enabled: false,
-                    ca_path: None,
-                    cert_path: None,
-                    key_path: None,
-                },
+                ssl: SslSettings::default(),
                 connect_timeout_secs: 30,
                 keepalive_interval_secs: 60,
+                session_password: None,
             },
             read_only,
         },

@@ -9,8 +9,8 @@ test('layout sections are visible', async ({ page }) => {
   await page.goto('/')
   // Wait for layout to render
   await expect(page.getByText('Ready')).toBeVisible()
-  await expect(page.getByText('No active connection')).toBeVisible()
-  await expect(page.getByText('Connect to a server')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Connections' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Connect to Sample MySQL' })).toBeVisible()
 })
 
 test('layout fits the window when zoomed in', async ({ page }) => {

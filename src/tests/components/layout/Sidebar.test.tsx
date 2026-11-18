@@ -10,7 +10,6 @@ beforeEach(() => {
   useConnectionStore.setState({
     activeConnections: {},
     activeTabId: null,
-    dialogOpen: false,
     error: null,
   })
   // Mock loadDatabases to prevent real IPC calls in tests
@@ -22,14 +21,9 @@ beforeEach(() => {
 })
 
 describe('Sidebar', () => {
-  it('renders the empty state message when no active connection', () => {
-    render(<Sidebar />)
-    expect(screen.getByText('No active connection')).toBeInTheDocument()
-  })
-
-  it('renders data-testid="sidebar-inner"', () => {
-    render(<Sidebar />)
-    expect(screen.getByTestId('sidebar-inner')).toBeInTheDocument()
+  it('renders nothing without an active connection', () => {
+    const { container } = render(<Sidebar />)
+    expect(container).toBeEmptyDOMElement()
   })
 
   it('renders ObjectBrowser when connected', () => {
@@ -40,6 +34,7 @@ describe('Sidebar', () => {
 
     render(<Sidebar />)
     expect(screen.getByTestId('object-browser')).toBeInTheDocument()
+    expect(screen.getByTestId('sidebar-inner')).toBeInTheDocument()
   })
 
   it('shows ObjectBrowser when connection is disconnected (preserves context)', () => {

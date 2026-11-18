@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, type RefObject } from 'react'
 import { subscribeToTabDeactivated } from '../../../lib/workspace-tab-activity-events'
-import { useDismissOnOutsideClick } from '../../connection-dialog/useDismissOnOutsideClick'
+import { useDismissOnOutsideClick } from '../../../hooks/use-dismiss-on-outside-click'
 import { focusInitialPickerControl } from './date-time-picker-model'
 
 const INITIAL_FOCUS_DELAY_MS = 50

@@ -1,5 +1,3 @@
-#[cfg(any(not(coverage), test, feature = "test-utils"))]
-use crate::credentials;
 #[cfg(not(coverage))]
 use crate::mysql::logged_query::{execute_pooled, LoggedStatement};
 #[cfg(any(not(coverage), test, feature = "test-utils"))]
@@ -201,10 +199,7 @@ async fn reconnect_attempt<R: Runtime>(
         return ReconnectAttempt::Stop;
     };
 
-    let password = match credentials::resolve_password(
-        stored_params.profile_id.as_str(),
-        stored_params.has_password,
-    ) {
+    let password = match stored_params.resolve_password() {
         Ok(password) => password,
         Err(error) => {
             monitor.update_and_emit(ConnectionStatus::Disconnected, Some(&error));
@@ -238,10 +233,7 @@ pub async fn attempt_reconnect_once_for_test(
         .get_connection_params(connection_id)
         .ok_or_else(|| format!("Connection '{connection_id}' is not open"))?;
 
-    let password = credentials::resolve_password(
-        stored_params.profile_id.as_str(),
-        stored_params.has_password,
-    )?;
+    let password = stored_params.resolve_password()?;
 
     let conn_params = stored_params.to_connection_params(password);
     let new_pool = pool::create_pool(&conn_params)

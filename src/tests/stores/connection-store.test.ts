@@ -33,7 +33,8 @@ function makeActiveConnection(
       username: 'root',
       hasPassword: true,
       defaultDatabase: 'testdb',
-      sslEnabled: false,
+      sslMode: 'disabled',
+      lastConnectedAt: null,
       sslCaPath: null,
       sslCertPath: null,
       sslKeyPath: null,
@@ -76,7 +77,6 @@ beforeEach(() => {
     activeConnections: {},
     activeConnectionOrder: [],
     activeTabId: null,
-    dialogOpen: false,
     error: null,
   })
   resetWorkspaceStore()
@@ -109,7 +109,8 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
             username: 'root',
             hasPassword: true,
             defaultDatabase: 'testdb',
-            sslEnabled: false,
+            sslMode: 'disabled',
+            lastConnectedAt: null,
             sslCaPath: null,
             sslCertPath: null,
             sslKeyPath: null,
@@ -441,7 +442,8 @@ describe('useConnectionStore — Process List integration', () => {
             username: 'root',
             hasPassword: true,
             defaultDatabase: 'testdb',
-            sslEnabled: false,
+            sslMode: 'disabled',
+            lastConnectedAt: null,
             sslCaPath: null,
             sslCertPath: null,
             sslKeyPath: null,
@@ -507,7 +509,8 @@ describe('useConnectionStore — openConnection creates default workspace tabs',
           username: 'root',
           hasPassword: true,
           defaultDatabase: 'testdb',
-          sslEnabled: false,
+          sslMode: 'disabled',
+          lastConnectedAt: null,
           sslCaPath: null,
           sslCertPath: null,
           sslKeyPath: null,
@@ -560,7 +563,8 @@ describe('useConnectionStore — explicit active connection order lifecycle', ()
             username: 'root',
             hasPassword: true,
             defaultDatabase: 'testdb',
-            sslEnabled: false,
+            sslMode: 'disabled',
+            lastConnectedAt: null,
             sslCaPath: null,
             sslCertPath: null,
             sslKeyPath: null,
@@ -587,7 +591,8 @@ describe('useConnectionStore — explicit active connection order lifecycle', ()
             username: 'root',
             hasPassword: true,
             defaultDatabase: 'testdb',
-            sslEnabled: false,
+            sslMode: 'disabled',
+            lastConnectedAt: null,
             sslCaPath: null,
             sslCertPath: null,
             sslKeyPath: null,
@@ -628,7 +633,8 @@ describe('useConnectionStore — explicit active connection order lifecycle', ()
             username: 'root',
             hasPassword: true,
             defaultDatabase: 'testdb',
-            sslEnabled: false,
+            sslMode: 'disabled',
+            lastConnectedAt: null,
             sslCaPath: null,
             sslCertPath: null,
             sslKeyPath: null,
@@ -655,7 +661,8 @@ describe('useConnectionStore — explicit active connection order lifecycle', ()
             username: 'root',
             hasPassword: true,
             defaultDatabase: 'testdb',
-            sslEnabled: false,
+            sslMode: 'disabled',
+            lastConnectedAt: null,
             sslCaPath: null,
             sslCertPath: null,
             sslKeyPath: null,
@@ -930,7 +937,8 @@ describe('connection store sessions', () => {
     username: 'root',
     hasPassword: true,
     defaultDatabase: 'mydb',
-    sslEnabled: false,
+    sslMode: 'disabled',
+    lastConnectedAt: null,
     sslCaPath: null,
     sslCertPath: null,
     sslKeyPath: null,
@@ -967,7 +975,6 @@ describe('connection store sessions', () => {
       activeConnections: {},
       activeConnectionOrder: [],
       activeTabId: null,
-      dialogOpen: false,
       error: null,
     })
     resetWorkspaceStore()
@@ -1005,7 +1012,6 @@ describe('connection store sessions', () => {
       expect(state.activeConnections).toEqual({})
       expect(state.activeConnectionOrder).toEqual([])
       expect(state.activeTabId).toBeNull()
-      expect(state.dialogOpen).toBe(false)
       expect(state.error).toBeNull()
     })
   })
@@ -1047,7 +1053,11 @@ describe('connection store sessions', () => {
   describe('useConnectionStore — openConnection', () => {
     it('adds to activeConnections and sets activeTabId', async () => {
       useConnectionStore.setState({ savedConnections: [mockSavedConnection] })
-      ipc.override('open_connection', () => ({ sessionId: 'sess-1', serverVersion: '8.0.35' }))
+      ipc.override('open_connection', () => ({
+        sessionId: 'sess-1',
+        serverVersion: '8.0.35',
+        lastConnectedAt: null,
+      }))
 
       await useConnectionStore.getState().openConnection('conn-1')
 
@@ -1465,19 +1475,6 @@ describe('connection store sessions', () => {
 
       // sess-1 should be unchanged
       expect(useConnectionStore.getState().activeConnections['sess-1'].status).toBe('connected')
-    })
-  })
-
-  describe('useConnectionStore — dialog', () => {
-    it('openDialog sets dialogOpen to true', () => {
-      useConnectionStore.getState().openDialog()
-      expect(useConnectionStore.getState().dialogOpen).toBe(true)
-    })
-
-    it('closeDialog sets dialogOpen to false', () => {
-      useConnectionStore.setState({ dialogOpen: true })
-      useConnectionStore.getState().closeDialog()
-      expect(useConnectionStore.getState().dialogOpen).toBe(false)
     })
   })
 

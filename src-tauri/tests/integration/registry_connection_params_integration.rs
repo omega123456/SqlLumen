@@ -1,6 +1,7 @@
 //! Building registry connection params from a saved connection row.
 
 use crate::common;
+use sqllumen_lib::db::ssl_mode::SslMode;
 
 use sqllumen_lib::db::connections::{get_connection, insert_connection, NewConnectionData};
 use sqllumen_lib::mysql::pool::SslSettings;
@@ -16,7 +17,7 @@ fn saved_connection(
         port: 3307,
         username: "app".to_string(),
         default_database: Some("orders".to_string()),
-        ssl_enabled: true,
+        ssl_mode: SslMode::Required,
         ssl_ca_path: Some("/certs/ca.pem".to_string()),
         ssl_cert_path: Some("/certs/client.pem".to_string()),
         ssl_key_path: Some("/certs/client.key".to_string()),
@@ -45,7 +46,7 @@ fn from_connection_record_copies_the_row_and_groups_ssl_settings() {
     assert_eq!(
         params.ssl,
         SslSettings {
-            enabled: true,
+            mode: SslMode::Required,
             ca_path: Some("/certs/ca.pem".to_string()),
             cert_path: Some("/certs/client.pem".to_string()),
             key_path: Some("/certs/client.key".to_string()),

@@ -7,7 +7,7 @@ import type {
   ExportableDatabase,
   ImportJobProgress,
 } from '../../lib/sql-dump-commands'
-import type { SavedConnection, TestConnectionResult } from '../../types/connection'
+import type { ConnectionGroup, SavedConnection, TestConnectionResult } from '../../types/connection'
 import type {
   AppInfo,
   CharsetInfo,
@@ -24,11 +24,15 @@ import { AI_CHAT_FIXTURE, AI_QUERY_EXPANSION, type PlaywrightAiChatFixture } fro
 import { APP_INFO, PLAYWRIGHT_PLATFORM } from './app-info'
 import { AI_DEFAULT_SETTINGS, DEFAULT_APP_SETTINGS } from './app-settings'
 import {
+  DEFAULT_CONNECTION_GROUPS,
+  NO_OPEN_CONNECTION_DENIAL,
+  DEFAULT_SAVED_CONNECTIONS,
   NEW_CONNECTION_GROUP_ID,
   NEW_CONNECTION_ID,
   PLAYWRIGHT_MOCK_CONNECTION,
   PLAYWRIGHT_MOCK_SERVER_VERSION,
   TEST_CONNECTION_RESULT,
+  type OpenConnectionDenial,
 } from './connections'
 import { CHARSETS, COLLATIONS, DATABASE_DETAILS } from './database-encoding'
 import { CREATED_FAVORITE_ID, FAVORITES, HISTORY_PAGE } from './history-favorites'
@@ -54,6 +58,9 @@ export interface PlaywrightStaticFixtures {
   aiDefaultSettings: Record<string, string>
   update: PlaywrightUpdateFixture
   savedConnection: SavedConnection
+  savedConnections: SavedConnection[]
+  openConnectionDenial: OpenConnectionDenial | null
+  connectionGroups: ConnectionGroup[]
   serverVersion: string
   testConnection: TestConnectionResult
   newConnectionId: string
@@ -93,6 +100,9 @@ export const DEFAULT_STATIC_FIXTURES: PlaywrightStaticFixtures = {
   aiDefaultSettings: AI_DEFAULT_SETTINGS,
   update: UPDATE_FIXTURE,
   savedConnection: PLAYWRIGHT_MOCK_CONNECTION,
+  savedConnections: DEFAULT_SAVED_CONNECTIONS,
+  openConnectionDenial: NO_OPEN_CONNECTION_DENIAL,
+  connectionGroups: DEFAULT_CONNECTION_GROUPS,
   serverVersion: PLAYWRIGHT_MOCK_SERVER_VERSION,
   testConnection: TEST_CONNECTION_RESULT,
   newConnectionId: NEW_CONNECTION_ID,

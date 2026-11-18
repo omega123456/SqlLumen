@@ -12,6 +12,7 @@ const FIXTURE_DIRECTORY: &str = "tests/fixtures/tls";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ServerCertificate {
     SignedByTestCa,
+    SignedByTestCaForLocalhost,
     SignedByUnrelatedCa,
     SelfSignedVersion1,
 }
@@ -51,6 +52,10 @@ fn server_identity(certificate: ServerCertificate) -> ServerIdentityFiles {
         ServerCertificate::SignedByTestCa => ServerIdentityFiles {
             certificate: "server.pem",
             key: "server-key.pem",
+        },
+        ServerCertificate::SignedByTestCaForLocalhost => ServerIdentityFiles {
+            certificate: "server-localhost.pem",
+            key: "server-localhost-key.pem",
         },
         ServerCertificate::SignedByUnrelatedCa => ServerIdentityFiles {
             certificate: "other-server.pem",

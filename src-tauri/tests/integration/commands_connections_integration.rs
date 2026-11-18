@@ -1,6 +1,7 @@
 //! Command-layer connection `_impl` functions (`commands/connections.rs`).
 
 use crate::common;
+use sqllumen_lib::db::ssl_mode::SslMode;
 
 use sqllumen_lib::commands::connections::{
     delete_connection_impl, get_connection_impl, list_connections_impl, save_connection_impl,
@@ -62,7 +63,7 @@ fn test_update_connection_impl_modifies_fields() {
         password: None,
         clear_password: false,
         default_database: None,
-        ssl_enabled: true,
+        ssl_mode: SslMode::Required,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,
@@ -182,7 +183,7 @@ fn test_update_with_password_sets_has_password_true() {
         password: Some("new_secret".to_string()),
         clear_password: false,
         default_database: None,
-        ssl_enabled: false,
+        ssl_mode: SslMode::Disabled,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,
@@ -224,7 +225,7 @@ fn test_update_rejects_setting_and_clearing_password_together() {
         password: Some("new_secret".to_string()),
         clear_password: true,
         default_database: None,
-        ssl_enabled: false,
+        ssl_mode: SslMode::Disabled,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,
@@ -271,7 +272,7 @@ fn test_save_connection_input_deserialize_from_json() {
         "username": "admin",
         "password": "secret",
         "defaultDatabase": "prod",
-        "sslEnabled": true,
+        "sslMode": "verify_ca",
         "sslCaPath": "/path/to/ca.pem",
         "sslCertPath": null,
         "sslKeyPath": null,
@@ -291,7 +292,7 @@ fn test_save_connection_input_deserialize_from_json() {
     assert_eq!(input.username, "admin");
     assert_eq!(input.password.as_deref(), Some("secret"));
     assert_eq!(input.default_database.as_deref(), Some("prod"));
-    assert!(input.ssl_enabled);
+    assert_eq!(input.ssl_mode, SslMode::VerifyCa);
     assert_eq!(input.ssl_ca_path.as_deref(), Some("/path/to/ca.pem"));
     assert!(input.ssl_cert_path.is_none());
     assert!(input.ssl_key_path.is_none());
@@ -313,7 +314,7 @@ fn test_update_connection_input_deserialize_from_json() {
         "password": null,
         "clearPassword": true,
         "defaultDatabase": null,
-        "sslEnabled": false,
+        "sslMode": "disabled",
         "sslCaPath": null,
         "sslCertPath": null,
         "sslKeyPath": null,
@@ -334,7 +335,7 @@ fn test_update_connection_input_deserialize_from_json() {
     assert!(input.password.is_none());
     assert!(input.clear_password);
     assert!(input.default_database.is_none());
-    assert!(!input.ssl_enabled);
+    assert_eq!(input.ssl_mode, SslMode::Disabled);
     assert!(!input.read_only);
     assert_eq!(input.sort_order, 0);
 }
@@ -347,7 +348,7 @@ fn test_update_connection_input_deserialize_clear_password_default() {
         "host": "localhost",
         "port": 3306,
         "username": "root",
-        "sslEnabled": false,
+        "sslMode": "disabled",
         "readOnly": false,
         "sortOrder": 0
     });
@@ -381,7 +382,7 @@ fn test_update_clear_password_on_connection_with_password() {
         password: None,
         clear_password: true,
         default_database: None,
-        ssl_enabled: false,
+        ssl_mode: SslMode::Disabled,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,
@@ -432,7 +433,7 @@ fn test_update_password_on_connection_that_already_has_password() {
         password: Some("new_password".to_string()),
         clear_password: false,
         default_database: None,
-        ssl_enabled: false,
+        ssl_mode: SslMode::Disabled,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,
@@ -499,7 +500,7 @@ fn test_clear_password_delete_failure_returns_error_and_preserves_sqlite_marker(
         password: None,
         clear_password: true,
         default_database: None,
-        ssl_enabled: false,
+        ssl_mode: SslMode::Disabled,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,

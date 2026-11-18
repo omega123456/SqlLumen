@@ -39,23 +39,15 @@ export function Sidebar() {
     })
   }, [activeTabId, favouritesOpen])
 
-  if (activeConnection && activeTabId) {
-    return (
-      <div className={SIDEBAR_CLASS_NAME} data-testid="sidebar-inner">
-        <ObjectBrowser
-          connectionId={activeTabId}
-          favouritesOpen={favouritesOpen}
-          onToggleFavourites={handleToggleFavourites}
-        />
-      </div>
-    )
-  }
+  if (!activeConnection) return null
 
   return (
     <div className={SIDEBAR_CLASS_NAME} data-testid="sidebar-inner">
-      <span className="m-auto p-3 text-center text-size-row font-regular text-light-on-surface-variant dark:text-dark-on-surface-variant">
-        No active connection
-      </span>
+      <ObjectBrowser
+        connectionId={activeConnection.id}
+        favouritesOpen={favouritesOpen}
+        onToggleFavourites={handleToggleFavourites}
+      />
     </div>
   )
 }

@@ -328,7 +328,6 @@ beforeEach(() => {
     useConnectionStore.setState({
       activeConnections: {},
       activeTabId: null,
-      dialogOpen: false,
       error: null,
     })
     // Mock loadDatabases to prevent real IPC calls in tests
@@ -2079,7 +2078,8 @@ describe('activation', () => {
       username: 'root',
       hasPassword: true,
       defaultDatabase: null,
-      sslEnabled: false,
+      sslMode: 'disabled',
+      lastConnectedAt: null,
       sslCaPath: null,
       sslCertPath: null,
       sslKeyPath: null,

@@ -1012,7 +1012,7 @@ describe('playwrightIpcMockHandler', () => {
         string,
         unknown
       >
-      expect(Object.keys(result).sort()).toEqual(['serverVersion', 'sessionId'])
+      expect(Object.keys(result).sort()).toEqual(['lastConnectedAt', 'serverVersion', 'sessionId'])
     })
 
     it('resets the allocator so a fresh page load starts at session-playwright-1', () => {

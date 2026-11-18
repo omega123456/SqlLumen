@@ -1,4 +1,5 @@
 use crate::common;
+use sqllumen_lib::db::ssl_mode::SslMode;
 
 use sqllumen_lib::db::connection_groups;
 use sqllumen_lib::db::connections::{self, NewConnectionData};
@@ -12,7 +13,7 @@ fn production_connection_data() -> NewConnectionData {
         port: 3306,
         username: "admin".to_string(),
         default_database: Some("app_prod".to_string()),
-        ssl_enabled: true,
+        ssl_mode: SslMode::Required,
         ssl_ca_path: Some("/certs/ca.pem".to_string()),
         ssl_cert_path: None,
         ssl_key_path: None,
@@ -32,7 +33,7 @@ fn production_update_data() -> connections::UpdateConnectionData {
         port: 3307,
         username: "root".to_string(),
         default_database: None,
-        ssl_enabled: false,
+        ssl_mode: SslMode::Disabled,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,
@@ -68,7 +69,7 @@ fn test_full_connection_crud_workflow() {
     assert_eq!(record.username, "admin");
     assert!(record.has_password);
     assert_eq!(record.default_database, Some("app_prod".to_string()));
-    assert!(record.ssl_enabled);
+    assert_eq!(record.ssl_mode, SslMode::Required);
     assert_eq!(record.ssl_ca_path, Some("/certs/ca.pem".to_string()));
     assert_eq!(record.color, Some("#e74c3c".to_string()));
     assert!(!record.read_only);
@@ -88,7 +89,7 @@ fn test_full_connection_crud_workflow() {
     assert_eq!(updated.port, 3307);
     assert!(updated.read_only);
     assert_eq!(updated.default_database, None);
-    assert!(!updated.ssl_enabled);
+    assert_eq!(updated.ssl_mode, SslMode::Disabled);
 
     // Verify list returns 1
     let list = connections::list_connections(&conn).expect("should list");
@@ -116,7 +117,7 @@ fn test_keychain_ref_is_set_to_connection_id() {
         port: 3306,
         username: "root".to_string(),
         default_database: None,
-        ssl_enabled: false,
+        ssl_mode: SslMode::Disabled,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,
@@ -175,7 +176,7 @@ fn test_list_connections_sort_order() {
         port: 3306,
         username: "root".to_string(),
         default_database: None,
-        ssl_enabled: false,
+        ssl_mode: SslMode::Disabled,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,
@@ -233,7 +234,7 @@ fn test_migration_002_adds_timeout_columns() {
         port: 3306,
         username: "root".to_string(),
         default_database: None,
-        ssl_enabled: false,
+        ssl_mode: SslMode::Disabled,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,
@@ -306,7 +307,7 @@ fn test_delete_group_nullifies_contained_connections() {
         port: 3306,
         username: "root".to_string(),
         default_database: None,
-        ssl_enabled: false,
+        ssl_mode: SslMode::Disabled,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,
@@ -388,7 +389,7 @@ fn test_connection_timestamps_are_iso8601() {
         port: 3306,
         username: "root".to_string(),
         default_database: None,
-        ssl_enabled: false,
+        ssl_mode: SslMode::Disabled,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,

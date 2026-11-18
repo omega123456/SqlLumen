@@ -526,7 +526,7 @@ mod against_mock_server {
                 username: "root".to_string(),
                 password: None,
                 default_database: Some("shop".to_string()),
-                ssl_enabled: false,
+                ssl_mode: sqllumen_lib::db::ssl_mode::SslMode::Disabled,
                 ssl_ca_path: None,
                 ssl_cert_path: None,
                 ssl_key_path: None,
@@ -539,7 +539,7 @@ mod against_mock_server {
             },
         )
         .expect("save connection");
-        open_connection_impl(state, &profile_id)
+        open_connection_impl(state, crate::common::open_payload(&profile_id))
             .await
             .expect("open connection")
             .session_id

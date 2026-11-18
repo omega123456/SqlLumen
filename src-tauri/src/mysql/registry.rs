@@ -1,6 +1,7 @@
 use super::pool::{BackgroundPool, ConnectionParams, SslSettings};
 use crate::db::connections::ConnectionRecord;
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
@@ -27,6 +28,21 @@ pub struct OpenConnectionSession {
     pub session_database: Option<String>,
 }
 
+#[derive(Clone, PartialEq, Eq)]
+pub struct SessionPassword(String);
+
+impl SessionPassword {
+    pub fn new(password: String) -> Self {
+        Self(password)
+    }
+}
+
+impl fmt::Debug for SessionPassword {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("SessionPassword(<redacted>)")
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct StoredConnectionParams {
     pub profile_id: String,
@@ -39,6 +55,7 @@ pub struct StoredConnectionParams {
     pub ssl: SslSettings,
     pub connect_timeout_secs: u64,
     pub keepalive_interval_secs: u64,
+    pub session_password: Option<SessionPassword>,
 }
 
 impl StoredConnectionParams {
@@ -52,7 +69,7 @@ impl StoredConnectionParams {
             keychain_ref: record.keychain_ref.clone(),
             default_database: record.default_database.clone(),
             ssl: SslSettings {
-                enabled: record.ssl_enabled,
+                mode: record.ssl_mode,
                 ca_path: record.ssl_ca_path.clone(),
                 cert_path: record.ssl_cert_path.clone(),
                 key_path: record.ssl_key_path.clone(),
@@ -65,7 +82,15 @@ impl StoredConnectionParams {
                 .keepalive_interval_secs
                 .unwrap_or(DEFAULT_KEEPALIVE_INTERVAL_SECS)
                 .max(MIN_KEEPALIVE_INTERVAL_SECS) as u64,
+            session_password: None,
         }
+    }
+
+    pub fn resolve_password(&self) -> Result<String, String> {
+        if let Some(SessionPassword(password)) = &self.session_password {
+            return Ok(password.clone());
+        }
+        crate::credentials::resolve_password(&self.profile_id, self.has_password)
     }
 
     pub fn to_connection_params(&self, password: String) -> ConnectionParams {

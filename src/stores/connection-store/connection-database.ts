@@ -3,13 +3,12 @@ import { selectDatabase as selectDatabaseIPC } from '../../lib/query-commands'
 import { showErrorToast } from '../toast-store'
 import { logFrontendError } from '../../lib/app-log-commands'
 import { toErrorMessage } from '../../lib/error-message'
+import { formDataFromConnection } from '../../lib/connection-form-data'
 import {
   applyProfileDefaultDatabase,
   setSessionDatabase,
 } from '../connection-store/connection-reducers'
 import { useConnectionStore } from '../connection-store'
-
-const KEEP_EXISTING_PASSWORD = ''
 
 export async function setActiveDatabase(sessionId: string, databaseName: string): Promise<void> {
   const active = useConnectionStore.getState().activeConnections[sessionId]
@@ -59,23 +58,7 @@ export async function updateDefaultDatabase(
   useConnectionStore.setState((state) => applyProfileDefaultDatabase(state, updatedProfile))
 
   try {
-    await updateConnectionIPC(profileId, {
-      name: updatedProfile.name,
-      host: updatedProfile.host,
-      port: updatedProfile.port,
-      username: updatedProfile.username,
-      password: KEEP_EXISTING_PASSWORD,
-      defaultDatabase: newDefaultDb,
-      sslEnabled: updatedProfile.sslEnabled,
-      sslCaPath: updatedProfile.sslCaPath,
-      sslCertPath: updatedProfile.sslCertPath,
-      sslKeyPath: updatedProfile.sslKeyPath,
-      color: updatedProfile.color,
-      groupId: updatedProfile.groupId,
-      readOnly: updatedProfile.readOnly,
-      connectTimeoutSecs: updatedProfile.connectTimeoutSecs,
-      keepaliveIntervalSecs: updatedProfile.keepaliveIntervalSecs,
-    })
+    await updateConnectionIPC(profileId, formDataFromConnection(updatedProfile))
   } catch (error) {
     logFrontendError('Failed to persist defaultDatabase change:', error)
     const message = toErrorMessage(error)

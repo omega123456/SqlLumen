@@ -1,4 +1,5 @@
 import type { ActiveConnection, SavedConnection } from '../../types/connection'
+import { useSessionRestoreStore } from '../../stores/session-restore-store'
 
 export function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedConnection {
   return {
@@ -9,7 +10,8 @@ export function makeSavedConnection(overrides: Partial<SavedConnection> = {}): S
     username: 'root',
     hasPassword: true,
     defaultDatabase: null,
-    sslEnabled: false,
+    sslMode: 'disabled',
+    lastConnectedAt: null,
     sslCaPath: null,
     sslCertPath: null,
     sslKeyPath: null,
@@ -33,4 +35,8 @@ export function makeActiveConnection(overrides: Partial<ActiveConnection> = {}):
     serverVersion: '8.0.35',
     ...overrides,
   }
+}
+
+export function markSessionRestoreSettled(): void {
+  useSessionRestoreStore.setState({ isRestoring: false, hasRestoreSettled: true })
 }

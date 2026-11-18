@@ -27,6 +27,7 @@ import {
 import {
   attachActiveConnection,
   normalizeConnectionOrder,
+  recordLastConnected,
   reorderActiveConnections,
   setConnectionStatus,
 } from './connection-store/connection-reducers'
@@ -42,20 +43,31 @@ export function _resetListenersSetup() {
   listenersSetup = false
 }
 
+export type SavedConnectionsLoad =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'ready' }
+  | { status: 'failed'; message: string }
+
+export interface OpenConnectionOptions {
+  openQueryTab?: boolean
+  password?: string
+  toastOnFailure?: boolean
+}
+
 export interface ConnectionState {
   savedConnections: SavedConnection[]
   connectionGroups: ConnectionGroup[]
+  savedConnectionsLoad: SavedConnectionsLoad
 
   activeConnections: Record<string, ActiveConnection>
   activeConnectionOrder: string[]
   activeTabId: string | null
 
-  dialogOpen: boolean
-
   error: string | null
 
   fetchSavedConnections: () => Promise<void>
-  openConnection: (id: string, options?: { openQueryTab?: boolean }) => Promise<void>
+  openConnection: (id: string, options?: OpenConnectionOptions) => Promise<void>
   attachExistingConnection: (session: OpenConnectionSession) => boolean
   closeConnection: (id: string, options?: { force?: boolean }) => Promise<boolean>
   closeAllConnections: (options?: { force?: boolean }) => Promise<boolean>
@@ -65,30 +77,43 @@ export interface ConnectionState {
   moveActiveConnection: (id: string, direction: 'left' | 'right') => void
   normalizeActiveConnectionOrder: () => void
   updateConnectionStatus: (event: ConnectionStatusEvent) => void
-  openDialog: () => void
-  closeDialog: () => void
   clearError: () => void
   setActiveDatabase: (sessionId: string, databaseName: string) => Promise<void>
   updateDefaultDatabase: (sessionId: string, newDefaultDb: string | null) => Promise<void>
   setupEventListeners: () => Promise<(() => void) | undefined>
 }
 
+const SAVED_CONNECTIONS_READY: SavedConnectionsLoad = { status: 'ready' }
+const SAVED_CONNECTIONS_LOADING: SavedConnectionsLoad = { status: 'loading' }
+
+function loadingUnlessReady(load: SavedConnectionsLoad): SavedConnectionsLoad {
+  if (load.status === 'ready') return load
+  return SAVED_CONNECTIONS_LOADING
+}
+
 async function fetchSavedConnections(): Promise<void> {
+  useConnectionStore.setState((state) => ({
+    savedConnectionsLoad: loadingUnlessReady(state.savedConnectionsLoad),
+  }))
   try {
     const [connections, groups] = await Promise.all([listConnections(), listConnectionGroups()])
     useConnectionStore.setState({
       savedConnections: connections,
       connectionGroups: groups,
+      savedConnectionsLoad: SAVED_CONNECTIONS_READY,
       error: null,
     })
   } catch (error) {
     const message = toErrorMessage(error)
-    useConnectionStore.setState({ error: message })
+    useConnectionStore.setState({
+      savedConnectionsLoad: { status: 'failed', message: message },
+      error: message,
+    })
     showErrorToast('Failed to load connections', message)
   }
 }
 
-async function openConnection(id: string, options?: { openQueryTab?: boolean }): Promise<void> {
+async function openConnection(id: string, options?: OpenConnectionOptions): Promise<void> {
   const profile = useConnectionStore
     .getState()
     .savedConnections.find((connection) => connection.id === id)
@@ -100,7 +125,10 @@ async function openConnection(id: string, options?: { openQueryTab?: boolean }):
   }
 
   try {
-    const result = await openConnectionIPC(id)
+    const result = await openConnectionIPC(id, options?.password)
+    useConnectionStore.setState((state) =>
+      recordLastConnected(state, { profileId: id, lastConnectedAt: result.lastConnectedAt })
+    )
     useConnectionStore.getState().attachExistingConnection({
       sessionId: result.sessionId,
       profileId: id,
@@ -121,7 +149,7 @@ async function openConnection(id: string, options?: { openQueryTab?: boolean }):
   } catch (error) {
     const errorMessage = toErrorMessage(error)
     useConnectionStore.setState({ error: errorMessage })
-    showErrorToast('Connection failed', errorMessage)
+    if (options?.toastOnFailure !== false) showErrorToast('Connection failed', errorMessage)
     throw error
   }
 }
@@ -196,14 +224,6 @@ function updateConnectionStatus(event: ConnectionStatusEvent): void {
   useConnectionStore.setState((state) => setConnectionStatus(state, event))
 }
 
-function openDialog(): void {
-  return useConnectionStore.setState({ dialogOpen: true })
-}
-
-function closeDialog(): void {
-  return useConnectionStore.setState({ dialogOpen: false })
-}
-
 function clearError(): void {
   return useConnectionStore.setState({ error: null })
 }
@@ -234,10 +254,10 @@ async function setupEventListeners(): Promise<(() => void) | undefined> {
 export const useConnectionStore = create<ConnectionState>()(() => ({
   savedConnections: [],
   connectionGroups: [],
+  savedConnectionsLoad: { status: 'idle' },
   activeConnections: {},
   activeConnectionOrder: [],
   activeTabId: null,
-  dialogOpen: false,
   error: null,
   fetchSavedConnections: fetchSavedConnections,
   openConnection: openConnection,
@@ -250,8 +270,6 @@ export const useConnectionStore = create<ConnectionState>()(() => ({
   moveActiveConnection: moveActiveConnection,
   normalizeActiveConnectionOrder: normalizeStoredConnectionOrder,
   updateConnectionStatus: updateConnectionStatus,
-  openDialog: openDialog,
-  closeDialog: closeDialog,
   clearError: clearError,
   setActiveDatabase: setActiveDatabase,
   updateDefaultDatabase: updateDefaultDatabase,

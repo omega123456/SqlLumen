@@ -16,6 +16,7 @@ use sqllumen_lib::commands::mysql::{
 };
 use sqllumen_lib::commands::settings::{get_all_settings_impl, get_setting_impl, set_setting_impl};
 use sqllumen_lib::credentials::{self};
+use sqllumen_lib::db::ssl_mode::SslMode;
 use sqllumen_lib::mysql::connection_options::mysql_opts;
 #[cfg(not(coverage))]
 use sqllumen_lib::mysql::health::attempt_reconnect_once_for_test;
@@ -195,7 +196,9 @@ async fn open_connection(
     payload: OpenConnectionPayload,
     state: tauri::State<'_, AppState>,
 ) -> Result<OpenConnectionResult, String> {
-    open_connection_impl(&state, &payload.profile_id).await
+    open_connection_impl(&state, payload)
+        .await
+        .map_err(|error| error.message)
 }
 
 fn build_connection_commands_app() -> (
@@ -256,7 +259,7 @@ fn sample_save_input(password: Option<&str>) -> SaveConnectionInput {
         username: "root".to_string(),
         password: password.map(ToString::to_string),
         default_database: None,
-        ssl_enabled: false,
+        ssl_mode: SslMode::Disabled,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,
@@ -277,7 +280,7 @@ fn save_input_json(input: SaveConnectionInput) -> serde_json::Value {
         "username": input.username,
         "password": input.password,
         "defaultDatabase": input.default_database,
-        "sslEnabled": input.ssl_enabled,
+        "sslMode": input.ssl_mode,
         "sslCaPath": input.ssl_ca_path,
         "sslCertPath": input.ssl_cert_path,
         "sslKeyPath": input.ssl_key_path,
@@ -295,6 +298,7 @@ fn save_input_json(input: SaveConnectionInput) -> serde_json::Value {
 struct OpenConnectionResultDto {
     session_id: String,
     server_version: String,
+    last_connected_at: Option<String>,
 }
 
 fn sample_test_connection_input() -> TestConnectionInput {
@@ -305,7 +309,7 @@ fn sample_test_connection_input() -> TestConnectionInput {
         password: "password".to_string(),
         profile_id: None,
         default_database: Some("app".to_string()),
-        ssl_enabled: false,
+        ssl_mode: SslMode::Disabled,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,
@@ -329,14 +333,10 @@ fn sample_registry_entry(status: ConnectionStatus) -> RegistryEntry {
             has_password: false,
             keychain_ref: None,
             default_database: None,
-            ssl: SslSettings {
-                enabled: false,
-                ca_path: None,
-                cert_path: None,
-                key_path: None,
-            },
+            ssl: SslSettings::default(),
             connect_timeout_secs: 10,
             keepalive_interval_secs: 0,
+            session_password: None,
         },
         read_only: false,
     }
@@ -405,7 +405,7 @@ fn update_input(password: Option<&str>) -> UpdateConnectionInput {
         password: password.map(ToString::to_string),
         clear_password: false,
         default_database: None,
-        ssl_enabled: false,
+        ssl_mode: SslMode::Disabled,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,
@@ -519,7 +519,7 @@ fn update_connection_impl_surfaces_password_update_errors() {
                 password: Some("secret".to_string()),
                 clear_password: false,
                 default_database: None,
-                ssl_enabled: false,
+                ssl_mode: SslMode::Disabled,
                 ssl_ca_path: None,
                 ssl_cert_path: None,
                 ssl_key_path: None,
@@ -787,8 +787,9 @@ async fn open_connection_impl_surfaces_keychain_lookup_errors() {
         save_connection_impl(&state, sample_save_input(Some("pw"))).expect("save should succeed");
     common::fake_credentials::queue_fake_credential_error("missing secret");
 
-    let error = open_connection_impl(&state, &profile_id)
+    let error = open_connection_impl(&state, crate::common::open_payload(&profile_id))
         .await
+        .map_err(|error| error.message)
         .expect_err("keychain lookup failure should surface");
     assert!(error.contains(&retrieve_password_prefix()));
 }
@@ -800,11 +801,44 @@ async fn open_connection_impl_coverage_succeeds_with_test_pool_factory() {
     let profile_id =
         save_connection_impl(&state, sample_save_input(None)).expect("save should succeed");
 
-    let result = open_connection_impl(&state, &profile_id)
+    let result = open_connection_impl(&state, crate::common::open_payload(&profile_id))
         .await
         .expect("open should succeed with fake pool");
     assert_eq!(result.server_version, "Unknown");
     assert!(!result.session_id.is_empty());
+
+    let stored = get_connection_impl(&state, &profile_id)
+        .expect("read profile")
+        .expect("profile exists");
+    assert!(result.last_connected_at.is_some());
+    assert_eq!(stored.last_connected_at, result.last_connected_at);
+}
+
+#[tokio::test]
+async fn open_connection_ipc_uses_a_one_off_password_for_the_session() {
+    let (_app, webview) = build_connection_commands_app();
+    let connection_id: String = invoke_tauri_command(
+        &webview,
+        "save_connection",
+        json!({ "data": save_input_json(sample_save_input(None)) }),
+    )
+    .expect("save_connection IPC should succeed");
+    reset_captured_pool_options();
+    let _pool_guard = install_test_pool_factory(capture_pool_options_success);
+
+    let result: OpenConnectionResultDto = invoke_tauri_command(
+        &webview,
+        "open_connection",
+        json!({ "payload": { "profileId": connection_id, "password": "typed-once" } }),
+    )
+    .expect("open_connection IPC should accept a one-off password");
+
+    assert_eq!(captured_pool_options().pass(), Some("typed-once"));
+    assert!(result.last_connected_at.is_some());
+    let saved: Option<sqllumen_lib::db::connections::ConnectionRecord> =
+        invoke_tauri_command(&webview, "get_connection", json!({ "id": connection_id }))
+            .expect("get_connection IPC should succeed");
+    assert!(!saved.expect("profile exists").has_password);
 }
 
 #[test]
@@ -816,7 +850,7 @@ fn mysql_opts_apply_ssl_database_and_credentials() {
         password: "super-secret".to_string(),
         default_database: Some("analytics".to_string()),
         ssl: SslSettings {
-            enabled: true,
+            mode: SslMode::VerifyCa,
             ca_path: Some("C:/certs/ca.pem".to_string()),
             cert_path: Some("C:/certs/client.crt".to_string()),
             key_path: Some("C:/certs/client.key".to_string()),
@@ -842,12 +876,7 @@ fn mysql_opts_disable_ssl_and_omit_empty_database() {
         username: "root".to_string(),
         password: "pw".to_string(),
         default_database: Some(String::new()),
-        ssl: SslSettings {
-            enabled: false,
-            ca_path: None,
-            cert_path: None,
-            key_path: None,
-        },
+        ssl: SslSettings::default(),
         connect_timeout_secs: 4,
     };
     let opts = mysql_opts(&params).expect("options build");
@@ -866,12 +895,7 @@ async fn create_pool_uses_injected_test_factory() {
         username: "root".to_string(),
         password: "pw".to_string(),
         default_database: None,
-        ssl: SslSettings {
-            enabled: false,
-            ca_path: None,
-            cert_path: None,
-            key_path: None,
-        },
+        ssl: SslSettings::default(),
         connect_timeout_secs: 1,
     })
     .await
@@ -1034,14 +1058,10 @@ async fn close_connection_impl_evicts_metadata_cache_for_closed_connection() {
             has_password: false,
             keychain_ref: None,
             default_database: Some("test_db".to_string()),
-            ssl: SslSettings {
-                enabled: false,
-                ca_path: None,
-                cert_path: None,
-                key_path: None,
-            },
+            ssl: SslSettings::default(),
             connect_timeout_secs: 10,
             keepalive_interval_secs: 0,
+            session_password: None,
         },
         read_only: false,
     };
@@ -1222,8 +1242,9 @@ async fn close_connection_impl_removes_session_mapping_even_without_ref_count_en
 #[tokio::test]
 async fn open_connection_impl_errors_for_missing_saved_connection() {
     let state = test_state();
-    let error = open_connection_impl(&state, "missing")
+    let error = open_connection_impl(&state, crate::common::open_payload("missing"))
         .await
+        .map_err(|error| error.message)
         .expect_err("missing saved connection should error");
     assert_eq!(error, "Connection 'missing' not found");
 }
@@ -1238,8 +1259,9 @@ async fn open_connection_impl_surfaces_keychain_errors() {
     common::fake_credentials::queue_fake_credential_error(
         "No matching entry found in secure storage",
     );
-    let error = open_connection_impl(&state, &connection_id)
+    let error = open_connection_impl(&state, crate::common::open_payload(&connection_id))
         .await
+        .map_err(|error| error.message)
         .expect_err("keychain retrieval failure should be surfaced");
     assert!(error.starts_with(&retrieve_password_prefix()));
 }
@@ -1374,7 +1396,7 @@ async fn open_connection_ipc_preserves_saved_password_after_blank_update() {
                 "username": "root",
                 "password": null,
                 "defaultDatabase": null,
-                "sslEnabled": false,
+                "sslMode": "disabled",
                 "sslCaPath": null,
                 "sslCertPath": null,
                 "sslKeyPath": null,
@@ -1441,7 +1463,7 @@ async fn update_connection_ipc_clear_password_clears_saved_password_state() {
                 "password": null,
                 "clearPassword": true,
                 "defaultDatabase": null,
-                "sslEnabled": false,
+                "sslMode": "disabled",
                 "sslCaPath": null,
                 "sslCertPath": null,
                 "sslKeyPath": null,
@@ -1482,8 +1504,9 @@ async fn open_connection_impl_surfaces_pool_creation_errors() {
     let connection_id =
         save_connection_impl(&state, sample_save_input(None)).expect("save should succeed");
     let _pool_guard = install_test_pool_factory(forced_pool_error);
-    let error = open_connection_impl(&state, &connection_id)
+    let error = open_connection_impl(&state, crate::common::open_payload(&connection_id))
         .await
+        .map_err(|error| error.message)
         .expect_err("pool creation errors should be surfaced");
     assert!(error.starts_with("Failed to connect:"));
 }
@@ -1497,8 +1520,9 @@ async fn open_connection_impl_surfaces_database_read_errors() {
             .expect("drop table should succeed");
     }
 
-    let error = open_connection_impl(&state, "missing")
+    let error = open_connection_impl(&state, crate::common::open_payload("missing"))
         .await
+        .map_err(|error| error.message)
         .expect_err("database read error should be surfaced");
     assert!(error.contains("no such table"));
 }
@@ -1550,14 +1574,10 @@ async fn health_reconnect_uses_profile_id_credential_key() {
                 has_password: true,
                 keychain_ref: Some(connection_id.clone()),
                 default_database: None,
-                ssl: SslSettings {
-                    enabled: false,
-                    ca_path: None,
-                    cert_path: None,
-                    key_path: None,
-                },
+                ssl: SslSettings::default(),
                 connect_timeout_secs: 10,
                 keepalive_interval_secs: 0,
+                session_password: None,
             },
             read_only: false,
         },
@@ -1606,14 +1626,10 @@ async fn health_reconnect_surfaces_secure_storage_wording_for_credential_failure
                 has_password: true,
                 keychain_ref: Some(connection_id.clone()),
                 default_database: None,
-                ssl: SslSettings {
-                    enabled: false,
-                    ca_path: None,
-                    cert_path: None,
-                    key_path: None,
-                },
+                ssl: SslSettings::default(),
                 connect_timeout_secs: 10,
                 keepalive_interval_secs: 0,
+                session_password: None,
             },
             read_only: false,
         },
@@ -1637,7 +1653,7 @@ async fn open_connection_impl_registers_connection_without_health_monitor() {
         save_connection_impl(&state, sample_save_input(None)).expect("save should succeed");
     let _pool_guard = install_test_pool_factory(forced_pool_success);
 
-    let result = open_connection_impl(&state, &connection_id)
+    let result = open_connection_impl(&state, crate::common::open_payload(&connection_id))
         .await
         .expect("open should succeed");
 
@@ -1653,7 +1669,7 @@ async fn open_connection_impl_creates_uncancelled_token_when_keepalive_enabled_w
     let connection_id = save_connection_impl(&state, input).expect("save should succeed");
     let _pool_guard = install_test_pool_factory(forced_pool_success);
 
-    open_connection_impl(&state, &connection_id)
+    open_connection_impl(&state, crate::common::open_payload(&connection_id))
         .await
         .expect("open should succeed with keepalive enabled");
 }
@@ -1666,10 +1682,10 @@ async fn open_connection_impl_distinct_session_per_open() {
         save_connection_impl(&state, sample_save_input(None)).expect("save should succeed");
     let _pool_guard = install_test_pool_factory(forced_pool_success);
 
-    let r1 = open_connection_impl(&state, &profile_id)
+    let r1 = open_connection_impl(&state, crate::common::open_payload(&profile_id))
         .await
         .expect("first open should succeed");
-    let r2 = open_connection_impl(&state, &profile_id)
+    let r2 = open_connection_impl(&state, crate::common::open_payload(&profile_id))
         .await
         .expect("second open should succeed");
 

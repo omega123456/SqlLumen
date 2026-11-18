@@ -18,14 +18,10 @@ fn dummy_stored_params() -> StoredConnectionParams {
         has_password: false,
         keychain_ref: None,
         default_database: None,
-        ssl: SslSettings {
-            enabled: false,
-            ca_path: None,
-            cert_path: None,
-            key_path: None,
-        },
+        ssl: SslSettings::default(),
         connect_timeout_secs: 10,
         keepalive_interval_secs: 60,
+        session_password: None,
     }
 }
 

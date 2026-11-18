@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
-import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
+import { useDismissOnOutsideClick } from '../../hooks/use-dismiss-on-outside-click'
 import { DISMISS_ALL_CONTEXT_MENUS } from '../../lib/context-menu-events'
 import {
   CONTEXT_MENU,

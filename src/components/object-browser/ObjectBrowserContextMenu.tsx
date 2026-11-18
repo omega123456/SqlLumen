@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
+import { useDismissOnOutsideClick } from '../../hooks/use-dismiss-on-outside-click'
 import { logFrontend } from '../../lib/app-log-commands'
 import {
   CONTEXT_MENU,

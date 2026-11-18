@@ -6,6 +6,7 @@ import { ConnectionTabBar } from '../../../components/layout/ConnectionTabBar'
 import { currentTheme } from '../../../lib/theme-tokens'
 import { useThemeStore } from '../../../stores/theme-store'
 import { useConnectionStore } from '../../../stores/connection-store'
+import { useConnectionsPageStore } from '../../../stores/connections-page-store'
 import { useCommandPaletteStore } from '../../../stores/command-palette-store'
 import { setupMatchMedia } from '../../helpers/mock-match-media'
 import { makeActiveConnection, makeSavedConnection } from '../../helpers/connection-test-utils'
@@ -16,17 +17,17 @@ beforeEach(() => {
     activeConnections: {},
     activeConnectionOrder: [],
     activeTabId: null,
-    dialogOpen: false,
     error: null,
   })
+  useConnectionsPageStore.getState().closePage()
   document.documentElement.classList.remove('dark')
   setupMatchMedia(false)
 })
 
 describe('ConnectionTabBar', () => {
-  it('renders the New Connection button', () => {
+  it('renders the Show connections button', () => {
     render(<ConnectionTabBar />)
-    expect(screen.getByLabelText('New connection')).toBeInTheDocument()
+    expect(screen.getByLabelText('Show connections')).toBeInTheDocument()
   })
 
   it('renders the theme toggle button', () => {
@@ -41,7 +42,7 @@ describe('ConnectionTabBar', () => {
 
   it('renders empty tab bar with only utility buttons when no connections active', () => {
     render(<ConnectionTabBar />)
-    expect(screen.getByLabelText('New connection')).toBeInTheDocument()
+    expect(screen.getByLabelText('Show connections')).toBeInTheDocument()
     expect(screen.getByTestId('theme-toggle')).toBeInTheDocument()
     expect(screen.getByLabelText('Settings')).toBeInTheDocument()
     // No tabs should be rendered
@@ -100,7 +101,7 @@ describe('ConnectionTabBar', () => {
     expect(screen.getByText('Prod (3)')).toBeInTheDocument()
   })
 
-  it('clicking a tab calls switchTab(id)', async () => {
+  it('clicking a tab switches to it, and over the connections page it asks before leaving edits', async () => {
     const user = userEvent.setup()
     const conn1 = makeActiveConnection({ id: 'sess-1' })
     const profile2 = makeSavedConnection({ id: 'conn-2', name: 'Staging DB' })
@@ -116,6 +117,16 @@ describe('ConnectionTabBar', () => {
 
     await user.click(screen.getByText('Staging DB'))
     expect(useConnectionStore.getState().activeTabId).toBe('sess-2')
+
+    await user.click(screen.getByLabelText('Show connections'))
+    expect(useConnectionsPageStore.getState().isOpen).toBe(true)
+    act(() => useConnectionsPageStore.getState().setUnsavedEdits(true))
+    await user.click(screen.getByText('Test DB'))
+    expect(useConnectionStore.getState().activeTabId).toBe('sess-2')
+
+    act(() => useConnectionsPageStore.getState().confirmLeave())
+    expect(useConnectionStore.getState().activeTabId).toBe('sess-1')
+    expect(useConnectionsPageStore.getState().isOpen).toBe(false)
   })
 
   it('clicking close button calls closeConnection(id)', async () => {
@@ -204,15 +215,6 @@ describe('ConnectionTabBar', () => {
     } finally {
       closeSpy.mockRestore()
     }
-  })
-
-  it('"+" button calls openDialog()', async () => {
-    const user = userEvent.setup()
-    render(<ConnectionTabBar />)
-
-    expect(useConnectionStore.getState().dialogOpen).toBe(false)
-    await user.click(screen.getByLabelText('New connection'))
-    expect(useConnectionStore.getState().dialogOpen).toBe(true)
   })
 
   it('renders a 3x16 colour marker on every tab whose profile has a colour', () => {

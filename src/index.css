@@ -341,8 +341,9 @@
   --spacing-viewport-cap: 90vw;
   --spacing-popover-offset: calc(100% + 4px);
   --spacing-state-message: 32ch;
-  --spacing-connection-dialog-width: min(920px, calc(100vw - 32px));
-  --spacing-connection-dialog-height: min(600px, calc(100vh - 32px));
+  --spacing-connection-tile: 104px;
+  --spacing-save-bar: 64px;
+  --spacing-port-field: 96px;
   --spacing-viewport-inset-width: calc(100vw - 32px);
   --spacing-viewport-inset-height: calc(100vh - 32px);
   --spacing-settings-dialog-width: min(80vw, 1400px);
@@ -356,9 +357,8 @@
   --grid-template-rows-workspace: auto minmax(0, 1fr);
   --grid-template-columns-form-rows: 160px minmax(0, 420px) auto;
   --grid-template-columns-ddl-split: minmax(0, 13fr) minmax(0, 7fr);
-  --grid-template-columns-connection-body: 260px minmax(0, 1fr);
-  --grid-template-rows-connection-body: minmax(0, 1fr) auto;
-  --grid-template-columns-connection-row: minmax(0, 1fr) 140px;
+  --grid-template-columns-connection-tiles: repeat(auto-fill, minmax(280px, 1fr));
+  --grid-template-columns-connection-facts: 136px minmax(0, 1fr);
   --grid-template-columns-settings: 240px minmax(0, 1fr);
   --grid-template-rows-settings: 44px minmax(0, 1fr) auto;
   --grid-template-columns-welcome-chips: 1fr 1fr;
@@ -432,6 +432,8 @@
   --breakpoint-wide: 921px;
 
   --container-toolbar-compact: 820px;
+  --container-connections-page: 1600px;
+  --container-connections-composer: 880px;
 
   --ease-*: initial;
   --ease-out: ease-out;

@@ -1,6 +1,7 @@
 //! Cross-table / error-path DB behavior that spans repositories.
 
 use crate::common;
+use sqllumen_lib::db::ssl_mode::SslMode;
 
 use sqllumen_lib::db::connection_groups;
 use sqllumen_lib::db::connections::{self, NewConnectionData, UpdateConnectionData};
@@ -67,7 +68,7 @@ fn test_connection_reports_missing_rows_for_update_and_delete() {
         port: 3307,
         username: "admin".to_string(),
         default_database: None,
-        ssl_enabled: false,
+        ssl_mode: SslMode::Disabled,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,
@@ -103,7 +104,7 @@ fn test_connection_and_group_round_trip_queries_work() {
         port: 3306,
         username: "root".to_string(),
         default_database: Some("app".to_string()),
-        ssl_enabled: false,
+        ssl_mode: SslMode::Disabled,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,

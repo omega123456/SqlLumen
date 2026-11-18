@@ -9,12 +9,18 @@ import { isConnectionOfProfile, normalizeActiveConnectionOrder } from './active-
 
 type ActiveConnections = Pick<ConnectionState, 'activeConnections'>
 type OrderedConnections = ActiveConnections & Pick<ConnectionState, 'activeConnectionOrder'>
-type ProfiledConnections = ActiveConnections & Pick<ConnectionState, 'savedConnections'>
+type SavedConnections = Pick<ConnectionState, 'savedConnections'>
+type ProfiledConnections = ActiveConnections & SavedConnections
 type AttachedConnection = OrderedConnections & Pick<ConnectionState, 'activeTabId' | 'error'>
 
 export interface ActiveConnectionMove {
   sessionId: string
   insertIndex: number
+}
+
+export interface ProfileConnected {
+  profileId: string
+  lastConnectedAt: string | null
 }
 
 export interface SessionDatabaseChange {
@@ -110,4 +116,15 @@ export function applyProfileDefaultDatabase(
     activeConnections: Object.fromEntries(activeEntries),
     savedConnections: state.savedConnections.map((saved) => withDefaultDatabaseOf(saved, profile)),
   }
+}
+
+export function recordLastConnected(
+  state: SavedConnections,
+  { profileId, lastConnectedAt }: ProfileConnected
+): SavedConnections {
+  if (lastConnectedAt === null) return state
+  const savedConnections = state.savedConnections.map((saved) =>
+    saved.id === profileId ? { ...saved, lastConnectedAt: lastConnectedAt } : saved
+  )
+  return { savedConnections: savedConnections }
 }

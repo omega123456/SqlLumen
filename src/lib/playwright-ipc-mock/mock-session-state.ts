@@ -1,4 +1,6 @@
+import { formatISO } from 'date-fns'
 import { hasWindow } from '../tauri-env'
+import type { OpenConnectionResult } from '../connection-commands'
 import { getCommandPaletteRecentsFixture, getStaticFixture } from '../../tests/playwright-fixtures'
 
 export const COMMAND_PALETTE_RECENTS_SETTING_KEY = 'commandPalette.recents'
@@ -90,11 +92,20 @@ export async function maybeDelaySchemaMetadata(): Promise<void> {
   })
 }
 
-export function openMockConnection(): { sessionId: string; serverVersion: string } {
+function throwIfLoginDenied(password: string | null): void {
+  const denial = getStaticFixture('openConnectionDenial')
+  if (denial === null) return
+  if (password) return
+  throw denial
+}
+
+export function openMockConnection(payload: { password: string | null }): OpenConnectionResult {
+  throwIfLoginDenied(payload.password)
   activeMockDatabase = defaultMockDatabase()
   return {
     sessionId: allocatePlaywrightSessionId(),
     serverVersion: getStaticFixture('serverVersion'),
+    lastConnectedAt: formatISO(new Date()),
   }
 }
 

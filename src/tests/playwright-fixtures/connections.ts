@@ -1,4 +1,5 @@
 import type {
+  ConnectionGroup,
   OpenConnectionSession,
   SavedConnection,
   TestConnectionResult,
@@ -19,7 +20,8 @@ export const PLAYWRIGHT_MOCK_CONNECTION: SavedConnection = {
   username: 'appuser',
   hasPassword: true,
   defaultDatabase: PLAYWRIGHT_MOCK_DATABASE,
-  sslEnabled: false,
+  sslMode: 'disabled',
+  lastConnectedAt: null,
   sslCaPath: null,
   sslCertPath: null,
   sslKeyPath: null,
@@ -43,3 +45,132 @@ export const TEST_CONNECTION_RESULT: TestConnectionResult = {
 }
 
 export const DEFAULT_OPEN_CONNECTION_SESSIONS: OpenConnectionSession[] = []
+
+export interface OpenConnectionDenial {
+  kind: 'accessDenied'
+  message: string
+}
+
+export const NO_OPEN_CONNECTION_DENIAL: OpenConnectionDenial | null = null
+
+export const STAGING_MOCK_CONNECTION: SavedConnection = {
+  ...PLAYWRIGHT_MOCK_CONNECTION,
+  id: 'conn-playwright-2',
+  name: 'Staging MySQL',
+  host: '10.0.0.5',
+  port: 3307,
+  username: 'staging',
+  defaultDatabase: null,
+  color: '#d97706',
+  sortOrder: 1,
+}
+
+export const DEFAULT_SAVED_CONNECTIONS: SavedConnection[] = [PLAYWRIGHT_MOCK_CONNECTION]
+export const DEFAULT_CONNECTION_GROUPS: ConnectionGroup[] = []
+
+const PRODUCTION_GROUP_ID = 'grp-production'
+const STAGING_GROUP_ID = 'grp-staging'
+
+const BOARD_GROUPS: ConnectionGroup[] = [
+  {
+    id: PRODUCTION_GROUP_ID,
+    name: 'Production',
+    parentId: null,
+    sortOrder: 0,
+    createdAt: PLAYWRIGHT_MOCK_TIMESTAMP,
+  },
+  {
+    id: STAGING_GROUP_ID,
+    name: 'Staging',
+    parentId: null,
+    sortOrder: 1,
+    createdAt: PLAYWRIGHT_MOCK_TIMESTAMP,
+  },
+]
+
+function boardProfile(profile: Partial<SavedConnection>): SavedConnection {
+  return { ...PLAYWRIGHT_MOCK_CONNECTION, hasPassword: true, defaultDatabase: null, ...profile }
+}
+
+const BOARD_PROFILES: SavedConnection[] = [
+  boardProfile({
+    id: PLAYWRIGHT_MOCK_CONNECTION_ID,
+    name: 'Sample MySQL',
+    username: 'root',
+    defaultDatabase: PLAYWRIGHT_MOCK_DATABASE,
+    lastConnectedAt: '2026-06-08T11:36:00.000000+00:00',
+  }),
+  boardProfile({
+    id: 'conn-board-orders',
+    name: 'Orders primary',
+    host: 'orders-db.eu-west-1.rds.amazonaws.com',
+    username: 'app_rw',
+    defaultDatabase: 'orders',
+    sslMode: 'verify_ca',
+    sslCaPath: '/Users/me/certs/rds-eu-west-1-bundle.pem',
+    color: '#d13438',
+    groupId: PRODUCTION_GROUP_ID,
+    lastConnectedAt: '2026-06-08T10:00:00.000000+00:00',
+  }),
+  boardProfile({
+    id: 'conn-board-orders-replica',
+    name: 'Orders read replica',
+    host: 'orders-ro.eu-west-1.rds.amazonaws.com',
+    username: 'report',
+    sslMode: 'required',
+    color: '#d13438',
+    readOnly: true,
+    groupId: PRODUCTION_GROUP_ID,
+    lastConnectedAt: '2026-06-07T12:00:00.000000+00:00',
+  }),
+  boardProfile({
+    id: 'conn-board-analytics',
+    name: 'Analytics warehouse',
+    host: 'analytics.internal',
+    port: 3307,
+    username: 'analyst',
+    color: '#8764b8',
+    groupId: PRODUCTION_GROUP_ID,
+    lastConnectedAt: '2026-05-31T12:00:00.000000+00:00',
+  }),
+  boardProfile({
+    id: 'conn-board-staging',
+    name: 'Staging MariaDB',
+    host: 'staging-maria.internal',
+    username: 'root',
+    color: '#ca5010',
+    groupId: STAGING_GROUP_ID,
+    lastConnectedAt: '2026-06-08T07:00:00.000000+00:00',
+  }),
+  boardProfile({
+    id: 'conn-board-crm',
+    name: 'Staging legacy CRM',
+    host: '10.20.4.17',
+    username: 'crm',
+    color: null,
+    groupId: STAGING_GROUP_ID,
+    lastConnectedAt: '2026-05-10T12:00:00.000000+00:00',
+  }),
+  boardProfile({
+    id: 'conn-board-local',
+    name: 'Local development',
+    host: 'localhost',
+    username: 'dev',
+    hasPassword: false,
+    color: '#0f766e',
+    lastConnectedAt: null,
+  }),
+  boardProfile({
+    id: 'conn-board-sandbox',
+    name: 'Reporting sandbox',
+    host: 'sandbox.reporting.internal',
+    username: 'sandbox',
+    color: null,
+    lastConnectedAt: '2026-04-09T12:00:00.000000+00:00',
+  }),
+]
+
+export const CONNECTIONS_BOARD_SCREENSHOT = {
+  savedConnections: BOARD_PROFILES,
+  connectionGroups: BOARD_GROUPS,
+}

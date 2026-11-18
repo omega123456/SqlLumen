@@ -8,6 +8,7 @@
 //! helpers cannot observe cascade.
 
 use crate::common;
+use sqllumen_lib::db::ssl_mode::SslMode;
 
 use rusqlite::{params, Connection};
 use sqllumen_lib::commands::connections::delete_connection_impl;
@@ -26,7 +27,7 @@ fn seed_connection(conn: &Connection, name: &str) -> String {
             port: 3306,
             username: "root".to_string(),
             default_database: Some("mydb".to_string()),
-            ssl_enabled: false,
+            ssl_mode: SslMode::Disabled,
             ssl_ca_path: None,
             ssl_cert_path: None,
             ssl_key_path: None,

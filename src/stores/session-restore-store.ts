@@ -26,6 +26,7 @@ export { buildSessionState } from './session-restore-store/session-serialization
 
 interface SessionRestoreState {
   isRestoring: boolean
+  hasRestoreSettled: boolean
   restoreError: string | null
   hasIncompleteRestore: boolean
 
@@ -48,6 +49,14 @@ function canPersistSession(): boolean {
 }
 
 async function restoreSession(): Promise<void> {
+  try {
+    await restoreEnabledSession()
+  } finally {
+    useSessionRestoreStore.setState({ hasRestoreSettled: true })
+  }
+}
+
+async function restoreEnabledSession(): Promise<void> {
   if (!useSessionRestoreStore.getState().isEnabled()) {
     return
   }
@@ -126,6 +135,7 @@ async function restoreFromState(state: SessionState): Promise<void> {
 
 export const useSessionRestoreStore = create<SessionRestoreState>()(() => ({
   isRestoring: false,
+  hasRestoreSettled: false,
   restoreError: null,
   hasIncompleteRestore: false,
   isEnabled: isEnabled,

@@ -10,8 +10,7 @@ import {
   getColumnIndexByName,
   waitForSemanticHighlighting,
   getGridCellByColumnName,
-  openConnectionManager,
-  selectSampleConnection,
+  overrideSavedConnections,
   waitForApp,
   waitForGlideGrid,
 } from './helpers'
@@ -22,6 +21,7 @@ import {
   getGlideGridGeometry,
 } from './glide-grid-helpers'
 import { BLOB_VIEWER_SCREENSHOT_STATES } from '../src/tests/playwright-fixtures/blob-value'
+import { CONNECTIONS_BOARD_SCREENSHOT } from '../src/tests/playwright-fixtures/connections'
 
 const themes = ['light', 'dark'] as const
 const FIXED_SCREENSHOT_DATE_ISO = '2026-06-08T12:00:00.000Z'
@@ -142,7 +142,8 @@ async function openTwoConnectionSessionsFirstActive(page: Page) {
       username: 'staging',
       hasPassword: true,
       defaultDatabase: null,
-      sslEnabled: false,
+      sslMode: 'disabled',
+      lastConnectedAt: null,
       sslCaPath: null,
       sslCertPath: null,
       sslKeyPath: null,
@@ -229,7 +230,8 @@ async function seedCopyToHostTargets(page: Page) {
         username: 'replica_user',
         hasPassword: true,
         defaultDatabase: 'warehouse_db',
-        sslEnabled: false,
+        sslMode: 'disabled',
+        lastConnectedAt: null,
         sslCaPath: null,
         sslCertPath: null,
         sslKeyPath: null,
@@ -250,7 +252,8 @@ async function seedCopyToHostTargets(page: Page) {
         username: 'archive_user',
         hasPassword: true,
         defaultDatabase: 'archive_db',
-        sslEnabled: false,
+        sslMode: 'disabled',
+        lastConnectedAt: null,
         sslCaPath: null,
         sslCertPath: null,
         sslKeyPath: null,
@@ -1014,6 +1017,26 @@ async function resetChromeScrollPositions(page: Page) {
   await page.mouse.move(0, 0)
 }
 
+const ORDERS_PROFILE_NAME = 'Orders primary'
+
+async function showConnectionsBoard(page: Page) {
+  await overrideSavedConnections(page, CONNECTIONS_BOARD_SCREENSHOT)
+  await expect(
+    page.getByRole('button', { name: `Connect to ${ORDERS_PROFILE_NAME}` }).first()
+  ).toBeVisible({
+    timeout: APP_READY_MS,
+  })
+}
+
+async function openBoardProfile(page: Page, profileName: string) {
+  await showConnectionsBoard(page)
+  await page
+    .getByRole('button', { name: `Edit ${profileName}` })
+    .first()
+    .click()
+  await expect(page.getByTestId('connection-profile')).toBeVisible({ timeout: APP_READY_MS })
+}
+
 async function waitForAnimationsToFinish(locator: Locator) {
   await locator.evaluate(async (element) => {
     const animations = element.getAnimations({ subtree: true })
@@ -1028,16 +1051,10 @@ for (const theme of themes) {
       await ensureTheme(page, theme)
     })
 
-    test('welcome — full page', async ({ page }) => {
-      await expect(page).toHaveScreenshot(`welcome-full-${theme}.png`, { fullPage: true })
-    })
-
-    test('AppLayout — app-layout', async ({ page }) => {
-      await expect(page.getByTestId('app-layout')).toHaveScreenshot(`app-layout-${theme}.png`)
-    })
-
-    test('Sidebar — sidebar-inner', async ({ page }) => {
-      await expect(page.getByTestId('sidebar-inner')).toHaveScreenshot(`sidebar-inner-${theme}.png`)
+    test('ConnectionsPage — full page', async ({ page }) => {
+      await showConnectionsBoard(page)
+      await resetChromeScrollPositions(page)
+      await expect(page).toHaveScreenshot(`connections-page-full-${theme}.png`, { fullPage: true })
     })
 
     test('ToastViewport — stacked toasts (design reference)', async ({ page }) => {
@@ -1048,50 +1065,36 @@ for (const theme of themes) {
       })
     })
 
-    test('ConnectionDialog — full dialog', async ({ page }) => {
-      await openConnectionManager(page)
-      await expect(page.getByTestId('connection-dialog')).toHaveScreenshot(
-        `connection-dialog-${theme}.png`
+    test('ConnectionProfile — editing Security after a test', async ({ page }) => {
+      await openBoardProfile(page, ORDERS_PROFILE_NAME)
+      await page.getByRole('button', { name: 'Test connection' }).click()
+      await expect(page.getByText(/^Reachable/)).toBeVisible()
+      await page.getByRole('button', { name: 'Edit Security' }).click()
+      await resetChromeScrollPositions(page)
+      await expect(page).toHaveScreenshot(`connection-profile-edit-${theme}.png`)
+    })
+
+    test('ConnectionProfile — reading', async ({ page }) => {
+      await openBoardProfile(page, ORDERS_PROFILE_NAME)
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('connection-profile')).toHaveScreenshot(
+        `connection-profile-read-${theme}.png`
       )
     })
 
-    test('SavedConnectionsList — saved-connections-pane', async ({ page }) => {
-      await openConnectionManager(page)
-      await expect(page.getByTestId('saved-connections-pane')).toHaveScreenshot(
-        `saved-connections-pane-${theme}.png`
-      )
-    })
-
-    test('ConnectionForm — main pane', async ({ page }) => {
-      await openConnectionManager(page)
-      await page.evaluate(() => {
-        const el = document.activeElement
-        if (el && el instanceof HTMLElement) {
-          el.blur()
-        }
-      })
-      await expect(page.getByTestId('connection-form-main')).toHaveScreenshot(
-        `connection-form-main-${theme}.png`,
-        { animations: 'disabled', timeout: APP_READY_MS }
-      )
-    })
-
-    test('TestConnectionResult — after successful test', async ({ page }) => {
-      await openConnectionManager(page)
-      await selectSampleConnection(page.getByTestId('connection-dialog'))
-      await page
-        .getByTestId('connection-dialog')
-        .getByRole('button', { name: 'Test connection' })
-        .click()
-      await expect(page.getByTestId('test-connection-result')).toBeVisible()
-      await expect(page.getByTestId('test-connection-result')).toHaveScreenshot(
-        `test-connection-result-${theme}.png`
-      )
+    test('UrlReview — pasted connection URL', async ({ page }) => {
+      await showConnectionsBoard(page)
+      const composer = page.getByTestId('connections-composer')
+      await composer.fill('mysql://deploy:s3cret@shop-db.acme.io:3306/shop')
+      const review = page.getByTestId('url-review')
+      await expect(review).toBeVisible()
+      const clip = await getUnionClip(page, [composer, review])
+      await expect(page).toHaveScreenshot(`connection-url-review-${theme}.png`, { clip })
     })
 
     test('ColorPickerPopover — open', async ({ page }) => {
-      await openConnectionManager(page)
-      await page.getByTestId('connection-form-tab-advanced').click()
+      await openBoardProfile(page, ORDERS_PROFILE_NAME)
+      await page.getByRole('button', { name: 'Edit Name and behaviour' }).click()
       await page.getByRole('button', { name: 'Choose color' }).click()
       await expect(page.getByTestId('color-picker-popover')).toBeVisible()
       await expect(page.getByTestId('color-picker-popover')).toHaveScreenshot(
@@ -1099,23 +1102,21 @@ for (const theme of themes) {
       )
     })
 
-    test('Dropdown — group list open', async ({ page }) => {
-      await openConnectionManager(page)
-      await page.getByTestId('connection-form-tab-advanced').click()
-      const formMain = page.getByTestId('connection-form-main')
-      const advancedPanel = page.getByTestId('connection-form-panel-advanced')
-      await expect(advancedPanel).toBeVisible()
-      await waitForAnimationsToFinish(advancedPanel)
-      const groupField = advancedPanel.locator('label[for="conn-group"]').locator('xpath=..')
-      await formMain.locator('#conn-group').click()
-      const listbox = page.getByRole('listbox', { name: 'Group' })
+    test('Dropdown — SSL mode list open', async ({ page }) => {
+      await openBoardProfile(page, ORDERS_PROFILE_NAME)
+      await page.getByRole('button', { name: 'Edit Security' }).click()
+      const sslMode = page.getByTestId('ssl-mode-dropdown')
+      await sslMode.click()
+      const listbox = page.getByRole('listbox')
       await expect(listbox).toBeVisible()
-      const clip = await getUnionClip(page, [groupField, listbox])
-      await expect(page).toHaveScreenshot(`group-dropdown-open-${theme}.png`, { clip })
+      await waitForAnimationsToFinish(listbox)
+      const clip = await getUnionClip(page, [sslMode, listbox])
+      await expect(page).toHaveScreenshot(`ssl-mode-dropdown-open-${theme}.png`, { clip })
     })
 
     test('GlobalContextMenu — on host field', async ({ page }) => {
-      await openConnectionManager(page)
+      await openBoardProfile(page, ORDERS_PROFILE_NAME)
+      await page.getByRole('button', { name: 'Edit Server' }).click()
       await page.locator('#conn-host').click({ button: 'right' })
       await expect(page.getByTestId('global-context-menu')).toBeVisible()
       await expect(page.getByTestId('global-context-menu')).toHaveScreenshot(

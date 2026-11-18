@@ -13,6 +13,7 @@ mod binary_projection_integration {
     use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
     use sqllumen_lib::commands::mysql::{open_connection_impl, OpenConnectionResult};
     use sqllumen_lib::commands::table_data as table_data_commands;
+    use sqllumen_lib::db::ssl_mode::SslMode;
     use sqllumen_lib::mysql::metadata_cache::MetadataCache;
     use sqllumen_lib::mysql::pool::set_test_pool_factory;
     use sqllumen_lib::mysql::registry::ConnectionRegistry;
@@ -114,7 +115,9 @@ mod binary_projection_integration {
         payload: OpenConnectionPayloadDto,
         state: tauri::State<'_, AppState>,
     ) -> Result<OpenConnectionResult, String> {
-        open_connection_impl(&state, &payload.profile_id).await
+        open_connection_impl(&state, crate::common::open_payload(&payload.profile_id))
+            .await
+            .map_err(|error| error.message)
     }
 
     #[tauri::command]
@@ -163,7 +166,7 @@ mod binary_projection_integration {
             username: "root".to_string(),
             password: None,
             default_database: None,
-            ssl_enabled: false,
+            ssl_mode: SslMode::Disabled,
             ssl_ca_path: None,
             ssl_cert_path: None,
             ssl_key_path: None,
@@ -182,7 +185,7 @@ mod binary_projection_integration {
             "username": input.username,
             "password": input.password,
             "defaultDatabase": input.default_database,
-            "sslEnabled": input.ssl_enabled,
+            "sslMode": input.ssl_mode,
             "sslCaPath": input.ssl_ca_path,
             "sslCertPath": input.ssl_cert_path,
             "sslKeyPath": input.ssl_key_path,

@@ -12,6 +12,7 @@ import { useUpdateStore } from '../../../stores/update-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
 import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
 import type { ObjectEditorTab, TableDataTab, TableDesignerTab } from '../../../types/schema'
+import type { ActiveConnection } from '../../../types/connection'
 import { ipc } from '../../ipc-mock'
 
 const mockCheckForUpdate = vi.fn<(manual: boolean) => Promise<void>>()
@@ -39,7 +40,7 @@ function setReadyToFinishState(version: string, platform: 'windows' | 'linux' | 
   })
 }
 
-function makeActiveConnections(count: number) {
+function makeActiveConnections(count: number): Record<string, ActiveConnection> {
   return Object.fromEntries(
     Array.from({ length: count }, (_, index) => {
       const id = `conn${index + 1}`
@@ -55,7 +56,8 @@ function makeActiveConnections(count: number) {
             username: 'root',
             hasPassword: true,
             defaultDatabase: null,
-            sslEnabled: false,
+            sslMode: 'disabled',
+            lastConnectedAt: null,
             sslCaPath: null,
             sslCertPath: null,
             sslKeyPath: null,
@@ -105,7 +107,6 @@ function resetStores(): void {
   useConnectionStore.setState({
     activeConnections: {},
     activeTabId: null,
-    dialogOpen: false,
     error: null,
   })
   resetWorkspaceStore()

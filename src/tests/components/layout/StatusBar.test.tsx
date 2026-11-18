@@ -88,7 +88,6 @@ beforeEach(() => {
   useConnectionStore.setState({
     activeConnections: {},
     activeTabId: null,
-    dialogOpen: false,
     error: null,
   })
   resetWorkspaceStore()

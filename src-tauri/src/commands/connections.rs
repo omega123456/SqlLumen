@@ -1,5 +1,7 @@
 use crate::commands::helpers::lock_db;
-use crate::db::connections::{self, ConnectionRecord, NewConnectionData, UpdateConnectionData};
+use crate::db::connections::{
+    self, ConnectionRecord, NewConnectionData, SslMode, UpdateConnectionData,
+};
 use crate::state::AppState;
 use serde::Deserialize;
 #[cfg(not(coverage))]
@@ -14,7 +16,7 @@ pub struct SaveConnectionInput {
     pub username: String,
     pub password: Option<String>,
     pub default_database: Option<String>,
-    pub ssl_enabled: bool,
+    pub ssl_mode: SslMode,
     pub ssl_ca_path: Option<String>,
     pub ssl_cert_path: Option<String>,
     pub ssl_key_path: Option<String>,
@@ -37,7 +39,7 @@ pub struct UpdateConnectionInput {
     #[serde(default)]
     pub clear_password: bool,
     pub default_database: Option<String>,
-    pub ssl_enabled: bool,
+    pub ssl_mode: SslMode,
     pub ssl_ca_path: Option<String>,
     pub ssl_cert_path: Option<String>,
     pub ssl_key_path: Option<String>,
@@ -59,7 +61,7 @@ pub fn save_connection_impl(state: &AppState, data: SaveConnectionInput) -> Resu
         port: data.port,
         username: data.username,
         default_database: data.default_database,
-        ssl_enabled: data.ssl_enabled,
+        ssl_mode: data.ssl_mode,
         ssl_ca_path: data.ssl_ca_path,
         ssl_cert_path: data.ssl_cert_path,
         ssl_key_path: data.ssl_key_path,
@@ -138,7 +140,7 @@ pub fn update_connection_impl(
         port: data.port,
         username: data.username,
         default_database: data.default_database,
-        ssl_enabled: data.ssl_enabled,
+        ssl_mode: data.ssl_mode,
         ssl_ca_path: data.ssl_ca_path,
         ssl_cert_path: data.ssl_cert_path,
         ssl_key_path: data.ssl_key_path,

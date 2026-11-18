@@ -4,7 +4,7 @@ import { IconButton } from '../common/IconButton'
 import { ElevatedCodePanel } from '../common/ElevatedCodePanel'
 import { writeClipboardText } from '../../lib/context-menu-utils'
 import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
-import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
+import { useDismissOnOutsideClick } from '../../hooks/use-dismiss-on-outside-click'
 import { toErrorMessage } from '../../lib/error-message'
 
 const ANCHOR_GAP_PX = 4

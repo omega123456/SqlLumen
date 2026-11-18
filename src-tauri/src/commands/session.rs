@@ -1,4 +1,3 @@
-use crate::credentials;
 use crate::mysql::pool;
 use crate::mysql::schema_queries::safe_identifier;
 use crate::state::AppState;
@@ -40,10 +39,7 @@ pub async fn select_database_impl(
     let _ = safe_identifier(database_name)?;
     stored_params.default_database = Some(database_name.to_string());
 
-    let password = credentials::resolve_password(
-        stored_params.profile_id.as_str(),
-        stored_params.has_password,
-    )?;
+    let password = stored_params.resolve_password()?;
 
     #[cfg(any(test, feature = "test-utils"))]
     let hook = *TEST_SELECT_DATABASE_HOOK

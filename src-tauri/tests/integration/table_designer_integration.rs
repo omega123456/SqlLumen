@@ -1,6 +1,7 @@
 use sqllumen_lib::commands::table_designer::{
     generate_table_ddl_impl, invalidate_metadata_cache_for_applied_table_ddl, parse_column_type,
 };
+use sqllumen_lib::db::ssl_mode::SslMode;
 #[cfg(coverage)]
 use sqllumen_lib::mysql::pool::SslSettings;
 use sqllumen_lib::mysql::table_designer::{
@@ -1488,7 +1489,9 @@ mod command_wrapper_integration {
         payload: OpenConnectionPayloadDto,
         state: tauri::State<'_, AppState>,
     ) -> Result<OpenConnectionResult, String> {
-        open_connection_impl(&state, &payload.profile_id).await
+        open_connection_impl(&state, crate::common::open_payload(&payload.profile_id))
+            .await
+            .map_err(|error| error.message)
     }
 
     #[tauri::command]
@@ -1537,7 +1540,7 @@ mod command_wrapper_integration {
             username: "root".to_string(),
             password: None,
             default_database: None,
-            ssl_enabled: false,
+            ssl_mode: SslMode::Disabled,
             ssl_ca_path: None,
             ssl_cert_path: None,
             ssl_key_path: None,
@@ -1556,7 +1559,7 @@ mod command_wrapper_integration {
             "username": input.username,
             "password": input.password,
             "defaultDatabase": input.default_database,
-            "sslEnabled": input.ssl_enabled,
+            "sslMode": input.ssl_mode,
             "sslCaPath": input.ssl_ca_path,
             "sslCertPath": input.ssl_cert_path,
             "sslKeyPath": input.ssl_key_path,
@@ -1893,14 +1896,10 @@ mod coverage_stubs {
                     has_password: false,
                     keychain_ref: None,
                     default_database: Some("appdb".to_string()),
-                    ssl: SslSettings {
-                        enabled: false,
-                        ca_path: None,
-                        cert_path: None,
-                        key_path: None,
-                    },
+                    ssl: SslSettings::default(),
                     connect_timeout_secs: 10,
                     keepalive_interval_secs: 0,
+                    session_password: None,
                 },
                 read_only,
             },

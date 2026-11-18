@@ -143,7 +143,7 @@ export interface PayloadCommandMap {
 
   update_connection_group: Command<{ id: string; name: string }, void>
   update_connection: Command<{ id: string; data: UpdateConnectionInput }, void>
-  open_connection: Command<{ profileId: string }, OpenConnectionResult>
+  open_connection: Command<{ profileId: string; password: string | null }, OpenConnectionResult>
 
   list_copyable_objects: Command<DatabaseRequest, CopyableObjects>
 

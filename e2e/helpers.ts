@@ -345,30 +345,42 @@ export async function clickFkLookupGridRow(page: Page, rowIndex: number) {
   await clickGlideCell(page, 'fk-lookup-grid', 0, rowIndex, geometry)
 }
 
-export async function openConnectionManager(page: Page) {
-  const btn = page.getByRole('button', { name: 'New connection' }).first()
-  const dialog = page.getByTestId('connection-dialog')
-
-  for (let attempt = 0; attempt < 2; attempt++) {
-    if (!(await dialog.isVisible())) await btn.click()
-
-    try {
-      await expect(dialog).toBeVisible({ timeout: 3_000 })
-      break
-    } catch (error) {
-      if (attempt === 1) throw error
-    }
-  }
-
-  await expect(dialog.getByText('Sample MySQL')).toBeVisible({ timeout: APP_READY_MS })
+export interface SavedConnectionsFixture {
+  savedConnections: unknown[]
+  connectionGroups: unknown[]
 }
 
-export async function selectSampleConnection(dialog: Locator) {
-  const sampleRow = dialog.getByTestId('connection-list-item').filter({ hasText: 'Sample MySQL' })
-  await expect(sampleRow).toBeVisible({ timeout: APP_READY_MS })
-  await sampleRow.scrollIntoViewIfNeeded()
-  await expect(sampleRow).toBeEnabled({ timeout: APP_READY_MS })
-  await sampleRow.click()
+/** Replace the saved profiles through the fixture registry, then reload them into the app. */
+export async function overrideSavedConnections(page: Page, fixture: SavedConnectionsFixture) {
+  await page.evaluate(async (data) => {
+    const target = window as unknown as Record<string, unknown>
+    const registry = target.__PLAYWRIGHT_FIXTURE_REGISTRY__ as {
+      overrideStaticFixture: (name: string, value: unknown) => void
+    }
+    registry.overrideStaticFixture('savedConnections', data.savedConnections)
+    registry.overrideStaticFixture('connectionGroups', data.connectionGroups)
+    const connectionStore = target.__connectionStore__ as {
+      getState: () => { fetchSavedConnections: () => Promise<void> }
+    }
+    await connectionStore.getState().fetchSavedConnections()
+  }, fixture)
+}
+
+export async function openConnectionsPage(page: Page) {
+  const connectionsPage = page.getByTestId('connections-page')
+  if (!(await connectionsPage.isVisible())) {
+    await page.getByRole('button', { name: 'Show connections' }).click()
+  }
+  await expect(connectionsPage).toBeVisible({ timeout: APP_READY_MS })
+  await expect(
+    connectionsPage.getByRole('button', { name: 'Connect to Sample MySQL' }).first()
+  ).toBeVisible({ timeout: APP_READY_MS })
+}
+
+export async function openSampleProfile(page: Page) {
+  await openConnectionsPage(page)
+  await page.getByRole('button', { name: 'Edit Sample MySQL' }).first().click()
+  await expect(page.getByTestId('connection-profile')).toBeVisible({ timeout: APP_READY_MS })
 }
 
 export async function dismissAllToasts(page: Page) {
@@ -393,13 +405,9 @@ export async function connectToSample(
 ) {
   const { dismissToasts = true, waitForDatabaseNode = true } = options
 
-  await openConnectionManager(page)
-  const dialog = page.getByTestId('connection-dialog')
-  await selectSampleConnection(dialog)
-  const connectBtn = dialog.getByRole('button', { name: 'Save and connect', exact: true })
-  await expect(connectBtn).toBeEnabled({ timeout: APP_READY_MS })
-  await connectBtn.click()
-  await expect(page.getByTestId('connection-dialog')).toBeHidden({ timeout: APP_READY_MS })
+  await openConnectionsPage(page)
+  await page.getByRole('button', { name: 'Connect to Sample MySQL' }).first().click()
+  await expect(page.getByTestId('connections-page')).toBeHidden({ timeout: APP_READY_MS })
   await expect(page.getByTestId('object-browser')).toBeVisible({ timeout: APP_READY_MS })
   await expect(page.getByTestId('status-bar')).toContainText('Connected', { timeout: APP_READY_MS })
 

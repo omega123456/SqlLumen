@@ -32,14 +32,10 @@ fn dummy_params() -> StoredConnectionParams {
         has_password: true,
         keychain_ref: Some("dummy".to_string()),
         default_database: None,
-        ssl: SslSettings {
-            enabled: false,
-            ca_path: None,
-            cert_path: None,
-            key_path: None,
-        },
+        ssl: SslSettings::default(),
         connect_timeout_secs: 10,
         keepalive_interval_secs: 60,
+        session_password: None,
     }
 }
 
@@ -432,12 +428,7 @@ fn test_create_pool_with_live_mysql() {
             username: user.to_string(),
             password: pass.to_string(),
             default_database: database,
-            ssl: SslSettings {
-                enabled: false,
-                ca_path: None,
-                cert_path: None,
-                key_path: None,
-            },
+            ssl: SslSettings::default(),
             connect_timeout_secs: 10,
         };
 
@@ -643,7 +634,9 @@ mod pool_lifecycle {
     use crate::common::mock_mysql_server::{MockMySqlServer, MockScript};
     use crate::common::silent_listener::{closed_port, SilentListener};
     use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
-    use sqllumen_lib::commands::mysql::{close_connection_impl, open_connection_impl};
+    use sqllumen_lib::commands::mysql::{
+        close_connection_impl, open_connection_impl, OpenConnectionErrorKind, OpenConnectionPayload,
+    };
     use sqllumen_lib::mysql::pool::{
         background_pool_options, IDLE_CONNECTION_TTL, MAX_CONNECTION_LIFETIME,
     };
@@ -669,7 +662,7 @@ mod pool_lifecycle {
             username: target.username.to_string(),
             password: None,
             default_database: None,
-            ssl_enabled: false,
+            ssl_mode: sqllumen_lib::db::ssl_mode::SslMode::Disabled,
             ssl_ca_path: None,
             ssl_cert_path: None,
             ssl_key_path: None,
@@ -684,9 +677,62 @@ mod pool_lifecycle {
 
     async fn open(state: &AppState, target: ProfileTarget<'_>) -> Result<String, String> {
         let profile_id = save_connection_impl(state, save_input(target)).expect("profile saves");
-        open_connection_impl(state, &profile_id)
+        open_connection_impl(state, crate::common::open_payload(&profile_id))
             .await
+            .map_err(|error| error.message)
             .map(|opened| opened.session_id)
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_refused_login_is_reported_as_access_denied() {
+        let script = MockScript {
+            rejected_username: Some(REJECTED_USERNAME),
+            ..MockScript::default()
+        };
+        let server = MockMySqlServer::start_with(script).await;
+        let state = common::test_app_state();
+        let target = ProfileTarget {
+            port: server.port,
+            username: REJECTED_USERNAME,
+        };
+        let profile_id = save_connection_impl(&state, save_input(target)).expect("profile saves");
+
+        let error = open_connection_impl(&state, crate::common::open_payload(&profile_id))
+            .await
+            .expect_err("login is refused");
+
+        assert_eq!(error.kind, OpenConnectionErrorKind::AccessDenied, "{}", error.message);
+        assert!(
+            error.message.starts_with("Failed to connect:"),
+            "{}",
+            error.message
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_one_off_password_stays_with_the_session_for_reconnects() {
+        let server = MockMySqlServer::start_script(vec![]).await;
+        let state = common::test_app_state();
+        let target = ProfileTarget {
+            port: server.port,
+            username: "root",
+        };
+        let profile_id = save_connection_impl(&state, save_input(target)).expect("profile saves");
+        let payload = OpenConnectionPayload {
+            profile_id,
+            password: Some("typed-once".to_string()),
+        };
+
+        let opened = open_connection_impl(&state, payload)
+            .await
+            .expect("open succeeds");
+
+        let stored = state
+            .registry
+            .get_connection_params(&opened.session_id)
+            .expect("session is registered");
+        assert_eq!(stored.resolve_password().as_deref(), Ok("typed-once"));
+        assert!(opened.last_connected_at.is_some());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -786,7 +832,7 @@ mod pool_lifecycle {
         };
         let profile_id = save_connection_impl(&state, save_input(target)).expect("profile saves");
 
-        let opened = open_connection_impl(&state, &profile_id)
+        let opened = open_connection_impl(&state, crate::common::open_payload(&profile_id))
             .await
             .expect("open succeeds");
 

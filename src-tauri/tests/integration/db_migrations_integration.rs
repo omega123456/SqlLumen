@@ -101,6 +101,55 @@ fn test_run_migrations_applies_v14_vacuum_state() {
     assert_eq!(seeded, "0");
 }
 
+fn ssl_mode_of(conn: &rusqlite::Connection, id: &str) -> String {
+    conn.query_row(
+        "SELECT ssl_mode FROM connections WHERE id = ?1",
+        [id],
+        |row| row.get(0),
+    )
+    .expect("connection row")
+}
+
+#[test]
+fn test_v15_maps_ssl_enabled_to_ssl_mode() {
+    let mut conn = test_conn();
+    embedded_main::migrations::runner()
+        .set_target(Target::Version(14))
+        .run(&mut conn)
+        .expect("run to V14");
+    conn.execute_batch(
+        "INSERT INTO connections (id, name, ssl_enabled, ssl_ca_path, created_at, updated_at) VALUES
+            ('off', 'Off', 0, '/certs/ca.pem', '0', '0'),
+            ('on-with-ca', 'With CA', 1, '/certs/ca.pem', '0', '0'),
+            ('on-blank-ca', 'Blank CA', 1, '   ', '0', '0'),
+            ('on-no-ca', 'No CA', 1, NULL, '0', '0');",
+    )
+    .expect("seed V14 connections");
+
+    run_migrations(&mut conn).expect("V15 should apply");
+
+    assert_eq!(ssl_mode_of(&conn, "off"), "disabled");
+    assert_eq!(ssl_mode_of(&conn, "on-with-ca"), "verify_ca");
+    assert_eq!(ssl_mode_of(&conn, "on-blank-ca"), "required");
+    assert_eq!(ssl_mode_of(&conn, "on-no-ca"), "required");
+    let connected_rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM connections WHERE last_connected_at IS NOT NULL",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count connected rows");
+    assert_eq!(connected_rows, 0);
+    let ssl_enabled_columns: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('connections') WHERE name = 'ssl_enabled'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("table info");
+    assert_eq!(ssl_enabled_columns, 0);
+}
+
 #[test]
 fn test_run_migrations_is_idempotent() {
     let mut conn = test_conn();
@@ -111,7 +160,7 @@ fn test_run_migrations_is_idempotent() {
         second.is_empty(),
         "second run applies nothing on an up-to-date DB"
     );
-    assert_eq!(history_count(&conn), 14);
+    assert_eq!(history_count(&conn), 15);
 }
 
 // ---------------------------------------------------------------------------
@@ -121,19 +170,19 @@ fn test_run_migrations_is_idempotent() {
 /// (a) Fresh install: refinery applies everything, history is fully populated,
 /// no legacy table remains.
 #[test]
-fn test_cutover_fresh_install_applies_all_14() {
+fn test_cutover_fresh_install_applies_all_15() {
     let mut conn = test_conn();
     let applied = run_migrations(&mut conn).expect("fresh install should run all migrations");
 
-    assert_eq!(applied, (1..=14).collect::<Vec<i32>>());
-    assert_eq!(history_count(&conn), 14);
+    assert_eq!(applied, (1..=15).collect::<Vec<i32>>());
+    assert_eq!(history_count(&conn), 15);
     assert!(!table_exists(&conn, "_migrations"));
 }
 
 /// (b) Partial legacy upgrade: a real schema built up to V12 plus a legacy
 /// `_migrations` listing versions 1..12. `run_migrations` fakes 1..12 (their
-/// SQL is NOT re-executed) and really applies 13 + 14, drops `_migrations`, and
-/// returns exactly `[13, 14]`.
+/// SQL is NOT re-executed) and really applies 13 to 15, drops `_migrations`, and
+/// returns exactly `[13, 14, 15]`.
 #[test]
 fn test_cutover_partial_legacy_upgrade() {
     let mut conn = test_conn();
@@ -178,8 +227,8 @@ fn test_cutover_partial_legacy_upgrade() {
 
     let applied = run_migrations(&mut conn).expect("legacy upgrade should succeed");
 
-    assert_eq!(applied, vec![13, 14], "only 13 and 14 applied for real");
-    assert_eq!(history_count(&conn), 14, "history fully populated");
+    assert_eq!(applied, vec![13, 14, 15], "only 13 to 15 applied for real");
+    assert_eq!(history_count(&conn), 15, "history fully populated");
     assert!(!table_exists(&conn, "_migrations"), "legacy table dropped");
 
     let sentinel: String = conn
@@ -192,15 +241,18 @@ fn test_cutover_partial_legacy_upgrade() {
     assert_eq!(sentinel, "sentinel-group");
 }
 
-/// (c) Fully-current legacy upgrade: legacy `_migrations` lists all 14. Fake all,
-/// apply none, return empty, drop `_migrations`.
+/// (c) Latest legacy upgrade: legacy `_migrations` lists all 14 legacy versions.
+/// Fake them, apply only the post-legacy 15, drop `_migrations`.
 #[test]
 fn test_cutover_fully_current_legacy() {
     let mut conn = test_conn();
 
-    // Build a complete real schema, then strip refinery history and present a
-    // full legacy `_migrations` table.
-    run_migrations(&mut conn).expect("initial run");
+    // Build the real schema every legacy version created, then strip refinery
+    // history and present a full legacy `_migrations` table.
+    embedded_main::migrations::runner()
+        .set_target(Target::Version(14))
+        .run(&mut conn)
+        .expect("run to V14");
     conn.execute_batch("DROP TABLE refinery_schema_history;")
         .expect("drop refinery history");
     seed_legacy_migrations(
@@ -225,8 +277,8 @@ fn test_cutover_fully_current_legacy() {
 
     let applied = run_migrations(&mut conn).expect("fully-current legacy should succeed");
 
-    assert!(applied.is_empty(), "nothing applied for real");
-    assert_eq!(history_count(&conn), 14);
+    assert_eq!(applied, vec![15], "only the post-legacy migration applied");
+    assert_eq!(history_count(&conn), 15);
     assert!(!table_exists(&conn, "_migrations"));
 }
 
@@ -244,7 +296,7 @@ fn test_cutover_already_on_refinery_drops_stray_legacy() {
     let applied = run_migrations(&mut conn).expect("should succeed and drop the stray");
 
     assert!(applied.is_empty());
-    assert_eq!(history_count(&conn), 14);
+    assert_eq!(history_count(&conn), 15);
     assert!(!table_exists(&conn, "_migrations"), "stray dropped");
 }
 
@@ -267,8 +319,8 @@ fn test_cutover_empty_legacy_runs_all() {
 
     let applied = run_migrations(&mut conn).expect("empty/garbage legacy should run all");
 
-    assert_eq!(applied, (1..=14).collect::<Vec<i32>>());
-    assert_eq!(history_count(&conn), 14);
+    assert_eq!(applied, (1..=15).collect::<Vec<i32>>());
+    assert_eq!(history_count(&conn), 15);
     assert!(!table_exists(&conn, "_migrations"));
 }
 

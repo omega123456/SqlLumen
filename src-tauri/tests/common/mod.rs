@@ -17,7 +17,9 @@ pub mod utc_timestamps;
 
 use rusqlite::Connection;
 use sqllumen_lib::commands::connections::SaveConnectionInput;
+use sqllumen_lib::commands::mysql::OpenConnectionPayload;
 use sqllumen_lib::db::migrations;
+use sqllumen_lib::db::ssl_mode::SslMode;
 use sqllumen_lib::mysql::query_executor::{SharedRow, SharedRows};
 use sqllumen_lib::mysql::registry::ConnectionRegistry;
 use sqllumen_lib::mysql::result_cache::ResultCache;
@@ -182,7 +184,7 @@ pub fn sample_save_input() -> SaveConnectionInput {
         username: "root".to_string(),
         password: None,
         default_database: Some("mydb".to_string()),
-        ssl_enabled: false,
+        ssl_mode: SslMode::Disabled,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,
@@ -214,7 +216,7 @@ pub fn new_connection_data(
         port: 3306,
         username: "root".to_string(),
         default_database: None,
-        ssl_enabled: false,
+        ssl_mode: SslMode::Disabled,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,
@@ -224,5 +226,26 @@ pub fn new_connection_data(
         sort_order: 0,
         connect_timeout_secs: None,
         keepalive_interval_secs: None,
+    }
+}
+
+/// Payload that opens a saved profile with its stored password.
+pub fn open_payload(profile_id: &str) -> OpenConnectionPayload {
+    OpenConnectionPayload {
+        profile_id: profile_id.to_string(),
+        password: None,
+    }
+}
+
+/// TLS settings for `mode`, trusting the named CA fixture when one is given.
+pub fn ssl_settings(
+    mode: sqllumen_lib::db::ssl_mode::SslMode,
+    ca_file: Option<&str>,
+) -> sqllumen_lib::mysql::pool::SslSettings {
+    sqllumen_lib::mysql::pool::SslSettings {
+        mode,
+        ca_path: ca_file.map(tls_fixtures::fixture_path),
+        cert_path: None,
+        key_path: None,
     }
 }

@@ -1,6 +1,7 @@
 //! Connection group rows (`db/connection_groups.rs`).
 
 use crate::common;
+use sqllumen_lib::db::ssl_mode::SslMode;
 
 use sqllumen_lib::db::connection_groups::{
     delete_group, get_group, insert_group, list_groups, update_group,
@@ -106,7 +107,7 @@ fn test_delete_group_nullifies_connections() {
         port: 3306,
         username: "root".to_string(),
         default_database: None,
-        ssl_enabled: false,
+        ssl_mode: SslMode::Disabled,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,

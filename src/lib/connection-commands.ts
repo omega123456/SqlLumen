@@ -5,6 +5,7 @@ import type {
   ConnectionFormData,
   OpenConnectionSession,
   TestConnectionResult,
+  SslMode,
 } from '../types/connection'
 
 export interface SaveConnectionInput extends Omit<ConnectionFormData, 'password'> {
@@ -23,7 +24,7 @@ export interface TestConnectionInput {
   password: string
   profileId: string | null
   defaultDatabase: string | null
-  sslEnabled: boolean
+  sslMode: SslMode
   sslCaPath: string | null
   sslCertPath: string | null
   sslKeyPath: string | null
@@ -33,6 +34,40 @@ export interface TestConnectionInput {
 export interface OpenConnectionResult {
   sessionId: string
   serverVersion: string
+  lastConnectedAt: string | null
+}
+
+export type OpenConnectionErrorKind = 'accessDenied' | 'failed'
+
+interface OpenConnectionErrorPayload {
+  kind: OpenConnectionErrorKind
+  message: string
+}
+
+export class OpenConnectionError extends Error {
+  readonly kind: OpenConnectionErrorKind
+
+  constructor(payload: OpenConnectionErrorPayload) {
+    super(payload.message)
+    this.name = 'OpenConnectionError'
+    this.kind = payload.kind
+  }
+}
+
+function isOpenConnectionErrorPayload(value: unknown): value is OpenConnectionErrorPayload {
+  if (typeof value !== 'object') return false
+  if (value === null) return false
+  const hasKind = 'kind' in value
+  return hasKind && 'message' in value
+}
+
+function toOpenConnectionError(error: unknown): unknown {
+  if (!isOpenConnectionErrorPayload(error)) return error
+  return new OpenConnectionError(error)
+}
+
+export function isAccessDenied(error: unknown): boolean {
+  return error instanceof OpenConnectionError && error.kind === 'accessDenied'
 }
 
 export type ConnectionStatus = 'connected' | 'disconnected' | 'reconnecting'
@@ -54,7 +89,7 @@ function toTestConnectionInput(
     password: params.password,
     profileId: profileId,
     defaultDatabase: params.defaultDatabase,
-    sslEnabled: params.sslEnabled,
+    sslMode: params.sslMode,
     sslCaPath: params.sslCaPath,
     sslCertPath: params.sslCertPath,
     sslKeyPath: params.sslKeyPath,
@@ -116,8 +151,18 @@ export async function testConnection(
   })
 }
 
-export async function openConnection(profileId: string): Promise<OpenConnectionResult> {
-  return invokeCommand({ command: 'open_connection', payload: { profileId } })
+export async function openConnection(
+  profileId: string,
+  password?: string
+): Promise<OpenConnectionResult> {
+  try {
+    return await invokeCommand({
+      command: 'open_connection',
+      payload: { profileId: profileId, password: password ?? null },
+    })
+  } catch (error) {
+    throw toOpenConnectionError(error)
+  }
 }
 
 export async function closeConnection(sessionId: string): Promise<void> {

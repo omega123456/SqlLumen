@@ -9,6 +9,7 @@ RSA_KEY_BITS=2048
 REQUIRED_OPENSSL_MAJOR=3
 REQUIRED_OPENSSL_MINOR=2
 SERVER_NAME_THAT_NEVER_MATCHES="not-this-host.invalid"
+LOCAL_SERVER_NAMES="DNS:localhost,IP:127.0.0.1"
 
 FIXTURE_DIR="$(cd "$(dirname "$0")" && pwd)"
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sqllumen-tls.XXXXXX")"
@@ -65,6 +66,7 @@ write_config() {
 
 CA_EXTENSIONS="basicConstraints = critical,CA:TRUE\nkeyUsage = critical,keyCertSign,cRLSign\nsubjectKeyIdentifier = hash"
 SERVER_EXTENSIONS="basicConstraints = critical,CA:FALSE\nkeyUsage = critical,digitalSignature,keyEncipherment\nextendedKeyUsage = serverAuth\nsubjectAltName = DNS:$SERVER_NAME_THAT_NEVER_MATCHES\nsubjectKeyIdentifier = hash\nauthorityKeyIdentifier = keyid"
+LOCAL_SERVER_EXTENSIONS="basicConstraints = critical,CA:FALSE\nkeyUsage = critical,digitalSignature,keyEncipherment\nextendedKeyUsage = serverAuth\nsubjectAltName = $LOCAL_SERVER_NAMES\nsubjectKeyIdentifier = hash\nauthorityKeyIdentifier = keyid"
 CLIENT_EXTENSIONS="basicConstraints = critical,CA:FALSE\nkeyUsage = critical,digitalSignature,keyEncipherment\nextendedKeyUsage = clientAuth\nsubjectKeyIdentifier = hash\nauthorityKeyIdentifier = keyid"
 
 make_certificate_authority() {
@@ -102,6 +104,7 @@ make_self_signed_v1_certificate() {
 require_openssl_with_x509v1
 make_certificate_authority "ca" "SqlLumen test CA"
 make_signed_certificate "server" "ca" "SqlLumen test server" "$SERVER_EXTENSIONS"
+make_signed_certificate "server-localhost" "ca" "SqlLumen test localhost server" "$LOCAL_SERVER_EXTENSIONS"
 make_signed_certificate "client" "ca" "SqlLumen test client" "$CLIENT_EXTENSIONS"
 make_certificate_authority "other-ca" "SqlLumen unrelated CA"
 make_signed_certificate "other-server" "other-ca" "SqlLumen unrelated server" "$SERVER_EXTENSIONS"

@@ -8,8 +8,13 @@ import {
   APP_READY_MS,
   connectToSample,
   dismissAllToasts,
+  overrideSavedConnections,
   waitForApp,
 } from './helpers'
+import {
+  PLAYWRIGHT_MOCK_CONNECTION,
+  STAGING_MOCK_CONNECTION,
+} from '../src/tests/playwright-fixtures/connections'
 
 const PRIMARY_SESSION_ID = 'session-playwright-1'
 const ANIMATED_PROBE_TEST_ID = 'animated-probe'
@@ -309,33 +314,21 @@ test.describe('Workspace tab persistence', () => {
 const SECOND_SESSION_ID = 'session-playwright-2'
 
 /**
- * Open a second Sample MySQL session through real frontend connection actions.
+ * Open a second session through the real connections page.
  *
- * Opens the connection manager and connects the saved sample profile a second
- * time, which the deterministic Playwright mock allocates as
- * `session-playwright-2`. Toasts are dismissed first so the saved-connection
- * row text is not ambiguous with an overlapping connect toast.
+ * Adds a Staging profile beside Sample MySQL and connects to it, which the
+ * deterministic Playwright mock allocates as `session-playwright-2`. Toasts are
+ * dismissed first so tile text is not ambiguous with an overlapping connect toast.
  */
 async function openSecondSession(page: Page): Promise<void> {
   await dismissAllToasts(page)
-
-  const dialog = page.getByTestId('connection-dialog')
-  if (!(await dialog.isVisible())) {
-    await page.getByRole('button', { name: 'New connection' }).first().click()
-  }
-  await expect(dialog).toBeVisible({ timeout: APP_READY_MS })
-
-  const sampleRow = page
-    .getByTestId('saved-connections-pane')
-    .getByTestId('connection-list-item')
-    .filter({ hasText: 'Sample MySQL' })
-  await expect(sampleRow).toBeVisible({ timeout: APP_READY_MS })
-  await sampleRow.click()
-
-  const connectBtn = dialog.getByRole('button', { name: 'Save and connect', exact: true })
-  await expect(connectBtn).toBeEnabled({ timeout: APP_READY_MS })
-  await connectBtn.click()
-  await expect(dialog).toBeHidden({ timeout: APP_READY_MS })
+  await overrideSavedConnections(page, {
+    savedConnections: [PLAYWRIGHT_MOCK_CONNECTION, STAGING_MOCK_CONNECTION],
+    connectionGroups: [],
+  })
+  await page.getByRole('button', { name: 'Show connections' }).click()
+  await page.getByRole('button', { name: 'Connect to Staging MySQL' }).click()
+  await expect(page.getByTestId('connections-page')).toBeHidden({ timeout: APP_READY_MS })
 
   await expect(page.getByTestId(`connection-session-tab-${SECOND_SESSION_ID}`)).toBeVisible({
     timeout: APP_READY_MS,

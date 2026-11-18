@@ -18,6 +18,7 @@ export type TextInputVariant =
   | 'listSearch'
   | 'iconLeading'
   | 'accentName'
+  | 'composer'
   | 'gridCell'
   | 'bare'
 
@@ -30,6 +31,7 @@ type ChromeVariant =
   | 'listSearch'
   | 'iconLeading'
   | 'accentName'
+  | 'composer'
 type UnchromedVariant = 'gridCell' | 'bare'
 type PaddingKey =
   | 'standard'
@@ -37,6 +39,7 @@ type PaddingKey =
   | 'searchIconGutters'
   | 'listSearchGutters'
   | 'leadingIconGutter'
+  | 'composerGutter'
 
 const CHROME_VARIANT_CLASSES: Record<ChromeVariant, string> = {
   default: 'py-1.25 font-body text-body',
@@ -47,6 +50,7 @@ const CHROME_VARIANT_CLASSES: Record<ChromeVariant, string> = {
   listSearch: 'h-control py-0 font-body text-body',
   iconLeading: 'h-control py-1.25 font-body text-body',
   accentName: 'h-control max-w-105 my-1 font-body text-body font-semibold',
+  composer: 'h-10 py-0 font-body text-palette-input',
 }
 
 export type TextInputWidth = 'fill' | 'narrow' | 'medium' | 'wide'
@@ -70,6 +74,7 @@ const PADDING_X_CLASSES: Record<PaddingKey, string> = {
   searchIconGutters: 'pl-8.5 pr-8',
   listSearchGutters: 'pl-8.5 pr-2.5 not-placeholder-shown:pr-7.5',
   leadingIconGutter: 'pl-8.5 pr-2.5',
+  composerGutter: 'pl-10 pr-3',
 }
 
 export type TextInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> & {
@@ -98,6 +103,7 @@ function paddingKey(variant: TextInputVariant, passwordToggleGutter: boolean): P
   if (variant === 'search') return 'searchIconGutters'
   if (variant === 'listSearch') return 'listSearchGutters'
   if (variant === 'iconLeading') return 'leadingIconGutter'
+  if (variant === 'composer') return 'composerGutter'
   if (passwordToggleGutter) return 'passwordToggleGutter'
   return 'standard'
 }

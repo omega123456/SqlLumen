@@ -1,12 +1,9 @@
 import { useCallback, useEffect } from 'react'
-import { Group, Panel, Separator, usePanelRef } from 'react-resizable-panels'
 import { format as formatSQL } from 'sql-formatter'
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog'
 import { ConnectionTabBar } from './ConnectionTabBar'
-import { Sidebar } from './Sidebar'
-import { WorkspaceArea } from './WorkspaceArea'
+import { AppBody } from './AppBody'
 import { StatusBar } from './StatusBar'
-import { ConnectionDialog } from '../connection-dialog/ConnectionDialog'
 import { SettingsDialog } from '../settings/SettingsDialog'
 import { ToastViewport } from '../common/ToastViewport'
 import SqlImportDialog from '../dialogs/SqlImportDialog'
@@ -23,8 +20,6 @@ import { useSnapshotStore } from '../../stores/snapshot-store'
 import { useZoomStore } from '../../stores/zoom-store'
 import { useCommandPaletteStore } from '../../stores/command-palette-store'
 import { useCommandPaletteRecentsStore } from '../../stores/command-palette-recents-store'
-import { joinClassNames } from '../../lib/class-names'
-import { FOCUS_RING } from '../../lib/focus-ring'
 import { readFile } from '../../lib/query-commands'
 import { revealTabInObjectBrowser } from '../../lib/object-activation'
 import {
@@ -314,39 +309,6 @@ function useCommandPaletteRecentsInit(): void {
   }, [initializeCommandPaletteRecents])
 }
 
-function MainPanels() {
-  const sidebarPanelRef = usePanelRef()
-  const handleSeparatorDoubleClick = () => {
-    sidebarPanelRef.current?.resize('20%')
-  }
-  return (
-    <div className="min-h-0 flex-1 overflow-hidden bg-light-surface-container dark:bg-dark-surface-container">
-      <Group orientation="horizontal" className="h-full">
-        <Panel
-          panelRef={sidebarPanelRef}
-          id="sidebar"
-          defaultSize="20%"
-          minSize="12%"
-          maxSize="37%"
-          className="overflow-hidden"
-        >
-          <Sidebar />
-        </Panel>
-        <Separator
-          className={joinClassNames([
-            'relative z-0 w-resize-handle shrink-0 cursor-col-resize bg-transparent transition-bg duration-150 hover:bg-light-primary resize-dragging:bg-light-primary dark:hover:bg-dark-primary dark:resize-dragging:bg-dark-primary',
-            FOCUS_RING,
-          ])}
-          onDoubleClick={handleSeparatorDoubleClick}
-        />
-        <Panel id="workspace" className="min-h-0" style={{ overflow: 'visible' }}>
-          <WorkspaceArea />
-        </Panel>
-      </Group>
-    </div>
-  )
-}
-
 function ImportDialogHost() {
   const importDialogRequest = useImportDialogStore((state) => state.request)
   const closeImportDialog = useImportDialogStore((state) => state.closeImportDialog)
@@ -383,9 +345,8 @@ export function AppLayout() {
         onOpenSettings={handleOpenSettings}
         onOpenSnapshots={() => useSnapshotStore.getState().openDialog()}
       />
-      <MainPanels />
+      <AppBody />
       <StatusBar />
-      <ConnectionDialog />
       <SettingsDialog isOpen={isSettingsOpen} onClose={handleCloseSettings} />
       <SnapshotDialog />
       <CommandPalette />

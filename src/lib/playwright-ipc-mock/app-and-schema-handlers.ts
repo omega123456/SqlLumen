@@ -18,7 +18,7 @@ import {
   getTableDdlPreviewFixture,
   getWindowBackdropFixture,
 } from '../../tests/playwright-fixtures'
-import { returnEmptyList, returnNull, returnUndefined } from './mock-handler-types'
+import { returnNull, returnUndefined } from './mock-handler-types'
 import type { ArgumentCommandHandlers, PayloadCommandHandlers } from './mock-handler-types'
 import {
   COMMAND_PALETTE_RECENTS_SETTING_KEY,
@@ -81,8 +81,8 @@ export const CONNECTION_PAYLOAD_HANDLERS = {
 } satisfies Partial<PayloadCommandHandlers>
 
 export const CONNECTION_ARGUMENT_HANDLERS = {
-  list_connections: () => [getStaticFixture('savedConnection')],
-  list_connection_groups: returnEmptyList,
+  list_connections: () => getStaticFixture('savedConnections'),
+  list_connection_groups: () => getStaticFixture('connectionGroups'),
   list_open_connection_sessions: () => getOpenConnectionSessionsFixture(),
   test_connection: () => getStaticFixture('testConnection'),
   save_connection: () => getStaticFixture('newConnectionId'),

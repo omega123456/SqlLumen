@@ -10,6 +10,7 @@
 
 #![cfg(not(coverage))]
 
+use sqllumen_lib::db::ssl_mode::SslMode;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -78,7 +79,7 @@ async fn open(script: MockScript, ceiling: usize) -> (MockMySqlServer, Arc<AppSt
             username: "root".to_string(),
             password: None,
             default_database: None,
-            ssl_enabled: false,
+            ssl_mode: SslMode::Disabled,
             ssl_ca_path: None,
             ssl_cert_path: None,
             ssl_key_path: None,
@@ -91,7 +92,7 @@ async fn open(script: MockScript, ceiling: usize) -> (MockMySqlServer, Arc<AppSt
         },
     )
     .expect("save connection");
-    let opened = open_connection_impl(&state, &profile_id)
+    let opened = open_connection_impl(&state, crate::common::open_payload(&profile_id))
         .await
         .expect("open connection");
     state.result_cache.set_row_ceiling(ceiling);

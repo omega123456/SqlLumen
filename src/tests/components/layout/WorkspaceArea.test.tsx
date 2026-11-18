@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { WorkspaceArea } from '../../../components/layout/WorkspaceArea'
 import { useConnectionStore } from '../../../stores/connection-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
@@ -25,7 +24,6 @@ beforeEach(() => {
   useConnectionStore.setState({
     activeConnections: {},
     activeTabId: null,
-    dialogOpen: false,
     error: null,
   })
   resetWorkspaceStore()
@@ -60,30 +58,9 @@ async function waitForWorkspaceTableDesignerSettled() {
 }
 
 describe('WorkspaceArea', () => {
-  it('renders the welcome message when no connections', () => {
-    render(<WorkspaceArea />)
-    expect(screen.getByText('Connect to a server')).toBeInTheDocument()
-    expect(
-      screen.getByText('Open a saved MySQL or MariaDB connection, or add a new one.')
-    ).toBeInTheDocument()
-  })
-
-  it('renders the New Connection button when no connections', () => {
-    render(<WorkspaceArea />)
-    expect(screen.getByText('New connection')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'New connection' })).toHaveAttribute(
-      'data-variant',
-      'accent'
-    )
-  })
-
-  it('"New connection" button calls openDialog()', async () => {
-    const user = userEvent.setup()
-    render(<WorkspaceArea />)
-
-    expect(useConnectionStore.getState().dialogOpen).toBe(false)
-    await user.click(screen.getByText('New connection'))
-    expect(useConnectionStore.getState().dialogOpen).toBe(true)
+  it('renders nothing without an active connection', () => {
+    const { container } = render(<WorkspaceArea />)
+    expect(container).toBeEmptyDOMElement()
   })
 
   it('shows connected placeholder when connection is active and no tabs', () => {
@@ -95,19 +72,8 @@ describe('WorkspaceArea', () => {
 
     render(<WorkspaceArea />)
 
-    expect(screen.queryByText('Connect to a server')).not.toBeInTheDocument()
     expect(screen.getByText(/Connected to Test DB/)).toBeInTheDocument()
     expect(screen.getByText(/127\.0\.0\.1:3306/)).toBeInTheDocument()
-  })
-
-  it('shows welcome screen when activeTabId is null', () => {
-    useConnectionStore.setState({
-      activeConnections: {},
-      activeTabId: null,
-    })
-
-    render(<WorkspaceArea />)
-    expect(screen.getByText('Connect to a server')).toBeInTheDocument()
   })
 
   it('renders TableDataTab when workspace has a table-data tab', async () => {

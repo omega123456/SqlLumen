@@ -10,15 +10,17 @@ import { useObjectEditorStore } from '../../../stores/object-editor-store'
 import { useCommandPaletteStore } from '../../../stores/command-palette-store'
 import { useCommandPaletteRecentsStore } from '../../../stores/command-palette-recents-store'
 import { makeNodeId, useSchemaStore } from '../../../stores/schema-store'
+import { markSessionRestoreSettled } from '../../helpers/connection-test-utils'
+import { useSessionRestoreStore } from '../../../stores/session-restore-store'
 
 beforeEach(() => {
   useConnectionStore.setState({
     activeConnections: {},
     activeConnectionOrder: [],
     activeTabId: null,
-    dialogOpen: false,
     error: null,
   })
+  useSessionRestoreStore.setState({ isRestoring: false, hasRestoreSettled: false })
   useCommandPaletteStore.setState({ isOpen: false })
   useCommandPaletteRecentsStore.setState({
     recentsByProfile: {},
@@ -57,26 +59,13 @@ describe('AppLayout', () => {
     } as never)
   }
 
-  it('renders all four main sections', () => {
+  it('shows the status bar, the tab strip and the connections page once restore settles', async () => {
+    markSessionRestoreSettled()
     render(<AppLayout />)
-    // Status bar
     expect(screen.getByText('Ready')).toBeInTheDocument()
-    // Sidebar empty state
-    expect(screen.getByText('No active connection')).toBeInTheDocument()
-    // Workspace welcome
-    expect(screen.getByText('Connect to a server')).toBeInTheDocument()
-  })
-
-  it('renders the theme toggle button', () => {
-    render(<AppLayout />)
     expect(screen.getByTestId('theme-toggle')).toBeInTheDocument()
-  })
-
-  it('renders the New Connection button in workspace', () => {
-    render(<AppLayout />)
-    // One in the connection strip and one on the welcome screen
-    expect(screen.getAllByRole('button', { name: /^New connection$/ })).toHaveLength(2)
-    expect(screen.getByTestId('connection-tab-bar')).toBeInTheDocument()
+    expect(screen.getByLabelText('Show connections')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Connections' })).toBeInTheDocument()
   })
 
   describe('shortcut action registrations', () => {

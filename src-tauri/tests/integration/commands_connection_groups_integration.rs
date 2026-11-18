@@ -1,6 +1,7 @@
 //! Command-layer connection group `_impl` functions (`commands/connection_groups.rs`).
 
 use crate::common;
+use sqllumen_lib::db::ssl_mode::SslMode;
 
 use sqllumen_lib::commands::connection_groups::{
     create_connection_group_impl, delete_connection_group_impl, list_connection_groups_impl,
@@ -69,7 +70,7 @@ fn test_delete_connection_group_impl_nullifies_connections() {
         username: "root".to_string(),
         password: None,
         default_database: None,
-        ssl_enabled: false,
+        ssl_mode: SslMode::Disabled,
         ssl_ca_path: None,
         ssl_cert_path: None,
         ssl_key_path: None,

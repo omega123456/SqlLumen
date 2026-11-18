@@ -8,7 +8,7 @@ import {
   contextMenuItemClassName,
 } from '../../lib/class-names-menu'
 import { useContextMenuPlacement } from '../../hooks/use-context-menu-placement'
-import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
+import { useDismissOnOutsideClick } from '../../hooks/use-dismiss-on-outside-click'
 import {
   getContextMenuPositionMode,
   getContextMenuPortalRoot,

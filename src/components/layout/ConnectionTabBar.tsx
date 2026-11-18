@@ -4,6 +4,7 @@ import { joinClassNames } from '../../lib/class-names'
 import { useThemeStore } from '../../stores/theme-store'
 import { IconButton } from '../common/IconButton'
 import { normalizeActiveConnectionOrder, useConnectionStore } from '../../stores/connection-store'
+import { useConnectionsPageStore } from '../../stores/connections-page-store'
 import type { Theme } from '../../stores/theme-store'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { TabContextMenu } from '../shared/TabContextMenu'
@@ -203,6 +204,18 @@ function ConnectionEdge({ color }: { color: string | null }) {
   )
 }
 
+function switchToSession(sessionId: string): void {
+  const page = useConnectionsPageStore.getState()
+  if (!page.isOpen) {
+    useConnectionStore.getState().switchTab(sessionId)
+    return
+  }
+  page.requestLeave(() => {
+    useConnectionStore.getState().switchTab(sessionId)
+    page.closePage()
+  })
+}
+
 function useThemeToggle() {
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const setTheme = useThemeStore((state) => state.setTheme)
@@ -216,9 +229,8 @@ function useThemeToggle() {
 export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: ConnectionTabBarProps) {
   const activeConnections = useConnectionStore((state) => state.activeConnections)
   const activeTabId = useConnectionStore((state) => state.activeTabId)
-  const switchTab = useConnectionStore((state) => state.switchTab)
   const closeConnection = useConnectionStore((state) => state.closeConnection)
-  const openDialog = useConnectionStore((state) => state.openDialog)
+  const openConnectionsPage = useConnectionsPageStore((state) => state.openPage)
   const reorderActiveConnection = useConnectionStore((state) => state.reorderActiveConnection)
   const theme = useThemeToggle()
   const closeFlow = useConnectionCloseFlow()
@@ -243,7 +255,7 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
         activeTabId={activeTabId}
         actions={{
           drag: drag,
-          onSwitch: switchTab,
+          onSwitch: switchToSession,
           onOpenContextMenu: menu.openTabContextMenu,
           onRequestClose: closeFlow.setPendingConnectionClose,
           onClose: closeConnection,
@@ -251,9 +263,9 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
       />
       <IconButton
         className="ml-0.5 self-center"
-        aria-label="New connection"
-        title="New connection"
-        onClick={openDialog}
+        aria-label="Show connections"
+        title="Show connections"
+        onClick={openConnectionsPage}
       >
         <PlusIcon size={16} weight="regular" />
       </IconButton>

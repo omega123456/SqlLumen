@@ -25,7 +25,6 @@ beforeEach(() => {
   useConnectionStore.setState({
     activeConnections: { 'session-a': makeActiveConnection('session-a') },
     activeTabId: 'session-a',
-    dialogOpen: false,
     error: null,
   })
   resetWorkspaceStore({ visibleConnectionSessionId: 'session-a' })
@@ -152,7 +151,6 @@ describe('ConnectionWorkspace', () => {
         'session-b': makeActiveConnection('session-b'),
       },
       activeTabId: 'session-a',
-      dialogOpen: false,
       error: null,
     })
 

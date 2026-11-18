@@ -3,7 +3,10 @@ use std::time::Duration;
 
 use mysql_async::{Conn, Opts, OptsBuilder, PoolConstraints, PoolOpts};
 
-use crate::mysql::connection_options::{checkout_within_timeout, connect_timeout, mysql_opts};
+use crate::db::ssl_mode::SslMode;
+use crate::mysql::connection_options::{
+    checkout_within_timeout, connect_preferring_tls, connect_timeout, ConnectFailure,
+};
 
 #[cfg(any(test, feature = "test-utils"))]
 type TestPoolFactory = fn(&ConnectionParams) -> Result<BackgroundPool, String>;
@@ -23,7 +26,7 @@ static TEST_POOL_FACTORY: std::sync::Mutex<Option<TestPoolFactory>> = std::sync:
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SslSettings {
-    pub enabled: bool,
+    pub mode: SslMode,
     pub ca_path: Option<String>,
     pub cert_path: Option<String>,
     pub key_path: Option<String>,
@@ -191,15 +194,27 @@ fn create_test_pool(params: &ConnectionParams) -> Option<Result<BackgroundPool, 
     factory.map(|create| create(params))
 }
 
-fn connect_background_pool(params: &ConnectionParams) -> Result<BackgroundPool, String> {
+struct ValidatedPool {
+    pool: BackgroundPool,
+    validation_checkout: Conn,
+}
+
+async fn connect_validated_pool(
+    params: &ConnectionParams,
+) -> Result<ValidatedPool, ConnectFailure> {
     let settings = PoolSettings {
         connect_timeout: connect_timeout(params),
         max_connections: MAX_POOL_CONNECTIONS,
     };
-    Ok(BackgroundPool::connect_lazily(
-        mysql_opts(params)?,
-        settings,
-    ))
+    connect_preferring_tls(params, |opts| async move {
+        let pool = BackgroundPool::connect_lazily(opts, settings);
+        let validation_checkout = pool.checkout().await?;
+        Ok(ValidatedPool {
+            pool,
+            validation_checkout,
+        })
+    })
+    .await
 }
 
 pub async fn create_pool(params: &ConnectionParams) -> Result<BackgroundPool, String> {
@@ -208,29 +223,32 @@ pub async fn create_pool(params: &ConnectionParams) -> Result<BackgroundPool, St
         return test_pool;
     }
 
-    let pool = connect_background_pool(params)?;
-    let validation_checkout = pool.checkout().await.map_err(|error| error.to_string())?;
-    drop(validation_checkout);
-    Ok(pool)
+    let validated = connect_validated_pool(params)
+        .await
+        .map_err(|failure| failure.to_string())?;
+    drop(validated.validation_checkout);
+    Ok(validated.pool)
 }
 
-pub async fn create_pool_reading_version(params: &ConnectionParams) -> Result<OpenedPool, String> {
+pub async fn create_pool_reading_version(
+    params: &ConnectionParams,
+) -> Result<OpenedPool, ConnectFailure> {
     #[cfg(any(test, feature = "test-utils"))]
     if let Some(test_pool) = create_test_pool(params) {
-        return opened_test_pool(test_pool?).await;
+        let pool = test_pool.map_err(ConnectFailure::InvalidSettings)?;
+        return Ok(opened_test_pool(pool).await);
     }
 
-    let pool = connect_background_pool(params)?;
-    let mut validation_checkout = pool.checkout().await.map_err(|error| error.to_string())?;
-    let server_version = read_server_version(&mut validation_checkout).await;
+    let mut validated = connect_validated_pool(params).await?;
+    let server_version = read_server_version(&mut validated.validation_checkout).await;
     Ok(OpenedPool {
-        pool,
+        pool: validated.pool,
         server_version,
     })
 }
 
 #[cfg(any(test, feature = "test-utils"))]
-async fn opened_test_pool(pool: BackgroundPool) -> Result<OpenedPool, String> {
+async fn opened_test_pool(pool: BackgroundPool) -> OpenedPool {
     let server_version = match pool.checkout().await {
         Ok(mut conn) => read_server_version(&mut conn).await,
         Err(error) => {
@@ -238,10 +256,10 @@ async fn opened_test_pool(pool: BackgroundPool) -> Result<OpenedPool, String> {
             UNKNOWN_SERVER_VERSION.to_string()
         }
     };
-    Ok(OpenedPool {
+    OpenedPool {
         pool,
         server_version,
-    })
+    }
 }
 
 async fn read_server_version(conn: &mut Conn) -> String {

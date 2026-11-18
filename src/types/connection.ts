@@ -1,3 +1,5 @@
+export type SslMode = 'disabled' | 'preferred' | 'required' | 'verify_ca' | 'verify_identity'
+
 export interface SavedConnection {
   id: string
   name: string
@@ -6,7 +8,7 @@ export interface SavedConnection {
   username: string
   hasPassword: boolean
   defaultDatabase: string | null
-  sslEnabled: boolean
+  sslMode: SslMode
   sslCaPath: string | null
   sslCertPath: string | null
   sslKeyPath: string | null
@@ -18,6 +20,7 @@ export interface SavedConnection {
   keepaliveIntervalSecs: number
   createdAt: string
   updatedAt: string
+  lastConnectedAt: string | null
 }
 
 export interface ConnectionGroup {
@@ -60,7 +63,7 @@ export interface ConnectionFormData {
   username: string
   password: string
   defaultDatabase: string | null
-  sslEnabled: boolean
+  sslMode: SslMode
   sslCaPath: string | null
   sslCertPath: string | null
   sslKeyPath: string | null
@@ -69,6 +72,11 @@ export interface ConnectionFormData {
   readOnly: boolean
   connectTimeoutSecs: number
   keepaliveIntervalSecs: number
+}
+
+export interface ConnectionFormSeed {
+  data: ConnectionFormData
+  sourceHadPassword: boolean
 }
 
 export interface ConnectionStatusEvent {

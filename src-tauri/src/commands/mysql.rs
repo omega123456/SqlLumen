@@ -18,8 +18,9 @@ use crate::mysql::registry::ConnectionStatus;
 use crate::mysql::registry::OpenConnectionSession;
 #[cfg(not(coverage))]
 use crate::mysql::registry::RegistryEntry;
-use crate::mysql::registry::StoredConnectionParams;
+use crate::mysql::registry::{SessionPassword, StoredConnectionParams};
 use crate::state::AppState;
+use crate::timestamps;
 
 #[cfg(not(coverage))]
 const DEFAULT_TEST_CONNECT_TIMEOUT_SECS: u64 = 10;
@@ -43,7 +44,7 @@ pub struct TestConnectionInput {
     #[serde(default)]
     pub profile_id: Option<String>,
     pub default_database: Option<String>,
-    pub ssl_enabled: bool,
+    pub ssl_mode: crate::db::ssl_mode::SslMode,
     pub ssl_ca_path: Option<String>,
     pub ssl_cert_path: Option<String>,
     pub ssl_key_path: Option<String>,
@@ -67,6 +68,91 @@ pub struct OpenConnectionResult {
     #[serde(rename = "sessionId")]
     pub session_id: String,
     pub server_version: String,
+    pub last_connected_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum OpenConnectionErrorKind {
+    AccessDenied,
+    Failed,
+}
+
+#[cfg(not(coverage))]
+impl OpenConnectionErrorKind {
+    fn of_connect_failure(failure: &crate::mysql::connection_options::ConnectFailure) -> Self {
+        if failure.is_access_denied() {
+            return Self::AccessDenied;
+        }
+        Self::Failed
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenConnectionError {
+    pub kind: OpenConnectionErrorKind,
+    pub message: String,
+}
+
+impl From<String> for OpenConnectionError {
+    fn from(message: String) -> Self {
+        Self {
+            kind: OpenConnectionErrorKind::Failed,
+            message,
+        }
+    }
+}
+
+#[cfg(not(coverage))]
+impl From<crate::mysql::connection_options::ConnectFailure> for OpenConnectionError {
+    fn from(failure: crate::mysql::connection_options::ConnectFailure) -> Self {
+        Self {
+            kind: OpenConnectionErrorKind::of_connect_failure(&failure),
+            message: format!("Failed to connect: {failure}"),
+        }
+    }
+}
+
+struct ProfileToOpen {
+    read_only: bool,
+    stored_params: StoredConnectionParams,
+}
+
+fn profile_to_open(
+    state: &AppState,
+    payload: OpenConnectionPayload,
+) -> Result<ProfileToOpen, String> {
+    let profile_id = payload.profile_id.as_str();
+    let conn = lock_db(state)?;
+    let record = match connections::get_connection(&conn, profile_id) {
+        Ok(Some(record)) => record,
+        Ok(None) => return Err(format!("Connection '{profile_id}' not found")),
+        Err(error) => return Err(error.to_string()),
+    };
+    let mut stored_params = StoredConnectionParams::from_connection_record(profile_id, &record);
+    stored_params.session_password = payload.password.map(SessionPassword::new);
+    Ok(ProfileToOpen {
+        read_only: record.read_only,
+        stored_params,
+    })
+}
+
+fn record_last_connected(state: &AppState, profile_id: &str) -> Option<String> {
+    let connected_at = timestamps::stored_timestamp_now();
+    let recorded = lock_db(state).and_then(|conn| {
+        connections::record_connected(&conn, profile_id, &connected_at)
+            .map_err(|error| error.to_string())
+    });
+    if let Err(error) = recorded {
+        tracing::warn!(
+            profile_id,
+            error,
+            "failed to record the last connected time"
+        );
+        return None;
+    }
+    Some(connected_at)
 }
 
 #[cfg(not(coverage))]
@@ -133,7 +219,7 @@ fn test_connection_params(input: TestConnectionInput, password: String) -> Conne
         password,
         default_database: input.default_database,
         ssl: SslSettings {
-            enabled: input.ssl_enabled,
+            mode: input.ssl_mode,
             ca_path: input.ssl_ca_path,
             cert_path: input.ssl_cert_path,
             key_path: input.ssl_key_path,
@@ -175,11 +261,9 @@ async fn fetch_diagnostic_value(
 
 #[cfg(not(coverage))]
 async fn open_test_connection(params: &ConnectionParams) -> Result<mysql_async::Conn, String> {
-    use crate::mysql::connection_options::{connect_timeout, connect_within_timeout, mysql_opts};
-
-    connect_within_timeout(mysql_opts(params)?, connect_timeout(params))
+    crate::mysql::connection_options::connect_with_params(params)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|failure| failure.to_string())
 }
 
 #[cfg(not(coverage))]
@@ -240,30 +324,20 @@ pub async fn test_connection_impl(_input: TestConnectionInput) -> TestConnection
 #[cfg(not(coverage))]
 pub async fn open_connection_impl(
     state: &AppState,
-    profile_id: &str,
-) -> Result<OpenConnectionResult, String> {
-    let record = {
-        let conn = lock_db(state)?;
-        match connections::get_connection(&conn, profile_id) {
-            Ok(Some(record)) => record,
-            Ok(None) => return Err(format!("Connection '{profile_id}' not found")),
-            Err(error) => return Err(error.to_string()),
-        }
-    };
-
-    let password = credentials::resolve_password(profile_id, record.has_password)?;
-
-    let stored_params = StoredConnectionParams::from_connection_record(profile_id, &record);
+    payload: OpenConnectionPayload,
+) -> Result<OpenConnectionResult, OpenConnectionError> {
+    let ProfileToOpen {
+        read_only,
+        stored_params,
+    } = profile_to_open(state, payload)?;
+    let profile_id = stored_params.profile_id.clone();
     let keepalive_secs = stored_params.keepalive_interval_secs;
-
-    let params = stored_params.to_connection_params(password);
+    let params = stored_params.to_connection_params(stored_params.resolve_password()?);
 
     let pool::OpenedPool {
         pool,
         server_version,
-    } = pool::create_pool_reading_version(&params)
-        .await
-        .map_err(|error| format!("Failed to connect: {error}"))?;
+    } = pool::create_pool_reading_version(&params).await?;
 
     let session_id = Uuid::new_v4().to_string();
 
@@ -272,12 +346,12 @@ pub async fn open_connection_impl(
     let entry = RegistryEntry {
         pool,
         session_id: session_id.clone(),
-        profile_id: profile_id.to_string(),
+        profile_id: profile_id.clone(),
         status: ConnectionStatus::Connected,
         server_version: server_version.clone(),
         cancellation_token,
         connection_params: stored_params,
-        read_only: record.read_only,
+        read_only,
     };
     let replaced_entry = state.registry.insert(session_id.clone(), entry);
     drop(replaced_entry);
@@ -285,27 +359,17 @@ pub async fn open_connection_impl(
     Ok(OpenConnectionResult {
         session_id,
         server_version,
+        last_connected_at: record_last_connected(state, &profile_id),
     })
 }
 
 #[cfg(coverage)]
 pub async fn open_connection_impl(
     state: &AppState,
-    profile_id: &str,
-) -> Result<OpenConnectionResult, String> {
-    let record = {
-        let conn = lock_db(state)?;
-        match connections::get_connection(&conn, profile_id) {
-            Ok(Some(record)) => record,
-            Ok(None) => return Err(format!("Connection '{profile_id}' not found")),
-            Err(error) => return Err(error.to_string()),
-        }
-    };
-
-    let password = credentials::resolve_password(profile_id, record.has_password)?;
-
-    let params = StoredConnectionParams::from_connection_record(profile_id, &record)
-        .to_connection_params(password);
+    payload: OpenConnectionPayload,
+) -> Result<OpenConnectionResult, OpenConnectionError> {
+    let ProfileToOpen { stored_params, .. } = profile_to_open(state, payload)?;
+    let params = stored_params.to_connection_params(stored_params.resolve_password()?);
 
     let validated_pool = create_pool(&params)
         .await
@@ -316,6 +380,7 @@ pub async fn open_connection_impl(
     Ok(OpenConnectionResult {
         session_id,
         server_version: crate::mysql::pool::UNKNOWN_SERVER_VERSION.to_string(),
+        last_connected_at: record_last_connected(state, &stored_params.profile_id),
     })
 }
 
@@ -423,6 +488,8 @@ pub async fn test_connection(input: TestConnectionInput) -> Result<TestConnectio
 #[serde(rename_all = "camelCase")]
 pub struct OpenConnectionPayload {
     pub profile_id: String,
+    #[serde(default)]
+    pub password: Option<String>,
 }
 
 #[cfg(not(coverage))]
@@ -430,8 +497,8 @@ pub struct OpenConnectionPayload {
 pub async fn open_connection(
     payload: OpenConnectionPayload,
     state: State<'_, AppState>,
-) -> Result<OpenConnectionResult, String> {
-    open_connection_impl(&state, &payload.profile_id).await
+) -> Result<OpenConnectionResult, OpenConnectionError> {
+    open_connection_impl(&state, payload).await
 }
 
 #[cfg(not(coverage))]
