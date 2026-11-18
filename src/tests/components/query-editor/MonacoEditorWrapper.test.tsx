@@ -92,6 +92,7 @@ const mockEditorInstance = {
     registeredDisposeHandlers.push(handler)
   }),
   getModel: vi.fn(() => createMockModel()),
+  getContainerDomNode: () => document.createElement('div'),
   addCommand: vi.fn((keyCode: number, handler: () => void) => {
     capturedAddCommandHandlers[keyCode] = handler
   }),

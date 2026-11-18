@@ -1,11 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import {
-  blobTypeLabel,
-  decodeUtf8BestEffort,
-  formatHexDump,
-  readImageDimensions,
-  sniffImageMime,
-} from '../../../lib/blob-utils'
+import { blobTypeLabel, readImageDimensions, sniffImageMime } from '../../../lib/blob-utils'
 import { toErrorMessage } from '../../../lib/error-message'
 import { isPlaywrightBuild } from '../../../lib/tauri-env'
 import { showErrorToast } from '../../../stores/toast-store'
@@ -141,11 +135,6 @@ export function useBlobContent(working: WorkingValue | null) {
     [workingBytes]
   )
   const objectUrl = useBlobObjectUrl(workingBytes, imageMime)
-  const textContent = useMemo(
-    () => (workingBytes ? decodeUtf8BestEffort(workingBytes) : ''),
-    [workingBytes]
-  )
-  const hexRows = useMemo(() => (workingBytes ? formatHexDump(workingBytes) : []), [workingBytes])
   const typeLabel = useMemo(
     () => (workingBytes ? blobTypeLabel(workingBytes) : null),
     [workingBytes]
@@ -154,5 +143,5 @@ export function useBlobContent(working: WorkingValue | null) {
     () => (hasBytes(workingBytes) ? readImageDimensions(workingBytes) : null),
     [workingBytes]
   )
-  return { objectUrl, textContent, hexRows, typeLabel, dimensions }
+  return { objectUrl, typeLabel, dimensions }
 }

@@ -1,12 +1,29 @@
 import { base64ToBytes, envelopeForBytes, nullEnvelope } from '../../../lib/blob-utils'
 import { showErrorToast } from '../../../stores/toast-store'
 import type { BlobValueResponse } from '../../../types/schema'
-import { BYTES_PER_MEGABYTE } from '../../../lib/units'
+import { BYTES_PER_KILOBYTE, BYTES_PER_MEGABYTE } from '../../../lib/units'
 import { toErrorMessage } from '../../../lib/error-message'
 
 const FILE_LOAD_CAP_MEGABYTES = 10
 export const FILE_LOAD_CAP = FILE_LOAD_CAP_MEGABYTES * BYTES_PER_MEGABYTE
 export const HEX_DUMP_GROUP_SIZE = 8
+const TEXT_PREVIEW_KILOBYTES = 64
+const HEX_PREVIEW_KILOBYTES = 16
+export const TEXT_PREVIEW_BYTE_LIMIT = TEXT_PREVIEW_KILOBYTES * BYTES_PER_KILOBYTE
+export const HEX_PREVIEW_BYTE_LIMIT = HEX_PREVIEW_KILOBYTES * BYTES_PER_KILOBYTE
+
+export interface BytesPreview {
+  bytes: Uint8Array
+  totalByteCount: number
+}
+
+export function previewBytes(bytes: Uint8Array, byteLimit: number): BytesPreview {
+  return { bytes: bytes.subarray(0, byteLimit), totalByteCount: bytes.length }
+}
+
+export function isTruncatedPreview(preview: BytesPreview): boolean {
+  return preview.bytes.length < preview.totalByteCount
+}
 
 export type BlobTab = 'image' | 'text' | 'hex'
 

@@ -152,6 +152,7 @@ describe('editor focus on mount', () => {
     onDidChangeCursorSelection: vi.fn(() => ({ dispose: vi.fn() })),
     onDidChangeModelContent: vi.fn(() => ({ dispose: vi.fn() })),
     onDidDispose: vi.fn(),
+    getContainerDomNode: () => document.createElement('div'),
     getModel: vi.fn(() => ({
       uri: { toString: () => 'inmemory://model/1' },
       getVersionId: () => 1,
@@ -277,6 +278,7 @@ describe('AI sidebar open state (Monaco layout)', () => {
     onDidChangeCursorSelection: vi.fn(() => ({ dispose: vi.fn() })),
     onDidChangeModelContent: vi.fn(() => ({ dispose: vi.fn() })),
     onDidDispose: vi.fn(),
+    getContainerDomNode: () => document.createElement('div'),
     getModel: vi.fn(() => ({
       uri: { toString: () => 'inmemory://model/1' },
       getVersionId: () => 1,

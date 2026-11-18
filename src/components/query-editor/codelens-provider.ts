@@ -1,7 +1,7 @@
 import * as monaco from 'monaco-editor'
 import type { editor, CancellationToken } from 'monaco-editor'
 import { getModelContext } from './completion-service'
-import { splitStatements } from './sql-parser-utils'
+import { skipLeadingTrivia, splitStatements } from './sql-parser-utils'
 import type { StatementRange } from './sql-parser-utils'
 import { useSettingsStore } from '../../stores/settings-store'
 import { useQueryStore, isCallSql, isExecutionLocked } from '../../stores/query-store'
@@ -110,7 +110,10 @@ export function provideCodeLenses(
   const lenses: monaco.languages.CodeLens[] = []
 
   for (const statement of statements) {
-    const { lineNumber } = model.getPositionAt(statement.start)
+    const codeStart = skipLeadingTrivia(text, statement.start)
+    const isCommentOnly = codeStart >= statement.end
+    if (isCommentOnly) continue
+    const { lineNumber } = model.getPositionAt(codeStart)
     const lensRange = new monaco.Range(lineNumber, 1, lineNumber, 1)
     const statementTarget: CodeLensStatementTarget = {
       connectionId: context.connectionId,

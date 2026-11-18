@@ -78,8 +78,6 @@ function BlobContentArea({
         activeTab={activeTab}
         objectUrl={content.objectUrl}
         columnLabel={columnLabel}
-        textContent={content.textContent}
-        hexRows={content.hexRows}
       />
     </div>
   )

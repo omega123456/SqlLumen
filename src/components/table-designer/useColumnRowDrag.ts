@@ -1,5 +1,5 @@
 import { useRef, useState, type PointerEvent } from 'react'
-import { isTargetWithin } from '../../lib/input-events'
+import { isTargetInside, isTargetWithin } from '../../lib/input-events'
 import { dropIndexFor, type RowDrag } from './column-editor-model'
 
 const DRAG_THRESHOLD_PX = 4
@@ -37,8 +37,13 @@ export interface ColumnRowDrag {
   handlers: ColumnRowDragHandlers
 }
 
+function isPressOnRowContent(event: PointerEvent<HTMLTableRowElement>): boolean {
+  return isTargetInside(event.currentTarget, event.target)
+}
+
 function isDragStartPointer(event: PointerEvent<HTMLTableRowElement>): boolean {
   if (event.button !== PRIMARY_POINTER_BUTTON) return false
+  if (!isPressOnRowContent(event)) return false
   return !isTargetWithin(event.target, DRAG_IGNORE_SELECTOR)
 }
 

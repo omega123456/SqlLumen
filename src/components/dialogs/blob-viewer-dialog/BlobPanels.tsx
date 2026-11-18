@@ -1,13 +1,26 @@
-import type { ReactElement } from 'react'
+import { memo, type ReactElement, type ReactNode } from 'react'
 import { EraserIcon, ImageIcon, ProhibitIcon, WarningCircleIcon } from '@phosphor-icons/react'
-import { formatBytes, formatHexDump } from '../../../lib/blob-utils'
+import { formatBytes, type HexDumpRow } from '../../../lib/blob-utils'
 import {
   HEX_DUMP_GROUP_SIZE,
+  HEX_PREVIEW_BYTE_LIMIT,
+  TEXT_PREVIEW_BYTE_LIMIT,
   hasBytes,
+  isTruncatedPreview,
+  previewBytes,
   type BlobTab,
+  type BytesPreview,
   type WorkingValue,
 } from './blob-working-value'
 import { joinClassNames, SCROLLBAR } from '../../../lib/class-names'
+import { InfoBar } from '../../common/InfoBar'
+import {
+  HEX_ROWS_PER_FRAME,
+  TEXT_CHUNKS_PER_FRAME,
+  hexPreviewRows,
+  textPreviewChunks,
+} from './blob-preview-content'
+import { useProgressiveReveal } from './use-progressive-reveal'
 
 type StateTone = 'null' | 'muted' | 'warning'
 
@@ -26,11 +39,86 @@ function stateClassName(tone: StateTone): string {
 
 const SKELETON_BAR_WIDTHS = ['', 'w-4/5', 'w-3/5']
 
-interface BytesPanelProps {
+type SkeletonSize = 'fill' | 'footer'
+
+const SKELETON_SIZE_CLASSES: Record<SkeletonSize, string> = {
+  fill: 'flex-1',
+  footer: 'shrink-0',
+}
+
+interface LoadingSkeletonProps {
+  size: SkeletonSize
+  testId: string
+}
+
+function LoadingSkeleton({ size, testId }: LoadingSkeletonProps) {
+  return (
+    <div
+      className={joinClassNames(['flex flex-col gap-3 p-4', SKELETON_SIZE_CLASSES[size]])}
+      data-testid={testId}
+      aria-label="Loading"
+    >
+      {SKELETON_BAR_WIDTHS.map((widthClassName) => (
+        <div
+          key={widthClassName}
+          className={joinClassNames([
+            'h-4 rounded-control bg-light-fill-neutral-selected dark:bg-dark-fill-neutral-selected',
+            widthClassName,
+          ])}
+        />
+      ))}
+    </div>
+  )
+}
+
+interface RevealingContentProps {
+  isComplete: boolean
+  children: ReactNode
+}
+
+function RevealingContent({ isComplete, children }: RevealingContentProps) {
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {children}
+      {isComplete ? null : <LoadingSkeleton size="footer" testId="blob-preview-loading" />}
+    </div>
+  )
+}
+
+interface BlobPreviewSource {
   objectUrl: string | null
   columnLabel: string
-  textContent: string
-  hexRows: ReturnType<typeof formatHexDump>
+}
+
+interface BytesPanelProps extends BlobPreviewSource {
+  bytes: Uint8Array
+}
+
+interface TruncatedPreviewFrameProps {
+  preview: BytesPreview
+  children: ReactNode
+}
+
+function truncatedPreviewMessage(preview: BytesPreview): string {
+  const shownSize = formatBytes(preview.bytes.length)
+  const totalSize = formatBytes(preview.totalByteCount)
+  return `Showing the first ${shownSize} of ${totalSize}. Save to file to see the full content.`
+}
+
+function TruncatedPreviewFrame({ preview, children }: TruncatedPreviewFrameProps) {
+  if (!isTruncatedPreview(preview)) return <>{children}</>
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <InfoBar
+        severity="info"
+        polite
+        className="mx-4 mt-3"
+        data-testid="blob-preview-truncated"
+        message={truncatedPreviewMessage(preview)}
+      />
+      {children}
+    </div>
+  )
 }
 
 function ImagePanel({ objectUrl, columnLabel }: BytesPanelProps) {
@@ -53,42 +141,75 @@ function ImagePanel({ objectUrl, columnLabel }: BytesPanelProps) {
   )
 }
 
-function TextPanel({ textContent }: BytesPanelProps) {
+const TextChunk = memo(function TextChunk({ chunk }: { chunk: string }) {
+  return <span className="block">{chunk}</span>
+})
+
+const HexRow = memo(function HexRow({ row }: { row: HexDumpRow }) {
   return (
-    <pre
-      className={joinClassNames([
-        'flex-1 overflow-auto px-4 py-3 font-mono text-size-caption leading-5 whitespace-pre-wrap wrap-anywhere text-light-on-surface dark:text-dark-on-surface',
-        SCROLLBAR,
-      ])}
-      data-testid="blob-text"
-    >
-      {textContent}
-    </pre>
+    <div className="flex gap-4 whitespace-pre">
+      <span className="text-light-on-surface-variant dark:text-dark-on-surface-variant">
+        {row.offset}
+      </span>
+      <span className="flex gap-3 text-light-on-surface dark:text-dark-on-surface">
+        <span className="whitespace-pre">
+          {row.hexBytes.slice(0, HEX_DUMP_GROUP_SIZE).join(' ')}
+        </span>
+        <span className="whitespace-pre">{row.hexBytes.slice(HEX_DUMP_GROUP_SIZE).join(' ')}</span>
+      </span>
+      <span className="text-light-on-surface-variant dark:text-dark-on-surface-variant">
+        {row.ascii}
+      </span>
+    </div>
+  )
+})
+
+function TextPanel({ bytes }: BytesPanelProps) {
+  const preview = previewBytes(bytes, TEXT_PREVIEW_BYTE_LIMIT)
+  const reveal = useProgressiveReveal({
+    bytes: bytes,
+    buildItems: textPreviewChunks,
+    itemsPerFrame: TEXT_CHUNKS_PER_FRAME,
+  })
+  return (
+    <TruncatedPreviewFrame preview={preview}>
+      <RevealingContent isComplete={reveal.isComplete}>
+        <pre
+          className={joinClassNames([
+            'flex-1 overflow-auto px-4 py-3 font-mono text-size-caption leading-5 whitespace-pre-wrap wrap-anywhere text-light-on-surface dark:text-dark-on-surface',
+            SCROLLBAR,
+          ])}
+          data-testid="blob-text"
+        >
+          {reveal.visibleItems.map((chunk, chunkIndex) => (
+            <TextChunk key={chunkIndex} chunk={chunk} />
+          ))}
+        </pre>
+      </RevealingContent>
+    </TruncatedPreviewFrame>
   )
 }
 
-function HexPanel({ hexRows }: BytesPanelProps) {
+function HexPanel({ bytes }: BytesPanelProps) {
+  const preview = previewBytes(bytes, HEX_PREVIEW_BYTE_LIMIT)
+  const reveal = useProgressiveReveal({
+    bytes: bytes,
+    buildItems: hexPreviewRows,
+    itemsPerFrame: HEX_ROWS_PER_FRAME,
+  })
   return (
-    <div className="flex-1 px-4 py-3 font-mono text-size-caption leading-5" data-testid="blob-hex">
-      {hexRows.map((row) => (
-        <div className="flex gap-4 whitespace-pre" key={row.offset}>
-          <span className="text-light-on-surface-variant dark:text-dark-on-surface-variant">
-            {row.offset}
-          </span>
-          <span className="flex gap-3 text-light-on-surface dark:text-dark-on-surface">
-            <span className="whitespace-pre">
-              {row.hexBytes.slice(0, HEX_DUMP_GROUP_SIZE).join(' ')}
-            </span>
-            <span className="whitespace-pre">
-              {row.hexBytes.slice(HEX_DUMP_GROUP_SIZE).join(' ')}
-            </span>
-          </span>
-          <span className="text-light-on-surface-variant dark:text-dark-on-surface-variant">
-            {row.ascii}
-          </span>
+    <TruncatedPreviewFrame preview={preview}>
+      <RevealingContent isComplete={reveal.isComplete}>
+        <div
+          className="flex-1 px-4 py-3 font-mono text-size-caption leading-5"
+          data-testid="blob-hex"
+        >
+          {reveal.visibleItems.map((row) => (
+            <HexRow key={row.offset} row={row} />
+          ))}
         </div>
-      ))}
-    </div>
+      </RevealingContent>
+    </TruncatedPreviewFrame>
   )
 }
 
@@ -98,7 +219,7 @@ const BYTES_PANELS: Record<BlobTab, (props: BytesPanelProps) => ReactElement> = 
   hex: HexPanel,
 }
 
-interface BlobPanelBodyProps extends BytesPanelProps {
+interface BlobPanelBodyProps extends BlobPreviewSource {
   loading: boolean
   working: WorkingValue | null
   activeTab: BlobTab
@@ -107,23 +228,7 @@ interface BlobPanelBodyProps extends BytesPanelProps {
 export function BlobPanelBody({ loading, working, activeTab, ...bytesPanel }: BlobPanelBodyProps) {
   const isAwaitingValue = loading || !working
   if (isAwaitingValue) {
-    return (
-      <div
-        className="flex flex-1 flex-col gap-3 p-4"
-        data-testid="blob-loading"
-        aria-label="Loading"
-      >
-        {SKELETON_BAR_WIDTHS.map((widthClassName) => (
-          <div
-            key={widthClassName}
-            className={joinClassNames([
-              'h-4 rounded-control bg-light-fill-neutral-selected dark:bg-dark-fill-neutral-selected',
-              widthClassName,
-            ])}
-          />
-        ))}
-      </div>
-    )
+    return <LoadingSkeleton size="fill" testId="blob-loading" />
   }
   if (working.kind === 'tooLarge') {
     return (
@@ -156,5 +261,5 @@ export function BlobPanelBody({ loading, working, activeTab, ...bytesPanel }: Bl
     )
   }
   const BytesPanel = BYTES_PANELS[activeTab]
-  return <BytesPanel {...bytesPanel} />
+  return <BytesPanel {...bytesPanel} bytes={working.bytes} />
 }

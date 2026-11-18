@@ -3,6 +3,10 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { BlobViewerDialog } from '../../../components/dialogs/BlobViewerDialog'
 import { bytesToBase64, formatBytes } from '../../../lib/blob-utils'
+import {
+  HEX_PREVIEW_BYTE_LIMIT,
+  TEXT_PREVIEW_BYTE_LIMIT,
+} from '../../../components/dialogs/blob-viewer-dialog/blob-working-value'
 import { ipc, expectToast } from '../../ipc-mock'
 import type { BlobValueResponse, BlobEnvelope } from '../../../types/schema'
 
@@ -45,6 +49,9 @@ const PNG_WITH_DIMS = new Uint8Array([
 const PNG_WITH_DIMS_B64 = bytesToBase64(PNG_WITH_DIMS)
 
 const TEXT_BYTES = new TextEncoder().encode('hello world')
+const LOWERCASE_A_BYTE = 0x61
+const HEX_ROW_BYTES = 16
+const PROGRESSIVE_REVEAL_TIMEOUT_MS = 1500
 const TEXT_B64 = bytesToBase64(TEXT_BYTES)
 
 function bytesResponse(base64: string | null, byteLength: number): BlobValueResponse {
@@ -95,12 +102,50 @@ describe('BlobViewerDialog', () => {
     expect(await screen.findByTestId('blob-not-image')).toBeInTheDocument()
 
     await user.click(screen.getByTestId('blob-tab-text'))
-    expect(screen.getByTestId('blob-text')).toHaveTextContent('hello world')
+    await waitFor(() => expect(screen.getByTestId('blob-text')).toHaveTextContent('hello world'))
 
     await user.click(screen.getByTestId('blob-tab-hex'))
     const hex = screen.getByTestId('blob-hex')
     // 'h' = 0x68
-    expect(hex).toHaveTextContent('68 65 6c 6c 6f')
+    await waitFor(() => expect(hex).toHaveTextContent('68 65 6c 6c 6f'))
+    expect(screen.queryByTestId('blob-preview-truncated')).not.toBeInTheDocument()
+  })
+
+  it('switches to Text and Hex at once and reveals the first bytes of a large value while loading', async () => {
+    vi.mocked(window.requestAnimationFrame).mockImplementation((callback) =>
+      window.setTimeout(() => callback(0), 0)
+    )
+    vi.mocked(window.cancelAnimationFrame).mockImplementation((frameId) =>
+      window.clearTimeout(frameId)
+    )
+    const user = userEvent.setup()
+    const largeBytes = new Uint8Array(TEXT_PREVIEW_BYTE_LIMIT + 1).fill(LOWERCASE_A_BYTE)
+    render(
+      <BlobViewerDialog {...baseProps} mode="view" initialBase64={bytesToBase64(largeBytes)} />
+    )
+    await screen.findByTestId('blob-not-image')
+
+    await user.click(screen.getByTestId('blob-tab-text'))
+    expect(screen.getByTestId('blob-tab-text')).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByTestId('blob-preview-loading')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByTestId('blob-preview-loading')).toBeNull(), {
+      timeout: PROGRESSIVE_REVEAL_TIMEOUT_MS,
+    })
+    expect(screen.getByTestId('blob-text').textContent).toHaveLength(TEXT_PREVIEW_BYTE_LIMIT)
+    expect(screen.getByTestId('blob-preview-truncated')).toHaveTextContent(
+      `Showing the first ${formatBytes(TEXT_PREVIEW_BYTE_LIMIT)} of ${formatBytes(largeBytes.length)}`
+    )
+
+    await user.click(screen.getByTestId('blob-tab-hex'))
+    await waitFor(() => expect(screen.queryByTestId('blob-preview-loading')).toBeNull(), {
+      timeout: PROGRESSIVE_REVEAL_TIMEOUT_MS,
+    })
+    expect(screen.getByTestId('blob-hex').childElementCount).toBe(
+      HEX_PREVIEW_BYTE_LIMIT / HEX_ROW_BYTES
+    )
+    expect(screen.getByTestId('blob-preview-truncated')).toHaveTextContent(
+      `Showing the first ${formatBytes(HEX_PREVIEW_BYTE_LIMIT)}`
+    )
   })
 
   it('renders a valid image for image bytes and not-an-image otherwise', async () => {

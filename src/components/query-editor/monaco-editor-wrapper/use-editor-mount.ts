@@ -60,12 +60,20 @@ function bindEditorEvents(
   return [...queryStoreDisposables, findReplaceActionDisposable, contentChangeDisposable]
 }
 
+const MONACO_THEME_SCOPE_CLASS = 'monaco-component'
+
+// Monaco 0.57 mounts the fixedOverflowWidgets context menu in a shadow root beside .monaco-editor, outside its theme variables.
+function shareThemeVariablesWithContextMenu(editor: StandaloneEditor) {
+  editor.getContainerDomNode().classList.add(MONACO_THEME_SCOPE_CLASS)
+}
+
 export function useEditorMountHandler(inputs: EditorMountInputs) {
   return function handleEditorMount(editor: StandaloneEditor, monacoInstance: typeof MonacoType) {
     inputs.editorRef.current = editor
     inputs.captureModelOnMount(editor)
     inputs.captureSemanticHighlightingEditor(editor)
     inputs.applyThemeOnMount(monacoInstance)
+    shareThemeVariablesWithContextMenu(editor)
     if (!inputs.isOverrideMode) restoreCursorPosition(editor, inputs.tabId)
     const disposables = bindEditorEvents(editor, monacoInstance, inputs)
     editor.onDidDispose(() => {

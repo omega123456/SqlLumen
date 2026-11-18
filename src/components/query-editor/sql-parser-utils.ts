@@ -16,6 +16,17 @@ const DELIMITER_DIRECTIVE_PATTERN = /^DELIMITER\s+(\S+)/i
 const WHITESPACE_PATTERN = /\s/
 const DEFAULT_DELIMITER = ';'
 const NEWLINE_NOT_FOUND = -1
+const WHITESPACE_RUN = String.raw`\s+`
+const LINE_COMMENT = String.raw`(?:--|#)[^\n]*`
+const BLOCK_COMMENT = String.raw`/\*[\s\S]*?(?:\*/|$)`
+const LEADING_TRIVIA_PATTERN = new RegExp(
+  `^(?:${WHITESPACE_RUN}|${LINE_COMMENT}|${BLOCK_COMMENT})*`
+)
+
+export function skipLeadingTrivia(sql: string, offset: number): number {
+  const leadingTrivia = sql.slice(offset).match(LEADING_TRIVIA_PATTERN)?.[0] ?? ''
+  return offset + leadingTrivia.length
+}
 
 class StatementSplitter {
   private readonly sql: string

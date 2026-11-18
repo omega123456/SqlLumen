@@ -6,6 +6,7 @@
  * and command handlers directly.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import * as monaco from 'monaco-editor'
 import { ipc } from '../../ipc-mock'
 import {
   offsetToLineNumber,
@@ -246,6 +247,25 @@ describe('provideCodeLenses', () => {
     )
     expect(result.lenses.length).toBeGreaterThanOrEqual(1)
     expect(result.lenses[0].command?.title).toContain('Run')
+  })
+
+  it('puts one Run lens on the first code line of each statement after a trailing comment', () => {
+    vi.mocked(CompletionServiceModule.getModelContext).mockReturnValue({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      tabType: 'query-editor',
+    })
+    useSettingsStore.setState({
+      settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'false' },
+    })
+    const text = 'SELECT 1; # first\n\nSELECT 2; -- second\n\nSELECT 3; /* end */'
+    vi.mocked(monaco.Range).mockClear()
+
+    const result = provideCodeLenses(makeMockModel(text), null as unknown as CancellationToken)
+
+    const lensLines = vi.mocked(monaco.Range).mock.calls.map(([startLineNumber]) => startLineNumber)
+    expect(result.lenses).toHaveLength(3)
+    expect(lensLines).toEqual([1, 3, 5])
   })
 
   it('returns Run and Ask AI lenses when AI is enabled', () => {

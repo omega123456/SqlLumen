@@ -71,3 +71,19 @@ test('table designer type dropdown opens upward when the bottom row lacks space 
   expect(dropdownBox!.x).toBeGreaterThanOrEqual(-1)
   expect(dropdownBox!.x + dropdownBox!.width).toBeLessThanOrEqual(vp!.width + 1)
 })
+
+test('clicking a type option selects it instead of passing the click to the row', async ({
+  page,
+}) => {
+  await waitForApp(page)
+  await openTableDesignerTab(page)
+
+  const trigger = page.getByTestId('column-type-1')
+  await trigger.click()
+  await expect(page.getByRole('listbox')).toBeVisible({ timeout: APP_READY_MS })
+
+  await page.getByTestId('column-type-1-option-MEDIUMTEXT').click()
+
+  await expect(page.getByRole('listbox')).toBeHidden()
+  await expect(trigger).toHaveText('MEDIUMTEXT')
+})

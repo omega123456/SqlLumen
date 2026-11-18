@@ -100,4 +100,19 @@ describe('useColumnRowDrag', () => {
     expect(hook.result.current.drag).toBeNull()
     expect(row.setPointerCapture).not.toHaveBeenCalled()
   })
+
+  it('does not capture the pointer for a press on a portalled dropdown option', () => {
+    const { hook } = renderDrag()
+    const row = makeRow()
+    const portalledOption = document.createElement('li')
+    document.body.appendChild(portalledOption)
+    act(() =>
+      hook.result.current.handlers.onPointerDown(
+        pointerEvent({ row, clientY: 0, target: portalledOption }),
+        0
+      )
+    )
+    expect(row.setPointerCapture).not.toHaveBeenCalled()
+    portalledOption.remove()
+  })
 })
