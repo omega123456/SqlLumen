@@ -1971,7 +1971,7 @@ describe('CanvasBaseGridView', () => {
     expect(cancel).toHaveBeenCalled()
   })
 
-  it('ArrowLeft and ArrowRight move selection between columns', () => {
+  it('ArrowLeft, ArrowRight, Tab and leaving an editor with Tab move selection between columns', () => {
     const onSelectedCellChange = vi.fn()
     const multiColumns = [
       {
@@ -2018,7 +2018,12 @@ describe('CanvasBaseGridView', () => {
     )
 
     const props = mockGlideDataGrid.mock.lastCall?.[0] as {
-      onKeyDown: (event: { key: string; preventDefault: () => void; cancel?: () => void }) => void
+      onKeyDown: (event: {
+        key: string
+        shiftKey?: boolean
+        preventDefault: () => void
+        cancel?: () => void
+      }) => void
     }
     const preventDefault = vi.fn()
     const cancel = vi.fn()
@@ -2038,6 +2043,25 @@ describe('CanvasBaseGridView', () => {
     expect(onSelectedCellChange).toHaveBeenCalledWith({ rowIdx: 0, idx: 0 })
     expect(preventDefault).toHaveBeenCalled()
     expect(cancel).toHaveBeenCalled()
+
+    onSelectedCellChange.mockClear()
+    cancel.mockClear()
+    act(() => props.onKeyDown({ key: 'Tab', shiftKey: false, preventDefault, cancel }))
+    expect(onSelectedCellChange).toHaveBeenLastCalledWith({ rowIdx: 0, idx: 2 })
+    expect(cancel).toHaveBeenCalled()
+    act(() => props.onKeyDown({ key: 'Tab', shiftKey: true, preventDefault, cancel }))
+    expect(onSelectedCellChange).toHaveBeenLastCalledWith({ rowIdx: 0, idx: 0 })
+
+    const finishEditing = (
+      mockGlideDataGrid.mock.lastCall?.[0] as {
+        onFinishedEditing: (value: undefined, movement: readonly [number, number]) => void
+      }
+    ).onFinishedEditing
+    onSelectedCellChange.mockClear()
+    act(() => finishEditing(undefined, [0, 0]))
+    expect(onSelectedCellChange).not.toHaveBeenCalled()
+    act(() => finishEditing(undefined, [1, 0]))
+    expect(onSelectedCellChange).toHaveBeenCalledWith({ rowIdx: 0, idx: 2 })
   })
 
   it('ArrowLeft at first column and ArrowRight at last column clamp to boundaries', () => {

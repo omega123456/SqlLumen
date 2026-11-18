@@ -12,7 +12,7 @@ import { useGridContextMenu } from './use-grid-context-menu'
 import { useGridCopy } from './use-grid-copy'
 import { useGridEditorSession } from './use-grid-editor-session'
 import { useGridKeyDown } from './use-grid-key-down'
-import { useGridKeyboardSelection } from './use-grid-keyboard-selection'
+import { useGridKeyboardSelection, type EditorExitMove } from './use-grid-keyboard-selection'
 import { useGridPainting } from './use-grid-painting'
 import { useGridPaste } from './use-grid-paste'
 import { useGridPointerSelection } from './use-grid-pointer-selection'
@@ -46,11 +46,15 @@ function useGridViewModel(props: CanvasBaseGridViewProps) {
 
 export type GridEditingParts = ReturnType<typeof useGridEditingAndClipboard>
 
-function useGridEditingAndClipboard(model: GridViewModel, selection: GridSelectionModel) {
+function useGridEditingAndClipboard(
+  model: GridViewModel,
+  selection: GridSelectionModel,
+  moveSelectionAfterEditing: EditorExitMove
+) {
   const rowClasses = useGridRowClasses(model.props.getRowClass)
   const { activeSelectedRowIndex, activeGridSelection } = selection
   const content = useGridCellContent({ model, rowClasses, activeSelectedRowIndex })
-  const editorSession = useGridEditorSession(model)
+  const editorSession = useGridEditorSession(model, moveSelectionAfterEditing)
   const handleCellEdited = useGridCellEditCommit(model)
   const runRowAction = useGridRowActionRunner(model)
   const { buildCellForRow } = content
@@ -80,12 +84,16 @@ export function useCanvasGridView(props: CanvasBaseGridViewProps, ref: React.Ref
   })
   useGridImperativeHandle(ref, model)
   useGridScrollRestore(model)
-  const editing = useGridEditingAndClipboard(model, selection)
+  const keyboardSelection = useGridKeyboardSelection({ model, selection })
+  const editing = useGridEditingAndClipboard(
+    model,
+    selection,
+    keyboardSelection.moveSelectionAfterEditing
+  )
   const { openListEditor, cancelActiveEditor } = editing.editorSession
   const handleVisibleRegionChanged = useGridVisibleRegion(model, cancelActiveEditor)
   const pointer = useGridPointerSelection({ model, selection, openListEditor })
   const clicks = useGridCellClicks(model, pointer)
-  const keyboardSelection = useGridKeyboardSelection({ model, selection })
   const handleTypingActivation = useGridTypingEditor({ model, selection })
   const handleKeyDown = useGridKeyDown({
     model: model,

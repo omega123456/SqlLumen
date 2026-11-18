@@ -131,7 +131,8 @@ describe('wrapEditorAsGlideOverlay', () => {
     closeEditor!()
 
     expect(onFinishedEditing).toHaveBeenCalledWith(
-      expect.objectContaining({ data: '1234', displayData: '1234', copyData: '1234' })
+      expect.objectContaining({ data: '1234', displayData: '1234', copyData: '1234' }),
+      undefined
     )
   })
 
@@ -401,7 +402,48 @@ describe('wrapEditorAsGlideOverlay', () => {
     expect(onFinishedEditing).not.toHaveBeenCalled()
     fireEvent.keyDown(textarea, { key: 'Enter' })
     expect(onFinishedEditing).toHaveBeenCalledWith(
-      expect.objectContaining({ data: 'alpha\nbeta', displayData: 'alpha\nbeta' })
+      expect.objectContaining({ data: 'alpha\nbeta', displayData: 'alpha\nbeta' }),
+      undefined
+    )
+  })
+
+  it('commits single-line editors on Tab and moves to the next or previous column', () => {
+    const editorConfig = getGlideEditor({ key: 'name', name: 'Name', dataType: 'VARCHAR' }, 'text')
+    const Editor = (editorConfig as EditorConfig)!.editor!
+    const onFinishedEditing = vi.fn()
+    const value = {
+      kind: GridCellKind.Text,
+      data: 'alpha',
+      displayData: 'alpha',
+      copyData: 'alpha',
+      allowOverlay: true,
+      readonly: false,
+      glideEditorData: { row: { name: 'alpha' }, columnKey: 'name', isNullable: false },
+    } as TextCell & { glideEditorData: Record<string, unknown> }
+    const renderEditor = () =>
+      render(
+        <Editor
+          target={{ x: 0, y: 0, width: 120, height: 32 }}
+          value={value}
+          onChange={vi.fn()}
+          onFinishedEditing={onFinishedEditing}
+        />
+      )
+
+    renderEditor()
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'beta' } })
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Tab' })
+    expect(onFinishedEditing).toHaveBeenLastCalledWith(
+      expect.objectContaining({ data: 'beta' }),
+      [1, 0]
+    )
+
+    cleanup()
+    renderEditor()
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Tab', shiftKey: true })
+    expect(onFinishedEditing).toHaveBeenLastCalledWith(
+      expect.objectContaining({ data: 'alpha' }),
+      [-1, 0]
     )
   })
 })
@@ -485,10 +527,13 @@ describe('Glide editor adapters', () => {
       />
     )
     screen.getByRole('button', { name: 'cancel' }).click()
-    expect(onFinishedEditing).toHaveBeenCalledWith(undefined)
+    expect(onFinishedEditing).toHaveBeenCalledWith(undefined, undefined)
     screen.getByRole('button', { name: 'edit name' }).click()
     screen.getByRole('button', { name: 'commit' }).click()
-    expect(onFinishedEditing).toHaveBeenCalledWith(expect.objectContaining({ data: 'next' }))
+    expect(onFinishedEditing).toHaveBeenCalledWith(
+      expect.objectContaining({ data: 'next' }),
+      undefined
+    )
     expect(getGlideEditor({ key: 'x', name: 'X' }, 'none')).toBeNull()
     for (const editorType of ['datetime', 'text'] as const) {
       const editorConfig = getGlideEditor({ key: 'x', name: 'X' }, editorType)

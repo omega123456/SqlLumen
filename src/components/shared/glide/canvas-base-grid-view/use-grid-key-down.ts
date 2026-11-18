@@ -34,6 +34,13 @@ interface GridKeyDownInput {
 }
 
 const FOREIGN_KEY_LOOKUP_KEY = 'F4'
+const TAB_KEY = 'Tab'
+const SHIFT_TAB_KEY = 'Shift+Tab'
+
+function selectionMoveKeyName(event: GlideKeyDownEvent): string {
+  const isShiftTab = event.key === TAB_KEY && event.shiftKey
+  return isShiftTab ? SHIFT_TAB_KEY : event.key
+}
 
 function useForeignKeyLookupFromSelection(input: GridKeyDownInput): ForeignKeyLookupTrigger {
   const { gridColumns, source } = input.model
@@ -199,16 +206,18 @@ export function useGridKeyDown(input: GridKeyDownInput) {
       if (rowCount === 0) return
       if (handlePendingActionKey(event)) return
       const currentCell = resolveKeyboardCell(gridSelectionCell, selectedCellPosition)
-      const arrowKeyMoves: Record<string, () => void> = {
+      const selectionMovesByKey: Record<string, () => void> = {
         ArrowDown: () => moveSelectionVertically(1, currentCell),
         ArrowUp: () => moveSelectionVertically(-1, currentCell),
         ArrowRight: () => moveSelectionHorizontally(1, currentCell),
         ArrowLeft: () => moveSelectionHorizontally(-1, currentCell),
+        [TAB_KEY]: () => moveSelectionHorizontally(1, currentCell),
+        [SHIFT_TAB_KEY]: () => moveSelectionHorizontally(-1, currentCell),
       }
-      const moveByArrow = arrowKeyMoves[event.key]
-      if (moveByArrow) {
+      const moveSelectionByKey = selectionMovesByKey[selectionMoveKeyName(event)]
+      if (moveSelectionByKey) {
         cancelGlideKey(event)
-        moveByArrow()
+        moveSelectionByKey()
         return
       }
       const isTypingIntoCell = isTypingActivationKey(event) && currentCell !== null

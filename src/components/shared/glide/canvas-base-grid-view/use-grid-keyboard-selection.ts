@@ -1,11 +1,21 @@
 import { useCallback } from 'react'
+import type { Item } from '@glideapps/glide-data-grid'
 import type { CellClickGuardArgs, CellClickGuardResult } from '../../../../types/shared-data-view'
 import type { GridCellPosition } from '../glide-grid-types'
 import { restoreFocusAfterRejectedGuard, selectGuardTarget } from './grid-hit-testing'
-import { clampIndex, resolveKeyboardColumn, resolveKeyboardRow } from './grid-selection-helpers'
+import {
+  clampIndex,
+  currentSelectionCell,
+  resolveKeyboardCell,
+  resolveKeyboardColumn,
+  resolveKeyboardRow,
+} from './grid-selection-helpers'
 import type { GridSelectionModel, GridViewModel } from './grid-view-model'
 
-export type SelectionMove = (delta: -1 | 1, currentCell: GridCellPosition | null) => void
+type SelectionStep = -1 | 1
+
+export type SelectionMove = (delta: SelectionStep, currentCell: GridCellPosition | null) => void
+export type EditorExitMove = (movement: Item) => void
 
 interface KeyboardSelectionInput {
   model: GridViewModel
@@ -140,8 +150,33 @@ function useMoveSelectionHorizontally(input: KeyboardSelectionInput): SelectionM
   )
 }
 
+function horizontalStepOf(movement: Item): SelectionStep | null {
+  const [columnDelta] = movement
+  if (columnDelta > 0) return 1
+  if (columnDelta < 0) return -1
+  return null
+}
+
+function useMoveSelectionAfterEditing(
+  input: KeyboardSelectionInput,
+  moveSelectionHorizontally: SelectionMove
+): EditorExitMove {
+  const { selectedCellPosition } = input.model.props
+  const gridSelectionCell = currentSelectionCell(input.selection.gridSelection)
+  return useCallback(
+    (movement: Item) => {
+      const step = horizontalStepOf(movement)
+      if (step === null) return
+      const editedCell = resolveKeyboardCell(gridSelectionCell, selectedCellPosition)
+      moveSelectionHorizontally(step, editedCell)
+    },
+    [gridSelectionCell, moveSelectionHorizontally, selectedCellPosition]
+  )
+}
+
 export function useGridKeyboardSelection(input: KeyboardSelectionInput) {
   const moveSelectionVertically = useMoveSelectionVertically(input)
   const moveSelectionHorizontally = useMoveSelectionHorizontally(input)
-  return { moveSelectionVertically, moveSelectionHorizontally }
+  const moveSelectionAfterEditing = useMoveSelectionAfterEditing(input, moveSelectionHorizontally)
+  return { moveSelectionVertically, moveSelectionHorizontally, moveSelectionAfterEditing }
 }

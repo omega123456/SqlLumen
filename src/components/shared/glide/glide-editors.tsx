@@ -5,6 +5,7 @@ import {
   type ComponentType,
   type CSSProperties,
   type FunctionComponent,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
 import {
   GridCellKind,
@@ -50,11 +51,21 @@ function clampOverlayHeight(viewportHeight: number, limits: OverlayHeightLimits)
   return Math.max(limits.minimumPx, Math.min(limits.maximumPx, preferredHeight))
 }
 
+type EditorExitMovement = readonly [-1 | 0 | 1, -1 | 0 | 1]
+
 export interface CustomEditorProps {
   target: Rectangle
   value: GridCell
   onChange: (newValue: GridCell) => void
-  onFinishedEditing: (newCell?: GridCell, movement?: readonly [-1 | 0 | 1, -1 | 0 | 1]) => void
+  onFinishedEditing: (newCell?: GridCell, movement?: EditorExitMovement) => void
+}
+
+const MOVE_TO_NEXT_COLUMN: EditorExitMovement = [1, 0]
+const MOVE_TO_PREVIOUS_COLUMN: EditorExitMovement = [-1, 0]
+
+function exitMovementForKey(event: ReactKeyboardEvent): EditorExitMovement | undefined {
+  if (event.key !== 'Tab') return undefined
+  return event.shiftKey ? MOVE_TO_PREVIOUS_COLUMN : MOVE_TO_NEXT_COLUMN
 }
 
 interface GlideEditorCellData {
@@ -204,12 +215,17 @@ function useOverlayEditorValue(input: OverlayEditorValueInput) {
   const { value, initialInputValue, onFinishedEditing } = input
   const currentValueRef = useRef(applyInitialInputValue(value, initialInputValue))
   const appliedInitialInputValueRef = useRef(initialInputValue)
+  const exitMovementRef = useRef<EditorExitMovement | undefined>(undefined)
   const close = useCallback(
     (commitChanges?: boolean) => {
-      onFinishedEditing(commitChanges === false ? undefined : currentValueRef.current)
+      const committedValue = commitChanges === false ? undefined : currentValueRef.current
+      onFinishedEditing(committedValue, exitMovementRef.current)
     },
     [onFinishedEditing]
   )
+  const rememberExitKey = useCallback((event: ReactKeyboardEvent) => {
+    exitMovementRef.current = exitMovementForKey(event)
+  }, [])
 
   useEffect(() => {
     if (initialInputValue == null) {
@@ -224,7 +240,7 @@ function useOverlayEditorValue(input: OverlayEditorValueInput) {
     }
   }, [initialInputValue, value])
 
-  return { currentValueRef, close }
+  return { currentValueRef, close, rememberExitKey }
 }
 
 function resolveOverlayLayout(
@@ -280,7 +296,7 @@ export function wrapEditorAsGlideOverlay(
   }: CustomEditorProps) {
     const editorData = extractEditorData(value)
     const initialInputValue = editorData?.initialInputValue
-    const { currentValueRef, close } = useOverlayEditorValue({
+    const { currentValueRef, close, rememberExitKey } = useOverlayEditorValue({
       value,
       initialInputValue,
       onFinishedEditing,
@@ -297,6 +313,7 @@ export function wrapEditorAsGlideOverlay(
         data-sqllumen-glide-editor-root="true"
         data-sqllumen-editor-width={String(layout.requestedOverlayWidth)}
         style={overlayRootStyle(layout)}
+        onKeyDownCapture={rememberExitKey}
       >
         <EditorComponent
           row={row}

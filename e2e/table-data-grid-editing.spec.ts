@@ -433,6 +433,32 @@ test('editing a cell then selecting the next cell requires re-activation to edit
   await emailEditor.fill('julian@example.com')
 })
 
+test('table data grid Tab commits the open editor and moves between columns', async ({ page }) => {
+  await waitForApp(page)
+  await openTableDataTab(page)
+
+  const grid = page.getByTestId('table-data-grid')
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+  const canvas = grid.locator('canvas[data-testid="data-grid-canvas"]').first()
+  const cellEditor = page.locator('input[data-variant="gridCell"]').first()
+
+  await clickCellByColumnName(grid, 0, 'name')
+  await expect(canvas).toBeFocused({ timeout: APP_READY_MS })
+  await page.keyboard.type('J')
+  await expect(cellEditor).toBeVisible({ timeout: APP_READY_MS })
+  await cellEditor.fill('Julian Thorne')
+
+  await page.keyboard.press('Tab')
+  await expect(cellEditor).not.toBeVisible({ timeout: APP_READY_MS })
+  await expectSelectedTableDataColumn(page, 'email')
+  await expect.poll(() => grid.evaluate((el) => el.contains(document.activeElement))).toBe(true)
+
+  await page.keyboard.press('Shift+Tab')
+  await expectSelectedTableDataColumn(page, 'name')
+  await page.keyboard.press('Tab')
+  await expectSelectedTableDataColumn(page, 'email')
+})
+
 test('table data grid typing on a selected cell opens the editor and keeps focus', async ({
   page,
 }) => {

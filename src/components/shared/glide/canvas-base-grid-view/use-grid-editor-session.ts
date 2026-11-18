@@ -3,6 +3,7 @@ import type { GridCell, Item } from '@glideapps/glide-data-grid'
 import { getGlideEditor } from '../glide-editors'
 import type { GridCellPosition, GridColumn, GridHandle } from '../glide-grid-types'
 import type { EditorSessionBaseline, GridRow } from './canvas-grid-types'
+import type { EditorExitMove } from './use-grid-keyboard-selection'
 import { buildEditorSessionBaseline, editorColumnKey } from './grid-cell-editing'
 import type { GridEditorRefs, GridViewModel } from './grid-view-model'
 
@@ -58,7 +59,10 @@ function findEditorColumn(
   return gridColumns.find((candidate) => candidate.key === columnKey)
 }
 
-export function useGridEditorSession(model: GridViewModel) {
+export function useGridEditorSession(
+  model: GridViewModel,
+  moveSelectionAfterEditing: EditorExitMove
+) {
   const { gridRef, gridColumns, source } = model
   const { editableColumnKeys, editState } = model.props
   const editorRefs = model.refs.editor
@@ -80,13 +84,19 @@ export function useGridEditorSession(model: GridViewModel) {
     [editableColumnKeys, gridColumns]
   )
 
-  const handleFinishedEditing = useCallback(() => finishEditorSession(editorRefs), [editorRefs])
+  const handleFinishedEditing = useCallback(
+    (_editedValue: GridCell | undefined, movement: Item) => {
+      finishEditorSession(editorRefs)
+      moveSelectionAfterEditing(movement)
+    },
+    [editorRefs, moveSelectionAfterEditing]
+  )
 
   const cancelActiveEditor = useCallback(() => {
     if (!editorRefs.isEditingCellRef.current) return
     dispatchEscapeToGridCanvas(gridRef)
-    handleFinishedEditing()
-  }, [editorRefs, gridRef, handleFinishedEditing])
+    finishEditorSession(editorRefs)
+  }, [editorRefs, gridRef])
 
   const handleCellActivatedForEditing = useCallback(
     ([columnIndex, rowIndex]: Item) => {
