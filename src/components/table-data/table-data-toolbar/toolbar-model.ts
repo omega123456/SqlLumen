@@ -1,5 +1,6 @@
 import {
   useTableDataStore,
+  cloneSourceRowKey,
   isSameRowKey,
   findRowIndexByKey as findStoreRowIndexByKey,
 } from '../../../stores/table-data-store'
@@ -92,8 +93,11 @@ export function hasDeletableSelection(view: ToolbarTabView): boolean {
 }
 
 export function canCloneSelection(view: ToolbarTabView): boolean {
-  if (!hasDeletableSelection(view)) return false
-  return view.editState?.isNewRow !== true
+  const isEditingDraftRow = view.editState?.isNewRow === true
+  if (isEditingDraftRow) return false
+  const sourceRowKey = cloneSourceRowKey(view)
+  if (sourceRowKey === null) return false
+  return !isNewRowKey(sourceRowKey)
 }
 
 export function canMutateTableRows(view: ToolbarTabView, isConnectionReadOnly: boolean): boolean {

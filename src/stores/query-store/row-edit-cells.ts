@@ -1,10 +1,12 @@
 import type { QueryTableEditInfo, RowEditState, TableDataColumnMeta } from '../../types/schema'
 import { getInitialValueForNewRow, isSeededFromColumnDefault } from '../../lib/new-row-values'
 import { showErrorToast } from '../toast-store'
+import { envelopeForBase64 } from '../../lib/blob-utils'
 import type { SingleResultState } from './query-state-types'
 import { getActiveIndex, patchResultByIndex, resultAt, rowAt } from './query-store-access'
 import {
   buildClonedEditState,
+  copiedBoundColumnNames,
   draftRowPatchForCell,
   editStateWithCellValue,
   resolveCloneSelection,
@@ -40,7 +42,7 @@ function resolveCloneSource(
 
   const sourceRow = rowAt(
     { tabId: tabId, resultIndex: resultIndex, result: result },
-    selection.selectedRowIndex
+    selection.sourceRowIndex
   )?.row
   if (!sourceRow) return null
   if (result.draftRow) return null
@@ -84,35 +86,31 @@ function resolveCellEditTarget(tabId: string, resultColumnIndex: number): CellEd
   }
 }
 
+function clonedBoundCellValue(tableColumn: TableDataColumnMeta, sourceValue: unknown): unknown {
+  const isBinaryBase64 = tableColumn.isBinary && typeof sourceValue === 'string'
+  if (!isBinaryBase64) return sourceValue
+  return envelopeForBase64(sourceValue)
+}
+
 function buildClonedDraftRow(
   result: SingleResultState,
   tableInfo: QueryTableEditInfo,
   sourceRow: unknown[]
 ): ClonedDraftRow {
-  const primaryKeyColumns = new Set(
-    tableInfo.primaryKey?.keyColumns.map((column) => column.toLowerCase()) ?? []
-  )
-  const row = result.columns.map((column, index) => {
-    const boundColumnName = result.editColumnBindings.get(index) ?? column.name
-    if (primaryKeyColumns.has(boundColumnName.toLowerCase())) {
-      return null
-    }
-    return sourceRow[index] ?? null
+  const copiedColumnNames = copiedBoundColumnNames(result, tableInfo)
+  const row = result.columns.map((_column, index) => {
+    const sourceValue = sourceRow[index] ?? null
+    const tableColumn = boundTableColumnAt(result, tableInfo, index)
+    if (!tableColumn) return sourceValue
+    if (!copiedColumnNames.has(tableColumn.name)) return null
+    return clonedBoundCellValue(tableColumn, sourceValue)
   })
 
-  const modifiedColumns = new Set<string>()
-  const insertEligibleColumns = new Set<string>()
-  for (const tableColumn of tableInfo.columns) {
-    if (tableColumn.isPrimaryKey) {
-      continue
-    }
-    if (result.editBoundColumnIndexMap.has(tableColumn.name.toLowerCase())) {
-      modifiedColumns.add(tableColumn.name)
-      insertEligibleColumns.add(tableColumn.name)
-    }
+  return {
+    row: row,
+    modifiedColumns: copiedColumnNames,
+    insertEligibleColumns: new Set(copiedColumnNames),
   }
-
-  return { row, modifiedColumns, insertEligibleColumns }
 }
 
 interface DraftRowRequest {
@@ -144,8 +142,8 @@ export function cloneSelectedRow(tabId: string) {
   if (!source) return
 
   const draft = buildClonedDraftRow(result, source.tableInfo, source.sourceRow)
-  const hasClonableColumns = draft.modifiedColumns.size > 0 || draft.insertEligibleColumns.size > 0
-  if (!hasClonableColumns) return
+  const hasCopiedColumns = draft.insertEligibleColumns.size > 0
+  if (!hasCopiedColumns) return
 
   openDraftRow(tabId, resultIndex, { result: result, draft: draft, keyColumns: source.keyColumns })
 }

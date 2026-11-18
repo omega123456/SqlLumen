@@ -69,7 +69,7 @@ export function RowActionButtons({ availability, deleteButton, handlers }: RowAc
       <RowActionButton
         testId="btn-clone-row"
         accessibleName="Clone row"
-        title="Clone selected row; primary key fields are left blank."
+        title="Clone selected row; auto-increment, generated and binary key fields are left blank."
         disabled={!availability.canClone}
         onClick={handlers.onClone}
       >

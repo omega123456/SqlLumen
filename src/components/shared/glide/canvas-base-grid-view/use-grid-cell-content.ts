@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { GridCellKind, type GridCell, type Item, type Rectangle } from '@glideapps/glide-data-grid'
 import { classifyCellValue } from '../glide-cell-content'
+import { NEW_ROW_CLASS } from '../../data-view/row-class-names'
 import type { GridColumn } from '../glide-grid-types'
 import type { CanvasBaseGridViewProps, GridRow, PendingTypingActivation } from './canvas-grid-types'
 import { buildCheckboxCell, buildDataCell, buildEmptyTextCell } from './grid-cell-builders'
@@ -13,6 +14,7 @@ export type CellForRowBuilder = (row: GridRow, columnIndex: number, rowIndex: nu
 export interface GridRowClasses {
   isRowSelected: RowPredicate
   isRowEditing: RowPredicate
+  isRowNew: RowPredicate
 }
 
 interface CellBuildContext extends GridRowClasses {
@@ -35,6 +37,10 @@ function isSelectedRowClass(rowClass: string | undefined): boolean {
   return rowClass?.includes('selected') === true
 }
 
+function isNewRowClass(rowClass: string | undefined): boolean {
+  return rowClass?.includes(NEW_ROW_CLASS) === true
+}
+
 function isEditingRowClass(rowClass: string | undefined): boolean {
   return rowClass?.includes('editing-row') === true
 }
@@ -50,7 +56,11 @@ export function useGridRowClasses(
     (row: GridRow): boolean => isEditingRowClass(getRowClass?.(row)),
     [getRowClass]
   )
-  return { isRowSelected, isRowEditing }
+  const isRowNew = useCallback(
+    (row: GridRow): boolean => isNewRowClass(getRowClass?.(row)),
+    [getRowClass]
+  )
+  return { isRowSelected, isRowEditing, isRowNew }
 }
 
 function buildColumnCell(context: CellBuildContext, row: GridRow, rowIndex: number): GridCell {
@@ -65,6 +75,7 @@ function buildColumnCell(context: CellBuildContext, row: GridRow, rowIndex: numb
     isBlobColumn: column.isBinary === true,
     isSelectedRow: isSelectedRow,
     isEditingRow: context.isRowEditing(row),
+    isNewRow: context.isRowNew(row),
     highlightedColumnKey: props.highlightColumnKey,
   })
   return buildDataCell({
@@ -81,7 +92,7 @@ function useCellForRowBuilder(input: CellContentInput): CellForRowBuilder {
   const { model, rowClasses, activeSelectedRowIndex } = input
   const { gridColumns } = model
   const { isEditMode, editableColumnKeys, isModifiedCell, highlightColumnKey } = model.props
-  const { isRowSelected, isRowEditing } = rowClasses
+  const { isRowSelected, isRowEditing, isRowNew } = rowClasses
   const { pendingTypingActivationRef } = model.refs.editor
   return useCallback(
     (row: GridRow, columnIndex: number, rowIndex: number): GridCell => {
@@ -92,6 +103,7 @@ function useCellForRowBuilder(input: CellContentInput): CellForRowBuilder {
         activeSelectedRowIndex: activeSelectedRowIndex,
         isRowSelected: isRowSelected,
         isRowEditing: isRowEditing,
+        isRowNew: isRowNew,
         props: { isEditMode, editableColumnKeys, isModifiedCell, highlightColumnKey },
         pendingTypingActivation: pendingTypingActivationRef.current,
       }
@@ -105,6 +117,7 @@ function useCellForRowBuilder(input: CellContentInput): CellForRowBuilder {
       isEditMode,
       isModifiedCell,
       isRowEditing,
+      isRowNew,
       isRowSelected,
       pendingTypingActivationRef,
     ]

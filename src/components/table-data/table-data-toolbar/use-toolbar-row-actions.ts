@@ -84,7 +84,7 @@ export function useToolbarRowEdits({ tabId, view, withNavigationGuard }: Toolbar
       [withNavigationGuard, insertNewRow, tabId]
     ),
     onClone: useCallback(
-      () => withNavigationGuard(() => cloneSelectedRow(tabId)),
+      () => withNavigationGuard(() => void cloneSelectedRow(tabId)),
       [withNavigationGuard, cloneSelectedRow, tabId]
     ),
     onSave: useCallback(() => void saveTableEditingRow(tabId, columns), [tabId, columns]),

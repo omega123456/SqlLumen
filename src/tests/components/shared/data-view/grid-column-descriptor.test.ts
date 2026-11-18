@@ -65,6 +65,21 @@ describe('buildGridColumnDescriptor', () => {
     })
   })
 
+  it('keeps the BLOB viewer read-only for a generated binary column', () => {
+    const descriptor = buildGridColumnDescriptor({
+      key: 'checksum',
+      displayName: 'checksum',
+      dataType: 'VARBINARY',
+      tableColumn: makeTableColumnMeta({ name: 'checksum', isBinary: true, isGenerated: true }),
+      foreignKey: undefined,
+      editable: false,
+      blobViewerEditable: true,
+    })
+
+    expect(descriptor.blobViewer).toBe(true)
+    expect(descriptor.blobViewerEditable).toBe(false)
+  })
+
   it('treats unbound columns as nullable, non-key and read-only', () => {
     const descriptor = buildGridColumnDescriptor({
       key: 'col_0',

@@ -7,6 +7,7 @@ import {
 } from '@glideapps/glide-data-grid'
 import {
   buildBlobCell,
+  buildGeneratedPlaceholderCell,
   buildNullCell,
   buildTextCell,
   classifyCellValue,
@@ -91,6 +92,8 @@ export function buildDataCell(input: DataCellInput): GridCell {
   const { row, column, flags, editable } = input
   const rawValue = row[column.key]
   if (flags.isBlob) return buildBlobCell(flags.displayValue, flags.copyValue)
+  const isUnsetGeneratedCell = column.isGenerated === true && flags.isNewRow && flags.isNull
+  if (isUnsetGeneratedCell) return buildGeneratedPlaceholderCell()
   const isReadOnlyNull = flags.isNull && !editable
   if (isReadOnlyNull) return buildNullCell(flags.copyValue)
   if (isEnumColumn(column)) {

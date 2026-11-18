@@ -129,6 +129,15 @@ export function renameSelectedRowKey(
   return rename.next
 }
 
+export function cloneSourceRowKey(
+  tab: Pick<TableDataTabState, 'checkedRowKeys' | 'selectedRowKey'>
+): RowKey | null {
+  const checkedRowKeys = tab.checkedRowKeys ?? []
+  if (checkedRowKeys.length === 1) return checkedRowKeys[0]
+  if (checkedRowKeys.length > 1) return null
+  return tab.selectedRowKey
+}
+
 export function isSelectedDraftRow(tab: TableDataTabState, editState: RowEditState): boolean {
   const selectedRowKey = tab.selectedRowKey
   if (selectedRowKey === null) return false

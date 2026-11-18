@@ -1,4 +1,8 @@
-import { isSelectedRowInView, type SingleResultState } from '../../../stores/query-store'
+import {
+  cloneSourceRowIndex,
+  copiedBoundColumnNames,
+  type SingleResultState,
+} from '../../../stores/query-store'
 import type { DataViewLocation } from '../../../types/shared-data-view'
 import type {
   FullExportBlockedReason,
@@ -32,23 +36,6 @@ export function resolveDisplayStatus(inputs: DisplayStatusInputs): DisplayStatus
   if (inputs.rowResidencyStatus === 'restoring') return 'restoring'
   if (inputs.tabStatus === 'idle') return 'idle'
   return inputs.resultStatus
-}
-
-function isInsertEligibleNonPrimaryColumn(
-  column: TableDataColumnMeta,
-  editBoundColumnIndexMap: Map<string, number>
-): boolean {
-  if (column.isPrimaryKey) return false
-  return editBoundColumnIndexMap.has(column.name.toLowerCase())
-}
-
-function hasInsertEligibleNonPrimaryColumns(
-  editTableColumns: TableDataColumnMeta[],
-  editBoundColumnIndexMap: Map<string, number>
-): boolean {
-  return editTableColumns.some((column) =>
-    isInsertEligibleNonPrimaryColumn(column, editBoundColumnIndexMap)
-  )
 }
 
 interface RowInsertionInputs {
@@ -86,12 +73,18 @@ function canAddResultRow(inputs: RowInsertionInputs): boolean {
   return inputs.result.draftRow === null
 }
 
+function hasCopiedBoundColumns(inputs: RowInsertionInputs): boolean {
+  const cloneTable = { columns: inputs.editTableColumns, primaryKey: inputs.primaryKey }
+  return copiedBoundColumnNames(inputs.result, cloneTable).size > 0
+}
+
 function canCloneResultRow(inputs: RowInsertionInputs): boolean {
   const { result } = inputs
   if (isRowInsertionBlocked(inputs)) return false
   if (isCloneBlockedByEditing(result)) return false
-  if (!isSelectedRowInView(result)) return false
-  return hasInsertEligibleNonPrimaryColumns(inputs.editTableColumns, result.editBoundColumnIndexMap)
+  const hasCloneSource = cloneSourceRowIndex(result) !== null
+  if (!hasCloneSource) return false
+  return hasCopiedBoundColumns(inputs)
 }
 
 export function resultRowInsertion(inputs: RowInsertionInputs): ResultRowInsertion {

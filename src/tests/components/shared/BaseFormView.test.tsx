@@ -5,6 +5,7 @@ import type { GridColumnDescriptor, RowEditState } from '../../../types/shared-d
 import { BaseFormView } from '../../../components/shared/BaseFormView'
 import type { BaseFormViewProps } from '../../../types/shared-data-view'
 import { bytesEnvelope } from '../../../lib/blob-utils'
+import { makeTableColumnMeta } from '../../helpers/column-meta-fixtures'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -229,7 +230,7 @@ describe('BaseFormView — basic rendering', () => {
     expect(idField).toHaveTextContent('(Primary Key)')
   })
 
-  it('unique key field label shows "(Unique Key)"', () => {
+  it('labels unique-key fields "(Unique Key)" and generated fields "(Generated)"', () => {
     const cols: GridColumnDescriptor[] = [
       {
         key: 'email',
@@ -241,10 +242,47 @@ describe('BaseFormView — basic rendering', () => {
         isPrimaryKey: false,
         isUniqueKey: true,
       },
+      {
+        key: 'total',
+        displayName: 'total',
+        dataType: 'DECIMAL',
+        editable: false,
+        isBinary: false,
+        isNullable: true,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        tableColumnMeta: makeTableColumnMeta({ name: 'total', isGenerated: true }),
+      },
     ]
-    renderForm({ columns: cols, currentRow: ['test@example.com'] })
-    const field = screen.getByTestId('form-field-email')
-    expect(field).toHaveTextContent('(Unique Key)')
+    renderForm({ columns: cols, currentRow: ['test@example.com', '42.00'] })
+    expect(screen.getByTestId('form-field-email')).toHaveTextContent('(Unique Key)')
+    expect(screen.getByTestId('form-field-total')).toHaveTextContent('(Generated)')
+    expect(screen.getByTestId('form-input-total')).toHaveTextContent('42.00')
+  })
+
+  it('explains an unset generated field on a new row instead of showing NULL', () => {
+    const generatedColumn: GridColumnDescriptor = {
+      key: 'total',
+      displayName: 'total',
+      dataType: 'DECIMAL',
+      editable: false,
+      isBinary: false,
+      isNullable: true,
+      isPrimaryKey: false,
+      isUniqueKey: false,
+      tableColumnMeta: makeTableColumnMeta({ name: 'total', isGenerated: true }),
+    }
+    renderForm({
+      columns: [generatedColumn],
+      currentRow: [null],
+      editState: {
+        rowKey: 'new',
+        currentValues: {},
+        originalValues: {},
+        isNewRow: true,
+      },
+    })
+    expect(screen.getByTestId('form-input-total')).toHaveTextContent('Generated on save')
   })
 
   it('displays column names with original casing', () => {
@@ -977,24 +1015,21 @@ describe('BaseFormView — DateTimePicker integration', () => {
     expect(screen.getAllByTestId('date-time-picker-popup')).toHaveLength(1)
   })
 
-  it('calendar button is disabled when temporal field value is NULL', () => {
+  it('opens the picker from a NULL temporal field so a blank new row can pick a date', () => {
+    const onUpdateCell = vi.fn()
     renderForm({
       columns: temporalColumns,
       currentRow: [1, null, null],
       onSave: vi.fn(),
+      onUpdateCell,
     })
-    expect(screen.getByTestId('calendar-btn-created_at')).toBeDisabled()
-    expect(screen.getByTestId('calendar-btn-login_time')).toBeDisabled()
-  })
+    fireEvent.click(screen.getByTestId('calendar-btn-created_at'))
+    expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
 
-  it('calendar button is enabled when temporal field value is non-null', () => {
-    renderForm({
-      columns: temporalColumns,
-      currentRow: [1, '2023-06-15 10:30:00', '14:30:00'],
-      onSave: vi.fn(),
-    })
-    expect(screen.getByTestId('calendar-btn-created_at')).not.toBeDisabled()
-    expect(screen.getByTestId('calendar-btn-login_time')).not.toBeDisabled()
+    fireEvent.click(screen.getByTestId('btn-today'))
+    fireEvent.click(screen.getByTestId('btn-picker-apply'))
+    expect(onUpdateCell).toHaveBeenCalledTimes(1)
+    expect(onUpdateCell.mock.calls[0][0]).toBe('created_at')
   })
 
   it('NULL toggle closes picker if it was open for that field', () => {

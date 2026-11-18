@@ -1,6 +1,7 @@
 import type { ColumnMeta, TableDataColumnMeta, RowEditState } from '../types/schema'
 import { coerceValueForColumn } from '../stores/table-data-store'
 import { isSameTextIgnoringCase } from './value-checks'
+import { isInlineEditableColumn } from './column-capabilities'
 export {
   buildQueryEditColumnBindings,
   buildBoundColumnIndexMap,
@@ -28,7 +29,7 @@ function isEditableResultColumn(check: ResultColumnEditability): boolean {
   if (isUnbound && isAmbiguousName) return false
   const tableColumn = check.tableColumnLookup.get(boundName?.toLowerCase() ?? resultColumnNameLower)
   if (!tableColumn) return false
-  return !tableColumn.isBinary
+  return isInlineEditableColumn(tableColumn)
 }
 
 export interface EditableColumnMapInputs {

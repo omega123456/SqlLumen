@@ -1124,24 +1124,6 @@ describe('ResultFormView — Temporal Fields', () => {
     expect(screen.getByLabelText('Open time picker')).toBeInTheDocument()
   })
 
-  it('disables calendar button when value is NULL', () => {
-    const nullEditState: RowEditState = {
-      ...temporalEditState,
-      currentValues: {
-        created_at: null,
-        birth_date: '1990-05-20',
-        login_time: '14:30:00',
-      },
-    }
-    renderForm(
-      <ResultFormView
-        {...temporalDefaultProps}
-        {...buildTemporalEditProps({ editState: nullEditState })}
-      />
-    )
-    expect(screen.getByTestId('calendar-btn-created_at')).toBeDisabled()
-  })
-
   it('toggles NULL off with today date for temporal columns', () => {
     const onUpdateCell = vi.fn()
     const nullEditState: RowEditState = {

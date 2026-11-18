@@ -61,6 +61,7 @@ export function useFormCurrentRecord(view: FormTabView, isEditable: boolean) {
       rowKey: JSON.stringify(editState.rowKey),
       currentValues: editState.currentValues,
       originalValues: editState.originalValues,
+      isNewRow: editState.isNewRow,
     }
   }, [editState, isEditingCurrentRow])
   return {

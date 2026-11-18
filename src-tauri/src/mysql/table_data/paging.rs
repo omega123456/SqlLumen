@@ -72,6 +72,7 @@ fn column_meta_from_row(row: &DecodedRow) -> TableDataColumnMeta {
         has_default: column_default.is_some() || is_nullable,
         column_default,
         is_auto_increment: extra.contains("auto_increment"),
+        is_generated: is_generated_column_extra(&extra),
     }
 }
 

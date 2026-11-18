@@ -12,6 +12,7 @@ export type HeaderDrawArgs = Parameters<DrawHeaderCallback>[0]
 export interface GridColumnHeaderMeta {
   sortDirection: 'ASC' | 'DESC' | undefined
   isReadOnly: boolean
+  isGenerated: boolean
   hasFkLink: boolean
   isHighlighted: boolean
 }
@@ -20,8 +21,8 @@ export function getSortIconName(direction: 'ASC' | 'DESC'): string {
   return direction === 'ASC' ? '↑' : '↓'
 }
 
-export function buildHeaderMeta(
-  column: GridColumn<unknown>,
+export function buildHeaderMeta<TRow>(
+  column: GridColumn<TRow>,
   sortColumns: GridSortColumn[],
   highlightedColumnKey: string | undefined
 ): GridColumnHeaderMeta {
@@ -29,9 +30,16 @@ export function buildHeaderMeta(
   return {
     sortDirection: sort?.direction,
     isReadOnly: column.editable !== true && column.blobViewerEditable !== true,
+    isGenerated: column.isGenerated === true,
     hasFkLink: column.foreignKey != null,
     isHighlighted: highlightedColumnKey === column.key,
   }
+}
+
+function editabilityMarkerOf(meta: GridColumnHeaderMeta): string | null {
+  if (meta.isGenerated) return 'ƒx'
+  if (meta.isReadOnly) return '🔒'
+  return null
 }
 
 export interface CustomHeaderDrawing {
@@ -65,8 +73,9 @@ export function drawCustomHeader({ context, args, meta, theme }: CustomHeaderDra
     context.fillText('↗', iconX, centeredTextBaselineY(args.rect))
     iconX -= HEADER_ICON_WIDTH_PX
   }
-  if (meta.isReadOnly) {
-    context.fillText('🔒', iconX, centeredTextBaselineY(args.rect))
+  const editabilityMarker = editabilityMarkerOf(meta)
+  if (editabilityMarker) {
+    context.fillText(editabilityMarker, iconX, centeredTextBaselineY(args.rect))
   }
   context.textAlign = 'left'
 }

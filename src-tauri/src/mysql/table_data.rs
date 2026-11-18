@@ -44,6 +44,8 @@ pub struct TableDataColumnMeta {
     pub column_default: Option<String>,
     pub is_binary: bool,
     pub is_auto_increment: bool,
+    #[serde(default)]
+    pub is_generated: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

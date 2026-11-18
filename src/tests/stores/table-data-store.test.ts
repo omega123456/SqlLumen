@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { ipc, expectToast } from '../ipc-mock'
+import { makeTableDataTabState } from '../helpers/table-data-test-utils'
+import { makeTableColumnMeta } from '../helpers/column-meta-fixtures'
 import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
 import { frontendCacheLifecycle } from '../../lib/frontend-cache-lifecycle'
 import { useWorkspaceStore } from '../../stores/workspace-store'
@@ -1106,7 +1108,7 @@ describe('useTableDataStore — saveCurrentRow (INSERT path)', () => {
   it('saves a cloned row through insert without copying generated primary keys', async () => {
     await setupTabWithData()
     useTableDataStore.getState().setSelectedRow('tab-1', { id: 1 })
-    useTableDataStore.getState().cloneSelectedRow('tab-1')
+    await useTableDataStore.getState().cloneSelectedRow('tab-1')
 
     await useTableDataStore.getState().saveCurrentRow('tab-1')
 
@@ -1172,7 +1174,7 @@ describe('useTableDataStore — saveCurrentRow (INSERT path)', () => {
 
     await setupTabWithData()
     useTableDataStore.getState().setSelectedRow('tab-1', { tenant_id: 10, user_id: 1 })
-    useTableDataStore.getState().cloneSelectedRow('tab-1')
+    await useTableDataStore.getState().cloneSelectedRow('tab-1')
     useTableDataStore.getState().updateCellValue('tab-1', 'tenant_id', 11)
     useTableDataStore.getState().updateCellValue('tab-1', 'user_id', 2)
 
@@ -1269,7 +1271,7 @@ describe('useTableDataStore — discardCurrentRow', () => {
   it('removes only the cloned draft row when discarding', async () => {
     await setupTabWithData()
     useTableDataStore.getState().setSelectedRow('tab-1', { id: 2 })
-    useTableDataStore.getState().cloneSelectedRow('tab-1')
+    await useTableDataStore.getState().cloneSelectedRow('tab-1')
 
     useTableDataStore.getState().discardCurrentRow('tab-1')
 
@@ -1378,12 +1380,39 @@ describe('useTableDataStore — insertNewRow', () => {
   })
 })
 
+function setupTabWithStoredBlob() {
+  useTableDataStore.setState({
+    tabs: {
+      'tab-blob': makeTableDataTabState({
+        columns: [
+          makeTableColumnMeta({
+            name: 'id',
+            dataType: 'bigint',
+            isPrimaryKey: true,
+            isAutoIncrement: true,
+          }),
+          makeTableColumnMeta({ name: 'photo', dataType: 'blob', isBinary: true }),
+          makeTableColumnMeta({ name: 'total', dataType: 'decimal', isGenerated: true }),
+        ],
+        rows: [[1, '[BLOB - 3 B]', '9.50']],
+        primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
+        selectedRowKey: { id: 1 },
+      }),
+    },
+  })
+}
+
+function draftRowOf(tabId: string): unknown[] | undefined {
+  const tab = useTableDataStore.getState().tabs[tabId]
+  return tab?.rows[tab.rows.length - 1]
+}
+
 describe('useTableDataStore — cloneSelectedRow', () => {
-  it('creates a draft row from the selected persisted row with blank primary keys', async () => {
+  it('creates a draft row from the selected persisted row with a blank auto-increment key', async () => {
     await setupTabWithData()
     useTableDataStore.getState().setSelectedRow('tab-1', { id: 1 })
 
-    useTableDataStore.getState().cloneSelectedRow('tab-1')
+    await useTableDataStore.getState().cloneSelectedRow('tab-1')
 
     const tab = useTableDataStore.getState().tabs['tab-1']
     expect(tab.rows).toEqual([
@@ -1399,7 +1428,7 @@ describe('useTableDataStore — cloneSelectedRow', () => {
   it('does nothing when no persisted row is selected or a draft row already exists', async () => {
     await setupTabWithData()
 
-    useTableDataStore.getState().cloneSelectedRow('tab-1')
+    await useTableDataStore.getState().cloneSelectedRow('tab-1')
     expect(useTableDataStore.getState().tabs['tab-1'].rows).toEqual([
       [1, 'Alice'],
       [2, 'Bob'],
@@ -1409,9 +1438,55 @@ describe('useTableDataStore — cloneSelectedRow', () => {
     useTableDataStore.getState().insertNewRow('tab-1')
     const rowCountBefore = useTableDataStore.getState().tabs['tab-1'].rows.length
 
-    useTableDataStore.getState().cloneSelectedRow('tab-1')
+    await useTableDataStore.getState().cloneSelectedRow('tab-1')
 
     expect(useTableDataStore.getState().tabs['tab-1'].rows.length).toBe(rowCountBefore)
+  })
+
+  it('copies the stored BLOB bytes into the clone so saving writes the real bytes', async () => {
+    setupTabWithStoredBlob()
+    ipc.override('fetch_blob_value', () => ({ base64: 'AQID', byteLength: 3, tooLarge: false }))
+
+    await useTableDataStore.getState().cloneSelectedRow('tab-blob')
+
+    expect(ipc.payloads('fetch_blob_value')).toEqual([
+      expect.objectContaining({ column: 'photo', primaryKeyPairs: [['id', 1]] }),
+    ])
+    expect(draftRowOf('tab-blob')).toEqual([null, bytesEnvelope('AQID'), null])
+
+    await useTableDataStore.getState().saveCurrentRow('tab-blob')
+
+    expect(ipc.payloads('insert_table_row')).toEqual([
+      expect.objectContaining({ values: { photo: bytesEnvelope('AQID') } }),
+    ])
+  })
+
+  it('leaves a BLOB over the fetch limit out of the clone and warns about it', async () => {
+    setupTabWithStoredBlob()
+    ipc.override('fetch_blob_value', () => ({
+      base64: null,
+      byteLength: 20_000_000,
+      tooLarge: true,
+    }))
+
+    await useTableDataStore.getState().cloneSelectedRow('tab-blob')
+
+    expect(draftRowOf('tab-blob')).toEqual([null, null, null])
+    const editState = useTableDataStore.getState().tabs['tab-blob']?.editState
+    expect(editState?.modifiedColumns.has('photo')).toBe(false)
+    await expectToast('warning', 'photo')
+  })
+
+  it('creates no draft and reports the failure when the BLOB cannot be fetched', async () => {
+    setupTabWithStoredBlob()
+    ipc.override('fetch_blob_value', () => {
+      throw new Error('connection lost')
+    })
+
+    await useTableDataStore.getState().cloneSelectedRow('tab-blob')
+
+    expect(useTableDataStore.getState().tabs['tab-blob']?.editState).toBeNull()
+    await expectToast('error', 'connection lost')
   })
 })
 

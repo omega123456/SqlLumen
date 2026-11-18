@@ -76,9 +76,9 @@ describe('findAmbiguousColumns', () => {
 // ---------------------------------------------------------------------------
 
 describe('buildEditableColumnMap', () => {
-  it('marks non-matching columns as not editable', () => {
-    const resultCols = [col('id'), col('computed_field')]
-    const tableCols = [tableCol('id')]
+  it('marks non-matching and generated columns as not editable', () => {
+    const resultCols = [col('id'), col('computed_field'), col('total')]
+    const tableCols = [tableCol('id'), tableCol('total', { isGenerated: true })]
     const ambiguous = new Set<string>()
 
     const map = buildEditableColumnMap({
@@ -88,6 +88,7 @@ describe('buildEditableColumnMap', () => {
     })
     expect(map.get(0)).toBe(true)
     expect(map.get(1)).toBe(false)
+    expect(map.get(2)).toBe(false)
   })
 
   it('excludes ambiguous columns', () => {

@@ -1,6 +1,7 @@
 import { isBinaryDataType } from '../../../lib/blob-utils'
 import { getTemporalColumnType } from '../../../lib/date-utils'
 import { isJsonSqlType } from '../../../lib/grid-column-style'
+import { isGeneratedColumn } from '../../../lib/column-capabilities'
 import type { ForeignKeyColumnInfo, TableDataColumnMeta } from '../../../types/schema'
 import type { GridColumnDescriptor } from '../../../types/shared-data-view'
 import { isEnumColumn, isSetColumn } from '../enum-field-utils'
@@ -59,6 +60,8 @@ function isBinaryColumn(input: GridColumnDescriptorInput): boolean {
 export function buildGridColumnDescriptor(input: GridColumnDescriptorInput): GridColumnDescriptor {
   const { tableColumn, foreignKey } = input
   const isBinary = isBinaryColumn(input)
+  const isGenerated = isGeneratedColumn(tableColumn)
+  const canEditBlob = isBinary && input.blobViewerEditable && !isGenerated
   return {
     key: input.key,
     displayName: input.displayName,
@@ -70,7 +73,7 @@ export function buildGridColumnDescriptor(input: GridColumnDescriptorInput): Gri
     foreignKey: foreignKey,
     editorType: resolveGridEditorType(tableColumn, foreignKey),
     blobViewer: isBinary,
-    blobViewerEditable: isBinary && input.blobViewerEditable,
+    blobViewerEditable: canEditBlob,
     width: input.width,
   }
 }

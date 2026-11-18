@@ -36,6 +36,19 @@ pub fn parse_set_values(column_type: &str) -> Option<Vec<String>> {
     parse_quoted_type_values(column_type, "set")
 }
 
+const GENERATED_COLUMN_EXTRA_MARKERS: [&str; 3] = [
+    "virtual generated",
+    "stored generated",
+    "persistent generated",
+];
+
+pub fn is_generated_column_extra(extra: &str) -> bool {
+    let lower_extra = extra.to_ascii_lowercase();
+    GENERATED_COLUMN_EXTRA_MARKERS
+        .iter()
+        .any(|marker| lower_extra.contains(marker))
+}
+
 pub(super) fn parse_quoted_type_values(column_type: &str, type_name: &str) -> Option<Vec<String>> {
     let trimmed = column_type.trim();
     let lower = trimmed.to_ascii_lowercase();

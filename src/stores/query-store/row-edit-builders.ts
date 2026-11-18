@@ -2,8 +2,9 @@ import type { QueryTableEditInfo, RowEditState } from '../../types/schema'
 import { showErrorToast, showWarningToast } from '../toast-store'
 import { buildRowEditState } from '../../lib/query-edit-utils'
 import { isPresentIndex } from '../../lib/value-checks'
+import { isCopiedIntoClone } from '../../lib/new-row-values'
 import type { SingleResultState } from './query-state-types'
-import { hasUnsavedModifications } from './query-tab-selectors'
+import { cloneSourceRowIndex, hasUnsavedModifications } from './query-tab-selectors'
 import { toDisplayedQueryCellValue } from './result-seeding'
 
 export interface ClonedDraftRow {
@@ -12,9 +13,23 @@ export interface ClonedDraftRow {
   insertEligibleColumns: Set<string>
 }
 
+export function copiedBoundColumnNames(
+  result: SingleResultState,
+  table: Pick<QueryTableEditInfo, 'columns' | 'primaryKey'>
+): Set<string> {
+  const keyColumns = table.primaryKey?.keyColumns ?? []
+  const copiedColumnNames = new Set<string>()
+  for (const tableColumn of table.columns) {
+    const isBound = result.editBoundColumnIndexMap.has(tableColumn.name.toLowerCase())
+    const isCopiedBoundColumn = isBound && isCopiedIntoClone(tableColumn, keyColumns)
+    if (isCopiedBoundColumn) copiedColumnNames.add(tableColumn.name)
+  }
+  return copiedColumnNames
+}
+
 interface CloneSelection {
   editMode: string
-  selectedRowIndex: number
+  sourceRowIndex: number
 }
 
 export function resolveCloneSelection(result: SingleResultState): CloneSelection | null {
@@ -24,9 +39,9 @@ export function resolveCloneSelection(result: SingleResultState): CloneSelection
     return null
   }
   if (result.editState?.isNewRow) return null
-  const selectedRowIndex = result.selectedRowIndex
-  if (!isPresentIndex(selectedRowIndex)) return null
-  return { editMode: result.editMode, selectedRowIndex: selectedRowIndex }
+  const sourceRowIndex = cloneSourceRowIndex(result)
+  if (sourceRowIndex === null) return null
+  return { editMode: result.editMode, sourceRowIndex: sourceRowIndex }
 }
 
 export function buildClonedEditState(

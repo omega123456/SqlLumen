@@ -19,7 +19,6 @@ import '../../styles/vendor/react-datepicker.css'
 export interface DateTimePickerProps {
   value: string | null
   columnType: TemporalColumnType
-  disabled?: boolean
   anchorEl: HTMLElement | null
   popupRef?: RefObject<HTMLDivElement | null>
   onApply: (value: string) => void
@@ -56,11 +55,10 @@ function CalendarSection({ localDate, onChange, onTodayClick }: CalendarSectionP
 
 interface TimeSectionProps {
   timeInput: string
-  disabled: boolean
   onChange: (event: ChangeEvent<HTMLInputElement>) => void
 }
 
-function TimeSection({ timeInput, disabled, onChange }: TimeSectionProps) {
+function TimeSection({ timeInput, onChange }: TimeSectionProps) {
   return (
     <div
       className="flex items-center gap-2 border-t border-light-stroke-divider px-3.5 py-2.5 dark:border-dark-stroke-divider"
@@ -79,7 +77,6 @@ function TimeSection({ timeInput, disabled, onChange }: TimeSectionProps) {
         value={timeInput}
         onChange={onChange}
         placeholder="HH:MM:SS"
-        disabled={disabled}
         data-testid="time-input"
       />
     </div>
@@ -87,23 +84,21 @@ function TimeSection({ timeInput, disabled, onChange }: TimeSectionProps) {
 }
 
 interface PickerButtonsProps {
-  disabled: boolean
   hasDate: boolean
   onCancel: () => void
   onApply: () => void
 }
 
-function PickerButtons({ disabled, hasDate, onCancel, onApply }: PickerButtonsProps) {
+function PickerButtons({ hasDate, onCancel, onApply }: PickerButtonsProps) {
   return (
     <div className="flex justify-end gap-2 border-t border-light-stroke-divider px-3.5 pt-2.5 pb-3.5 dark:border-dark-stroke-divider">
       <Button
         variant="bare"
         className={joinClassNames([
-          'cursor-pointer rounded-control bg-transparent px-4 py-1.5 font-body text-size-caption font-semibold text-light-on-surface-variant transition-background-and-color duration-120 hover:bg-light-surface-container-high hover:text-light-on-surface disabled:cursor-default disabled:opacity-50 dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-high dark:hover:text-dark-on-surface',
+          'cursor-pointer rounded-control bg-transparent px-4 py-1.5 font-body text-size-caption font-semibold text-light-on-surface-variant transition-background-and-color duration-120 hover:bg-light-surface-container-high hover:text-light-on-surface dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-high dark:hover:text-dark-on-surface',
           FOCUS_RING,
         ])}
         onClick={onCancel}
-        disabled={disabled}
         data-testid="btn-picker-cancel"
       >
         Cancel
@@ -115,25 +110,13 @@ function PickerButtons({ disabled, hasDate, onCancel, onApply }: PickerButtonsPr
           FOCUS_RING,
         ])}
         onClick={onApply}
-        disabled={disabled || !hasDate}
+        disabled={!hasDate}
         data-testid="btn-picker-apply"
       >
         Apply
       </Button>
     </div>
   )
-}
-
-type PickerAvailability = 'enabled' | 'disabled'
-
-const PICKER_PORTAL_CLASSES: Record<PickerAvailability, string> = {
-  enabled: 'fixed z-1100 click-outside-ignore',
-  disabled: 'fixed z-1100 click-outside-ignore pointer-events-none opacity-50',
-}
-
-function pickerAvailability(disabled: boolean): PickerAvailability {
-  if (disabled) return 'disabled'
-  return 'enabled'
 }
 
 function useMergedPopupRef(externalPopupRef: RefObject<HTMLDivElement | null> | undefined) {
@@ -151,7 +134,6 @@ function useMergedPopupRef(externalPopupRef: RefObject<HTMLDivElement | null> | 
 export function DateTimePicker({
   value,
   columnType,
-  disabled = false,
   anchorEl,
   popupRef,
   onApply,
@@ -161,15 +143,12 @@ export function DateTimePicker({
   const { internalPopupRef, mergedPopupRef } = useMergedPopupRef(popupRef)
   const picker = usePickerValue({ value: value, columnType: columnType, onApply: onApply })
   const position = useDateTimePickerPosition(anchorEl, onCancel)
-  usePickerDismissal(
-    { disabled: disabled, onCancel: onCancel, workspaceTabId: workspaceTabId },
-    internalPopupRef
-  )
+  usePickerDismissal({ onCancel: onCancel, workspaceTabId: workspaceTabId }, internalPopupRef)
 
   const popup = (
     <div
       ref={mergedPopupRef}
-      className={PICKER_PORTAL_CLASSES[pickerAvailability(disabled)]}
+      className="fixed z-1100 click-outside-ignore"
       style={{ top: position.top, left: position.left }}
       data-testid="date-time-picker-popup"
     >
@@ -182,14 +161,9 @@ export function DateTimePicker({
           />
         )}
         {picker.showTime && (
-          <TimeSection
-            timeInput={picker.timeInput}
-            disabled={disabled}
-            onChange={picker.handleTimeInputChange}
-          />
+          <TimeSection timeInput={picker.timeInput} onChange={picker.handleTimeInputChange} />
         )}
         <PickerButtons
-          disabled={disabled}
           hasDate={picker.localDate !== null}
           onCancel={onCancel}
           onApply={picker.handleApply}

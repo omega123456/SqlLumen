@@ -405,7 +405,7 @@ describe('ResultToolbar', () => {
     expect(screen.getByTestId('btn-clone-row')).toBeEnabled()
     expect(screen.getByTestId('btn-clone-row')).toHaveAttribute(
       'title',
-      'Clone selected row; primary key fields are left blank.'
+      'Clone selected row; auto-increment, generated and binary key fields are left blank.'
     )
     expect(screen.getByTestId('btn-save')).toBeDisabled()
     expect(screen.getByTestId('btn-save').textContent).toBe('')

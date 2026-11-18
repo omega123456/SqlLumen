@@ -32,7 +32,6 @@ function renderPicker(
   overrides: Partial<{
     value: string | null
     columnType: TemporalColumnType
-    disabled: boolean
     onApply: (v: string) => void
     onCancel: () => void
     workspaceTabId: string
@@ -41,7 +40,6 @@ function renderPicker(
   const props = {
     value: '2023-11-24 14:30:00',
     columnType: 'DATETIME' as TemporalColumnType,
-    disabled: false,
     anchorEl,
     onApply: vi.fn(),
     onCancel: vi.fn(),
@@ -173,16 +171,6 @@ describe('DateTimePicker', () => {
 
     fireEvent.keyDown(document, { key: 'Enter' })
     expect(onApply).not.toHaveBeenCalled()
-  })
-
-  // ---- Disabled state ----
-
-  it('disabled state does not call onCancel on click outside', () => {
-    const onCancel = vi.fn()
-    renderPicker({ disabled: true, onCancel })
-
-    fireEvent.mouseDown(document.body)
-    expect(onCancel).not.toHaveBeenCalled()
   })
 
   // ---- Today button ----
@@ -389,22 +377,6 @@ describe('DateTimePicker', () => {
     expect(popup.contains(document.activeElement)).toBe(true)
     expect(document.activeElement).toHaveAttribute('aria-selected', 'true')
     expect(document.activeElement).toHaveTextContent('24')
-
-    vi.useRealTimers()
-  })
-
-  it('does not auto-focus when disabled', async () => {
-    vi.useFakeTimers()
-    const onCancel = vi.fn()
-    renderPicker({ disabled: true, columnType: 'DATE', value: '2023-11-24', onCancel })
-
-    await act(async () => {
-      vi.advanceTimersByTime(60)
-    })
-
-    const popup = screen.getByTestId('date-time-picker-popup')
-    // Focus should NOT have moved into the disabled picker
-    expect(popup.contains(document.activeElement)).toBe(false)
 
     vi.useRealTimers()
   })

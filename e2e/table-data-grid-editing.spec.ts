@@ -17,75 +17,79 @@ function activePanel(page: Page) {
   return page.locator('[data-testid="workspace-panel"][data-active="true"]')
 }
 
+interface GridCellAddress {
+  gridTestId: 'table-data-grid' | 'result-grid'
+  columnName: string
+  rowIndex: number
+}
+
+function readCellValue(page: Page, cell: GridCellAddress): Promise<unknown> {
+  return page.evaluate(
+    ({ grid, column, row }) => {
+      if (grid === 'table-data-grid') {
+        const store = (
+          window as unknown as {
+            __tableDataStore__?: {
+              getState?: () => {
+                tabs?: Record<string, { columns?: Array<{ name: string }>; rows?: unknown[][] }>
+              }
+            }
+          }
+        ).__tableDataStore__
+
+        const tabs = Object.values(store?.getState?.().tabs ?? {})
+        for (const tab of tabs) {
+          const columnIndex =
+            tab?.columns?.findIndex((candidate) => candidate?.name === column) ?? -1
+          if (columnIndex >= 0) {
+            return tab?.rows?.[row]?.[columnIndex]
+          }
+        }
+        return undefined
+      }
+
+      const store = (
+        window as unknown as {
+          __queryStore__?: {
+            getState?: () => {
+              tabs?: Record<
+                string,
+                {
+                  activeResultIndex?: number
+                  results?: Array<{ columns?: Array<{ name: string }>; rows?: unknown[][] }>
+                }
+              >
+            }
+          }
+        }
+      ).__queryStore__
+
+      const tabs = Object.values(store?.getState?.().tabs ?? {})
+      for (const tab of tabs) {
+        const resultIndex = tab?.activeResultIndex ?? 0
+        const result = tab?.results?.[resultIndex]
+        const columnIndex =
+          result?.columns?.findIndex((candidate) => candidate?.name === column) ?? -1
+        if (columnIndex >= 0) {
+          return result?.rows?.[row]?.[columnIndex]
+        }
+      }
+      return undefined
+    },
+    { grid: cell.gridTestId, column: cell.columnName, row: cell.rowIndex }
+  )
+}
+
 async function expectCellValue(
   page: Page,
-  gridTestId: 'table-data-grid' | 'result-grid',
+  gridTestId: GridCellAddress['gridTestId'],
   columnName: string,
   rowIndex: number,
   expectedValue: unknown
 ) {
+  const cell = { gridTestId: gridTestId, columnName: columnName, rowIndex: rowIndex }
   await expect
-    .poll(
-      async () =>
-        page.evaluate(
-          ({ grid, column, row }) => {
-            if (grid === 'table-data-grid') {
-              const store = (
-                window as unknown as {
-                  __tableDataStore__?: {
-                    getState?: () => {
-                      tabs?: Record<
-                        string,
-                        { columns?: Array<{ name: string }>; rows?: unknown[][] }
-                      >
-                    }
-                  }
-                }
-              ).__tableDataStore__
-
-              const tabs = Object.values(store?.getState?.().tabs ?? {})
-              for (const tab of tabs) {
-                const columnIndex =
-                  tab?.columns?.findIndex((candidate) => candidate?.name === column) ?? -1
-                if (columnIndex >= 0) {
-                  return tab?.rows?.[row]?.[columnIndex]
-                }
-              }
-              return undefined
-            }
-
-            const store = (
-              window as unknown as {
-                __queryStore__?: {
-                  getState?: () => {
-                    tabs?: Record<
-                      string,
-                      {
-                        activeResultIndex?: number
-                        results?: Array<{ columns?: Array<{ name: string }>; rows?: unknown[][] }>
-                      }
-                    >
-                  }
-                }
-              }
-            ).__queryStore__
-
-            const tabs = Object.values(store?.getState?.().tabs ?? {})
-            for (const tab of tabs) {
-              const resultIndex = tab?.activeResultIndex ?? 0
-              const result = tab?.results?.[resultIndex]
-              const columnIndex =
-                result?.columns?.findIndex((candidate) => candidate?.name === column) ?? -1
-              if (columnIndex >= 0) {
-                return result?.rows?.[row]?.[columnIndex]
-              }
-            }
-            return undefined
-          },
-          { grid: gridTestId, column: columnName, row: rowIndex }
-        ),
-      { timeout: APP_READY_MS, intervals: [100, 200, 300] }
-    )
+    .poll(() => readCellValue(page, cell), { timeout: APP_READY_MS, intervals: [100, 200, 300] })
     .toBe(expectedValue)
 }
 
@@ -629,6 +633,42 @@ test('table data datetime editor applies a clicked calendar date', async ({ page
 
   await expect(popup).toBeHidden({ timeout: APP_READY_MS })
   await expectCellValue(page, 'table-data-grid', 'created_at', 0, '2023-11-15 14:30:00')
+})
+
+test('table data calendar opens from the NULL date cell of a blank new row and applies the picked day', async ({
+  page,
+}) => {
+  await waitForApp(page)
+  await openTableDataTab(page)
+
+  const grid = page.getByTestId('table-data-grid')
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+
+  await page.getByTestId('btn-add-row').click()
+  const newRowIndex = 4
+  await activateCellEditorByColumnName(grid, newRowIndex, 'created_at')
+
+  const calendarButton = page.getByTestId('grid-calendar-btn')
+  await expect(calendarButton).toBeVisible({ timeout: APP_READY_MS })
+  await calendarButton.click()
+
+  const popup = page.getByTestId('date-time-picker-popup')
+  await expect(popup).toBeVisible({ timeout: APP_READY_MS })
+  await popup
+    .locator('.react-datepicker__day:not(.react-datepicker__day--outside-month)')
+    .filter({ hasText: /^15$/ })
+    .first()
+    .click()
+
+  await expect(popup).toBeHidden({ timeout: APP_READY_MS })
+  const newRowCreatedAt = {
+    gridTestId: 'table-data-grid',
+    columnName: 'created_at',
+    rowIndex: newRowIndex,
+  } as const
+  await expect
+    .poll(() => readCellValue(page, newRowCreatedAt), { timeout: APP_READY_MS })
+    .toMatch(/^\d{4}-\d{2}-15 \d{2}:\d{2}:\d{2}$/)
 })
 
 test('table data JSON editor NULL marker sets null without outside-click dismissal', async ({

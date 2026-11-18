@@ -23,6 +23,7 @@ fn sample_columns() -> Vec<TableDataColumnMeta> {
         column_default: None,
         is_binary: false,
         is_auto_increment: true,
+        is_generated: false,
     }]
 }
 

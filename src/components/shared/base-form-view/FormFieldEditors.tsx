@@ -3,7 +3,9 @@ import { EyeIcon } from '@phosphor-icons/react'
 import { Button } from '../../common/Button'
 import { Dropdown } from '../../common/Dropdown'
 import { TextInput } from '../../common/TextInput'
+import { GENERATED_VALUE_PLACEHOLDER, isGeneratedColumn } from '../../../lib/column-capabilities'
 import { formatCellValue } from '../../../lib/result-cell-utils'
+import { isNullish } from '../../../lib/value-checks'
 import { ENUM_NULL_SENTINEL } from '../enum-field-utils'
 import type { BaseFormViewProps, GridColumnDescriptor } from '../../../types/shared-data-view'
 import { JsonFormField } from '../JsonFormField'
@@ -89,10 +91,22 @@ function JsonFieldEditor({ field, rawValue, isNull, isEditable }: FormFieldEdito
   )
 }
 
-function ReadonlyFieldValue({ field, rawValue }: FormFieldEditorProps) {
+function readonlyFieldText({ field, rawValue }: FormFieldEditorProps): string {
+  const isUnsetGenerated =
+    isGeneratedColumn(field.col.tableColumnMeta) &&
+    field.editState?.isNewRow === true &&
+    isNullish(rawValue)
+  if (isUnsetGenerated) return GENERATED_VALUE_PLACEHOLDER
+  return formatCellValue(rawValue).displayValue
+}
+
+function ReadonlyFieldValue(editor: FormFieldEditorProps) {
   return (
-    <div className={READONLY_FIELD_VALUE_CLASS_NAME} data-testid={fieldInputTestId(field.col)}>
-      {formatCellValue(rawValue).displayValue}
+    <div
+      className={READONLY_FIELD_VALUE_CLASS_NAME}
+      data-testid={fieldInputTestId(editor.field.col)}
+    >
+      {readonlyFieldText(editor)}
     </div>
   )
 }

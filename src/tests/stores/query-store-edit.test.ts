@@ -27,6 +27,7 @@ import {
   withRows,
 } from '../helpers/query-test-utils'
 import { act } from '@testing-library/react'
+import { bytesEnvelope } from '../../lib/blob-utils'
 import {
   getResultSurface,
   requestVisibleRange,
@@ -1091,7 +1092,7 @@ describe('useQueryStore — cloneSelectedRow', () => {
     expect(tab.editState?.modifiedColumns.has('id')).toBe(false)
   })
 
-  it('lets the user enter required natural primary-key values after clone without copying them from the source row', async () => {
+  it('copies natural primary-key values into the clone instead of leaving them blank', async () => {
     overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
@@ -1119,15 +1120,23 @@ describe('useQueryStore — cloneSelectedRow', () => {
     useQueryStore.getState().setSelectedRow('tab-1', 0)
     useQueryStore.getState().cloneSelectedRow('tab-1')
 
-    let tab = flat('tab-1')
-    expect(tab.editState?.currentValues.code).toBeNull()
-    expect(tab.editState?.modifiedColumns.has('code')).toBe(false)
-
-    useQueryStore.getState().updateCellValue('tab-1', 0, 'p-002')
-
-    tab = flat('tab-1')
-    expect(tab.editState?.currentValues.code).toBe('p-002')
+    const tab = flat('tab-1')
+    expect(tab.draftRow).toEqual(['p-001', 'Alpha'])
+    expect(tab.editState?.currentValues.code).toBe('p-001')
     expect(tab.editState?.modifiedColumns.has('code')).toBe(true)
+  })
+
+  it('clones the only checkbox-checked row and refuses while several rows are checked', async () => {
+    await executeAndAnalyze()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+
+    useQueryStore.getState().setCheckedRanges('tab-1', [[0, 2]])
+    useQueryStore.getState().cloneSelectedRow('tab-1')
+    expect(flat('tab-1').draftRow).toBeNull()
+
+    useQueryStore.getState().setCheckedRanges('tab-1', [[1, 2]])
+    useQueryStore.getState().cloneSelectedRow('tab-1')
+    expect(flat('tab-1').draftRow).toEqual([null, 'Bob', 'bob@test.com'])
   })
 
   it('refuses clone when edit metadata is using a unique-key fallback', async () => {
@@ -1827,7 +1836,7 @@ describe('useQueryStore — saveCurrentRow', () => {
     expect(executeQueryCount).toBe(2)
   })
 
-  it('includes cloned non-primary-key blob values in insert payload even when not inline editable', async () => {
+  it('clones BLOB values as byte envelopes so the insert writes the bytes, not their base64 text', async () => {
     const insertTableRowSpy = vi.fn()
 
     overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd, args) => {
@@ -1842,7 +1851,7 @@ describe('useQueryStore — saveCurrentRow', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstWindow: firstWindowFor([[1, 'Alice', '0xABCD']]),
+          firstWindow: firstWindowFor([[1, 'Alice', 'q80=']]),
 
           autoLimitApplied: false,
         }
@@ -1888,7 +1897,7 @@ describe('useQueryStore — saveCurrentRow', () => {
     useQueryStore.getState().cloneSelectedRow('tab-1')
 
     const cloned = flat('tab-1')
-    expect(cloned.draftRow).toEqual([null, 'Alice', '0xABCD'])
+    expect(cloned.draftRow).toEqual([null, 'Alice', bytesEnvelope('q80=')])
 
     await useQueryStore.getState().saveCurrentRow('tab-1')
 
@@ -1896,7 +1905,7 @@ describe('useQueryStore — saveCurrentRow', () => {
       expect.objectContaining({
         values: {
           name: 'Alice',
-          avatar_blob: '0xABCD',
+          avatar_blob: bytesEnvelope('q80='),
         },
       })
     )

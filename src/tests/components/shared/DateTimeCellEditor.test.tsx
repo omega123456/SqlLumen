@@ -388,31 +388,29 @@ describe('DateTimeCellEditor', () => {
     expect(input.value).toBe('2024-01-01')
   })
 
-  it('calendar button is disabled when isNull is true', () => {
+  it('opens the picker on a blank new-row date cell and applying a date fills the cell', () => {
     setupStore()
-    const props = makeMockProps({ row: { id: 1, created_at: null } })
+    const props = makeMockProps({
+      row: { id: 1, created_at: null },
+      isNullable: false,
+      columnMeta: makeColumnMeta('created_at', 'DATE'),
+    })
     render(<DateTimeCellEditor {...props} />)
 
-    const calBtn = screen.getByTestId('grid-calendar-btn')
-    expect(calBtn).toBeDisabled()
-  })
+    const calendarButton = screen.getByTestId('grid-calendar-btn')
+    expect(calendarButton).not.toBeDisabled()
+    fireEvent.click(calendarButton)
+    expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
+    expect(props.onClose).not.toHaveBeenCalled()
 
-  it('clicking disabled calendar button does NOT open picker when null', () => {
-    setupStore()
-    const props = makeMockProps({ row: { id: 1, created_at: null } })
-    render(<DateTimeCellEditor {...props} />)
+    fireEvent.click(screen.getByTestId('btn-today'))
+    fireEvent.click(screen.getByTestId('btn-picker-apply'))
 
-    fireEvent.click(screen.getByTestId('grid-calendar-btn'))
-    expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
-  })
-
-  it('calendar button is enabled when value is not null', () => {
-    setupStore()
-    const props = makeMockProps({ row: { id: 1, created_at: '2023-11-24' } })
-    render(<DateTimeCellEditor {...props} />)
-
-    const calBtn = screen.getByTestId('grid-calendar-btn')
-    expect(calBtn).not.toBeDisabled()
+    expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('2025-06-15')
+    expect(props.onRowChange).toHaveBeenCalledWith(
+      expect.objectContaining({ created_at: '2025-06-15' })
+    )
+    expect(props.onClose).toHaveBeenCalledWith(true, false)
   })
 
   it('Escape key restores original value', () => {

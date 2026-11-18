@@ -5,6 +5,7 @@ import type { TableCellValueSync } from './table-data-store/row-edit-transitions
 import { pageActions } from './table-data-store/page-actions'
 import { residencyActions } from './table-data-store/residency-actions'
 import { cellEditActions } from './table-data-store/cell-edit-actions'
+import { rowCloneActions } from './table-data-store/row-clone'
 import { rowSaveActions } from './table-data-store/row-save'
 import { rowDeletionActions } from './table-data-store/row-deletion'
 import { viewActions } from './table-data-store/view-actions'
@@ -14,6 +15,7 @@ export {
   findRowIndexByKey,
   getRowKeyFromData,
   isEditingRowKey,
+  cloneSourceRowKey,
 } from './table-data-store/row-keys'
 export {
   coerceValueForColumn,
@@ -54,7 +56,7 @@ export interface TableDataStore {
   saveCurrentRow: (tabId: string) => Promise<boolean>
   discardCurrentRow: (tabId: string) => void
   insertNewRow: (tabId: string) => void
-  cloneSelectedRow: (tabId: string) => void
+  cloneSelectedRow: (tabId: string) => Promise<void>
   deleteRow: (tabId: string, rowKey: Record<string, unknown>) => Promise<void>
   deleteRows: (tabId: string, rowKeys: Record<string, unknown>[]) => Promise<number>
 
@@ -90,6 +92,7 @@ export const useTableDataStore = create<TableDataStore>()(() => ({
   ...pageActions(),
   ...residencyActions(),
   ...cellEditActions(),
+  ...rowCloneActions(),
   ...rowSaveActions(),
   ...rowDeletionActions(),
   ...viewActions(),

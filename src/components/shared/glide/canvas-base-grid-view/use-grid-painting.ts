@@ -3,7 +3,11 @@ import type { DrawCellCallback, DrawHeaderCallback } from '@glideapps/glide-data
 import { useGlideSkeletonColor } from '../../../../hooks/use-glide-grid-theme'
 import { drawSkeletonCell } from '../glide-drawers'
 import type { GridColumn, GridSortColumn } from '../glide-grid-types'
-import { drawCustomHeader } from '../glide-header-rendering'
+import {
+  buildHeaderMeta,
+  drawCustomHeader,
+  type GridColumnHeaderMeta,
+} from '../glide-header-rendering'
 import type { GridRow } from './canvas-grid-types'
 import {
   drawCellBackground,
@@ -45,13 +49,10 @@ function headerMeta(
   column: GridColumn<GridRow>,
   sortColumns: GridSortColumn[],
   highlightColumnKey: string | undefined
-) {
-  return {
-    sortDirection: sortColumns.find((sort) => sort.columnKey === column.key)?.direction,
-    isReadOnly: column.editable !== true && column.blobViewerEditable !== true,
-    hasFkLink: column.foreignKey != null && !isListSelectionColumn(column),
-    isHighlighted: highlightColumnKey === column.key,
-  }
+): GridColumnHeaderMeta {
+  const meta = buildHeaderMeta(column, sortColumns, highlightColumnKey)
+  const hasFkLink = meta.hasFkLink && !isListSelectionColumn(column)
+  return { ...meta, hasFkLink: hasFkLink }
 }
 
 function useDrawCell(input: GridPaintingInput): DrawCellCallback {

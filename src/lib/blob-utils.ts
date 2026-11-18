@@ -82,6 +82,11 @@ export function envelopeForBytes(bytes: Uint8Array): BlobEnvelope {
   return bytesEnvelope(bytesToBase64(bytes))
 }
 
+export function envelopeForBase64(base64: string): BlobEnvelope {
+  if (base64.length === 0) return emptyEnvelope()
+  return bytesEnvelope(base64)
+}
+
 const BYTE_UNITS = ['KB', 'MB', 'GB', 'TB'] as const
 
 const BYTES_PER_KILOBYTE = 1024

@@ -19,6 +19,7 @@ describe('glide-header-rendering', () => {
     expect(meta).toEqual({
       sortDirection: 'DESC',
       isReadOnly: true,
+      isGenerated: false,
       hasFkLink: true,
       isHighlighted: true,
     })
@@ -47,7 +48,13 @@ describe('glide-header-rendering', () => {
         column: { title: 'Age' },
         rect: { x: 1, y: 2, width: 100, height: 30 },
       } as CustomHeaderDrawing['args'],
-      meta: { sortDirection: 'ASC', isReadOnly: true, hasFkLink: true, isHighlighted: true },
+      meta: {
+        sortDirection: 'ASC',
+        isReadOnly: true,
+        isGenerated: false,
+        hasFkLink: true,
+        isHighlighted: true,
+      },
       theme: {
         bgSearchResult: '#eee',
         textHeaderSelected: '#111',
@@ -60,6 +67,42 @@ describe('glide-header-rendering', () => {
     expect((ctx.fillText as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(
       3
     )
+  })
+
+  it('marks a generated column with ƒx in place of the read-only lock', () => {
+    const ctx = {
+      fillStyle: '',
+      font: '',
+      textAlign: '',
+      fillText: vi.fn(),
+      fillRect: vi.fn(),
+    } as unknown as CanvasRenderingContext2D
+    const meta = buildHeaderMeta(
+      { key: 'total', name: 'total', editable: false, isGenerated: true },
+      [],
+      undefined
+    )
+    expect(meta.isGenerated).toBe(true)
+    expect(meta.isReadOnly).toBe(true)
+
+    drawCustomHeader({
+      context: ctx,
+      args: {
+        column: { title: 'total' },
+        rect: { x: 0, y: 0, width: 120, height: 28 },
+      } as CustomHeaderDrawing['args'],
+      meta: meta,
+      theme: {
+        textHeader: '#222',
+        headerFontStyle: '12px',
+        fontFamily: 'sans-serif',
+        cellHorizontalPadding: 8,
+      } as CustomHeaderDrawing['theme'],
+    })
+    const drawnTexts = (ctx.fillText as unknown as ReturnType<typeof vi.fn>).mock.calls.map(
+      ([text]) => text
+    )
+    expect(drawnTexts).toEqual(['total', 'ƒx'])
   })
 
   it('draws plain headers without optional canvas affordances', () => {
@@ -76,7 +119,13 @@ describe('glide-header-rendering', () => {
         column: { title: 'Name' },
         rect: { x: 4, y: 6, width: 120, height: 28 },
       } as CustomHeaderDrawing['args'],
-      meta: { sortDirection: undefined, isReadOnly: false, hasFkLink: false, isHighlighted: false },
+      meta: {
+        sortDirection: undefined,
+        isReadOnly: false,
+        isGenerated: false,
+        hasFkLink: false,
+        isHighlighted: false,
+      },
       theme: {
         bgSearchResult: '#eee',
         textHeaderSelected: '#111',

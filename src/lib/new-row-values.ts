@@ -1,6 +1,7 @@
 import { getTemporalColumnType, getTodayMysqlString } from './date-utils'
 import type { TemporalColumnType } from './date-utils'
 import type { TableDataColumnMeta } from '../types/schema'
+import { isGeneratedColumn } from './column-capabilities'
 
 const CURRENT_TIMESTAMP_DEFAULT = /^current_timestamp(?:\(\d+\))?$/i
 
@@ -54,4 +55,14 @@ function isCurrentTemporalDefault(
 
 export function isSeededFromColumnDefault(column: TableDataColumnMeta): boolean {
   return column.columnDefault != null && !column.isAutoIncrement
+}
+
+export function isCopiedIntoClone(
+  column: TableDataColumnMeta,
+  keyColumns: readonly string[]
+): boolean {
+  if (column.isAutoIncrement) return false
+  if (isGeneratedColumn(column)) return false
+  const isBinaryKeyColumn = column.isBinary && keyColumns.includes(column.name)
+  return !isBinaryKeyColumn
 }

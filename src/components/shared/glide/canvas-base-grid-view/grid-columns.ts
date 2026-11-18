@@ -1,4 +1,5 @@
 import { getDefaultColumnWidth, HEADER_ICON_WIDTH_PX } from '../../../../lib/grid-column-style'
+import { isGeneratedColumn } from '../../../../lib/column-capabilities'
 import type { GridColumnDescriptor } from '../../../../types/shared-data-view'
 import type { GridColumn } from '../glide-grid-types'
 import type {
@@ -42,6 +43,7 @@ export function toGridColumn(
     foreignKey: column.foreignKey,
     isNullable: column.isNullable,
     isBinary: column.isBinary,
+    isGenerated: isGeneratedColumn(column.tableColumnMeta),
     blobViewerEditable: column.blobViewerEditable,
     tableColumnMeta: column.tableColumnMeta,
     editorType: column.editorType,

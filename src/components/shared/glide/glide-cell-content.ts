@@ -6,6 +6,7 @@ import {
   isBlobEnvelope,
   isBlobPlaceholderText,
 } from '../../../lib/blob-utils'
+import { GENERATED_VALUE_PLACEHOLDER } from '../../../lib/column-capabilities'
 import { logParseFallback } from '../../../lib/app-log-commands'
 import { currentTheme, readThemeColor, readToken, type ThemeName } from '../../../lib/theme-tokens'
 import type { BlobEnvelope } from '../../../types/schema'
@@ -169,6 +170,18 @@ export function buildNullCell(copyValue = 'NULL'): GridCell {
     displayData: 'NULL',
     data: '',
     copyData: copyValue,
+    allowOverlay: false,
+    readonly: true,
+    themeOverride: nullCellThemeOverride(),
+  } satisfies TextCell
+}
+
+export function buildGeneratedPlaceholderCell(): GridCell {
+  return {
+    kind: GridCellKind.Text,
+    displayData: GENERATED_VALUE_PLACEHOLDER,
+    data: '',
+    copyData: '',
     allowOverlay: false,
     readonly: true,
     themeOverride: nullCellThemeOverride(),

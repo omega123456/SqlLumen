@@ -79,6 +79,19 @@ export function isSelectedRowInView(result: SingleResultState): boolean {
   return isAtOrAfterFirstRow && isBeforeLastRow
 }
 
+function firstCheckedRowIndex(checkedRanges: readonly ViewRange[]): number | null {
+  const firstCheckedRange = checkedRanges.find(([start, end]) => end > start)
+  return firstCheckedRange ? firstCheckedRange[0] : null
+}
+
+export function cloneSourceRowIndex(result: SingleResultState): number | null {
+  const checkedCount = countRanges(result.checkedRanges)
+  if (checkedCount === 1) return firstCheckedRowIndex(result.checkedRanges)
+  if (checkedCount > 1) return null
+  if (!isSelectedRowInView(result)) return null
+  return result.selectedRowIndex
+}
+
 export function isExecutionLocked(tab: TabQueryState | undefined): boolean {
   return tab !== undefined && isEditorLockStatus(tab.tabStatus)
 }

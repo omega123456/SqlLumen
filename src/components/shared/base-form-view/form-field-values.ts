@@ -9,6 +9,7 @@ import {
   isBlobPlaceholderText,
 } from '../../../lib/blob-utils'
 import { isNullish } from '../../../lib/value-checks'
+import { isGeneratedColumn } from '../../../lib/column-capabilities'
 import type { FormFieldProps } from './FormFieldEditors'
 import type {
   BaseFormViewProps,
@@ -91,7 +92,8 @@ export function resolveNonNullDefault(column: GridColumnDescriptor, rowValue: un
   return ''
 }
 
-export function keyLabelSuffix(column: GridColumnDescriptor): string {
+export function fieldLabelSuffix(column: GridColumnDescriptor): string {
+  if (isGeneratedColumn(column.tableColumnMeta)) return '(Generated)'
   if (column.isPrimaryKey) return '(Primary Key)'
   if (column.isUniqueKey) return '(Unique Key)'
   return ''

@@ -36,8 +36,10 @@ export {
   getFlatTabState,
   countRanges,
   isSelectedRowInView,
+  cloneSourceRowIndex,
   isExecutionLocked,
 } from './query-store/query-tab-selectors'
+export { copiedBoundColumnNames } from './query-store/row-edit-builders'
 export type {
   ExecutionStatus,
   ExportRowScope,

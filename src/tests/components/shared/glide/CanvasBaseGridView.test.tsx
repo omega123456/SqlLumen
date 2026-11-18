@@ -11,6 +11,7 @@ import {
 import * as GlideDataGridModule from '../../../../components/shared/glide/GlideDataGrid'
 import type { GridHandle } from '../../../../components/shared/glide/glide-grid-types'
 import { expectToast } from '../../../ipc-mock'
+import { makeTableColumnMeta } from '../../../helpers/column-meta-fixtures'
 import type { GridRowSource, RowRange } from '../../../../components/shared/glide/grid-row-source'
 import { useToastStore } from '../../../../stores/toast-store'
 
@@ -1519,6 +1520,41 @@ describe('CanvasBaseGridView', () => {
     expect(cell).toMatchObject({ displayData: 'NULL', readonly: true, allowOverlay: false })
     expect(cell.glideEditorData).toBeUndefined()
     expect(props.provideEditor(cell)).toBeUndefined()
+
+    const generatedColumn = {
+      ...columns[0],
+      editable: false,
+      isNullable: true,
+      tableColumnMeta: makeTableColumnMeta({ name: 'name', isGenerated: true }),
+    }
+    rerender(
+      <CanvasBaseGridView
+        rows={nullableRows}
+        columns={[generatedColumn]}
+        editState={null}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+        getRowClass={() => 'grid-editing-row grid-new-row'}
+      />
+    )
+    props = mockGlideDataGrid.mock.lastCall?.[0] as typeof props
+    expect(props.getCellContent([0, 0])).toMatchObject({
+      displayData: 'Generated on save',
+      copyData: '',
+      readonly: true,
+    })
+
+    rerender(
+      <CanvasBaseGridView
+        rows={nullableRows}
+        columns={[generatedColumn]}
+        editState={null}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+      />
+    )
+    props = mockGlideDataGrid.mock.lastCall?.[0] as typeof props
+    expect(props.getCellContent([0, 0])).toMatchObject({ displayData: 'NULL' })
   })
 
   it('commits dropdown enum edits through value and row change callbacks', () => {

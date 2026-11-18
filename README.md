@@ -135,7 +135,8 @@ SqlLumen checks GitHub Releases for updates. When one is available, a banner app
 - **Windowed results** — the first 1,000 rows arrive with the result, and the rest load as you scroll, so large result sets stay responsive
 - **Row ceiling** — a configurable maximum (default 100,000 rows) keeps memory use bounded. Truncated results are marked clearly in the status bar and the result tab
 - **Full export** — export a truncated result by re-running its SQL in the original database
-- **Inline editing** — edit table-data cells and grid rows directly, with the shared data grid used across table data and query results
+- **Inline editing** — edit table-data cells and grid rows directly, with the shared data grid used across table data and query results. Generated (virtual or stored) columns are read-only: their header shows **ƒx** and the form view labels them **(Generated)**
+- **Clone row** — duplicate the clicked row, or the one checked row, into a new unsaved row. Every value is copied, including BLOB bytes up to 10 MB, except auto-increment, generated and binary key columns, which are left for the database or for you to fill in
 
 **Data transfer**
 

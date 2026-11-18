@@ -35,6 +35,7 @@ export interface RowEditState {
   rowKey: string
   currentValues: Record<string, unknown>
   originalValues: Record<string, unknown>
+  isNewRow?: boolean
 }
 
 export interface CellClickGuardArgs {

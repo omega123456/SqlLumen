@@ -2,7 +2,6 @@ import type { RowEditState } from '../../types/schema'
 import { resolveStagedRowIndex, withCellWritten, withColumnModified } from './row-edit-transitions'
 import type { DraftRowSeed, TableCellValueSync } from './row-edit-transitions'
 import {
-  findRowIndexByKey,
   getRowKeyFromData,
   renameEditStateRowKey,
   renameSelectedRowKey,
@@ -14,7 +13,7 @@ import { getInitialValueForNewRow, isSeededFromColumnDefault } from '../../lib/n
 import { patchTab } from './table-data-access'
 import { useTableDataStore } from '../table-data-store'
 
-function appendDraftRow(tabId: string, { tab, rowValues, modifiedColumns }: DraftRowSeed) {
+export function appendDraftRow(tabId: string, { tab, rowValues, modifiedColumns }: DraftRowSeed) {
   const tempId = 'new-' + Date.now()
   const newRows = [...tab.rows, rowValues]
 
@@ -115,37 +114,11 @@ export function insertNewRow(tabId: string): void {
   appendDraftRow(tabId, { tab: tab, rowValues: newRow, modifiedColumns: seededColumns })
 }
 
-export function cloneSelectedRow(tabId: string): void {
-  const tab = useTableDataStore.getState().tabs[tabId]
-  if (!tab?.selectedRowKey) return
-  if (!tab.primaryKey) return
-  if (tab.editState?.isNewRow) return
-  if ('__tempId' in tab.selectedRowKey) return
-
-  const rowIndex = findRowIndexByKey(tab.rows, tab.columns, tab.selectedRowKey)
-  if (rowIndex === -1) return
-
-  const sourceRow = tab.rows[rowIndex]
-  const clonedRow = tab.columns.map((column, index) => {
-    if (tab.primaryKey?.keyColumns.includes(column.name)) {
-      return null
-    }
-    return sourceRow[index] ?? null
-  })
-
-  const modifiedColumns = new Set(
-    tab.columns.filter((column) => !column.isPrimaryKey).map((column) => column.name)
-  )
-
-  appendDraftRow(tabId, { tab: tab, rowValues: clonedRow, modifiedColumns: modifiedColumns })
-}
-
 export function cellEditActions() {
   return {
     startEditing,
     updateCellValue,
     syncCellValue,
     insertNewRow,
-    cloneSelectedRow,
   }
 }

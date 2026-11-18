@@ -7,11 +7,11 @@ import { isNullish } from '../../../lib/value-checks'
 import { DateTimePicker } from '../DateTimePicker'
 import { FkLookupTriggerButton } from '../FkLookupTriggerButton'
 import type { FormFieldEditorProps, FormFieldProps } from './FormFieldEditors'
-import { displayValue, keyLabelSuffix } from './form-field-values'
+import { displayValue, fieldLabelSuffix } from './form-field-values'
 
 export function FormFieldLabel({ field, showLock }: { field: FormFieldProps; showLock: boolean }) {
   const column = field.col
-  const labelSuffix = keyLabelSuffix(column)
+  const labelSuffix = fieldLabelSuffix(column)
   return (
     <div className="flex min-w-0 flex-col items-end text-right">
       <span className="flex max-w-full items-center gap-1.5 text-row wrap-anywhere text-light-on-surface-variant dark:text-dark-on-surface-variant">
@@ -50,7 +50,7 @@ export function FormFieldInlineButtons({
   temporalType,
   showForeignKeyTrigger,
 }: FormFieldInlineButtonsProps) {
-  const { field, rawValue, isNull } = editor
+  const { field, rawValue } = editor
   const column = field.col
   const isTimePicker = temporalType === 'TIME'
   return (
@@ -60,11 +60,7 @@ export function FormFieldInlineButtons({
           variant="subtle"
           size="sm"
           iconOnly
-          disabled={isNull}
-          onClick={(event) => {
-            if (isNull) return
-            editor.openPicker(event.currentTarget)
-          }}
+          onClick={(event) => editor.openPicker(event.currentTarget)}
           data-testid={`calendar-btn-${column.displayName}`}
           aria-label={isTimePicker ? 'Open time picker' : 'Open date picker'}
         >
@@ -126,12 +122,11 @@ interface FormFieldPickerProps {
 }
 
 export function FormFieldPicker({ editor, temporalType, anchorEl }: FormFieldPickerProps) {
-  const { field, rawValue, isNull } = editor
+  const { field, rawValue } = editor
   return (
     <DateTimePicker
       value={isNullish(rawValue) ? null : displayValue(rawValue)}
       columnType={temporalType}
-      disabled={isNull}
       anchorEl={anchorEl}
       onApply={(value) => {
         field.onInputChange(field.col.key, value)

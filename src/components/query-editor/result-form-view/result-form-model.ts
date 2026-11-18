@@ -176,5 +176,6 @@ export function toSharedEditState(
     rowKey: JSON.stringify(editState.rowKey),
     currentValues: currentValues,
     originalValues: originalValues,
+    isNewRow: editState.isNewRow,
   }
 }

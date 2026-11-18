@@ -33,6 +33,7 @@ fn sample_response(id: i64) -> TableDataResponse {
                 column_default: None,
                 is_binary: false,
                 is_auto_increment: true,
+                is_generated: false,
             },
             TableDataColumnMeta {
                 name: "score".to_string(),
@@ -47,6 +48,7 @@ fn sample_response(id: i64) -> TableDataResponse {
                 column_default: None,
                 is_binary: false,
                 is_auto_increment: false,
+                is_generated: false,
             },
         ],
         rows: std::sync::Arc::new(vec![vec![

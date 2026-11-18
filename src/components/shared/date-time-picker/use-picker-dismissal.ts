@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, type RefObject } from 'react'
+import { useEffect, type RefObject } from 'react'
 import { subscribeToTabDeactivated } from '../../../lib/workspace-tab-activity-events'
 import { useDismissOnOutsideClick } from '../../../hooks/use-dismiss-on-outside-click'
 import { focusInitialPickerControl } from './date-time-picker-model'
@@ -6,7 +6,6 @@ import { focusInitialPickerControl } from './date-time-picker-model'
 const INITIAL_FOCUS_DELAY_MS = 50
 
 export interface PickerDismissalInputs {
-  disabled: boolean
   onCancel: () => void
   workspaceTabId?: string
 }
@@ -18,20 +17,18 @@ function useDismissOnTabDeactivated(workspaceTabId: string | undefined, onCancel
   }, [onCancel, workspaceTabId])
 }
 
-function useInitialPickerFocus(disabled: boolean, popupRef: RefObject<HTMLDivElement | null>) {
-  const scheduleInitialFocus = useEffectEvent((): ReturnType<typeof setTimeout> | undefined => {
-    if (disabled) return undefined
-    return setTimeout(() => focusInitialPickerControl(popupRef.current), INITIAL_FOCUS_DELAY_MS)
-  })
+function useInitialPickerFocus(popupRef: RefObject<HTMLDivElement | null>) {
   useEffect(() => {
-    const initialFocusTimer = scheduleInitialFocus()
+    const initialFocusTimer = setTimeout(
+      () => focusInitialPickerControl(popupRef.current),
+      INITIAL_FOCUS_DELAY_MS
+    )
     return () => clearTimeout(initialFocusTimer)
-  }, [])
+  }, [popupRef])
 }
 
-function useCancelOnEscape(disabled: boolean, onCancel: () => void) {
+function useCancelOnEscape(onCancel: () => void) {
   useEffect(() => {
-    if (disabled) return
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       event.stopPropagation()
@@ -41,15 +38,15 @@ function useCancelOnEscape(disabled: boolean, onCancel: () => void) {
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [disabled, onCancel])
+  }, [onCancel])
 }
 
 export function usePickerDismissal(
-  { disabled, onCancel, workspaceTabId }: PickerDismissalInputs,
+  { onCancel, workspaceTabId }: PickerDismissalInputs,
   popupRef: RefObject<HTMLDivElement | null>
 ) {
-  useDismissOnOutsideClick({ ref: popupRef, active: !disabled, onDismiss: onCancel })
+  useDismissOnOutsideClick({ ref: popupRef, active: true, onDismiss: onCancel })
   useDismissOnTabDeactivated(workspaceTabId, onCancel)
-  useInitialPickerFocus(disabled, popupRef)
-  useCancelOnEscape(disabled, onCancel)
+  useInitialPickerFocus(popupRef)
+  useCancelOnEscape(onCancel)
 }

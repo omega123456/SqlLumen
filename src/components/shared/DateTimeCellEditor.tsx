@@ -50,7 +50,6 @@ function EditorMarkers({
         ])}
         onMouseDown={preventFocusSteal}
         onClick={onCalendarClick}
-        disabled={isNull}
         tabIndex={-1}
         data-testid="grid-calendar-btn"
         aria-label="Open date picker"
@@ -134,7 +133,6 @@ export default function DateTimeCellEditor(props: CellEditorParams & EditorCallb
         <DateTimePicker
           value={value}
           columnType={temporalType}
-          disabled={isNull}
           anchorEl={anchorElement}
           popupRef={pickerPopupRef}
           onApply={handlers.handlePickerApply}

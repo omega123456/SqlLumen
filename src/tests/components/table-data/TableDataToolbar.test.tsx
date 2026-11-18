@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import { useConnectionStore } from '../../../stores/connection-store'
@@ -7,6 +7,7 @@ import { useToastStore } from '../../../stores/toast-store'
 import type { TableDataTabState } from '../../../types/schema'
 import { expectToast, ipc } from '../../ipc-mock'
 import { makeTableDataTabState, setupTestConnection } from '../../helpers/table-data-test-utils'
+import { makeTableColumnMeta } from '../../helpers/column-meta-fixtures'
 import { TableDataToolbar } from '../../../components/table-data/TableDataToolbar'
 
 const setupConnection = setupTestConnection
@@ -96,7 +97,7 @@ describe('TableDataToolbar', () => {
     expect(buttonNames).toEqual(['Add row', 'Clone row', 'Delete row'])
     expect(screen.getByTestId('btn-clone-row')).toHaveAttribute(
       'title',
-      'Clone selected row; primary key fields are left blank.'
+      'Clone selected row; auto-increment, generated and binary key fields are left blank.'
     )
 
     expect(screen.getByTestId('view-mode-grid')).toHaveAttribute('data-active')
@@ -355,6 +356,47 @@ describe('TableDataToolbar', () => {
     await waitFor(() => {
       expect(ipc.payloads('insert_table_row').length).toBeGreaterThan(0)
     })
+  })
+
+  it('clones the only checkbox-checked row of a composite natural-key table with every value copied', async () => {
+    const user = userEvent.setup()
+    setupConnection()
+    setupTabState({
+      columns: [
+        makeTableColumnMeta({ name: 'property_id', dataType: 'int', isPrimaryKey: true }),
+        makeTableColumnMeta({ name: 'start_date', dataType: 'date', isPrimaryKey: true }),
+        makeTableColumnMeta({ name: 'price', dataType: 'decimal' }),
+      ],
+      rows: [
+        [17209, '2026-02-02', '440.00'],
+        [17210, '2026-03-23', '430.00'],
+      ],
+      primaryKey: {
+        keyColumns: ['property_id', 'start_date'],
+        hasAutoIncrement: false,
+        isUniqueKeyFallback: false,
+      },
+      selectedRowKey: null,
+      checkedRowKeys: [
+        { property_id: 17209, start_date: '2026-02-02' },
+        { property_id: 17210, start_date: '2026-03-23' },
+      ],
+    })
+    render(<TableDataToolbar tabId="tab-1" />)
+    expect(screen.getByTestId('btn-clone-row')).toBeDisabled()
+
+    act(() => {
+      useTableDataStore
+        .getState()
+        .setCheckedRowKeys('tab-1', [{ property_id: 17209, start_date: '2026-02-02' }])
+    })
+    await user.click(screen.getByTestId('btn-clone-row'))
+
+    const state = useTableDataStore.getState().tabs['tab-1']
+    expect(state?.rows[state.rows.length - 1]).toEqual([17209, '2026-02-02', '440.00'])
+    expect(state?.editState?.modifiedColumns).toEqual(
+      new Set(['property_id', 'start_date', 'price'])
+    )
   })
 
   it('clicking Delete Row shows the confirmation dialog and confirming deletes the row', async () => {

@@ -63,10 +63,7 @@ export function useDateTimeEditorHandlers(
       },
       [handleChange, onClose, setPickerOpen]
     ),
-    handleCalendarClick: useCallback(() => {
-      if (isNull) return
-      setPickerOpen(true)
-    }, [isNull, setPickerOpen]),
+    handleCalendarClick: useCallback(() => setPickerOpen(true), [setPickerOpen]),
     handleInputBlur: useCallback(
       (relatedTarget: EventTarget | null) => {
         if (isTargetInside(containerRef.current, relatedTarget)) return

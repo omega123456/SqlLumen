@@ -21,6 +21,7 @@ export interface GridColumn<TRow> {
   editorOptions?: unknown
   isNullable?: boolean
   isBinary?: boolean
+  isGenerated?: boolean
   tableColumnMeta?: unknown
   editorType?: 'text' | 'enum' | 'set' | 'datetime' | 'fk' | 'json' | 'none'
   enumValues?: string[]

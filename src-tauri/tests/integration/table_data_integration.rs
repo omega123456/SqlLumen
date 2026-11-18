@@ -6,7 +6,9 @@ use sqllumen_lib::db::ssl_mode::SslMode;
 use sqllumen_lib::mysql::pool::SslSettings;
 #[cfg(not(coverage))]
 use sqllumen_lib::mysql::table_data::fetch_table_pk_cached;
-use sqllumen_lib::mysql::table_data::{format_bytes, parse_enum_values, parse_set_values};
+use sqllumen_lib::mysql::table_data::{
+    format_bytes, is_generated_column_extra, parse_enum_values, parse_set_values,
+};
 use sqllumen_lib::mysql::table_data::{
     translate_filter_model, translate_filter_model_with_columns, ExportTableOptions,
     FilterCondition, PrimaryKeyInfo, SortInfo, TableDataColumnMeta,
@@ -56,6 +58,7 @@ async fn fetch_table_pk_cached_returns_cached_metadata_without_querying_mysql() 
         column_default: None,
         is_binary: false,
         is_auto_increment: true,
+        is_generated: false,
     }];
 
     metadata_cache.insert(
@@ -1501,6 +1504,7 @@ mod command_wrapper_coverage {
                     column_default: None,
                     is_binary: false,
                     is_auto_increment: true,
+                    is_generated: false,
                 },
                 TableDataColumnMeta {
                     name: "name".to_string(),
@@ -1515,6 +1519,7 @@ mod command_wrapper_coverage {
                     column_default: None,
                     is_binary: false,
                     is_auto_increment: false,
+                    is_generated: false,
                 },
             ],
             rows: std::sync::Arc::new(vec![vec![
@@ -2881,6 +2886,7 @@ fn make_column_meta(name: &str, data_type: &str) -> TableDataColumnMeta {
         column_default: None,
         is_binary: false,
         is_auto_increment: false,
+        is_generated: false,
     }
 }
 
@@ -3025,6 +3031,18 @@ fn parse_set_values_extracts_options_and_escaped_quotes() {
 fn parse_set_values_returns_none_for_non_set_types() {
     assert!(parse_set_values("varchar(255)").is_none());
     assert!(parse_set_values("enum('a','b')").is_none());
+}
+
+#[test]
+fn generated_column_extra_matches_mysql_and_mariadb_generated_columns_only() {
+    assert!(is_generated_column_extra("VIRTUAL GENERATED"));
+    assert!(is_generated_column_extra("STORED GENERATED"));
+    assert!(is_generated_column_extra("PERSISTENT GENERATED"));
+    assert!(!is_generated_column_extra("DEFAULT_GENERATED"));
+    assert!(!is_generated_column_extra(
+        "DEFAULT_GENERATED on update CURRENT_TIMESTAMP"
+    ));
+    assert!(!is_generated_column_extra("auto_increment"));
 }
 
 // ── Data structure serialization tests ────────────────────────────────────────

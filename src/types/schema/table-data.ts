@@ -19,6 +19,7 @@ export interface TableDataColumnMeta {
   columnDefault: string | null
   isBinary: boolean
   isAutoIncrement: boolean
+  isGenerated?: boolean
 }
 
 export interface PrimaryKeyInfo {
