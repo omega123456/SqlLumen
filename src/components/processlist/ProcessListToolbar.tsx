@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowCounterClockwise, StopCircle } from '@phosphor-icons/react'
+import { ArrowsClockwise, StopCircle } from '@phosphor-icons/react'
 import {
   DEFAULT_EXCLUDE_IDLE_CONNECTIONS,
   DEFAULT_REFRESH_INTERVAL_MS,
@@ -262,7 +262,7 @@ function ProcessListStatusSection({
         data-testid="processlist-refresh-button"
         aria-label="Refresh"
       >
-        <ArrowCounterClockwise size={16} weight="bold" />
+        <ArrowsClockwise size={16} weight="regular" />
       </Button>
 
       {lastRefreshedAt !== null && (

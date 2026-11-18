@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { ArrowCounterClockwise, Stop } from '@phosphor-icons/react'
+import { ArrowsClockwise, Stop } from '@phosphor-icons/react'
 import { Button } from '../../common/Button'
 import type { ToolbarTabView } from './toolbar-model'
 import { joinClassNames } from '../../../lib/class-names'
@@ -109,7 +109,7 @@ export function LoadControlButton({
       title="Refresh data"
       data-testid="btn-refresh"
     >
-      <ArrowCounterClockwise size={16} weight="bold" />
+      <ArrowsClockwise size={16} weight="regular" />
     </Button>
   )
 }

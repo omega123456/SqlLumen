@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react'
-import { Database, ArrowClockwise, Star } from '@phosphor-icons/react'
+import { Database, ArrowsClockwise, Star } from '@phosphor-icons/react'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useSchemaStore } from '../../stores/schema-store'
 import { joinClassNames } from '../../lib/class-names'
@@ -177,7 +177,7 @@ export function ConnectionHeader({
         aria-label="Refresh all databases"
         title="Refresh all databases"
       >
-        <ArrowClockwise size={16} weight="regular" />
+        <ArrowsClockwise size={16} weight="regular" />
       </IconButton>
     </div>
   )
