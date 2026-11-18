@@ -697,6 +697,31 @@ test('table data calendar opens from the NULL date cell of a blank new row and a
     .toMatch(/^\d{4}-\d{2}-15 \d{2}:\d{2}:\d{2}$/)
 })
 
+test('table data form with JSON fields survives a second switch from the grid', async ({
+  page,
+}) => {
+  const pageErrors: string[] = []
+  page.on('pageerror', (error) => {
+    pageErrors.push(error.message)
+  })
+
+  await waitForApp(page)
+  await openJsonTableDataTab(page)
+
+  const formView = page.getByTestId('table-data-form-view')
+  await page.getByTestId('view-mode-form').click()
+  await expect(formView).toBeVisible({ timeout: APP_READY_MS })
+  await page.getByRole('button', { name: 'Next record' }).click()
+
+  await page.getByTestId('view-mode-grid').click()
+  await expect(page.getByTestId('table-data-grid')).toBeVisible({ timeout: APP_READY_MS })
+
+  await page.getByTestId('view-mode-form').click()
+  await expect(formView).toBeVisible({ timeout: APP_READY_MS })
+  await expect(formView.locator('.monaco-editor').first()).toBeVisible({ timeout: APP_READY_MS })
+  expect(pageErrors).toEqual([])
+})
+
 test('table data JSON editor NULL marker sets null without outside-click dismissal', async ({
   page,
 }) => {

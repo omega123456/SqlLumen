@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { CanvasBaseGridView } from '../shared/glide/CanvasBaseGridView'
 import { EditorCallbacksContext } from '../shared/editor-callbacks-context'
 import { FkLookupProvider } from '../shared/fk-lookup-context'
@@ -8,7 +9,7 @@ import {
   type TableDataGridProps,
 } from './table-data-grid/use-table-grid-view-model'
 
-export function TableDataGrid(props: TableDataGridProps) {
+export const TableDataGrid = memo(function TableDataGrid(props: TableDataGridProps) {
   const { gridRef, gridProps, editorCallbacksContext, foreignKeyLookup, blobViewer, tabState } =
     useTableGridViewModel(props)
   return (
@@ -20,4 +21,4 @@ export function TableDataGrid(props: TableDataGridProps) {
       </FkLookupProvider>
     </EditorCallbacksContext.Provider>
   )
-}
+})

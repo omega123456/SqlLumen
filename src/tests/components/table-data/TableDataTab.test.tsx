@@ -317,20 +317,29 @@ describe('TableDataTab', () => {
     await waitForTableDataLoaded()
   })
 
-  it('renders form view when viewMode is form', async () => {
+  it('keeps the grid mounted and hidden while the form view is shown, and unmounts the form', async () => {
     setupConnection()
     render(<TableDataTab tab={makeTab()} />)
 
     await waitForTableDataLoaded()
+    const gridBeforeSwitch = screen.getByTestId('table-data-grid')
 
-    // Now switch to form view via the store
     await act(async () => {
       useTableDataStore.getState().setViewMode('tab-1', 'form')
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('table-data-form-view')).toBeInTheDocument()
+      expect(screen.getByTestId('table-data-form-view')).toBeVisible()
     })
+    expect(gridBeforeSwitch).not.toBeVisible()
+
+    await act(async () => {
+      useTableDataStore.getState().setViewMode('tab-1', 'grid')
+    })
+
+    expect(screen.getByTestId('table-data-grid')).toBe(gridBeforeSwitch)
+    expect(gridBeforeSwitch).toBeVisible()
+    expect(screen.queryByTestId('table-data-form-view')).not.toBeInTheDocument()
   })
 
   it('shows export dialog when isExportDialogOpen is true', async () => {
