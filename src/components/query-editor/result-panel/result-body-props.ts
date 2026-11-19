@@ -1,8 +1,7 @@
 import type { ResultBodyProps } from './ResultBodies'
 import {
   gridTabPanelClassNameFor,
-  readEditTable,
-  resultRowInsertion,
+  queryToolbarReadiness,
   resultTabPanelAttributes,
   subTabLabelledBy,
   type DisplayStatus,
@@ -36,21 +35,11 @@ function resolveTabPanelAttributes(
 
 function resolveToolbarProps(inputs: ResultBodyInputs): ResultBodyProps['toolbar'] {
   const { location, controllers, displayStatus } = inputs
-  const { activeResult: result, filter } = controllers
-  const { primaryKey, editTableColumns } = readEditTable(result)
   return {
-    surfaceRef: controllers.surfaceRef,
+    source: controllers.source,
     connectionId: location.connectionId,
-    filterModel: result.view.spec.filters,
-    onFilterClick: filter.openFilterDialog,
-    onClearFilterClick: filter.clearFilter,
-    isEditingActive: result.view.edit.state !== null,
-    rowInsertion: resultRowInsertion({
-      result: result,
-      displayStatus: displayStatus,
-      editTableColumns: editTableColumns,
-      primaryKey: primaryKey,
-    }),
+    filter: controllers.filter,
+    readiness: queryToolbarReadiness(controllers.activeResult, displayStatus),
   }
 }
 

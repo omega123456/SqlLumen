@@ -1,16 +1,12 @@
 import { useCallback, useMemo, useState } from 'react'
-import { useQueryStore, type SingleResultState } from '../../../stores/query-store'
-import { useToastStore } from '../../../stores/toast-store'
-import type { FilterCondition } from '../../../types/schema'
-import { buildInitialConditionsFromCell } from '../../../lib/filter-utils'
-import type { DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
+import { useToastStore } from '../../../../stores/toast-store'
+import type { FilterCondition } from '../../../../types/schema'
+import { buildInitialConditionsFromCell } from '../../../../lib/filter-utils'
+import type { DataViewSurfaceRef } from '../../../../stores/data-view/data-view-types'
+import { applyFilters } from '../../../../stores/data-view/view-actions'
+import { useDataView } from '../../../../stores/data-view/use-data-view'
 
-interface ResultFilterInputs {
-  surfaceRef: DataViewSurfaceRef
-  result: SingleResultState
-}
-
-export interface ResultFilter {
+export interface DataViewFilter {
   isFilterDialogOpen: boolean
   filterColumns: string[]
   initialConditions: FilterCondition[]
@@ -20,12 +16,11 @@ export interface ResultFilter {
   clearFilter: () => void
 }
 
-export function useResultFilter({ surfaceRef, result }: ResultFilterInputs): ResultFilter {
-  const applyQueryFilters = useQueryStore((state) => state.applyQueryFilters)
+export function useDataFilter(ref: DataViewSurfaceRef): DataViewFilter {
   const showSuccess = useToastStore((state) => state.showSuccess)
-  const { columns } = result.view.slot
-  const filterModel = result.view.spec.filters
-  const selectedCell = result.view.selection.cell
+  const columns = useDataView(ref, (view) => view.slot.columns)
+  const filterModel = useDataView(ref, (view) => view.spec.filters)
+  const selectedCell = useDataView(ref, (view) => view.selection.cell)
   const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false)
   const filterColumns = useMemo(() => columns.map((column) => column.name), [columns])
 
@@ -40,15 +35,15 @@ export function useResultFilter({ surfaceRef, result }: ResultFilterInputs): Res
   const applyFilter = useCallback(
     (conditions: FilterCondition[]) => {
       setIsFilterDialogOpen(false)
-      applyQueryFilters(surfaceRef, conditions)
+      applyFilters(ref, conditions)
     },
-    [surfaceRef, applyQueryFilters]
+    [ref]
   )
 
   const clearFilter = useCallback(() => {
-    applyQueryFilters(surfaceRef, [])
+    applyFilters(ref, [])
     showSuccess('Filters cleared')
-  }, [surfaceRef, applyQueryFilters, showSuccess])
+  }, [ref, showSuccess])
 
   return {
     isFilterDialogOpen,

@@ -1,14 +1,7 @@
 import type { SingleResultState } from '../../../stores/query-store'
-import { cloneSourceRowIndex, copiedBoundColumnNames } from '../../../stores/data-view/row-clone'
-import type {
-  FullExportBlockedReason,
-  PrimaryKeyInfo,
-  TableDataColumnMeta,
-} from '../../../types/schema'
+import type { FullExportBlockedReason } from '../../../types/schema'
+import type { DataToolbarReadiness } from '../../shared/data-view/toolbar/data-toolbar-model'
 import { RESULT_GRID_TAB_PANEL, RESULT_TAB_PANEL } from './result-panel-classes'
-import { hasPendingRowChanges } from '../../../lib/row-edit-state'
-
-export const EMPTY_TABLE_COLUMNS: TableDataColumnMeta[] = []
 
 export const TRUNCATION_MESSAGES: Record<FullExportBlockedReason | 'none', string> = {
   none: 'Result truncated. This query returned more rows than the maximum rows kept per result.',
@@ -34,61 +27,14 @@ export function resolveDisplayStatus(inputs: DisplayStatusInputs): DisplayStatus
   return inputs.resultStatus
 }
 
-interface RowInsertionInputs {
-  result: SingleResultState
+export function queryToolbarReadiness(
+  result: SingleResultState,
   displayStatus: DisplayStatus
-  editTableColumns: TableDataColumnMeta[]
-  primaryKey: PrimaryKeyInfo | null
-}
-
-export interface ResultRowInsertion {
-  canAddRow: boolean
-  canCloneSelection: boolean
-}
-
-export const NO_ROW_INSERTION: ResultRowInsertion = { canAddRow: false, canCloneSelection: false }
-
-function isCloneBlockedByEditing(result: SingleResultState): boolean {
-  const selectedRowIsDraft =
-    result.view.edit.state?.isNewRow === true &&
-    result.view.edit.rowIndex === result.view.selection.rowIndex
-  return hasPendingRowChanges(result.view.edit.state) || selectedRowIsDraft
-}
-
-function isRowInsertionBlocked(inputs: RowInsertionInputs): boolean {
-  const { result, primaryKey } = inputs
-  const { editTarget, mode } = result.view
-  if (editTarget.tableName === null) return true
-  if (inputs.displayStatus !== 'success') return true
-  if (result.isAnalyzingQuery) return true
-  if (mode === 'text') return true
-  if (!primaryKey) return true
-  return primaryKey.isUniqueKeyFallback
-}
-
-function canAddResultRow(inputs: RowInsertionInputs): boolean {
-  if (isRowInsertionBlocked(inputs)) return false
-  return inputs.result.view.edit.draftRow === null
-}
-
-function hasCopiedBoundColumns(inputs: RowInsertionInputs): boolean {
-  const cloneTable = { columns: inputs.editTableColumns, primaryKey: inputs.primaryKey }
-  return copiedBoundColumnNames(inputs.result.view, cloneTable).size > 0
-}
-
-function canCloneResultRow(inputs: RowInsertionInputs): boolean {
-  const { result } = inputs
-  if (isRowInsertionBlocked(inputs)) return false
-  if (isCloneBlockedByEditing(result)) return false
-  const hasCloneSource = cloneSourceRowIndex(result.view) !== null
-  if (!hasCloneSource) return false
-  return hasCopiedBoundColumns(inputs)
-}
-
-export function resultRowInsertion(inputs: RowInsertionInputs): ResultRowInsertion {
+): DataToolbarReadiness {
+  const isDisplayingSuccess = displayStatus === 'success'
   return {
-    canAddRow: canAddResultRow(inputs),
-    canCloneSelection: canCloneResultRow(inputs),
+    hasData: result.resultStatus === 'success',
+    canInsertRows: isDisplayingSuccess && !result.isAnalyzingQuery,
   }
 }
 
@@ -116,17 +62,6 @@ export function resultTabPanelAttributes(
 export function dmlSuccessMessage(affectedRows: number): string {
   if (affectedRows <= 0) return 'Query executed successfully'
   return `${affectedRows} ${affectedRows === 1 ? 'row' : 'rows'} affected`
-}
-
-export function readEditTable(result: SingleResultState) {
-  const editTable = result.view.editTarget.tableName
-    ? result.view.editTarget.tables[result.view.editTarget.tableName]
-    : undefined
-  return {
-    editTable: editTable,
-    primaryKey: editTable?.primaryKey ?? null,
-    editTableColumns: editTable?.columns ?? EMPTY_TABLE_COLUMNS,
-  }
 }
 
 export function hasVisibleSubTabs(hideSubTabs: boolean, resultCount: number): boolean {

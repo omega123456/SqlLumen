@@ -3,14 +3,14 @@ import { useQueryStore, type SingleResultState } from '../../../stores/query-sto
 import { UnsavedChangesDialog } from '../../shared/UnsavedChangesDialog'
 import ExportDialog from '../../dialogs/ExportDialog'
 import { FilterDialog } from '../../dialogs/FilterDialog'
-import type { ResultFilter } from './use-result-filter'
+import type { DataViewFilter } from '../../shared/data-view/toolbar/use-data-filter'
 import type { DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
 
 interface ResultPanelDialogsProps {
   surfaceRef: DataViewSurfaceRef
   connectionId: string
   result: SingleResultState
-  filter: ResultFilter
+  filter: DataViewFilter
 }
 
 function PendingNavigationDialog({

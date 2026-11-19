@@ -7,7 +7,7 @@ import {
   type SingleResultState,
 } from '../../../stores/query-store'
 import type { DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
-import { useResultFilter, type ResultFilter } from './use-result-filter'
+import { useDataFilter, type DataViewFilter } from '../../shared/data-view/toolbar/use-data-filter'
 import type { DataViewSource } from '../../shared/data-view/data-view-source'
 import { queryDataViewSource } from './query-data-view-source'
 
@@ -16,7 +16,7 @@ export interface ResultPanelControllers {
   activeResultIndex: number
   surfaceRef: DataViewSurfaceRef
   source: DataViewSource
-  filter: ResultFilter
+  filter: DataViewFilter
 }
 
 interface InactiveOverlayCloser {
@@ -60,7 +60,7 @@ export function useResultPanelControllers(
       }),
     [surfaceRef, isActive, isTruncated, canEdit]
   )
-  const filter = useResultFilter({ surfaceRef: surfaceRef, result: activeResult })
+  const filter = useDataFilter(surfaceRef)
   useCloseOverlaysWhenInactive({
     surfaceRef: surfaceRef,
     isActive: isActive,

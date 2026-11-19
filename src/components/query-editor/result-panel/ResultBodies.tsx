@@ -1,21 +1,21 @@
-import type { ComponentProps, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { InfoBar } from '../../common/InfoBar'
 import { ResultSubTabs } from '../ResultSubTabs'
-import { ResultToolbar } from '../ResultToolbar'
+import { EditModeDropdown } from '../EditModeDropdown'
+import { DataToolbar, type DataToolbarProps } from '../../shared/data-view/DataToolbar'
 import { ResultBands } from './ResultBands'
 import { ResultViews, type ResultViewsProps } from './ResultViews'
 import type { SingleResultState } from '../../../stores/query-store'
 import { ResultActivityOverlay, EmptyResultState } from './ResultStatusViews'
 import {
   dmlSuccessMessage,
-  NO_ROW_INSERTION,
   type DisplayStatus,
   type TabPanelAttributes,
 } from './result-panel-model'
 import { joinClassNames, SCROLLBAR } from '../../../lib/class-names'
 import { RESULT_TAB_PANEL } from './result-panel-classes'
 
-type ResultToolbarProps = ComponentProps<typeof ResultToolbar>
+type ResultToolbarProps = Omit<DataToolbarProps, 'editTarget'> & { connectionId: string }
 
 export interface ResultBodyProps {
   tabPanelAttributes: TabPanelAttributes
@@ -26,6 +26,15 @@ export interface ResultBodyProps {
   tabId: string
   result: SingleResultState
   isTabRunning: boolean
+}
+
+function ResultToolbar({ connectionId, ...toolbar }: ResultToolbarProps) {
+  return (
+    <DataToolbar
+      {...toolbar}
+      editTarget={<EditModeDropdown surfaceRef={toolbar.source.ref} connectionId={connectionId} />}
+    />
+  )
 }
 
 function InfoBody({ children }: { children: ReactNode }) {
@@ -79,7 +88,7 @@ function SuccessResultBody(props: ResultBodyProps) {
 function ErrorResultBody({ tabPanelAttributes, toolbar, result }: ResultBodyProps) {
   return (
     <div {...tabPanelAttributes} className={RESULT_TAB_PANEL}>
-      <ResultToolbar {...toolbar} rowInsertion={NO_ROW_INSERTION} />
+      <ResultToolbar {...toolbar} />
       <InfoBody>
         <InfoBar
           severity="error"

@@ -166,7 +166,7 @@ export type ViewMode = 'grid' | 'form' | 'text'
 
 export interface ViewModeGroupProps {
   currentMode: ViewMode
-  availableModes: ViewMode[]
+  availableModes: readonly ViewMode[]
   onModeChange: (mode: ViewMode) => void
   testIdPrefix?: string
 }

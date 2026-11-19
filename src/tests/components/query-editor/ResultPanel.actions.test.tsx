@@ -9,7 +9,7 @@ import { ResultPanel } from '../../../components/query-editor/ResultPanel'
 import { useQueryStore, querySurfaceRef } from '../../../stores/query-store'
 import { makeTabState, withRows } from '../../helpers/query-test-utils'
 import * as ResultSubTabsModule from '../../../components/query-editor/ResultSubTabs'
-import * as ResultToolbarModule from '../../../components/query-editor/ResultToolbar'
+import * as DataToolbarModule from '../../../components/shared/data-view/DataToolbar'
 import type { DataViewSource } from '../../../components/shared/data-view/data-view-source'
 import * as DataGridViewModule from '../../../components/shared/data-view/DataGridView'
 import * as DataFormViewModule from '../../../components/shared/data-view/DataFormView'
@@ -61,14 +61,13 @@ beforeEach(() => {
       (<div data-testid="result-subtabs">{tabId}</div>) as unknown as React.ReactElement
   )
 
-  vi.spyOn(ResultToolbarModule, 'ResultToolbar').mockImplementation((props) => {
-    const p = props as unknown as Record<string, unknown>
+  vi.spyOn(DataToolbarModule, 'DataToolbar').mockImplementation(({ filter }) => {
     return (
       <div data-testid="result-toolbar">
-        <button data-testid="toolbar-open-filter" onClick={p.onFilterClick as () => void}>
+        <button data-testid="toolbar-open-filter" onClick={filter.openFilterDialog}>
           Filter
         </button>
-        <button data-testid="toolbar-clear-filter" onClick={p.onClearFilterClick as () => void}>
+        <button data-testid="toolbar-clear-filter" onClick={filter.clearFilter}>
           Clear
         </button>
       </div>
@@ -220,8 +219,6 @@ describe('ResultPanel actions and states', () => {
 
   it('applies and cancels filter dialog interactions', async () => {
     const user = userEvent.setup()
-    const applyQueryFiltersSpy = vi.spyOn(useQueryStore.getState(), 'applyQueryFilters')
-
     renderPanel()
 
     await user.click(screen.getByTestId('toolbar-open-filter'))
@@ -229,9 +226,11 @@ describe('ResultPanel actions and states', () => {
 
     await user.click(screen.getByTestId('filter-dialog-apply'))
 
-    expect(applyQueryFiltersSpy).toHaveBeenCalledWith(querySurfaceRef('tab-1', 0), [
-      { column: 'name', operator: '==', value: 'Alice' },
-    ])
+    await waitFor(() => {
+      expect(ipc.payloads('set_result_view')[0]).toMatchObject({
+        viewSpec: { filters: [{ column: 'name', operator: '==', value: 'Alice' }] },
+      })
+    })
 
     await user.click(screen.getByTestId('toolbar-open-filter'))
     await user.click(screen.getByTestId('filter-dialog-cancel'))

@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ResultPanel } from '../../../components/query-editor/ResultPanel'
 import { useQueryStore, activeQuerySurfaceRef, querySurfaceRef } from '../../../stores/query-store'
-import * as ResultToolbarModule from '../../../components/query-editor/ResultToolbar'
+import * as DataToolbarModule from '../../../components/shared/data-view/DataToolbar'
 import type { DataViewSource } from '../../../components/shared/data-view/data-view-source'
 import * as DataGridViewModule from '../../../components/shared/data-view/DataGridView'
 import * as DataFormViewModule from '../../../components/shared/data-view/DataFormView'
@@ -31,10 +31,10 @@ describe('ResultPanel', () => {
   })
 
   beforeEach(() => {
-    vi.spyOn(ResultToolbarModule, 'ResultToolbar').mockImplementation(
-      ({ surfaceRef }: { surfaceRef: { tabId: string } }) =>
+    vi.spyOn(DataToolbarModule, 'DataToolbar').mockImplementation(
+      ({ source }: { source: DataViewSource }) =>
         (
-          <div data-testid="result-toolbar">{surfaceRef.tabId}</div>
+          <div data-testid="result-toolbar">{source.ref.tabId}</div>
         ) as unknown as React.ReactElement
     )
     vi.spyOn(DataGridViewModule.DataGridView, 'type').mockImplementation(

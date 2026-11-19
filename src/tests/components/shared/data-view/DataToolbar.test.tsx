@@ -1,15 +1,28 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { ResultToolbar } from '../../../components/query-editor/ResultToolbar'
-import { useQueryStore, querySurfaceRef } from '../../../stores/query-store'
-import { useToastStore } from '../../../stores/toast-store'
-import { useConnectionStore } from '../../../stores/connection-store'
-import { makeTabState, flat } from '../../helpers/query-test-utils'
-import { setupTestConnection } from '../../helpers/table-data-test-utils'
-import { expectToast, ipc } from '../../ipc-mock'
+import { DataToolbar } from '../../../../components/shared/data-view/DataToolbar'
+import type { DataViewFilter } from '../../../../components/shared/data-view/toolbar/use-data-filter'
+import { queryDataViewSource } from '../../../../components/query-editor/result-panel/query-data-view-source'
+import { queryToolbarReadiness } from '../../../../components/query-editor/result-panel/result-panel-model'
+import { useQueryStore, querySurfaceRef, getActiveResult } from '../../../../stores/query-store'
+import { useToastStore } from '../../../../stores/toast-store'
+import { useConnectionStore } from '../../../../stores/connection-store'
+import { makeTabState, flat } from '../../../helpers/query-test-utils'
+import { setupTestConnection } from '../../../helpers/table-data-test-utils'
+import { expectToast, ipc } from '../../../ipc-mock'
 
-const INSERTABLE_ROWS = { canAddRow: true, canCloneSelection: true }
+const TOOLBAR_TAB_ID = 'tab-1'
+
+const CLOSED_FILTER: DataViewFilter = {
+  isFilterDialogOpen: false,
+  filterColumns: [],
+  initialConditions: [],
+  openFilterDialog: () => {},
+  closeFilterDialog: () => {},
+  applyFilter: () => {},
+  clearFilter: () => {},
+}
 
 /** Helper to set up store state for a tab. */
 function setupTabState(tabId: string, overrides: Record<string, unknown> = {}) {
@@ -20,14 +33,28 @@ function setupTabState(tabId: string, overrides: Record<string, unknown> = {}) {
   })
 }
 
+/** Renders the query route's toolbar with the readiness the result panel derives. */
+function renderToolbar() {
+  const ref = querySurfaceRef(TOOLBAR_TAB_ID, 0)
+  const result = getActiveResult(useQueryStore.getState().tabs[TOOLBAR_TAB_ID])
+  return render(
+    <DataToolbar
+      source={queryDataViewSource({ ref: ref, isActive: true, isTruncated: false, canEdit: true })}
+      editTarget={null}
+      filter={CLOSED_FILTER}
+      readiness={queryToolbarReadiness(result, result.resultStatus)}
+    />
+  )
+}
+
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
   useToastStore.setState({ toasts: [] })
   useConnectionStore.setState({ activeConnections: {} })
 })
 
-describe('ResultToolbar', () => {
-  const tabId = 'tab-1'
+describe('DataToolbar', () => {
+  const tabId = TOOLBAR_TAB_ID
   const connectionId = 'conn-1'
 
   it('renders with data-testid="result-toolbar"', () => {
@@ -36,15 +63,7 @@ describe('ResultToolbar', () => {
       totalRows: 10,
       columns: [{ name: 'id', dataType: 'INT' }],
     })
-    render(
-      <ResultToolbar
-        surfaceRef={querySurfaceRef(tabId, 0)}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-      />
-    )
+    renderToolbar()
     expect(screen.getByTestId('result-toolbar')).toBeInTheDocument()
   })
 
@@ -57,15 +76,7 @@ describe('ResultToolbar', () => {
       appliedRowLimit: 500,
       columns: [{ name: 'id', dataType: 'INT' }],
     })
-    render(
-      <ResultToolbar
-        surfaceRef={querySurfaceRef(tabId, 0)}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-      />
-    )
+    renderToolbar()
     const toolbar = screen.getByTestId('result-toolbar')
     expect(toolbar).not.toHaveTextContent('42 rows')
     expect(toolbar).not.toHaveTextContent('51 ms')
@@ -78,15 +89,7 @@ describe('ResultToolbar', () => {
       status: 'success',
       columns: [{ name: 'id', dataType: 'INT' }],
     })
-    render(
-      <ResultToolbar
-        surfaceRef={querySurfaceRef(tabId, 0)}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-      />
-    )
+    renderToolbar()
     expect(screen.queryByLabelText('Previous page')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Next page')).not.toBeInTheDocument()
     expect(screen.queryByTestId('page-size-select')).not.toBeInTheDocument()
@@ -99,19 +102,11 @@ describe('ResultToolbar', () => {
       rows: [[1]],
       checkedRowIndices: [],
     })
-    render(
-      <ResultToolbar
-        surfaceRef={querySurfaceRef(tabId, 0)}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-      />
-    )
+    renderToolbar()
     expect(screen.getByTestId('btn-copy-selected-rows')).toBeDisabled()
   })
 
-  it('copies checked query-result rows in display order', async () => {
+  it('copies checked rows in display order with unsaved edits applied', async () => {
     const user = userEvent.setup()
     const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
     setupTabState(tabId, {
@@ -126,21 +121,27 @@ describe('ResultToolbar', () => {
         [3, 'Linus, Jr.'],
       ],
       checkedRowIndices: [2, 0],
+      editMode: 'users',
+      editBoundColumnIndexMap: new Map([
+        ['id', 0],
+        ['name', 1],
+      ]),
+      editingRowIndex: 0,
+      editingBaseIndex: 0,
+      editState: {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, name: 'Ada' },
+        currentValues: { id: 1, name: 'Ada L.' },
+        modifiedColumns: new Set(['name']),
+        isNewRow: false,
+      },
     })
-    render(
-      <ResultToolbar
-        surfaceRef={querySurfaceRef(tabId, 0)}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-      />
-    )
+    renderToolbar()
 
     await user.click(screen.getByTestId('btn-copy-selected-rows'))
 
     await waitFor(() => {
-      expect(writeText).toHaveBeenCalledWith('id,name\r\n1,Ada\r\n3,"Linus, Jr."\r\n')
+      expect(writeText).toHaveBeenCalledWith('id,name\r\n1,Ada L.\r\n3,"Linus, Jr."\r\n')
     })
     await expectToast('success', '2 row(s) copied to clipboard.')
     writeText.mockRestore()
@@ -157,15 +158,7 @@ describe('ResultToolbar', () => {
       rows: [[1]],
       checkedRowIndices: [0],
     })
-    render(
-      <ResultToolbar
-        surfaceRef={querySurfaceRef(tabId, 0)}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-      />
-    )
+    renderToolbar()
 
     await user.click(screen.getByTestId('btn-copy-selected-rows'))
 
@@ -179,15 +172,7 @@ describe('ResultToolbar', () => {
 
   it('renders view mode toggle buttons', () => {
     setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
-    render(
-      <ResultToolbar
-        surfaceRef={querySurfaceRef(tabId, 0)}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-      />
-    )
+    renderToolbar()
     expect(screen.getByTestId('view-mode-grid')).toBeInTheDocument()
     expect(screen.getByTestId('view-mode-form')).toBeInTheDocument()
     expect(screen.getByTestId('view-mode-text')).toBeInTheDocument()
@@ -195,30 +180,14 @@ describe('ResultToolbar', () => {
 
   it('sets view mode to form when form button clicked', () => {
     setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
-    render(
-      <ResultToolbar
-        surfaceRef={querySurfaceRef(tabId, 0)}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-      />
-    )
+    renderToolbar()
     fireEvent.click(screen.getByTestId('view-mode-form'))
     expect(flat(tabId).viewMode).toBe('form')
   })
 
   it('sets view mode to text when text button clicked', () => {
     setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
-    render(
-      <ResultToolbar
-        surfaceRef={querySurfaceRef(tabId, 0)}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-      />
-    )
+    renderToolbar()
     fireEvent.click(screen.getByTestId('view-mode-text'))
     expect(flat(tabId).viewMode).toBe('text')
   })
@@ -227,58 +196,26 @@ describe('ResultToolbar', () => {
 
   it('renders export button', () => {
     setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
-    render(
-      <ResultToolbar
-        surfaceRef={querySurfaceRef(tabId, 0)}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-      />
-    )
+    renderToolbar()
     expect(screen.getByTestId('export-button')).toBeInTheDocument()
     expect(screen.getByText('Export')).toBeInTheDocument()
   })
 
   it('export button is enabled when results exist', () => {
     setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
-    render(
-      <ResultToolbar
-        surfaceRef={querySurfaceRef(tabId, 0)}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-      />
-    )
+    renderToolbar()
     expect(screen.getByTestId('export-button')).not.toBeDisabled()
   })
 
   it('export button is disabled when no results (idle)', () => {
     setupTabState(tabId, { status: 'idle' })
-    render(
-      <ResultToolbar
-        surfaceRef={querySurfaceRef(tabId, 0)}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-      />
-    )
+    renderToolbar()
     expect(screen.getByTestId('export-button')).toBeDisabled()
   })
 
   it('opens export dialog when export button clicked', () => {
     setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
-    render(
-      <ResultToolbar
-        surfaceRef={querySurfaceRef(tabId, 0)}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-      />
-    )
+    renderToolbar()
     fireEvent.click(screen.getByTestId('export-button'))
     expect(flat(tabId).exportDialogOpen).toBe(true)
   })
@@ -290,15 +227,7 @@ describe('ResultToolbar', () => {
       status: 'success',
       columns: [{ name: 'id', dataType: 'INT' }],
     })
-    render(
-      <ResultToolbar
-        surfaceRef={querySurfaceRef(tabId, 0)}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-      />
-    )
+    renderToolbar()
     expect(screen.getByTestId('result-toolbar')).toBeInTheDocument()
     expect(screen.getByTestId('view-mode-grid')).toBeInTheDocument()
     expect(screen.getByTestId('view-mode-form')).toBeInTheDocument()
@@ -345,16 +274,7 @@ describe('ResultToolbar', () => {
       },
     })
 
-    render(
-      <ResultToolbar
-        surfaceRef={querySurfaceRef(tabId, 0)}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-        rowInsertion={INSERTABLE_ROWS}
-      />
-    )
+    renderToolbar()
 
     const rowActionNames = new Set([
       'Add row',
@@ -383,24 +303,9 @@ describe('ResultToolbar', () => {
   })
 
   it('keeps Clone enabled when no unsaved edit exists while Save and Discard stay disabled', () => {
-    setupTabState(tabId, {
-      status: 'success',
-      columns: [{ name: 'id', dataType: 'INT' }],
-      rows: [[1]],
-      selectedRowIndex: 0,
-      editMode: 'users',
-    })
+    setupInsertableTab()
 
-    render(
-      <ResultToolbar
-        surfaceRef={querySurfaceRef(tabId, 0)}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-        rowInsertion={INSERTABLE_ROWS}
-      />
-    )
+    renderToolbar()
 
     expect(screen.getByTestId('btn-clone-row')).toBeEnabled()
     expect(screen.getByTestId('btn-clone-row')).toHaveAttribute(
@@ -425,15 +330,7 @@ describe('ResultToolbar', () => {
       viewMode: 'text',
     })
 
-    render(
-      <ResultToolbar
-        surfaceRef={querySurfaceRef(tabId, 0)}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-      />
-    )
+    renderToolbar()
 
     expect(screen.getByTestId('btn-add-row')).toBeDisabled()
     expect(screen.getByTestId('btn-clone-row')).toBeDisabled()
@@ -505,16 +402,7 @@ describe('ResultToolbar', () => {
   it('clicking Clone selects and edits the cloned draft row', () => {
     setupInsertableTab()
 
-    render(
-      <ResultToolbar
-        surfaceRef={querySurfaceRef(tabId, 0)}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-        rowInsertion={INSERTABLE_ROWS}
-      />
-    )
+    renderToolbar()
 
     fireEvent.click(screen.getByTestId('btn-clone-row'))
 
@@ -530,16 +418,7 @@ describe('ResultToolbar', () => {
   it('clicking Add opens an empty draft row after the last view row', () => {
     setupInsertableTab()
 
-    render(
-      <ResultToolbar
-        surfaceRef={querySurfaceRef(tabId, 0)}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-        rowInsertion={INSERTABLE_ROWS}
-      />
-    )
+    renderToolbar()
 
     fireEvent.click(screen.getByTestId('btn-add-row'))
 
@@ -593,15 +472,7 @@ describe('ResultToolbar', () => {
     })
     const user = userEvent.setup()
 
-    render(
-      <ResultToolbar
-        surfaceRef={querySurfaceRef(tabId, 0)}
-        connectionId={connectionId}
-        filterModel={[]}
-        onFilterClick={() => {}}
-        onClearFilterClick={() => {}}
-      />
-    )
+    renderToolbar()
 
     await user.click(screen.getByTestId('btn-save'))
 
@@ -612,12 +483,6 @@ describe('ResultToolbar', () => {
   })
 
   describe('delete checked rows (edit-mode DB delete)', () => {
-    const props = {
-      filterModel: [],
-      onFilterClick: () => {},
-      onClearFilterClick: () => {},
-    }
-
     const editMetadata = {
       users: {
         database: 'testdb',
@@ -626,7 +491,7 @@ describe('ResultToolbar', () => {
         primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
         foreignKeys: [],
       },
-    } as unknown as Record<string, import('../../../types/schema').QueryTableEditInfo>
+    } as unknown as Record<string, import('../../../../types/schema').QueryTableEditInfo>
 
     /** Edit-mode result bound to `users` with `id` (result index 0) as its key. */
     function setupDeletableTab(overrides: Record<string, unknown> = {}) {
@@ -657,38 +522,20 @@ describe('ResultToolbar', () => {
 
     it('disables the delete button when no rows are checked or selected', () => {
       setupDeletableTab({ checkedRowIndices: [], selectedRowIndex: null })
-      render(
-        <ResultToolbar
-          surfaceRef={querySurfaceRef(tabId, 0)}
-          connectionId={connectionId}
-          {...props}
-        />
-      )
+      renderToolbar()
       expect(screen.getByTestId('btn-delete-row')).toBeDisabled()
     })
 
     it('disables the delete button when not in edit mode (no unique key)', () => {
       setupDeletableTab({ editMode: null })
-      render(
-        <ResultToolbar
-          surfaceRef={querySurfaceRef(tabId, 0)}
-          connectionId={connectionId}
-          {...props}
-        />
-      )
+      renderToolbar()
       expect(screen.getByTestId('btn-delete-row')).toBeDisabled()
     })
 
     it('disables the delete button on a read-only connection', () => {
       act(() => setupTestConnection(true))
       setupDeletableTab()
-      render(
-        <ResultToolbar
-          surfaceRef={querySurfaceRef(tabId, 0)}
-          connectionId={connectionId}
-          {...props}
-        />
-      )
+      renderToolbar()
       expect(screen.getByTestId('btn-delete-row')).toBeDisabled()
     })
 
@@ -696,13 +543,7 @@ describe('ResultToolbar', () => {
       ipc.override('delete_table_row', () => undefined)
       ipc.override('remove_result_rows', () => ({ viewVersion: 2, viewRowCount: 2, totalRows: 2 }))
       setupDeletableTab({ checkedRowIndices: [], selectedRowIndex: 1 })
-      render(
-        <ResultToolbar
-          surfaceRef={querySurfaceRef(tabId, 0)}
-          connectionId={connectionId}
-          {...props}
-        />
-      )
+      renderToolbar()
 
       expect(screen.getByTestId('btn-delete-row')).toHaveAccessibleName('Delete row')
       expect(screen.queryByTestId('delete-count-badge')).not.toBeInTheDocument()
@@ -717,13 +558,7 @@ describe('ResultToolbar', () => {
 
     it('renders a delete button with the checked count when rows are checked in edit mode', () => {
       setupDeletableTab()
-      render(
-        <ResultToolbar
-          surfaceRef={querySurfaceRef(tabId, 0)}
-          connectionId={connectionId}
-          {...props}
-        />
-      )
+      renderToolbar()
       expect(screen.getByTestId('btn-delete-row')).toHaveAccessibleName('Delete 2 rows')
       expect(screen.getByTestId('delete-count-badge')).toHaveTextContent('2')
     })
@@ -732,13 +567,7 @@ describe('ResultToolbar', () => {
       ipc.override('delete_table_row', () => undefined)
       ipc.override('remove_result_rows', () => ({ viewVersion: 2, viewRowCount: 1, totalRows: 1 }))
       setupDeletableTab()
-      render(
-        <ResultToolbar
-          surfaceRef={querySurfaceRef(tabId, 0)}
-          connectionId={connectionId}
-          {...props}
-        />
-      )
+      renderToolbar()
 
       // First click only opens the confirmation dialog — no delete yet.
       fireEvent.click(screen.getByTestId('btn-delete-row'))
@@ -760,13 +589,7 @@ describe('ResultToolbar', () => {
 
     it('uses the single-row copy for one checked row', () => {
       setupDeletableTab({ checkedRowIndices: [1] })
-      render(
-        <ResultToolbar
-          surfaceRef={querySurfaceRef(tabId, 0)}
-          connectionId={connectionId}
-          {...props}
-        />
-      )
+      renderToolbar()
       fireEvent.click(screen.getByTestId('btn-delete-row'))
       expect(screen.getByRole('heading', { name: 'Delete row' })).toBeInTheDocument()
       expect(screen.getByText('Delete this row from users?')).toBeInTheDocument()
@@ -775,13 +598,7 @@ describe('ResultToolbar', () => {
 
     it('adds the long-running warning between 1,001 and 10,000 rows (wireframe 7)', () => {
       setupDeletableTab({ viewRowCount: 5000, checkedRanges: [[0, 4200]] })
-      render(
-        <ResultToolbar
-          surfaceRef={querySurfaceRef(tabId, 0)}
-          connectionId={connectionId}
-          {...props}
-        />
-      )
+      renderToolbar()
       expect(screen.getByTestId('btn-delete-row')).toHaveAccessibleName('Delete 4,200 rows')
       expect(screen.getByTestId('delete-count-badge')).toHaveTextContent('99+')
       fireEvent.click(screen.getByTestId('btn-delete-row'))
@@ -798,13 +615,7 @@ describe('ResultToolbar', () => {
     it('blocks more than 10,000 rows with a single OK and deletes nothing (wireframe 7)', async () => {
       ipc.override('delete_table_row', () => undefined)
       setupDeletableTab({ viewRowCount: 100000, checkedRanges: [[0, 100000]] })
-      render(
-        <ResultToolbar
-          surfaceRef={querySurfaceRef(tabId, 0)}
-          connectionId={connectionId}
-          {...props}
-        />
-      )
+      renderToolbar()
       const deleteButton = screen.getByTestId('btn-delete-row')
       // Stays enabled so keyboard users can reach the explanation.
       expect(deleteButton).toBeEnabled()
@@ -832,13 +643,7 @@ describe('ResultToolbar', () => {
     it('does not delete when the confirmation is cancelled', async () => {
       ipc.override('delete_table_row', () => undefined)
       setupDeletableTab()
-      render(
-        <ResultToolbar
-          surfaceRef={querySurfaceRef(tabId, 0)}
-          connectionId={connectionId}
-          {...props}
-        />
-      )
+      renderToolbar()
 
       fireEvent.click(screen.getByTestId('btn-delete-row'))
       fireEvent.click(screen.getByTestId('confirm-cancel-button'))
@@ -850,12 +655,6 @@ describe('ResultToolbar', () => {
   })
 
   describe('checked rows over a windowed result', () => {
-    const props = {
-      filterModel: [],
-      onFilterClick: () => {},
-      onClearFilterClick: () => {},
-    }
-
     it('disables copying and row actions while a row action runs', () => {
       setupTabState(tabId, {
         status: 'success',
@@ -869,13 +668,7 @@ describe('ResultToolbar', () => {
           visible: true,
         },
       })
-      render(
-        <ResultToolbar
-          {...props}
-          surfaceRef={querySurfaceRef(tabId, 0)}
-          connectionId={connectionId}
-        />
-      )
+      renderToolbar()
       expect(screen.getByTestId('result-toolbar')).not.toHaveTextContent('Deleting')
       expect(screen.getByTestId('btn-copy-selected-rows')).toBeDisabled()
       expect(screen.getByTestId('btn-add-row')).toBeDisabled()
@@ -904,13 +697,7 @@ describe('ResultToolbar', () => {
           viewVersion: 1,
         }
       })
-      render(
-        <ResultToolbar
-          {...props}
-          surfaceRef={querySurfaceRef(tabId, 0)}
-          connectionId={connectionId}
-        />
-      )
+      renderToolbar()
       await user.click(screen.getByTestId('btn-copy-selected-rows'))
       await waitFor(() => expect(writeText).toHaveBeenCalled())
       const csv = writeText.mock.lastCall?.[0] as string
@@ -935,13 +722,7 @@ describe('ResultToolbar', () => {
       ipc.override('fetch_result_window', () => {
         throw new Error('offline')
       })
-      render(
-        <ResultToolbar
-          {...props}
-          surfaceRef={querySurfaceRef(tabId, 0)}
-          connectionId={connectionId}
-        />
-      )
+      renderToolbar()
       await user.click(screen.getByTestId('btn-copy-selected-rows'))
       await expectToast('error', "Couldn't load all selected rows. Nothing was copied. Try again.")
     })
@@ -959,13 +740,7 @@ describe('ResultToolbar', () => {
       ipc.override('fetch_result_window', () => {
         throw new Error('results_expired: gone')
       })
-      render(
-        <ResultToolbar
-          {...props}
-          surfaceRef={querySurfaceRef(tabId, 0)}
-          connectionId={connectionId}
-        />
-      )
+      renderToolbar()
       await user.click(screen.getByTestId('btn-copy-selected-rows'))
       await waitFor(() => expect(flat(tabId).isExpired).toBe(true))
     })
@@ -979,13 +754,7 @@ describe('ResultToolbar', () => {
         checkedRanges: [[0, 1]],
         checkedViewVersion: 1,
       })
-      render(
-        <ResultToolbar
-          {...props}
-          surfaceRef={querySurfaceRef(tabId, 0)}
-          connectionId={connectionId}
-        />
-      )
+      renderToolbar()
       expect(screen.getByTestId('btn-copy-selected-rows')).toBeDisabled()
     })
   })
