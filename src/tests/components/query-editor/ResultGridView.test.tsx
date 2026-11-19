@@ -1,3 +1,4 @@
+import { resultState } from '../../helpers/legacy-result-fields'
 import React from 'react'
 import { act, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -5,7 +6,7 @@ import {
   LegacyResultGridView as ResultGridView,
   rowsFromSource,
 } from '../../helpers/result-grid-test-utils'
-import { useQueryStore, DEFAULT_RESULT_STATE, querySurfaceRef } from '../../../stores/query-store'
+import { useQueryStore, querySurfaceRef } from '../../../stores/query-store'
 import type { ColumnMeta } from '../../../types/schema'
 import type { GridRowSource } from '../../../components/shared/glide/grid-row-source'
 import { ipc } from '../../ipc-mock'
@@ -222,14 +223,14 @@ describe('ResultGridView', () => {
       useQueryStore.setState({
         tabs: {
           'tab-1': {
-            results: [{ ...DEFAULT_RESULT_STATE, checkedRanges: [[0, 2]] }],
+            results: [resultState({ checkedRanges: [[0, 2]] })],
             activeResultIndex: 0,
           },
         },
       } as unknown as Parameters<typeof useQueryStore.setState>[0])
     })
     render(<ResultGridView {...baseProps} />)
-    expect(useQueryStore.getState().tabs['tab-1'].results[0].checkedRanges).toEqual([[0, 2]])
+    expect(useQueryStore.getState().tabs['tab-1'].results[0].view.checked.ranges).toEqual([[0, 2]])
     expect(mockCanvasBaseGridView.mock.lastCall?.[0]).toMatchObject({
       initialCheckedRanges: [[0, 2]],
     })
@@ -242,10 +243,7 @@ describe('ResultGridView', () => {
           tabs: {
             'tab-1': {
               results: [
-                {
-                  ...DEFAULT_RESULT_STATE,
-                  checkedRanges: indices.map((index) => [index, index + 1] as const),
-                },
+                resultState({ checkedRanges: indices.map((index) => [index, index + 1] as const) }),
               ],
               activeResultIndex: 0,
             },

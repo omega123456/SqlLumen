@@ -1,3 +1,4 @@
+import { resultState } from '../helpers/legacy-result-fields'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   isConnectionOfProfile,
@@ -6,7 +7,7 @@ import {
 } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { resetWorkspaceStore, seedVisibleConnection } from '../helpers/workspace-test-utils'
-import { useQueryStore, DEFAULT_RESULT_STATE, querySurfaceRef } from '../../stores/query-store'
+import { useQueryStore, querySurfaceRef } from '../../stores/query-store'
 import { useTableDataStore } from '../../stores/table-data-store'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
 import { ipc, expectToast } from '../ipc-mock'
@@ -54,8 +55,7 @@ function makeActiveConnection(
 }
 
 function dirtyQueryResult(queryId: string) {
-  return {
-    ...DEFAULT_RESULT_STATE,
+  return resultState({
     resultStatus: 'success' as const,
     queryId,
     editState: {
@@ -66,7 +66,7 @@ function dirtyQueryResult(queryId: string) {
       isNewRow: false,
     },
     editingRowIndex: 0,
-  }
+  })
 }
 
 beforeEach(() => {
@@ -150,13 +150,8 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
           cursorPosition: null,
           connectionId: 'session-1',
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
-              resultStatus: 'success',
-              queryId: 'q1',
-            },
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({ resultStatus: 'success', queryId: 'q1' }),
+            resultState({
               resultStatus: 'success',
               queryId: 'q2',
               editState: {
@@ -167,10 +162,9 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
                 isNewRow: false,
               },
               editingRowIndex: 0,
-            },
+            }),
           ],
           activeResultIndex: 0,
-          pendingNavigationAction: null,
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
@@ -210,13 +204,8 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
           cursorPosition: null,
           connectionId: 'session-1',
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
-              resultStatus: 'success',
-              queryId: 'q1',
-            },
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({ resultStatus: 'success', queryId: 'q1' }),
+            resultState({
               resultStatus: 'success',
               queryId: 'q2',
               editState: {
@@ -227,10 +216,9 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
                 isNewRow: false,
               },
               editingRowIndex: 0,
-            },
+            }),
           ],
           activeResultIndex: 0,
-          pendingNavigationAction: null,
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
@@ -270,8 +258,7 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
           cursorPosition: null,
           connectionId: 'session-1',
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({
               resultStatus: 'success',
               queryId: 'q1',
               editState: {
@@ -283,10 +270,9 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
               },
               editingRowIndex: 0,
               editConnectionId: 'session-1',
-            },
+            }),
           ],
           activeResultIndex: 0,
-          pendingNavigationAction: null,
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
@@ -326,8 +312,7 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
           cursorPosition: null,
           connectionId: 'session-1',
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({
               resultStatus: 'success',
               queryId: 'q1',
               editMode: 'users',
@@ -340,9 +325,8 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
                 isNewRow: false,
               },
               editingRowIndex: 0,
-            },
-            {
-              ...DEFAULT_RESULT_STATE,
+            }),
+            resultState({
               resultStatus: 'success',
               queryId: 'q2',
               editState: {
@@ -353,10 +337,9 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
                 isNewRow: false,
               },
               editingRowIndex: 0,
-            },
+            }),
           ],
           activeResultIndex: 0,
-          pendingNavigationAction: null,
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
@@ -765,7 +748,6 @@ describe('useConnectionStore — force close', () => {
           connectionId: 'session-1',
           results: [dirtyQueryResult('q1'), dirtyQueryResult('q2')],
           activeResultIndex: 0,
-          pendingNavigationAction: null,
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
@@ -824,7 +806,6 @@ describe('useConnectionStore — connectionsWithUnsavedEdits', () => {
           connectionId: 'session-1',
           results: [dirtyQueryResult('q1')],
           activeResultIndex: 0,
-          pendingNavigationAction: null,
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,

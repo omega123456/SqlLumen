@@ -30,7 +30,7 @@ function getTabIcon(result: SingleResultState, activity: ResultTabActivity) {
   if (result.resultStatus === 'error') {
     return <Warning size={12} weight="fill" className="text-light-error dark:text-dark-error" />
   }
-  if (!hasResultColumns(result)) {
+  if (!hasResultColumns(result.view.slot)) {
     return <CheckCircle size={12} weight="fill" className={ICON_TONE_CLASSES[activity]} />
   }
   return <Table size={12} weight="fill" className={ICON_TONE_CLASSES[activity]} />

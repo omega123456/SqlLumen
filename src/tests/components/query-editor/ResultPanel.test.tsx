@@ -1,13 +1,10 @@
+import { patchedLegacyResult } from '../../helpers/legacy-result-fields'
+import { resultState } from '../../helpers/legacy-result-fields'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ResultPanel } from '../../../components/query-editor/ResultPanel'
-import {
-  DEFAULT_RESULT_STATE,
-  useQueryStore,
-  activeQuerySurfaceRef,
-  querySurfaceRef,
-} from '../../../stores/query-store'
+import { useQueryStore, activeQuerySurfaceRef, querySurfaceRef } from '../../../stores/query-store'
 import * as ResultToolbarModule from '../../../components/query-editor/ResultToolbar'
 import * as ResultGridViewModule from '../../../components/query-editor/ResultGridView'
 import * as ResultFormViewModule from '../../../components/query-editor/ResultFormView'
@@ -20,13 +17,12 @@ import { gridTabPanelClassNameFor } from '../../../components/query-editor/resul
 
 // Use vi.spyOn to install per-test mock implementations without vi.mock().
 
-const result = {
-  ...DEFAULT_RESULT_STATE,
+const result = resultState({
   resultStatus: 'success' as const,
   columns: [{ name: 'id', dataType: 'INT' }],
   totalRows: 2,
   viewRowCount: 2,
-}
+})
 
 describe('ResultPanel', () => {
   afterEach(() => {
@@ -75,7 +71,6 @@ describe('ResultPanel', () => {
             connectionId: 'c1',
             results: [result],
             activeResultIndex: 0,
-            pendingNavigationAction: null,
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,
@@ -117,7 +112,7 @@ describe('ResultPanel', () => {
     expect(screen.getByTestId('grid-view')).toBe(gridBeforeSwitch)
     expect(gridBeforeSwitch).toBeVisible()
     expect(screen.queryByTestId('form-view')).not.toBeInTheDocument()
-    expect(useQueryStore.getState().tabs.tab1.results[0].checkedRanges).toEqual([[0, 2]])
+    expect(useQueryStore.getState().tabs.tab1.results[0].view.checked.ranges).toEqual([[0, 2]])
   })
 
   it('handles empty successful results', () => {
@@ -127,7 +122,7 @@ describe('ResultPanel', () => {
           ...state.tabs,
           tab1: {
             ...state.tabs.tab1,
-            results: [{ ...result, columns: [], affectedRows: 0 }],
+            results: [patchedLegacyResult(result, { columns: [], affectedRows: 0 })],
           },
         },
       }))
@@ -148,12 +143,11 @@ describe('ResultPanel', () => {
             ...state.tabs.tab1,
             tabStatus: 'error',
             results: [
-              {
-                ...result,
+              patchedLegacyResult(result, {
                 resultStatus: 'error' as const,
                 columns: [],
                 errorMessage: "Table 'shop.user' doesn't exist",
-              },
+              }),
             ],
           },
         },
@@ -191,7 +185,7 @@ describe('ResultPanel', () => {
             tab1: {
               ...state.tabs.tab1,
               ...tabPatch,
-              results: [{ ...result, queryId: 'q-1', ...patch }],
+              results: [patchedLegacyResult(result, { queryId: 'q-1', ...patch })],
             },
           },
         }))
@@ -220,8 +214,8 @@ describe('ResultPanel', () => {
 
       await user.click(screen.getByTestId('truncation-export-all'))
       const after = useQueryStore.getState().tabs.tab1!.results[0]
-      expect(after.exportDialogOpen).toBe(true)
-      expect(after.preferredExportScope).toBe('allRows')
+      expect(after.view.prompts.isExportOpen).toBe(true)
+      expect(after.view.prompts.exportScope).toBe('allRows')
     })
 
     it('points a truncated result from a full run at the run file, which has every row', async () => {
@@ -348,20 +342,22 @@ describe('expired state', () => {
             cursorPosition: null,
             connectionId: CONN_ID,
             results: [
-              {
-                ...DEFAULT_RESULT_STATE,
+              resultState({
                 resultStatus: 'success',
-                queryId: 'q-expired-1',
                 lastExecutedSql: 'SELECT * FROM users',
-                columns: [{ name: 'id', dataType: 'INT' }],
                 ...withRows([[1]]),
-                totalRows: 1,
-                isExpired: true,
-              },
+                view: {
+                  slot: {
+                    queryId: 'q-expired-1',
+                    columns: [{ name: 'id', dataType: 'INT' }],
+                    totalRows: 1,
+                  },
+                  residency: { isExpired: true },
+                },
+              }),
             ],
             activeResultIndex: 0,
             activeBottomPanelItem: { type: 'result' },
-            pendingNavigationAction: null,
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,
@@ -385,24 +381,28 @@ describe('expired state', () => {
             cursorPosition: null,
             connectionId: CONN_ID,
             results: [
-              {
-                ...DEFAULT_RESULT_STATE,
+              resultState({
                 resultStatus: 'success',
-                queryId: 'q-restoring-1',
                 lastExecutedSql: 'SELECT * FROM users',
-                columns: [{ name: 'id', dataType: 'INT' }],
                 ...withRows([]),
-                totalRows: 1,
-                rowResidency: {
-                  status: 'restoring',
-                  isActive: true,
-                  inactiveSince: null,
+                view: {
+                  slot: {
+                    queryId: 'q-restoring-1',
+                    columns: [{ name: 'id', dataType: 'INT' }],
+                    totalRows: 1,
+                  },
+                  residency: {
+                    rows: {
+                      status: 'restoring',
+                      isActive: true,
+                      inactiveSince: null,
+                    },
+                  },
                 },
-              },
+              }),
             ],
             activeResultIndex: 0,
             activeBottomPanelItem: { type: 'result' },
-            pendingNavigationAction: null,
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,
@@ -443,7 +443,6 @@ describe('expired state', () => {
               results: [],
               activeResultIndex: 0,
               activeBottomPanelItem: { type: 'result' },
-              pendingNavigationAction: null,
               executionStartedAt: null,
               isCancelling: false,
               wasCancelled: false,
@@ -525,7 +524,7 @@ describe('expired state', () => {
       await waitFor(() => {
         const tab = useQueryStore.getState().tabs[TAB_ID]
         const result = tab?.results[0]
-        expect(result?.isExpired).toBe(false)
+        expect(result?.view.residency.isExpired).toBe(false)
       })
     })
 
@@ -542,20 +541,22 @@ describe('expired state', () => {
               cursorPosition: null,
               connectionId: CONN_ID,
               results: [
-                {
-                  ...DEFAULT_RESULT_STATE,
+                resultState({
                   resultStatus: 'success',
-                  queryId: 'q-ok',
                   lastExecutedSql: 'SELECT 1',
-                  columns: [{ name: 'id', dataType: 'INT' }],
                   ...withRows([[1]]),
-                  totalRows: 1,
-                  isExpired: false,
-                },
+                  view: {
+                    slot: {
+                      queryId: 'q-ok',
+                      columns: [{ name: 'id', dataType: 'INT' }],
+                      totalRows: 1,
+                    },
+                    residency: { isExpired: false },
+                  },
+                }),
               ],
               activeResultIndex: 0,
               activeBottomPanelItem: { type: 'result' },
-              pendingNavigationAction: null,
               executionStartedAt: null,
               isCancelling: false,
               wasCancelled: false,
@@ -597,36 +598,45 @@ describe('expired state', () => {
               cursorPosition: null,
               connectionId: CONN_ID,
               results: [
-                {
-                  ...DEFAULT_RESULT_STATE,
+                resultState({
                   resultStatus: 'success',
-                  queryId: 'q-active-1',
-                  columns: [{ name: 'id', dataType: 'INT' }],
                   ...withRows([[1]]),
-                  totalRows: 1,
-                  rowResidency: {
-                    status: 'resident',
-                    isActive: true,
-                    inactiveSince: null,
+                  view: {
+                    slot: {
+                      queryId: 'q-active-1',
+                      columns: [{ name: 'id', dataType: 'INT' }],
+                      totalRows: 1,
+                    },
+                    residency: {
+                      rows: {
+                        status: 'resident',
+                        isActive: true,
+                        inactiveSince: null,
+                      },
+                    },
                   },
-                },
-                {
-                  ...DEFAULT_RESULT_STATE,
+                }),
+                resultState({
                   resultStatus: 'success',
-                  queryId: 'q-restoring-2',
-                  columns: [{ name: 'id', dataType: 'INT' }],
                   ...withRows([]),
-                  totalRows: 1,
-                  rowResidency: {
-                    status: 'restoring',
-                    isActive: false,
-                    inactiveSince: 123,
+                  view: {
+                    slot: {
+                      queryId: 'q-restoring-2',
+                      columns: [{ name: 'id', dataType: 'INT' }],
+                      totalRows: 1,
+                    },
+                    residency: {
+                      rows: {
+                        status: 'restoring',
+                        isActive: false,
+                        inactiveSince: 123,
+                      },
+                    },
                   },
-                },
+                }),
               ],
               activeResultIndex: 0,
               activeBottomPanelItem: { type: 'result' },
-              pendingNavigationAction: null,
               executionStartedAt: null,
               isCancelling: false,
               wasCancelled: false,

@@ -1,23 +1,25 @@
 import type {
-  ColumnMeta,
   ExportFormat,
   FilterCondition,
-  FrontendRowResidencyState,
   FullExportBlockedReason,
-  QueryTableEditInfo,
-  RowEditState,
   SelectedCellInfo,
   ViewMode,
-  ForeignKeyColumnInfo,
 } from '../../types/schema'
 import { type CachedRow, type ViewRange } from '../../lib/result-window-cache'
 import { type ResultExportProgress, type ResultExportStatus } from '../../lib/export-commands'
 import type { RunExportProgress } from '../../types/run-export'
-import type { DataViewSurfaceRef } from '../data-view/data-view-types'
+import type {
+  DataViewPatch,
+  DataViewState,
+  DataViewSurfaceRef,
+  ExportRowScope,
+  RowActionProgress,
+  RowActionVerb,
+} from '../data-view/data-view-types'
 
 export type ExecutionStatus = 'idle' | 'running' | 'success' | 'error'
 
-export type ExportRowScope = 'currentView' | 'allRows'
+export type { ExportRowScope, RowActionVerb, RowActionProgress }
 
 export interface FullExportRequest {
   connectionId: string
@@ -38,20 +40,10 @@ export interface ResultExportJob extends FullExportRequest {
   startToken: number
 }
 
-export type RowActionVerb = 'Copying' | 'Cutting' | 'Clearing' | 'Pasting' | 'Deleting'
-
 export interface RowActionStart {
   verb: RowActionVerb
   total: number
   onCancel?: () => void
-}
-
-export interface RowActionProgress {
-  verb: RowActionVerb
-  done: number
-  total: number
-  cancellable: boolean
-  visible: boolean
 }
 
 export type TabStatus = ExecutionStatus | 'ai-pending' | 'ai-reviewing' | 'restoring'
@@ -68,12 +60,8 @@ export interface ColumnSortChange {
 
 export type ActiveBottomPanelItem = { type: 'result' } | { type: 'table-data'; tabId: string }
 
-export interface SingleResultState {
+export interface QueryResultFields {
   resultStatus: ExecutionStatus
-  columns: ColumnMeta[]
-  totalRows: number
-  viewRowCount: number
-  viewVersion: number
   latestKnownViewVersion: number
   viewRequestSeq: number
   truncated: boolean
@@ -84,53 +72,20 @@ export interface SingleResultState {
   executionTimeMs: number
   totalTimeMs: number
   affectedRows: number
-  queryId: string | null
   rowLimit: number
   autoLimitApplied: boolean
   errorMessage: string | null
-  viewMode: ViewMode
-  sortColumn: string | null
-  sortDirection: 'asc' | 'desc' | null
-  selectedRowIndex: number | null
-  checkedRanges: ViewRange[]
-  checkedViewVersion: number
-  exportDialogOpen: boolean
-  preferredExportScope: ExportRowScope
   lastExecutedSql: string | null
   reExecutable: boolean
   isAnalyzed: boolean
-  selectedCell: SelectedCellInfo | null
-
-  filterModel: FilterCondition[]
-  isFiltering: boolean
-  viewError: string | null
-  pendingWindowRange: ViewRange | null
-  failedWindowRange: ViewRange | null
-  rowActionProgress: RowActionProgress | null
-
-  editMode: string | null
-  editTableMetadata: Record<string, QueryTableEditInfo>
-  editForeignKeys: ForeignKeyColumnInfo[]
-  editState: RowEditState | null
   isAnalyzingQuery: boolean
-  editableColumnMap: Map<number, boolean>
-  editColumnBindings: Map<number, string>
-  editBoundColumnIndexMap: Map<string, number>
-  saveError: string | null
-  isStale: boolean
-  editConnectionId: string | null
-  editingRowIndex: number | null
-  editingBaseIndex: number | null
-  draftRow: unknown[] | null
-
-  scrollRow: number
-  scrollCol: number
-  columnWidths: Record<string, number>
-  isExpired: boolean
-  rowResidency: FrontendRowResidencyState
-  rowsEvictedAt: number | null
-  isSorting: boolean
 }
+
+export interface SingleResultState extends QueryResultFields {
+  view: DataViewState
+}
+
+export type ResultPatch = Partial<QueryResultFields> & { view?: DataViewPatch }
 
 export interface TabQueryState {
   content: string
@@ -143,7 +98,6 @@ export interface TabQueryState {
   results: SingleResultState[]
   activeResultIndex: number
   activeBottomPanelItem: ActiveBottomPanelItem
-  pendingNavigationAction: (() => void) | null
   executionStartedAt: number | null
   isCancelling: boolean
   wasCancelled: boolean

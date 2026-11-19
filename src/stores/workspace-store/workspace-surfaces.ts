@@ -112,7 +112,7 @@ export function resetRemovedScopedBottomPanelTables(
 function hasVisibleQueryResult(tabId: string, visibleSurface: VisibleWorkspaceSurface): boolean {
   if (visibleSurface.kind !== 'query-result') return false
   const activeResult = useQueryStore.getState().tabs[tabId]?.results[visibleSurface.resultIndex]
-  return Boolean(activeResult?.queryId)
+  return Boolean(activeResult?.view.slot.queryId)
 }
 
 function activateQueryEditorSurface(connectionId: string, tabId: string): void {

@@ -1,21 +1,25 @@
 import { hasModifiedColumns } from '../../lib/row-edit-state'
 import type { DataViewSurfaceRef } from '../data-view/data-view-types'
-import { patchTab, getQueryState, resultOf } from './query-store-access'
+import { getQueryState, patchSurface, resultOf } from './query-store-access'
 import { activeQuerySurfaceRef } from './query-surface'
 
-export function requestNavigationAction(ref: DataViewSurfaceRef, action: () => void) {
-  const result = resultOf(ref)
+function setPendingNavigation(ref: DataViewSurfaceRef, action: (() => void) | null) {
+  patchSurface(ref, { view: { prompts: { pendingNavigation: action } } })
+}
 
-  if (!result?.editState) {
+export function requestNavigationAction(ref: DataViewSurfaceRef, action: () => void) {
+  const editState = resultOf(ref)?.view.edit.state
+
+  if (!editState) {
     action()
     return
   }
-  if (!hasModifiedColumns(result.editState)) {
+  if (!hasModifiedColumns(editState)) {
     getQueryState().discardCurrentRow(ref)
     action()
     return
   }
-  patchTab(ref.tabId, { pendingNavigationAction: action })
+  setPendingNavigation(ref, action)
 }
 
 export function requestTabNavigation(tabId: string, action: () => void) {
@@ -23,28 +27,28 @@ export function requestTabNavigation(tabId: string, action: () => void) {
 }
 
 export async function confirmNavigation(ref: DataViewSurfaceRef, shouldSave: boolean) {
-  const tab = getQueryState().tabs[ref.tabId]
-  if (!tab) return
+  const result = resultOf(ref)
+  if (!result) return
 
   if (!shouldSave) {
-    const action = tab.pendingNavigationAction
+    const action = result.view.prompts.pendingNavigation
     getQueryState().discardCurrentRow(ref)
-    patchTab(ref.tabId, { pendingNavigationAction: null })
+    setPendingNavigation(ref, null)
     action?.()
     return
   }
 
   await getQueryState().saveCurrentRow(ref)
   const afterResult = resultOf(ref)
-  const isSavedCleanly = afterResult !== undefined && !afterResult.saveError
+  const isSavedCleanly = afterResult !== undefined && !afterResult.view.edit.saveError
   if (!isSavedCleanly) return
-  const action = getQueryState().tabs[ref.tabId]?.pendingNavigationAction
-  patchTab(ref.tabId, { pendingNavigationAction: null })
+  const action = afterResult.view.prompts.pendingNavigation
+  setPendingNavigation(ref, null)
   action?.()
 }
 
 export function cancelNavigation(ref: DataViewSurfaceRef) {
-  patchTab(ref.tabId, { pendingNavigationAction: null })
+  setPendingNavigation(ref, null)
 }
 
 export function navigationGuardActions() {

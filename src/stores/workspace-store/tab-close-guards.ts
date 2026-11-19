@@ -1,5 +1,5 @@
 import type { WorkspaceTab, TableDataTab } from '../../types/schema'
-import { useQueryStore } from '../query-store'
+import { useQueryStore, type SingleResultState } from '../query-store'
 import { useTableDataStore } from '../table-data-store'
 import { useTableDesignerStore } from '../table-designer-store'
 import { useObjectEditorStore } from '../object-editor-store'
@@ -85,10 +85,8 @@ function hasModifiedTableDataRow(tabId: string): boolean {
   return modifiedColumnCount > 0
 }
 
-function hasModifiedResultRow(result: {
-  editState?: { modifiedColumns: Set<string> } | null
-}): boolean {
-  return (result.editState?.modifiedColumns.size ?? 0) > 0
+function hasModifiedResultRow(result: SingleResultState): boolean {
+  return (result.view.edit.state?.modifiedColumns.size ?? 0) > 0
 }
 
 function markWorkspaceTabPendingClose(connectionId: string, tabId: string): void {

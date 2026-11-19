@@ -20,7 +20,7 @@ type ActiveResult = SingleResultState
 
 function isEditModeAvailable(result: ActiveResult, isConnectionReadOnly: boolean): boolean {
   if (result.resultStatus !== 'success') return false
-  if (!hasResultColumns(result)) return false
+  if (!hasResultColumns(result.view.slot)) return false
   if (isConnectionReadOnly) return false
   return result.reExecutable && isEditableSelectSql(result.lastExecutedSql)
 }
@@ -35,7 +35,7 @@ function triggerClassName(isAnalyzingQuery: boolean): string {
   return TRIGGER_WIDTH_BOUNDS
 }
 
-type DetectedTable = ActiveResult['editTableMetadata'][string]
+type DetectedTable = ActiveResult['view']['editTarget']['tables'][string]
 
 function useEditModeOptions(detectedTables: DetectedTable[]): DropdownOption[] {
   return useMemo(() => {
@@ -58,10 +58,10 @@ export function EditModeDropdown({ surfaceRef, connectionId }: EditModeDropdownP
     (state) => state.activeConnections[connectionId]?.profile?.readOnly ?? false
   )
 
-  const detectedTables = Object.values(activeResult.editTableMetadata)
+  const detectedTables = Object.values(activeResult.view.editTarget.tables)
   const isAnalyzingQuery = activeResult.isAnalyzingQuery
-  const editMode = activeResult.editMode
-  const editState = activeResult.editState
+  const editMode = activeResult.view.editTarget.tableName
+  const editState = activeResult.view.edit.state
 
   const isVisible = isEditModeAvailable(activeResult, isConnectionReadOnly)
 

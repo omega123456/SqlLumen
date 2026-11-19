@@ -1,5 +1,12 @@
 import type { FrontendRowResidencyState } from '../../types/schema'
-import type { QueryState, ResultExportJob, SingleResultState, TabQueryState } from '../query-store'
+import type {
+  QueryState,
+  ResultExportJob,
+  ResultPatch,
+  SingleResultState,
+  TabQueryState,
+} from './query-state-types'
+import { applyViewPatch, mergeViewPatches } from '../data-view/data-view-reducers'
 import { hasOpenExportDialog, hasResultAt, hasResults, isSameResultList } from './result-lists'
 import { canEvictInactiveResult } from './result-residency'
 import { withoutKey } from '../../lib/record-utils'
@@ -19,7 +26,7 @@ export interface ResultReference {
 }
 
 export interface QueryResultPatch extends ResultReference {
-  partial: Partial<SingleResultState>
+  partial: ResultPatch
 }
 
 export interface ResultResidencyPatch extends ResultReference {
@@ -85,37 +92,50 @@ export function patchQueryTab(
   return withTab(state, tabId, { ...existing, ...partial })
 }
 
+export function patchedResult(result: SingleResultState, partial: ResultPatch): SingleResultState {
+  const { view: viewPatch, ...fields } = partial
+  const view = viewPatch ? applyViewPatch(result.view, viewPatch) : result.view
+  return { ...result, ...fields, view: view }
+}
+
+export function mergeResultPatches(base: ResultPatch, override: ResultPatch): ResultPatch {
+  const { view: baseView = {}, ...baseFields } = base
+  const { view: overrideView = {}, ...overrideFields } = override
+  return { ...baseFields, ...overrideFields, view: mergeViewPatches(baseView, overrideView) }
+}
+
 export function patchQueryResult(
   state: QueryTabs,
   { tabId, resultIndex, partial }: QueryResultPatch
 ): QueryTabs {
-  return withResultUpdated(state, { tabId: tabId, resultIndex: resultIndex }, (result) => ({
-    ...result,
-    ...partial,
-  }))
+  return withResultUpdated(state, { tabId: tabId, resultIndex: resultIndex }, (result) =>
+    patchedResult(result, partial)
+  )
 }
 
 export function patchQueryResultResidency(
   state: QueryTabs,
   { tabId, resultIndex, partial }: ResultResidencyPatch
 ): QueryTabs {
-  return withResultUpdated(state, { tabId: tabId, resultIndex: resultIndex }, (result) => ({
-    ...result,
-    rowResidency: { ...result.rowResidency, ...partial },
-  }))
+  return withResultUpdated(state, { tabId: tabId, resultIndex: resultIndex }, (result) =>
+    patchedResult(result, {
+      view: { residency: { rows: { ...result.view.residency.rows, ...partial } } },
+    })
+  )
 }
 
 function evictedResult(result: SingleResultState, evictedAt: number): SingleResultState {
   if (!canEvictInactiveResult(result)) return result
-  return {
-    ...result,
-    editingRowIndex: null,
-    editingBaseIndex: null,
-    editState: null,
-    pendingWindowRange: null,
-    rowsEvictedAt: evictedAt,
-    rowResidency: { ...result.rowResidency, status: 'evicted' },
-  }
+  return patchedResult(result, {
+    view: {
+      edit: { rowIndex: null, baseIndex: null, state: null },
+      window: { pendingRange: null },
+      residency: {
+        evictedAt: evictedAt,
+        rows: { ...result.view.residency.rows, status: 'evicted' },
+      },
+    },
+  })
 }
 
 export function evictQueryResultRows(
@@ -130,19 +150,27 @@ export function evictQueryResultRows(
   )
 }
 
+function isResultExpired(result: SingleResultState): boolean {
+  return result.view.residency.isExpired
+}
+
 export function setQueryResultsExpired(
   state: QueryTabs,
   { tabId, isExpired }: ResultExpiry
 ): QueryTabs {
-  return withEachResultUpdated(state, tabId, (result) =>
-    result.isExpired === isExpired ? result : { ...result, isExpired: isExpired }
-  )
+  return withEachResultUpdated(state, tabId, (result) => {
+    const isUnchanged = isResultExpired(result) === isExpired
+    if (isUnchanged) return result
+    return patchedResult(result, { view: { residency: { isExpired: isExpired } } })
+  })
 }
 
 export function closeQueryExportDialogs(state: QueryTabs, tabId: string): QueryTabs {
   if (!hasOpenExportDialog(state.tabs[tabId])) return state
   return withEachResultUpdated(state, tabId, (result) =>
-    result.exportDialogOpen ? { ...result, exportDialogOpen: false } : result
+    result.view.prompts.isExportOpen
+      ? patchedResult(result, { view: { prompts: { isExportOpen: false } } })
+      : result
   )
 }
 

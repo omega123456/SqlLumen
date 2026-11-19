@@ -95,7 +95,7 @@ export function seedResultWindow(params: SeedResultWindowParams): void {
   storeWindow(surface, params.window)
   surfaces.set(key, surface)
   if (hasWindowStatus(previous)) {
-    reportStatus(surface, { pendingWindowRange: null, failedWindowRange: null })
+    reportStatus(surface, { pendingRange: null, failedRange: null })
   }
   notify(surface, [0, surface.viewRowCount], { reseeded: true })
   if (surface.lastRequested)

@@ -46,10 +46,10 @@ function resolveToolbarProps(inputs: ResultBodyInputs): ResultBodyProps['toolbar
   return {
     surfaceRef: controllers.surfaceRef,
     connectionId: location.connectionId,
-    filterModel: result.filterModel,
+    filterModel: result.view.spec.filters,
     onFilterClick: filter.openFilterDialog,
     onClearFilterClick: filter.clearFilter,
-    isEditingActive: result.editState !== null,
+    isEditingActive: result.view.edit.state !== null,
     rowInsertion: resultRowInsertion({
       result: result,
       displayStatus: displayStatus,
@@ -63,7 +63,7 @@ export function useResultEditLocation(
   connectionId: string,
   result: SingleResultState
 ): DataViewLocation | null {
-  const { editMode } = result
+  const editMode = result.view.editTarget.tableName
   const { editTable } = readEditTable(result)
   return useMemo(
     () => resultEditLocation(connectionId, { editMode: editMode, editTable: editTable }),
@@ -79,7 +79,7 @@ export function buildResultBodyProps(
   const { activeResult: result, activeResultIndex } = controllers
   return {
     tabPanelAttributes: resolveTabPanelAttributes(location, activeResultIndex, showsSubTabs),
-    className: gridTabPanelClassNameFor(result.viewMode, result.columns.length),
+    className: gridTabPanelClassNameFor(result.view.mode, result.view.slot.columns.length),
     displayStatus: displayStatus,
     toolbar: resolveToolbarProps(inputs),
     views: {

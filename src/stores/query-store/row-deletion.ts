@@ -1,4 +1,5 @@
 import type { QueryTableEditInfo, RemoveResultRowsResult } from '../../types/schema'
+import { mergeResultPatches } from './query-tab-reducers'
 import {
   removeResultRows as removeResultRowsCmd,
   type ResultSlotRef,
@@ -16,7 +17,7 @@ import { showErrorToast, showSuccessToast } from '../toast-store'
 import { logFrontend } from '../../lib/app-log-commands'
 import { toErrorMessage } from '../../lib/error-message'
 import { MAX_BULK_DELETE_ROWS } from './query-state-defaults'
-import type { SingleResultState } from './query-state-types'
+import type { SingleResultState, ResultPatch } from './query-state-types'
 import type { DataViewSurfaceRef } from '../data-view/data-view-types'
 import {
   markTabResultsExpired,
@@ -37,22 +38,25 @@ interface RowDeletionPlan {
 }
 
 function resolveRowDeletionPlan(result: SingleResultState): RowDeletionPlan | null {
-  if (!result.editMode) {
+  if (!result.view.editTarget.tableName) {
     showErrorToast('Delete failed', 'Enable edit mode to delete rows from the database.')
     return null
   }
-  const tableInfo = result.editTableMetadata[result.editMode]
+  const tableInfo = result.view.editTarget.tables[result.view.editTarget.tableName]
   if (!tableInfo?.primaryKey) {
-    showErrorToast('Delete failed', `Cannot delete ${result.editMode}: no primary or unique key.`)
+    showErrorToast(
+      'Delete failed',
+      `Cannot delete ${result.view.editTarget.tableName}: no primary or unique key.`
+    )
     return null
   }
-  if (!result.editConnectionId) {
+  if (!result.view.slot.connectionId) {
     showErrorToast('Delete failed', 'No active connection available for deletion.')
     return null
   }
   const keyColumns = tableInfo.primaryKey.keyColumns
   const keyColumnIndices = keyColumns.map(
-    (column) => result.editBoundColumnIndexMap.get(column.toLowerCase()) ?? -1
+    (column) => result.view.editTarget.boundIndexByName.get(column.toLowerCase()) ?? -1
   )
   if (keyColumnIndices.some((index) => index < 0)) {
     showErrorToast(
@@ -62,7 +66,7 @@ function resolveRowDeletionPlan(result: SingleResultState): RowDeletionPlan | nu
     return null
   }
   return {
-    connectionId: result.editConnectionId,
+    connectionId: result.view.slot.connectionId,
     tableInfo: tableInfo,
     keyColumns: keyColumns,
     keyColumnIndices: keyColumnIndices,
@@ -190,16 +194,20 @@ function applyTombstonedView(
 ) {
   const { tabId, resultIndex } = deletion
   const { afterResult, removed } = tombstoned
-  const deletePatch: Partial<SingleResultState> = {
-    editState: null,
-    editingRowIndex: null,
-    editingBaseIndex: null,
-    saveError: outcome.failureMessage,
+  const deletePatch: ResultPatch = {
+    view: {
+      edit: { state: null, rowIndex: null, baseIndex: null, saveError: outcome.failureMessage },
+    },
   }
   const isNewerViewCommitted =
-    removed.viewVersion < Math.max(afterResult.latestKnownViewVersion, afterResult.viewVersion)
+    removed.viewVersion <
+    Math.max(afterResult.latestKnownViewVersion, afterResult.view.slot.viewVersion)
   if (isNewerViewCommitted) {
-    patchResultByIndex(tabId, resultIndex, { ...deletePatch, checkedRanges: [] })
+    patchResultByIndex(
+      tabId,
+      resultIndex,
+      mergeResultPatches(deletePatch, { view: { checked: { ranges: [] } } })
+    )
     return
   }
   paintView({
@@ -228,9 +236,7 @@ function reportTombstoneFailure(
   )
   if (getQueryState().tabs[tabId]) {
     patchResultByIndex(tabId, resultIndex, {
-      isStale: true,
-      checkedRanges: [],
-      saveError: outcome.failureMessage,
+      view: { checked: { ranges: [] }, edit: { isStale: true, saveError: outcome.failureMessage } },
     })
   }
   showErrorToast(
@@ -254,7 +260,9 @@ async function tombstoneDeletedRows(
     )
     if (!getQueryState().tabs[tabId]) return false
     const afterResult = resultAt(tabId, resultIndex)
-    if (afterResult?.queryId !== result.queryId) return false
+    if (!afterResult) return false
+    const isSameResult = afterResult.view.slot.queryId === result.view.slot.queryId
+    if (!isSameResult) return false
     applyTombstonedView(deletion, outcome, { afterResult: afterResult, removed: removed })
     return true
   } catch (refreshError) {
@@ -268,7 +276,7 @@ async function finishRowDeletion(deletion: RowDeletionContext, outcome: RowDelet
   if (deletedCount === 0) {
     if (outcome.failureMessage) {
       patchResultByIndex(deletion.tabId, deletion.resultIndex, {
-        saveError: outcome.failureMessage,
+        view: { edit: { saveError: outcome.failureMessage } },
       })
     }
     return
@@ -283,21 +291,21 @@ async function finishRowDeletion(deletion: RowDeletionContext, outcome: RowDelet
 }
 
 function selectedRowRanges(result: SingleResultState): ViewRange[] {
-  const selectedRowIndex = result.selectedRowIndex
+  const selectedRowIndex = result.view.selection.rowIndex
   if (selectedRowIndex === null) return []
   if (!isSelectedRowInView(result)) return []
   return [[selectedRowIndex, selectedRowIndex + 1]]
 }
 
 export function deleteTargetRangesOf(result: SingleResultState): ViewRange[] {
-  const hasCheckedRows = result.checkedRanges.length > 0
-  if (hasCheckedRows) return result.checkedRanges
+  const hasCheckedRows = result.view.checked.ranges.length > 0
+  if (hasCheckedRows) return result.view.checked.ranges
   return selectedRowRanges(result)
 }
 
 function hasStaleCheckedRows(result: SingleResultState): boolean {
-  const hasCheckedRows = result.checkedRanges.length > 0
-  return hasCheckedRows && result.checkedViewVersion !== result.viewVersion
+  const hasCheckedRows = result.view.checked.ranges.length > 0
+  return hasCheckedRows && result.view.checked.viewVersion !== result.view.slot.viewVersion
 }
 
 export async function deleteResultRows(ref: DataViewSurfaceRef): Promise<number> {
@@ -311,7 +319,7 @@ export async function deleteResultRows(ref: DataViewSurfaceRef): Promise<number>
   if (!plan) return 0
 
   if (hasStaleCheckedRows(result)) {
-    patchResultByIndex(tabId, resultIndex, { checkedRanges: [] })
+    patchResultByIndex(tabId, resultIndex, { view: { checked: { ranges: [] } } })
     return 0
   }
   const exceedsBulkDeleteLimit = countRanges(targetRanges) > MAX_BULK_DELETE_ROWS

@@ -42,7 +42,7 @@ function resolveAnalysisTarget(
 ): AnalysisTargetState {
   const currentResult = resultAt(tabId, resultIndex)
   if (!currentResult) return 'gone'
-  const isReplaced = expectedQueryId !== null && currentResult.queryId !== expectedQueryId
+  const isReplaced = expectedQueryId !== null && currentResult.view.slot.queryId !== expectedQueryId
   if (isReplaced) return 'replaced'
   return 'current'
 }
@@ -75,9 +75,9 @@ export async function runEditAnalysis({
 
     const metadata = buildEditTableMetadata(tables)
     patchResultByIndex(tabId, targetResultIndex, {
-      editTableMetadata: metadata,
       isAnalyzingQuery: false,
       isAnalyzed: true,
+      view: { editTarget: { tables: metadata } },
     })
     return metadata
   } catch (error) {
@@ -97,9 +97,9 @@ function launchDeferredAnalysis(request: DeferredAnalysisRequest): void {
     tabId: request.tabId,
     connectionId: request.connectionId,
     sql: request.result.lastExecutedSql,
-    queryId: request.result.queryId,
+    queryId: request.result.view.slot.queryId,
     resultIndex: request.resultIndex,
-    hasColumns: request.result.columns.length > 0,
+    hasColumns: request.result.view.slot.columns.length > 0,
     onFailure: (error) => logFrontendError('[query-edit] deferred analysis failed:', error),
   })
 }

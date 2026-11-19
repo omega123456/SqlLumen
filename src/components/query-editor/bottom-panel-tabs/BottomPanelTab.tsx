@@ -38,7 +38,7 @@ function getResultTabIcon(result: SingleResultState, activity: ResultTabActivity
       />
     )
   }
-  if (!hasResultColumns(result)) {
+  if (!hasResultColumns(result.view.slot)) {
     return <CheckCircle size={12} weight="fill" className="shrink-0" />
   }
   return <Table size={16} weight="regular" className="shrink-0" />

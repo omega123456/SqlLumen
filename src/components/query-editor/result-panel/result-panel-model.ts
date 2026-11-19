@@ -54,23 +54,25 @@ export const NO_ROW_INSERTION: ResultRowInsertion = { canAddRow: false, canClone
 
 function isCloneBlockedByEditing(result: SingleResultState): boolean {
   const selectedRowIsDraft =
-    result.editState?.isNewRow === true && result.editingRowIndex === result.selectedRowIndex
-  return hasPendingRowChanges(result.editState) || selectedRowIsDraft
+    result.view.edit.state?.isNewRow === true &&
+    result.view.edit.rowIndex === result.view.selection.rowIndex
+  return hasPendingRowChanges(result.view.edit.state) || selectedRowIsDraft
 }
 
 function isRowInsertionBlocked(inputs: RowInsertionInputs): boolean {
   const { result, primaryKey } = inputs
-  if (result.editMode === null) return true
+  const { editTarget, mode } = result.view
+  if (editTarget.tableName === null) return true
   if (inputs.displayStatus !== 'success') return true
   if (result.isAnalyzingQuery) return true
-  if (result.viewMode === 'text') return true
+  if (mode === 'text') return true
   if (!primaryKey) return true
   return primaryKey.isUniqueKeyFallback
 }
 
 function canAddResultRow(inputs: RowInsertionInputs): boolean {
   if (isRowInsertionBlocked(inputs)) return false
-  return inputs.result.draftRow === null
+  return inputs.result.view.edit.draftRow === null
 }
 
 function hasCopiedBoundColumns(inputs: RowInsertionInputs): boolean {
@@ -121,7 +123,9 @@ export function dmlSuccessMessage(affectedRows: number): string {
 }
 
 export function readEditTable(result: SingleResultState) {
-  const editTable = result.editMode ? result.editTableMetadata[result.editMode] : undefined
+  const editTable = result.view.editTarget.tableName
+    ? result.view.editTarget.tables[result.view.editTarget.tableName]
+    : undefined
   return {
     editTable: editTable,
     primaryKey: editTable?.primaryKey ?? null,

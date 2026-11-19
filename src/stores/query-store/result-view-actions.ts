@@ -4,6 +4,7 @@ import { showErrorToast } from '../toast-store'
 import { logFrontendError } from '../../lib/app-log-commands'
 import { hasResultAt } from './result-lists'
 import { DEFAULT_RESULT_STATE, ROW_EDIT_STATE_RESET } from './query-state-defaults'
+import { patchedResult } from './query-tab-reducers'
 import { patchSurface, patchTab, resultOf, getQueryState } from './query-store-access'
 import type { DataViewSurfaceRef } from '../data-view/data-view-types'
 import type { ColumnSortChange, ScrollCell } from './query-state-types'
@@ -15,7 +16,7 @@ export function setViewMode(ref: DataViewSurfaceRef, mode: ViewMode) {
 
   if (!result) {
     patchTab(ref.tabId, {
-      results: [{ ...DEFAULT_RESULT_STATE, viewMode: mode }],
+      results: [patchedResult(DEFAULT_RESULT_STATE, { view: { mode: mode } })],
       activeResultIndex: 0,
     })
     return
@@ -27,7 +28,7 @@ export function setViewMode(ref: DataViewSurfaceRef, mode: ViewMode) {
       .saveCurrentRow(ref)
       .then(() => {
         const afterResult = resultOf(ref)
-        const isSavedCleanly = afterResult !== undefined && !afterResult.saveError
+        const isSavedCleanly = afterResult !== undefined && !afterResult.view.edit.saveError
         if (!isSavedCleanly) {
           showErrorToast(
             'Cannot switch to text view',
@@ -35,7 +36,7 @@ export function setViewMode(ref: DataViewSurfaceRef, mode: ViewMode) {
           )
           return
         }
-        patchSurface(ref, { viewMode: mode })
+        patchSurface(ref, { view: { mode: mode } })
       })
       .catch((error) => {
         logFrontendError('[query-store] saveCurrentRow failed while switching to text view:', error)
@@ -47,23 +48,23 @@ export function setViewMode(ref: DataViewSurfaceRef, mode: ViewMode) {
     return
   }
 
-  patchSurface(ref, { viewMode: mode })
+  patchSurface(ref, { view: { mode: mode } })
 }
 
 export function setSelectedRow(ref: DataViewSurfaceRef, index: number | null) {
   const result = resultOf(ref)
-  if (result?.selectedRowIndex === index) return
-  patchSurface(ref, { selectedRowIndex: index })
+  const selectedRowIndex = result?.view.selection.rowIndex
+  if (selectedRowIndex === index) return
+  patchSurface(ref, { view: { selection: { rowIndex: index } } })
 }
 
 export function setCheckedRanges(ref: DataViewSurfaceRef, ranges: ViewRange[]) {
   const result = resultOf(ref)
   if (!result) return
-  const isAlreadyUnchecked = ranges.length === 0 && result.checkedRanges.length === 0
+  const isAlreadyUnchecked = ranges.length === 0 && result.view.checked.ranges.length === 0
   if (isAlreadyUnchecked) return
   patchSurface(ref, {
-    checkedRanges: ranges,
-    checkedViewVersion: result.viewVersion,
+    view: { checked: { ranges: ranges, viewVersion: result.view.slot.viewVersion } },
   })
 }
 
@@ -87,27 +88,28 @@ export function retryViewChange(ref: DataViewSurfaceRef) {
 }
 
 export function setSelectedCell(ref: DataViewSurfaceRef, cell: SelectedCellInfo | null) {
-  const currentCell = resultOf(ref)?.selectedCell ?? null
+  const currentCell = resultOf(ref)?.view.selection.cell ?? null
   const isSameCell =
     currentCell?.columnKey === cell?.columnKey && Object.is(currentCell?.value, cell?.value)
   if (isSameCell) return
-  patchSurface(ref, { selectedCell: cell })
+  patchSurface(ref, { view: { selection: { cell: cell } } })
 }
 
 export function setResultScrollCell(ref: DataViewSurfaceRef, scrollCell: ScrollCell) {
   const result = resultOf(ref)
   if (!result) return
   const { scrollRow, scrollColumn } = scrollCell
-  const isSameScrollCell = result.scrollRow === scrollRow && result.scrollCol === scrollColumn
+  const isSameScrollCell =
+    result.view.layout.scrollRow === scrollRow && result.view.layout.scrollCol === scrollColumn
   if (isSameScrollCell) return
-  patchSurface(ref, { scrollRow: scrollRow, scrollCol: scrollColumn })
+  patchSurface(ref, { view: { layout: { scrollRow: scrollRow, scrollCol: scrollColumn } } })
 }
 
 export function setResultColumnWidth(ref: DataViewSurfaceRef, columnKey: string, width: number) {
   const result = resultOf(ref)
   if (!result) return
   patchSurface(ref, {
-    columnWidths: { ...result.columnWidths, [columnKey]: width },
+    view: { layout: { columnWidths: { ...result.view.layout.columnWidths, [columnKey]: width } } },
   })
 }
 
@@ -135,7 +137,7 @@ export async function sortResults(ref: DataViewSurfaceRef, sort: ColumnSortChang
     resultIndex: resultIndex,
     spec: {
       sort: direction ? { column, direction } : null,
-      filters: base?.filters ?? result.filterModel,
+      filters: base?.filters ?? result.view.spec.filters,
     },
     kind: 'sort',
   })

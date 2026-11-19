@@ -1,3 +1,4 @@
+import { resultState } from '../../helpers/legacy-result-fields'
 import React from 'react'
 import { act, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest'
@@ -6,7 +7,7 @@ import {
   rowsFromSource,
 } from '../../helpers/result-grid-test-utils'
 import type { ColumnMeta, RowEditState, TableDataColumnMeta } from '../../../types/schema'
-import { DEFAULT_RESULT_STATE, useQueryStore } from '../../../stores/query-store'
+import { useQueryStore } from '../../../stores/query-store'
 import * as CanvasBaseGridViewModule from '../../../components/shared/glide/CanvasBaseGridView'
 import { AUTO_SIZE_SAMPLE_LIMIT, getAutoSizedColumnWidth } from '../../../lib/grid-column-style'
 import { useToastStore } from '../../../stores/toast-store'
@@ -489,10 +490,9 @@ describe('ResultGridView editing', () => {
             cursorPosition: null,
             connectionId: 'c1',
             results: [
-              { ...DEFAULT_RESULT_STATE, selectedCell: { columnKey: 'name', value: 'Ada' } },
+              resultState({ view: { selection: { cell: { columnKey: 'name', value: 'Ada' } } } }),
             ],
             activeResultIndex: 0,
-            pendingNavigationAction: null,
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,

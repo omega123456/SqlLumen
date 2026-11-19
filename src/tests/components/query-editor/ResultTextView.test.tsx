@@ -166,7 +166,9 @@ describe('ResultTextView', () => {
       })
     })
     renderTextView({ viewRowCount: 9000 })
-    await waitFor(() => expect(useQueryStore.getState().tabs[TAB]!.results[0].isExpired).toBe(true))
+    await waitFor(() =>
+      expect(useQueryStore.getState().tabs[TAB]!.results[0].view.residency.isExpired).toBe(true)
+    )
   })
 
   it('shows an error toast when rows cannot be loaded', async () => {

@@ -1,3 +1,5 @@
+import { legacyTabFields } from '../helpers/legacy-result-fields'
+import { resultState } from '../helpers/legacy-result-fields'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { resetWorkspaceStore, seedVisibleConnection } from '../helpers/workspace-test-utils'
@@ -5,12 +7,7 @@ import { rowsOf, withRows } from '../helpers/query-test-utils'
 import { useTableDataStore } from '../../stores/table-data-store'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
-import {
-  useQueryStore,
-  DEFAULT_RESULT_STATE,
-  type TabQueryState,
-  activeQuerySurfaceRef,
-} from '../../stores/query-store'
+import { useQueryStore, type TabQueryState, activeQuerySurfaceRef } from '../../stores/query-store'
 import { useAiStore } from '../../stores/ai-store'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../stores/settings-store'
 import { makeAiTabState } from '../helpers/ai-test-utils'
@@ -115,15 +112,10 @@ function makeQueryTabState(overrides: Partial<TabQueryState> = {}): TabQueryStat
     cursorPosition: null,
     connectionId: 'conn-1',
     results: [
-      {
-        ...DEFAULT_RESULT_STATE,
-        resultStatus: 'success',
-        queryId: 'q-validate-1',
-      },
+      resultState({ resultStatus: 'success', view: { slot: { queryId: 'q-validate-1' } } }),
     ],
     activeResultIndex: 0,
     activeBottomPanelItem: { type: 'result' as const },
-    pendingNavigationAction: null,
     executionStartedAt: null,
     isCancelling: false,
     wasCancelled: false,
@@ -294,17 +286,20 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
       tabs: {
         [firstQueryTabId]: makeQueryTabState({
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({
               resultStatus: 'success',
-              queryId: 'query-1',
               ...withRows([[1, 'alice']]),
-              rowResidency: {
-                status: 'resident',
-                isActive: true,
-                inactiveSince: null,
+              view: {
+                slot: { queryId: 'query-1' },
+                residency: {
+                  rows: {
+                    status: 'resident',
+                    isActive: true,
+                    inactiveSince: null,
+                  },
+                },
               },
-            },
+            }),
           ],
         }),
       },
@@ -314,7 +309,9 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
 
     await vi.waitFor(() => {
       expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(secondQueryTabId)
-      expect(useQueryStore.getState().tabs[firstQueryTabId]!.results[0]!.rowResidency).toEqual({
+      expect(
+        useQueryStore.getState().tabs[firstQueryTabId]!.results[0]!.view.residency.rows
+      ).toEqual({
         status: 'resident',
         isActive: false,
         inactiveSince: expect.any(Number),
@@ -371,17 +368,20 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
       tabs: {
         [queryTabId]: makeQueryTabState({
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({
               resultStatus: 'success',
-              queryId: 'query-1',
               ...withRows([[1, 'alice']]),
-              rowResidency: {
-                status: 'resident',
-                isActive: true,
-                inactiveSince: null,
+              view: {
+                slot: { queryId: 'query-1' },
+                residency: {
+                  rows: {
+                    status: 'resident',
+                    isActive: true,
+                    inactiveSince: null,
+                  },
+                },
               },
-            },
+            }),
           ],
         }),
       },
@@ -391,14 +391,14 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
     useWorkspaceStore.getState().setActiveTab('conn-1', schemaTabId)
 
     let result = useQueryStore.getState().tabs[queryTabId].results[0]
-    expect(result.rowResidency.isActive).toBe(false)
-    expect(result.rowResidency.inactiveSince).toBeTypeOf('number')
+    expect(result.view.residency.rows.isActive).toBe(false)
+    expect(result.view.residency.rows.inactiveSince).toBeTypeOf('number')
 
     useWorkspaceStore.getState().setActiveTab('conn-1', queryTabId)
 
     result = useQueryStore.getState().tabs[queryTabId].results[0]
-    expect(result.rowResidency.isActive).toBe(true)
-    expect(result.rowResidency.inactiveSince).toBeNull()
+    expect(result.view.residency.rows.isActive).toBe(true)
+    expect(result.view.residency.rows.inactiveSince).toBeNull()
   })
 
   it('restores standalone table-data rows through table-data store activation', async () => {
@@ -469,17 +469,20 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
       tabs: {
         [queryTabId]: makeQueryTabState({
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({
               resultStatus: 'success',
-              queryId: 'query-1',
               ...withRows([[1, 'alice']]),
-              rowResidency: {
-                status: 'resident',
-                isActive: true,
-                inactiveSince: null,
+              view: {
+                slot: { queryId: 'query-1' },
+                residency: {
+                  rows: {
+                    status: 'resident',
+                    isActive: true,
+                    inactiveSince: null,
+                  },
+                },
               },
-            },
+            }),
           ],
         }),
       },
@@ -514,9 +517,9 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
     })
 
     await vi.waitFor(() => {
-      expect(useQueryStore.getState().tabs[queryTabId]!.results[0]!.rowResidency.isActive).toBe(
-        false
-      )
+      expect(
+        useQueryStore.getState().tabs[queryTabId]!.results[0]!.view.residency.rows.isActive
+      ).toBe(false)
       expect(useTableDataStore.getState().tabs[tableTab.id]!.rows).toEqual([[7, 'restored']])
       expect(useTableDataStore.getState().tabs[tableTab.id]!.rowResidency!.isActive).toBe(true)
     })
@@ -525,9 +528,9 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
 
     await vi.waitFor(() => {
       expect(useTableDataStore.getState().tabs[tableTab.id]!.rowResidency!.isActive).toBe(false)
-      expect(useQueryStore.getState().tabs[queryTabId]!.results[0]!.rowResidency.isActive).toBe(
-        true
-      )
+      expect(
+        useQueryStore.getState().tabs[queryTabId]!.results[0]!.view.residency.rows.isActive
+      ).toBe(true)
     })
   })
 
@@ -538,28 +541,34 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
       tabs: {
         [queryTabId]: makeQueryTabState({
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({
               resultStatus: 'success',
-              queryId: 'query-1',
               ...withRows([[1, 'alice']]),
-              rowResidency: {
-                status: 'resident',
-                isActive: true,
-                inactiveSince: null,
+              view: {
+                slot: { queryId: 'query-1' },
+                residency: {
+                  rows: {
+                    status: 'resident',
+                    isActive: true,
+                    inactiveSince: null,
+                  },
+                },
               },
-            },
-            {
-              ...DEFAULT_RESULT_STATE,
+            }),
+            resultState({
               resultStatus: 'success',
-              queryId: 'query-2',
               ...withRows([[2, 'bob']]),
-              rowResidency: {
-                status: 'resident',
-                isActive: false,
-                inactiveSince: null,
+              view: {
+                slot: { queryId: 'query-2' },
+                residency: {
+                  rows: {
+                    status: 'resident',
+                    isActive: false,
+                    inactiveSince: null,
+                  },
+                },
               },
-            },
+            }),
           ],
           activeResultIndex: 0,
         }),
@@ -571,8 +580,8 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
 
     await vi.waitFor(() => {
       const results = useQueryStore.getState().tabs[queryTabId].results
-      expect(results[0].rowResidency.isActive).toBe(false)
-      expect(results[1].rowResidency.isActive).toBe(true)
+      expect(results[0].view.residency.rows.isActive).toBe(false)
+      expect(results[1].view.residency.rows.isActive).toBe(true)
     })
 
     useQueryStore.getState().setActiveBottomPanelItem(queryTabId, {
@@ -582,8 +591,8 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
     useQueryStore.getState().setActiveResultIndex(queryTabId, 0)
 
     const results = useQueryStore.getState().tabs[queryTabId].results
-    expect(results[0].rowResidency.isActive).toBe(false)
-    expect(results[1].rowResidency.isActive).toBe(false)
+    expect(results[0].view.residency.rows.isActive).toBe(false)
+    expect(results[1].view.residency.rows.isActive).toBe(false)
   })
 })
 
@@ -600,17 +609,20 @@ describe('useWorkspaceStore — setVisibleConnectionSession', () => {
         [queryTabId]: makeQueryTabState({
           connectionId,
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({
               resultStatus: 'success',
-              queryId,
               ...withRows([[1, 'alice']]),
-              rowResidency: {
-                status: 'resident',
-                isActive: true,
-                inactiveSince: null,
+              view: {
+                slot: { queryId: queryId },
+                residency: {
+                  rows: {
+                    status: 'resident',
+                    isActive: true,
+                    inactiveSince: null,
+                  },
+                },
               },
-            },
+            }),
           ],
         }),
       },
@@ -625,8 +637,8 @@ describe('useWorkspaceStore — setVisibleConnectionSession', () => {
 
     const result = useQueryStore.getState().tabs[queryTabId].results[0]
     expect(useWorkspaceStore.getState().visibleConnectionSessionId).toBe('conn-1')
-    expect(result.rowResidency.isActive).toBe(true)
-    expect(result.rowResidency.inactiveSince).toBeNull()
+    expect(result.view.residency.rows.isActive).toBe(true)
+    expect(result.view.residency.rows.inactiveSince).toBeNull()
   })
 
   it('marks the previously visible surface inactive and the newly visible surface active', () => {
@@ -640,17 +652,20 @@ describe('useWorkspaceStore — setVisibleConnectionSession', () => {
         [secondTabId]: makeQueryTabState({
           connectionId: 'conn-2',
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({
               resultStatus: 'success',
-              queryId: 'query-2',
               ...withRows([[2, 'bob']]),
-              rowResidency: {
-                status: 'resident',
-                isActive: false,
-                inactiveSince: 123,
+              view: {
+                slot: { queryId: 'query-2' },
+                residency: {
+                  rows: {
+                    status: 'resident',
+                    isActive: false,
+                    inactiveSince: 123,
+                  },
+                },
               },
-            },
+            }),
           ],
         }),
       },
@@ -660,11 +675,11 @@ describe('useWorkspaceStore — setVisibleConnectionSession', () => {
 
     expect(useWorkspaceStore.getState().visibleConnectionSessionId).toBe('conn-2')
     const previous = useQueryStore.getState().tabs[firstTabId].results[0]
-    expect(previous.rowResidency.isActive).toBe(false)
-    expect(previous.rowResidency.inactiveSince).toBeTypeOf('number')
+    expect(previous.view.residency.rows.isActive).toBe(false)
+    expect(previous.view.residency.rows.inactiveSince).toBeTypeOf('number')
     const next = useQueryStore.getState().tabs[secondTabId].results[0]
-    expect(next.rowResidency.isActive).toBe(true)
-    expect(next.rowResidency.inactiveSince).toBeNull()
+    expect(next.view.residency.rows.isActive).toBe(true)
+    expect(next.view.residency.rows.inactiveSince).toBeNull()
   })
 
   it('only deactivates the previous surface when the new session has no active tab', () => {
@@ -674,8 +689,8 @@ describe('useWorkspaceStore — setVisibleConnectionSession', () => {
 
     expect(useWorkspaceStore.getState().visibleConnectionSessionId).toBe('conn-empty')
     const result = useQueryStore.getState().tabs[queryTabId].results[0]
-    expect(result.rowResidency.isActive).toBe(false)
-    expect(result.rowResidency.inactiveSince).toBeTypeOf('number')
+    expect(result.view.residency.rows.isActive).toBe(false)
+    expect(result.view.residency.rows.inactiveSince).toBeTypeOf('number')
   })
 
   it('deactivates the previous surface and reveals nothing when cleared with an empty session', () => {
@@ -685,8 +700,8 @@ describe('useWorkspaceStore — setVisibleConnectionSession', () => {
 
     expect(useWorkspaceStore.getState().visibleConnectionSessionId).toBe('')
     const result = useQueryStore.getState().tabs[queryTabId].results[0]
-    expect(result.rowResidency.isActive).toBe(false)
-    expect(result.rowResidency.inactiveSince).toBeTypeOf('number')
+    expect(result.view.residency.rows.isActive).toBe(false)
+    expect(result.view.residency.rows.inactiveSince).toBeTypeOf('number')
   })
 
   it('does not activate row payloads when a background connection changes its active tab', async () => {
@@ -698,17 +713,20 @@ describe('useWorkspaceStore — setVisibleConnectionSession', () => {
         [backgroundTabId]: makeQueryTabState({
           connectionId: 'conn-2',
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({
               resultStatus: 'success',
-              queryId: 'bg-query',
               ...withRows([[9, 'ghost']]),
-              rowResidency: {
-                status: 'resident',
-                isActive: false,
-                inactiveSince: 123,
+              view: {
+                slot: { queryId: 'bg-query' },
+                residency: {
+                  rows: {
+                    status: 'resident',
+                    isActive: false,
+                    inactiveSince: 123,
+                  },
+                },
               },
-            },
+            }),
           ],
         }),
       },
@@ -728,8 +746,8 @@ describe('useWorkspaceStore — setVisibleConnectionSession', () => {
     })
     // The previously-active background surface remains untouched (still inactive).
     const result = useQueryStore.getState().tabs[backgroundTabId].results[0]
-    expect(result.rowResidency.isActive).toBe(false)
-    expect(result.rowResidency.inactiveSince).toBe(123)
+    expect(result.view.residency.rows.isActive).toBe(false)
+    expect(result.view.residency.rows.inactiveSince).toBe(123)
   })
 
   it('restores scoped standalone table-data rows when its connection becomes visible', async () => {
@@ -1019,17 +1037,19 @@ describe('useWorkspaceStore — closeTab', () => {
       tabs: {
         [queryTabId]: makeQueryTabState({
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({
               resultStatus: 'success',
-              queryId: 'query-restore-on-close',
-              viewRowCount: 1,
-              rowResidency: {
-                status: 'evicted',
-                isActive: false,
-                inactiveSince: 123,
+              view: {
+                slot: { queryId: 'query-restore-on-close', viewRowCount: 1 },
+                residency: {
+                  rows: {
+                    status: 'evicted',
+                    isActive: false,
+                    inactiveSince: 123,
+                  },
+                },
               },
-            },
+            }),
           ],
         }),
       },
@@ -1057,7 +1077,7 @@ describe('useWorkspaceStore — closeTab', () => {
 
     await vi.waitFor(() => {
       expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(queryTabId)
-      expect(useQueryStore.getState().tabs[queryTabId].results[0].rowResidency).toEqual({
+      expect(useQueryStore.getState().tabs[queryTabId].results[0].view.residency.rows).toEqual({
         status: 'resident',
         isActive: true,
         inactiveSince: null,
@@ -1189,12 +1209,7 @@ describe('useWorkspaceStore — closeTab', () => {
         [queryTabId]: {
           ...useQueryStore.getState().getTabState(queryTabId),
           connectionId: 'conn-1',
-          results: [
-            {
-              ...DEFAULT_RESULT_STATE,
-              editState: { modifiedColumns: new Set(['name']) } as never,
-            },
-          ],
+          results: [resultState({ editState: { modifiedColumns: new Set(['name']) } })],
         },
       },
     })
@@ -1631,17 +1646,19 @@ describe('useWorkspaceStore — forceCloseTab', () => {
       tabs: {
         [queryTabId]: makeQueryTabState({
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({
               resultStatus: 'success',
-              queryId: 'query-restore-on-force-close',
-              viewRowCount: 1,
-              rowResidency: {
-                status: 'evicted',
-                isActive: false,
-                inactiveSince: 456,
+              view: {
+                slot: { queryId: 'query-restore-on-force-close', viewRowCount: 1 },
+                residency: {
+                  rows: {
+                    status: 'evicted',
+                    isActive: false,
+                    inactiveSince: 456,
+                  },
+                },
               },
-            },
+            }),
           ],
         }),
       },
@@ -1669,7 +1686,7 @@ describe('useWorkspaceStore — forceCloseTab', () => {
 
     await vi.waitFor(() => {
       expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(queryTabId)
-      expect(useQueryStore.getState().tabs[queryTabId].results[0].rowResidency).toEqual({
+      expect(useQueryStore.getState().tabs[queryTabId].results[0].view.residency.rows).toEqual({
         status: 'resident',
         isActive: true,
         inactiveSince: null,
@@ -1738,8 +1755,7 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({
               resultStatus: 'success',
               queryId: 'q1',
               rowResidency: {
@@ -1747,9 +1763,8 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
                 isActive: true,
                 inactiveSince: null,
               },
-            },
-            {
-              ...DEFAULT_RESULT_STATE,
+            }),
+            resultState({
               resultStatus: 'success',
               queryId: 'q2',
               rowResidency: {
@@ -1765,10 +1780,9 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
                 isNewRow: false,
               },
               editingRowIndex: 0,
-            },
+            }),
           ],
           activeResultIndex: 0,
-          pendingNavigationAction: null,
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
@@ -1789,11 +1803,11 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
     // The query store should have switched activeResultIndex to the dirty result
     const queryTab = useQueryStore.getState().tabs[tabId]
     expect(queryTab?.activeResultIndex).toBe(1)
-    expect(queryTab?.results[0]?.rowResidency.isActive).toBe(false)
-    expect(queryTab?.results[1]?.rowResidency.isActive).toBe(true)
+    expect(queryTab?.results[0]?.view.residency.rows.isActive).toBe(false)
+    expect(queryTab?.results[1]?.view.residency.rows.isActive).toBe(true)
 
     // The query store should have a pendingNavigationAction set
-    expect(queryTab?.pendingNavigationAction).not.toBeNull()
+    expect(legacyTabFields(queryTab).pendingNavigationAction).not.toBeNull()
   })
 
   it('uses requestNavigationAction when dirty result IS the active result', () => {
@@ -1812,8 +1826,7 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({
               resultStatus: 'success',
               queryId: 'q1',
               editState: {
@@ -1824,15 +1837,10 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
                 isNewRow: false,
               },
               editingRowIndex: 0,
-            },
-            {
-              ...DEFAULT_RESULT_STATE,
-              resultStatus: 'success',
-              queryId: 'q2',
-            },
+            }),
+            resultState({ resultStatus: 'success', queryId: 'q2' }),
           ],
           activeResultIndex: 0,
-          pendingNavigationAction: null,
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
@@ -1851,7 +1859,7 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
 
     // requestNavigationAction should have set the pending action
     const queryTab = useQueryStore.getState().tabs[tabId]
-    expect(queryTab?.pendingNavigationAction).not.toBeNull()
+    expect(legacyTabFields(queryTab).pendingNavigationAction).not.toBeNull()
   })
 
   it('loops through multiple dirty results before closing (resolve first → check next)', () => {
@@ -1869,8 +1877,7 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({
               resultStatus: 'success',
               queryId: 'q1',
               editState: {
@@ -1881,14 +1888,9 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
                 isNewRow: false,
               },
               editingRowIndex: 0,
-            },
-            {
-              ...DEFAULT_RESULT_STATE,
-              resultStatus: 'success',
-              queryId: 'q2',
-            },
-            {
-              ...DEFAULT_RESULT_STATE,
+            }),
+            resultState({ resultStatus: 'success', queryId: 'q2' }),
+            resultState({
               resultStatus: 'success',
               queryId: 'q3',
               editState: {
@@ -1899,10 +1901,9 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
                 isNewRow: false,
               },
               editingRowIndex: 0,
-            },
+            }),
           ],
           activeResultIndex: 1, // active is the clean one
-          pendingNavigationAction: null,
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
@@ -1921,12 +1922,14 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
     // Should have switched to first dirty result (index 0) and set pendingNavigationAction
     let queryTab = useQueryStore.getState().tabs[tabId]
     expect(queryTab?.activeResultIndex).toBe(0)
-    expect(queryTab?.pendingNavigationAction).not.toBeNull()
+    expect(legacyTabFields(queryTab).pendingNavigationAction).not.toBeNull()
 
     // Simulate user discarding result 0 (clears its editState and calls pendingNavigationAction)
     useQueryStore.getState().discardCurrentRow(activeQuerySurfaceRef(tabId))
     // Fire the pending action (simulates what confirmNavigation does)
-    const firstAction = useQueryStore.getState().tabs[tabId]?.pendingNavigationAction
+    const firstAction = legacyTabFields(
+      useQueryStore.getState().tabs[tabId]
+    ).pendingNavigationAction
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
@@ -1940,11 +1943,13 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
     // Tab should STILL be open (result 2 is still dirty)
     expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toHaveLength(1)
     expect(queryTab?.activeResultIndex).toBe(2)
-    expect(queryTab?.pendingNavigationAction).not.toBeNull()
+    expect(legacyTabFields(queryTab).pendingNavigationAction).not.toBeNull()
 
     // Simulate user discarding result 2
     useQueryStore.getState().discardCurrentRow(activeQuerySurfaceRef(tabId))
-    const secondAction = useQueryStore.getState().tabs[tabId]?.pendingNavigationAction
+    const secondAction = legacyTabFields(
+      useQueryStore.getState().tabs[tabId]
+    ).pendingNavigationAction
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
@@ -1973,11 +1978,10 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
-            { ...DEFAULT_RESULT_STATE, resultStatus: 'success', queryId: 'q1' },
-            { ...DEFAULT_RESULT_STATE, resultStatus: 'success', queryId: 'q2' },
+            resultState({ resultStatus: 'success', queryId: 'q1' }),
+            resultState({ resultStatus: 'success', queryId: 'q2' }),
           ],
           activeResultIndex: 0,
-          pendingNavigationAction: null,
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,

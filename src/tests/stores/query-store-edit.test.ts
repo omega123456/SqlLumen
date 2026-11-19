@@ -1,10 +1,11 @@
+import { legacyFieldsOf } from '../helpers/legacy-result-fields'
+import { legacyTabFields } from '../helpers/legacy-result-fields'
+import { patchedLegacyResult, resultState } from '../helpers/legacy-result-fields'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { ipc, overrideNamedIpcCommands } from '../ipc-mock'
 import {
   useQueryStore,
   isEditableSelectSql,
-  DEFAULT_RESULT_STATE,
-  type SingleResultState,
   activeQuerySurfaceRef,
   querySurfaceRef,
 } from '../../stores/query-store'
@@ -55,13 +56,13 @@ const QUERY_STORE_EDIT_COMMANDS = [
 function patchResult(tabId: string, resultOverrides: Record<string, unknown>) {
   useQueryStore.setState((prev) => {
     const tab = prev.tabs[tabId]!
-    const existingResult = tab.results[0] ?? { ...DEFAULT_RESULT_STATE }
+    const existingResult = tab.results[0] ?? resultState({})
     return {
       tabs: {
         ...prev.tabs,
         [tabId]: {
           ...tab,
-          results: [{ ...existingResult, ...resultOverrides }],
+          results: [patchedLegacyResult(existingResult, resultOverrides)],
           activeResultIndex: 0,
         },
       },
@@ -393,7 +394,6 @@ describe('useQueryStore — setEditMode', () => {
     expect(tab.editableColumnMap.size).toBe(0)
     expect(tab.editColumnBindings.size).toBe(0)
     expect(tab.editBoundColumnIndexMap.size).toBe(0)
-    expect(tab.editConnectionId).toBeNull()
   })
 
   it('shows error toast when table metadata is not available', async () => {
@@ -2284,7 +2284,9 @@ describe('useQueryStore — requestNavigationAction', () => {
     const action = vi.fn()
     useQueryStore.getState().requestNavigationAction(activeQuerySurfaceRef('tab-1'), action)
     expect(action).not.toHaveBeenCalled()
-    expect(useQueryStore.getState().getTabState('tab-1').pendingNavigationAction).toBeTruthy()
+    expect(
+      legacyTabFields(useQueryStore.getState().getTabState('tab-1')).pendingNavigationAction
+    ).toBeTruthy()
   })
 })
 
@@ -2305,7 +2307,9 @@ describe('useQueryStore — confirmNavigation', () => {
 
     await useQueryStore.getState().confirmNavigation(activeQuerySurfaceRef('tab-1'), true)
     expect(action).toHaveBeenCalledOnce()
-    expect(useQueryStore.getState().getTabState('tab-1').pendingNavigationAction).toBeNull()
+    expect(
+      legacyTabFields(useQueryStore.getState().getTabState('tab-1')).pendingNavigationAction
+    ).toBeNull()
   })
 
   it('discards and executes pending action when shouldSave is false', async () => {
@@ -2338,7 +2342,9 @@ describe('useQueryStore — cancelNavigation', () => {
     useQueryStore.getState().requestNavigationAction(activeQuerySurfaceRef('tab-1'), action)
     useQueryStore.getState().cancelNavigation(activeQuerySurfaceRef('tab-1'))
 
-    expect(useQueryStore.getState().getTabState('tab-1').pendingNavigationAction).toBeNull()
+    expect(
+      legacyTabFields(useQueryStore.getState().getTabState('tab-1')).pendingNavigationAction
+    ).toBeNull()
     expect(action).not.toHaveBeenCalled()
   })
 })
@@ -2363,7 +2369,6 @@ describe('useQueryStore — clearEditState', () => {
     expect(tab.editTableMetadata).toEqual({})
     expect(tab.isAnalyzingQuery).toBe(false)
     expect(tab.saveError).toBeNull()
-    expect(tab.editConnectionId).toBeNull()
     expect(tab.editingRowIndex).toBeNull()
   })
 
@@ -2919,7 +2924,7 @@ describe('result view filter and sort', () => {
 
       await act(async () => {
         useQueryStore.getState().applyQueryFilters(querySurfaceRef(TAB, 0), FILTER_A)
-        expect(result().isFiltering).toBe(true)
+        expect(legacyFieldsOf(result()).isFiltering).toBe(true)
         await flush()
       })
 
@@ -2932,16 +2937,16 @@ describe('result view filter and sort', () => {
         viewSpec: { sort: null, filters: FILTER_A },
       })
       const painted = result()
-      expect(painted.isFiltering).toBe(false)
-      expect(painted.filterModel).toEqual(FILTER_A)
-      expect(painted.viewVersion).toBe(2)
-      expect(painted.viewRowCount).toBe(2)
-      expect(painted.totalRows).toBe(3)
+      expect(legacyFieldsOf(painted).isFiltering).toBe(false)
+      expect(painted.view.spec.filters).toEqual(FILTER_A)
+      expect(painted.view.slot.viewVersion).toBe(2)
+      expect(painted.view.slot.viewRowCount).toBe(2)
+      expect(painted.view.slot.totalRows).toBe(3)
       expect(rowsOf(TAB)).toEqual([ROWS[0], ROWS[2]])
       // Checked rows and the selection belong to the old view.
-      expect(painted.checkedRanges).toEqual([])
-      expect(painted.checkedViewVersion).toBe(2)
-      expect(painted.selectedRowIndex).toBeNull()
+      expect(painted.view.checked.ranges).toEqual([])
+      expect(painted.view.checked.viewVersion).toBe(2)
+      expect(painted.view.selection.rowIndex).toBeNull()
       expect(ipc.payloads('execute_query')).toHaveLength(0)
     })
 
@@ -2952,7 +2957,9 @@ describe('result view filter and sort', () => {
             ...state.tabs,
             [TAB]: {
               ...state.tabs[TAB]!,
-              results: [{ ...result(), sortColumn: 'name', sortDirection: 'desc' }],
+              results: [
+                patchedLegacyResult(result(), { sortColumn: 'name', sortDirection: 'desc' }),
+              ],
             },
           },
         }))
@@ -2967,7 +2974,7 @@ describe('result view filter and sort', () => {
       expect(ipc.payloads('set_result_view')[0]).toMatchObject({
         viewSpec: { sort: { column: 'name', direction: 'desc' }, filters: FILTER_A },
       })
-      expect(result().sortColumn).toBe('name')
+      expect(legacyFieldsOf(result()).sortColumn).toBe('name')
     })
 
     it('clearing filters restores the unfiltered view in Rust without a re-run', async () => {
@@ -2981,7 +2988,7 @@ describe('result view filter and sort', () => {
       expect(ipc.payloads('set_result_view')[0]).toMatchObject({
         viewSpec: { sort: null, filters: [] },
       })
-      expect(result().filterModel).toEqual([])
+      expect(result().view.spec.filters).toEqual([])
       expect(rowsOf(TAB)).toEqual(ROWS)
       expect(ipc.payloads('execute_query')).toHaveLength(0)
       expect(ipc.payloads('reexecute_single_result')).toHaveLength(0)
@@ -3003,12 +3010,12 @@ describe('result view filter and sort', () => {
           .getState()
           .sortResults(activeQuerySurfaceRef(TAB), { column: 'id', direction: 'asc' })
       })
-      expect(result().isSorting).toBe(true)
+      expect(legacyFieldsOf(result()).isSorting).toBe(true)
       await act(async () => {
         pending[0].resolve(viewResponse(2, ROWS, [0, 1, 2]))
         await sortPromise
       })
-      expect(result().isSorting).toBe(false)
+      expect(legacyFieldsOf(result()).isSorting).toBe(false)
     })
 
     it('discards a response for a result that was replaced meanwhile', async () => {
@@ -3023,7 +3030,10 @@ describe('result view filter and sort', () => {
         useQueryStore.setState((state) => ({
           tabs: {
             ...state.tabs,
-            [TAB]: { ...state.tabs[TAB]!, results: [{ ...result(), queryId: 'q-new' }] },
+            [TAB]: {
+              ...state.tabs[TAB]!,
+              results: [patchedLegacyResult(result(), { queryId: 'q-new' })],
+            },
           },
         }))
       })
@@ -3031,8 +3041,8 @@ describe('result view filter and sort', () => {
         pending[0].resolve(viewResponse(9, [ROWS[2]], [2]))
         await sortPromise
       })
-      expect(result().viewVersion).toBe(1)
-      expect(result().sortColumn).toBeNull()
+      expect(result().view.slot.viewVersion).toBe(1)
+      expect(legacyFieldsOf(result()).sortColumn).toBeNull()
     })
   })
 
@@ -3062,8 +3072,8 @@ describe('result view filter and sort', () => {
         await flush()
       })
       expect(result().latestKnownViewVersion).toBe(2)
-      expect(result().viewVersion).toBe(1)
-      expect(result().filterModel).toEqual([])
+      expect(result().view.slot.viewVersion).toBe(1)
+      expect(result().view.spec.filters).toEqual([])
 
       // B is refused against the old version and re-issued once against <n>.
       await act(async () => {
@@ -3078,10 +3088,10 @@ describe('result view filter and sort', () => {
         await sortPromise
       })
       const painted = result()
-      expect(painted.viewVersion).toBe(3)
-      expect(painted.sortColumn).toBe('name')
-      expect(painted.filterModel).toEqual(FILTER_A)
-      expect(painted.viewError).toBeNull()
+      expect(painted.view.slot.viewVersion).toBe(3)
+      expect(legacyFieldsOf(painted).sortColumn).toBe('name')
+      expect(painted.view.spec.filters).toEqual(FILTER_A)
+      expect(painted.view.spec.error).toBeNull()
 
       // Window fetches keep working against the painted version.
       ipc.overridePayload('fetch_result_window', (args) => ({
@@ -3118,11 +3128,11 @@ describe('result view filter and sort', () => {
       // No automatic re-issue after the second refusal.
       expect(pending).toHaveLength(3)
       const reverted = result()
-      expect(reverted.viewVersion).toBe(2)
-      expect(reverted.filterModel).toEqual(FILTER_A)
-      expect(reverted.sortColumn).toBeNull()
-      expect(reverted.viewError).toBe('view_superseded: current=2')
-      expect(reverted.isSorting).toBe(false)
+      expect(reverted.view.slot.viewVersion).toBe(2)
+      expect(reverted.view.spec.filters).toEqual(FILTER_A)
+      expect(legacyFieldsOf(reverted).sortColumn).toBeNull()
+      expect(reverted.view.spec.error).toBe('view_superseded: current=2')
+      expect(legacyFieldsOf(reverted).isSorting).toBe(false)
       expect(rowsOf(TAB)).toEqual([ROWS[0], ROWS[2]])
       expect(
         useToastStore.getState().toasts.some((t) => t.title === "Couldn't apply sort or filter")
@@ -3147,9 +3157,9 @@ describe('result view filter and sort', () => {
       })
 
       expect(pending).toHaveLength(2)
-      expect(result().viewVersion).toBe(2)
-      expect(result().filterModel).toEqual(FILTER_A)
-      expect(result().viewError).toBe("Sort column 'missing' not found")
+      expect(result().view.slot.viewVersion).toBe(2)
+      expect(result().view.spec.filters).toEqual(FILTER_A)
+      expect(result().view.spec.error).toBe("Sort column 'missing' not found")
     })
 
     it('with no successful view, keeps the server view and refetches it when its version moved on', async () => {
@@ -3177,8 +3187,8 @@ describe('result view filter and sort', () => {
       })
 
       expect(ipc.payloads('fetch_result_window')[0]).toMatchObject({ viewVersion: 4, offset: 0 })
-      expect(result().viewVersion).toBe(4)
-      expect(result().viewError).toBe('view_superseded: current=4')
+      expect(result().view.slot.viewVersion).toBe(4)
+      expect(result().view.spec.error).toBe('view_superseded: current=4')
       expect(rowsOf(TAB)).toEqual([ROWS[1]])
     })
 
@@ -3191,9 +3201,9 @@ describe('result view filter and sort', () => {
           .getState()
           .sortResults(activeQuerySurfaceRef(TAB), { column: 'id', direction: 'asc' })
       })
-      expect(result().viewVersion).toBe(1)
-      expect(result().sortColumn).toBeNull()
-      expect(result().viewError).toBe('boom')
+      expect(result().view.slot.viewVersion).toBe(1)
+      expect(legacyFieldsOf(result()).sortColumn).toBeNull()
+      expect(result().view.spec.error).toBe('boom')
       expect(rowsOf(TAB)).toEqual(ROWS)
     })
 
@@ -3214,8 +3224,8 @@ describe('result view filter and sort', () => {
         pending[1].reject(new Error('view_superseded: current=4'))
         await sortPromise
       })
-      expect(result().viewError).toBe('view_superseded: current=4')
-      expect(result().isSorting).toBe(false)
+      expect(result().view.spec.error).toBe('view_superseded: current=4')
+      expect(legacyFieldsOf(result()).isSorting).toBe(false)
     })
 
     it('a success older than a tombstone write repaints the server view with its spec', async () => {
@@ -3235,7 +3245,12 @@ describe('result view filter and sort', () => {
               ...state.tabs,
               [TAB]: {
                 ...tab,
-                results: [{ ...tab.results[0], viewVersion: 3, latestKnownViewVersion: 3 }],
+                results: [
+                  patchedLegacyResult(tab.results[0], {
+                    viewVersion: 3,
+                    latestKnownViewVersion: 3,
+                  }),
+                ],
               },
             },
           }
@@ -3260,11 +3275,11 @@ describe('result view filter and sort', () => {
         limit: 1000,
       })
       const painted = result()
-      expect(painted.viewVersion).toBe(3)
-      expect(painted.sortColumn).toBe('name')
-      expect(painted.sortDirection).toBe('desc')
-      expect(painted.isSorting).toBe(false)
-      expect(painted.viewError).toBeNull()
+      expect(painted.view.slot.viewVersion).toBe(3)
+      expect(legacyFieldsOf(painted).sortColumn).toBe('name')
+      expect(legacyFieldsOf(painted).sortDirection).toBe('desc')
+      expect(legacyFieldsOf(painted).isSorting).toBe(false)
+      expect(painted.view.spec.error).toBeNull()
       expect(rowsOf(TAB)).toEqual([ROWS[2], ROWS[0]])
     })
 
@@ -3294,8 +3309,8 @@ describe('result view filter and sort', () => {
         pending[0].resolve(viewResponse(2, ROWS, [0, 1, 2]))
         await sortPromise
       })
-      expect(result().isSorting).toBe(false)
-      expect(result().viewError).toBe('offline')
+      expect(legacyFieldsOf(result()).isSorting).toBe(false)
+      expect(result().view.spec.error).toBe('offline')
     })
 
     it('Retry re-issues the latest requested spec', async () => {
@@ -3306,7 +3321,7 @@ describe('result view filter and sort', () => {
         useQueryStore.getState().applyQueryFilters(querySurfaceRef(TAB, 0), FILTER_A)
         await flush()
       })
-      expect(result().viewError).toBe('boom')
+      expect(result().view.spec.error).toBe('boom')
 
       ipc.override('set_result_view', () => viewResponse(2, [ROWS[0], ROWS[2]], [0, 2]))
       await act(async () => {
@@ -3316,8 +3331,8 @@ describe('result view filter and sort', () => {
       expect(ipc.payloads('set_result_view')[1]).toMatchObject({
         viewSpec: { sort: null, filters: FILTER_A },
       })
-      expect(result().viewError).toBeNull()
-      expect(result().filterModel).toEqual(FILTER_A)
+      expect(result().view.spec.error).toBeNull()
+      expect(result().view.spec.filters).toEqual(FILTER_A)
     })
 
     it('retryViewChange is a no-op for unknown tabs', () => {
@@ -3335,7 +3350,10 @@ describe('result view filter and sort', () => {
         useQueryStore.setState((state) => ({
           tabs: {
             ...state.tabs,
-            [TAB]: { ...state.tabs[TAB]!, results: [{ ...result(), viewRowCount: 3000 }] },
+            [TAB]: {
+              ...state.tabs[TAB]!,
+              results: [patchedLegacyResult(result(), { viewRowCount: 3000 })],
+            },
           },
         }))
       })
@@ -3350,7 +3368,7 @@ describe('result view filter and sort', () => {
       act(() => {
         useQueryStore.getState().retryResultWindow(activeQuerySurfaceRef(TAB))
       })
-      expect(result().failedWindowRange).toBeNull()
+      expect(result().view.window.failedRange).toBeNull()
     })
   })
 })
@@ -3378,7 +3396,7 @@ describe('windowed results', () => {
     { column: 'gone', operator: '==', value: '1' },
   ]
 
-  function setTab(results: Array<Partial<SingleResultState>>, content = 'SELECT id, name FROM t') {
+  function setTab(results: object[], content = 'SELECT id, name FROM t') {
     act(() => {
       useQueryStore.setState({
         tabs: {
@@ -3390,10 +3408,9 @@ describe('windowed results', () => {
             prevTabStatus: 'idle',
             cursorPosition: null,
             connectionId: CONN,
-            results: results.map((result) => ({ ...DEFAULT_RESULT_STATE, ...result })),
+            results: results.map((result) => resultState(result)),
             activeResultIndex: 0,
             activeBottomPanelItem: { type: 'result' },
-            pendingNavigationAction: null,
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,
@@ -3404,22 +3421,21 @@ describe('windowed results', () => {
     })
   }
 
-  const SORTED_FILTERED: Partial<SingleResultState> = {
+  const SORTED_FILTERED: object = {
     resultStatus: 'success',
-    queryId: 'q-old',
-    columns: COLUMNS,
-    totalRows: 3,
-    viewVersion: 4,
     latestKnownViewVersion: 4,
     lastExecutedSql: 'SELECT id, name FROM t',
     reExecutable: true,
     sortColumn: 'name',
     sortDirection: 'desc',
-    filterModel: FILTERS,
     ...withRows([
       [2, 'Dana'],
       [1, 'Ada'],
     ]),
+    view: {
+      slot: { queryId: 'q-old', columns: COLUMNS, totalRows: 3, viewVersion: 4 },
+      spec: { filters: FILTERS },
+    },
   }
 
   const EXPECTED_SPEC = { sort: { column: 'name', direction: 'desc' }, filters: FILTERS }
@@ -3459,18 +3475,21 @@ describe('windowed results', () => {
       })
       expect(ipc.payloads('set_result_view')).toHaveLength(0)
       const result = useQueryStore.getState().tabs[TAB]!.results[0]
-      expect(result.queryId).toBe('q-new')
-      expect(result.sortColumn).toBe('name')
+      expect(result.view.slot.queryId).toBe('q-new')
+      expect(legacyFieldsOf(result).sortColumn).toBe('name')
       // The condition on the missing column is dropped without an error.
-      expect(result.filterModel).toEqual([FILTERS[0]])
-      expect(result.viewRowCount).toBe(2)
+      expect(result.view.spec.filters).toEqual([FILTERS[0]])
+      expect(result.view.slot.viewRowCount).toBe(2)
       expect(rowsOf(TAB)).toEqual(RERUN_WINDOW_ROWS)
     })
 
     it('a multi-result re-execute passes the view spec to reexecute_single_result', async () => {
       setTab([
         SORTED_FILTERED,
-        { ...SORTED_FILTERED, queryId: 'q-other', sortColumn: null, filterModel: [] },
+        patchedLegacyResult(SORTED_FILTERED, {
+          sortColumn: null,
+          view: { slot: { queryId: 'q-other' }, spec: { filters: [] } },
+        }),
       ])
       ipc.override('reexecute_single_result', () =>
         windowedItem({
@@ -3509,7 +3528,7 @@ describe('windowed results', () => {
     })
 
     it('restoring an expired single result re-runs once with the view spec', async () => {
-      setTab([{ ...SORTED_FILTERED, isExpired: true }])
+      setTab([patchedLegacyResult(SORTED_FILTERED, { view: { residency: { isExpired: true } } })])
       ipc.override('execute_query', () =>
         windowedResponse({
           queryId: 'q-restored',
@@ -3527,8 +3546,8 @@ describe('windowed results', () => {
       expect(ipc.payloads('execute_query')).toHaveLength(1)
       expect(ipc.payloads('execute_query')[0]).toMatchObject({ viewSpec: EXPECTED_SPEC })
       const result = useQueryStore.getState().tabs[TAB]!.results[0]
-      expect(result.isExpired).toBe(false)
-      expect(result.sortColumn).toBe('name')
+      expect(result.view.residency.isExpired).toBe(false)
+      expect(legacyFieldsOf(result).sortColumn).toBe('name')
       expect(rowsOf(TAB)).toEqual(RERUN_WINDOW_ROWS)
     })
 
@@ -3566,25 +3585,28 @@ describe('windowed results', () => {
         foreignKeys: [],
       }
       setTab([
-        {
-          ...SORTED_FILTERED,
-          editMode: 'db.t',
+        patchedLegacyResult(SORTED_FILTERED, {
           editConnectionId: CONN,
-          editTableMetadata: { 'db.t': tableInfo },
-          editableColumnMap: new Map([
-            [0, false],
-            [1, true],
-          ]),
-          editColumnBindings: new Map([
-            [0, 'id'],
-            [1, 'name'],
-          ]),
-          editBoundColumnIndexMap: new Map([
-            ['id', 0],
-            ['name', 1],
-          ]),
-          selectedRowIndex: 0,
-        },
+          view: {
+            selection: { rowIndex: 0 },
+            editTarget: {
+              tableName: 'db.t',
+              tables: { 'db.t': tableInfo },
+              editableColumns: new Map([
+                [0, false],
+                [1, true],
+              ]),
+              bindings: new Map([
+                [0, 'id'],
+                [1, 'name'],
+              ]),
+              boundIndexByName: new Map([
+                ['id', 0],
+                ['name', 1],
+              ]),
+            },
+          },
+        }),
       ])
       ipc.override('insert_table_row', () => [['id', 9]])
       ipc.override('execute_query', () =>
@@ -3600,7 +3622,9 @@ describe('windowed results', () => {
 
       expect(ipc.payloads('insert_table_row')).toHaveLength(1)
       expect(ipc.payloads('execute_query')[0]).toMatchObject({ viewSpec: EXPECTED_SPEC })
-      expect(useQueryStore.getState().tabs[TAB]!.results[0].queryId).toBe('q-after-insert')
+      expect(useQueryStore.getState().tabs[TAB]!.results[0].view.slot.queryId).toBe(
+        'q-after-insert'
+      )
     })
   })
 
@@ -3614,21 +3638,24 @@ describe('windowed results', () => {
         foreignKeys: [],
       }
       setTab([
-        {
-          ...SORTED_FILTERED,
-          editMode: 'db.t',
+        patchedLegacyResult(SORTED_FILTERED, {
           editConnectionId: CONN,
-          editTableMetadata: { 'db.t': tableInfo },
-          editableColumnMap: new Map([[1, true]]),
-          editColumnBindings: new Map([
-            [0, 'id'],
-            [1, 'name'],
-          ]),
-          editBoundColumnIndexMap: new Map([
-            ['id', 0],
-            ['name', 1],
-          ]),
-        },
+          view: {
+            editTarget: {
+              tableName: 'db.t',
+              tables: { 'db.t': tableInfo },
+              editableColumns: new Map([[1, true]]),
+              bindings: new Map([
+                [0, 'id'],
+                [1, 'name'],
+              ]),
+              boundIndexByName: new Map([
+                ['id', 0],
+                ['name', 1],
+              ]),
+            },
+          },
+        }),
       ])
       // The sorted, filtered view: position 0 is base row 2, position 1 is base row 0.
       seedResultWindow({
@@ -3655,7 +3682,7 @@ describe('windowed results', () => {
         useQueryStore.getState().startEditingRow(activeQuerySurfaceRef(TAB), 1)
         useQueryStore.getState().syncCellValue(activeQuerySurfaceRef(TAB), 1, 'Zed')
       })
-      expect(useQueryStore.getState().tabs[TAB]!.results[0].editingBaseIndex).toBe(0)
+      expect(useQueryStore.getState().tabs[TAB]!.results[0].view.edit.baseIndex).toBe(0)
 
       await act(async () => {
         expect(await useQueryStore.getState().saveCurrentRow(activeQuerySurfaceRef(TAB))).toBe(true)
@@ -3676,8 +3703,8 @@ describe('windowed results', () => {
         [1, 'Zed'],
       ])
       const result = useQueryStore.getState().tabs[TAB]!.results[0]
-      expect(result.viewVersion).toBe(4)
-      expect(result.editState).toBeNull()
+      expect(result.view.slot.viewVersion).toBe(4)
+      expect(result.view.edit.state).toBeNull()
     })
   })
 })

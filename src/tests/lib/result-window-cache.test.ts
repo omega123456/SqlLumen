@@ -296,7 +296,7 @@ describe('visible-range loading', () => {
       expect(status).toHaveBeenCalledWith({
         tabId: TAB,
         resultIndex: 0,
-        patch: { failedWindowRange: [2100, 2120] },
+        patch: { failedRange: [2100, 2120] },
         failure: { message: 'connection reset' },
       })
     )
@@ -306,7 +306,7 @@ describe('visible-range loading', () => {
     expect(status).toHaveBeenCalledWith({
       tabId: TAB,
       resultIndex: 0,
-      patch: { failedWindowRange: null },
+      patch: { failedRange: null },
       failure: undefined,
     })
     await vi.waitFor(() => expect(getLoadedRow(TAB, 0, 2100)).toBeDefined())
@@ -341,7 +341,7 @@ describe('visible-range loading', () => {
     expect(status).toHaveBeenCalledWith({
       tabId: TAB,
       resultIndex: 0,
-      patch: { pendingWindowRange: [2100, 2110] },
+      patch: { pendingRange: [2100, 2110] },
       failure: undefined,
     })
     releases.forEach((release) => release())
@@ -349,7 +349,7 @@ describe('visible-range loading', () => {
       expect(status).toHaveBeenCalledWith({
         tabId: TAB,
         resultIndex: 0,
-        patch: { pendingWindowRange: null },
+        patch: { pendingRange: null },
         failure: undefined,
       })
     )

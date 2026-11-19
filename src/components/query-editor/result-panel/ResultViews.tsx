@@ -31,27 +31,27 @@ function GridResultView({
 }: ResultViewsProps) {
   return (
     <ResultGridView
-      columns={result.columns}
+      columns={result.view.slot.columns}
       resultIndex={activeResultIndex}
-      queryId={result.queryId}
-      viewRowCount={result.viewRowCount}
-      viewVersion={result.viewVersion}
-      draftRow={result.draftRow}
-      sortColumn={result.sortColumn}
-      sortDirection={result.sortDirection}
+      queryId={result.view.slot.queryId}
+      viewRowCount={result.view.slot.viewRowCount}
+      viewVersion={result.view.slot.viewVersion}
+      draftRow={result.view.edit.draftRow}
+      sortColumn={result.view.spec.sort?.column ?? null}
+      sortDirection={result.view.spec.sort?.direction ?? null}
       onSortChanged={handlers.handleSortChanged}
       onRowSelected={handlers.handleRowSelected}
-      selectedRowIndex={result.selectedRowIndex}
+      selectedRowIndex={result.view.selection.rowIndex}
       tabId={tabId}
       surfaceRef={surfaceRef}
-      editMode={result.editMode}
-      editableColumnMap={result.editableColumnMap}
-      editColumnBindings={result.editColumnBindings}
-      editState={result.editState}
-      editingRowIndex={result.editingRowIndex}
-      editingBaseIndex={result.editingBaseIndex}
+      editMode={result.view.editTarget.tableName}
+      editableColumnMap={result.view.editTarget.editableColumns}
+      editColumnBindings={result.view.editTarget.bindings}
+      editState={result.view.edit.state}
+      editingRowIndex={result.view.edit.rowIndex}
+      editingBaseIndex={result.view.edit.baseIndex}
       editTableColumns={editTableColumns}
-      editForeignKeys={result.editForeignKeys}
+      editForeignKeys={result.view.editTarget.foreignKeys}
       onStartEditing={handlers.handleStartEditing}
       onUpdateCellValue={handlers.handleUpdateCellValue}
       onSyncCellValue={handlers.handleSyncCellValue}
@@ -75,23 +75,23 @@ function FormResultView({
 }: ResultViewsProps) {
   return (
     <ResultFormView
-      columns={result.columns}
+      columns={result.view.slot.columns}
       resultIndex={activeResultIndex}
-      queryId={result.queryId}
-      viewVersion={result.viewVersion}
-      viewRowCount={result.viewRowCount}
-      draftRow={result.draftRow}
-      selectedRowIndex={result.selectedRowIndex}
+      queryId={result.view.slot.queryId}
+      viewVersion={result.view.slot.viewVersion}
+      viewRowCount={result.view.slot.viewRowCount}
+      draftRow={result.view.edit.draftRow}
+      selectedRowIndex={result.view.selection.rowIndex}
       onNavigate={handlers.handleFormNavigate}
       tabId={tabId}
-      editMode={result.editMode}
-      editableColumnMap={result.editableColumnMap}
-      editColumnBindings={result.editColumnBindings}
-      editState={result.editState}
-      editingRowIndex={result.editingRowIndex}
-      editingBaseIndex={result.editingBaseIndex}
+      editMode={result.view.editTarget.tableName}
+      editableColumnMap={result.view.editTarget.editableColumns}
+      editColumnBindings={result.view.editTarget.bindings}
+      editState={result.view.edit.state}
+      editingRowIndex={result.view.edit.rowIndex}
+      editingBaseIndex={result.view.edit.baseIndex}
       editTableColumns={editTableColumns}
-      editForeignKeys={result.editForeignKeys}
+      editForeignKeys={result.view.editTarget.foreignKeys}
       onStartEdit={handlers.handleStartEditing}
       onUpdateCell={handlers.handleUpdateCellValue}
       onSyncCell={handlers.handleSyncCellValue}
@@ -107,14 +107,14 @@ function FormResultView({
 function TextResultView({ tabId, activeResultIndex, result }: ResultViewsProps) {
   return (
     <ResultTextView
-      columns={result.columns}
+      columns={result.view.slot.columns}
       tabId={tabId}
       resultIndex={activeResultIndex}
-      queryId={result.queryId}
-      viewVersion={result.viewVersion}
-      viewRowCount={result.viewRowCount}
+      queryId={result.view.slot.queryId}
+      viewVersion={result.view.slot.viewVersion}
+      viewRowCount={result.view.slot.viewRowCount}
       truncated={result.truncated}
-      isFiltered={result.filterModel.length > 0}
+      isFiltered={result.view.spec.filters.length > 0}
     />
   )
 }
@@ -124,7 +124,7 @@ export function ResultViews(props: ResultViewsProps) {
   return (
     <DataViewModeSwitch
       key={remountPerResultKey}
-      mode={props.result.viewMode}
+      mode={props.result.view.mode}
       grid={<GridResultView {...props} />}
       form={<FormResultView {...props} />}
       text={<TextResultView {...props} />}

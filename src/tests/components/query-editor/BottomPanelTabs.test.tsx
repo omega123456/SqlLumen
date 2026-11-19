@@ -1,8 +1,9 @@
+import { resultState } from '../../helpers/legacy-result-fields'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BottomPanelTabs } from '../../../components/query-editor/BottomPanelTabs'
-import { DEFAULT_RESULT_STATE, useQueryStore } from '../../../stores/query-store'
+import { useQueryStore } from '../../../stores/query-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
 import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
 import { withRows } from '../../helpers/query-test-utils'
@@ -27,22 +28,15 @@ describe('BottomPanelTabs', () => {
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({
               resultStatus: 'success',
-              columns: [{ name: 'id', dataType: 'INT' }],
               ...withRows([[1]]),
-              totalRows: 1,
-            },
-            {
-              ...DEFAULT_RESULT_STATE,
-              resultStatus: 'error',
-              errorMessage: 'broken',
-            },
+              view: { slot: { columns: [{ name: 'id', dataType: 'INT' }], totalRows: 1 } },
+            }),
+            resultState({ resultStatus: 'error', errorMessage: 'broken' }),
           ],
           activeResultIndex: 0,
           activeBottomPanelItem: { type: 'result' },
-          pendingNavigationAction: null,
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
@@ -120,12 +114,11 @@ describe('BottomPanelTabs', () => {
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
-            { ...DEFAULT_RESULT_STATE, resultStatus: 'success' },
-            { ...DEFAULT_RESULT_STATE, resultStatus: 'success' },
+            resultState({ resultStatus: 'success' }),
+            resultState({ resultStatus: 'success' }),
           ],
           activeResultIndex: 0,
           activeBottomPanelItem: { type: 'result' },
-          pendingNavigationAction: null,
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
@@ -159,10 +152,9 @@ describe('BottomPanelTabs', () => {
           prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'conn-1',
-          results: [{ ...DEFAULT_RESULT_STATE, resultStatus: 'success' }],
+          results: [resultState({ resultStatus: 'success' })],
           activeResultIndex: 0,
           activeBottomPanelItem: { type: 'table-data', tabId: 'table-1' },
-          pendingNavigationAction: null,
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,

@@ -53,7 +53,7 @@ export function getActiveResult(tab: TabQueryState | undefined): SingleResultSta
 }
 
 export function hasUnsavedModifications(result: SingleResultState | undefined): boolean {
-  const modifiedColumnCount = result?.editState?.modifiedColumns.size ?? 0
+  const modifiedColumnCount = result?.view.edit.state?.modifiedColumns.size ?? 0
   return modifiedColumnCount > 0
 }
 
@@ -75,10 +75,10 @@ export function countRanges(ranges: readonly ViewRange[]): number {
 }
 
 export function isSelectedRowInView(result: SingleResultState): boolean {
-  const selectedRowIndex = result.selectedRowIndex
+  const selectedRowIndex = result.view.selection.rowIndex
   if (selectedRowIndex === null) return false
   const isAtOrAfterFirstRow = selectedRowIndex >= 0
-  const isBeforeLastRow = selectedRowIndex < result.viewRowCount
+  const isBeforeLastRow = selectedRowIndex < result.view.slot.viewRowCount
   return isAtOrAfterFirstRow && isBeforeLastRow
 }
 
@@ -88,11 +88,11 @@ function firstCheckedRowIndex(checkedRanges: readonly ViewRange[]): number | nul
 }
 
 export function cloneSourceRowIndex(result: SingleResultState): number | null {
-  const checkedCount = countRanges(result.checkedRanges)
-  if (checkedCount === 1) return firstCheckedRowIndex(result.checkedRanges)
+  const checkedCount = countRanges(result.view.checked.ranges)
+  if (checkedCount === 1) return firstCheckedRowIndex(result.view.checked.ranges)
   if (checkedCount > 1) return null
   if (!isSelectedRowInView(result)) return null
-  return result.selectedRowIndex
+  return result.view.selection.rowIndex
 }
 
 export function isExecutionLocked(tab: TabQueryState | undefined): boolean {
@@ -101,8 +101,8 @@ export function isExecutionLocked(tab: TabQueryState | undefined): boolean {
 
 export function residentRowResidency(
   previous: SingleResultState | undefined
-): SingleResultState['rowResidency'] {
-  const residency = previous?.rowResidency ?? DEFAULT_RESULT_STATE.rowResidency
+): SingleResultState['view']['residency']['rows'] {
+  const residency = previous?.view.residency.rows ?? DEFAULT_RESULT_STATE.view.residency.rows
   return {
     ...residency,
     status: 'resident',
@@ -113,7 +113,11 @@ export function residentRowResidency(
 export function isRestorableEvictedResult(
   result: SingleResultState | undefined
 ): result is SingleResultState {
-  return result !== undefined && result.rowResidency.status === 'evicted' && !result.isExpired
+  return (
+    result !== undefined &&
+    result.view.residency.rows.status === 'evicted' &&
+    !result.view.residency.isExpired
+  )
 }
 
 export function needsDeferredAnalysis(
@@ -128,6 +132,9 @@ export function needsDeferredAnalysis(
 }
 
 export function restoreWindowStart(result: SingleResultState): number {
-  const anchorRow = Math.min(result.scrollRow, Math.max(0, result.viewRowCount - 1))
+  const anchorRow = Math.min(
+    result.view.layout.scrollRow,
+    Math.max(0, result.view.slot.viewRowCount - 1)
+  )
   return Math.floor(anchorRow / RESULT_PAGE_SIZE) * RESULT_PAGE_SIZE
 }

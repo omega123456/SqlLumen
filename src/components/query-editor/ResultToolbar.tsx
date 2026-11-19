@@ -46,7 +46,7 @@ function useCheckedRowCopy(surfaceRef: DataViewSurfaceRef, activeResult: ActiveR
   const checkedCount = countRanges(checkedRanges)
   const handleCopySelectedRows = useCopySelectedRows({
     surfaceRef: surfaceRef,
-    columns: activeResult.columns,
+    columns: activeResult.view.slot.columns,
     checkedRanges: checkedRanges,
   })
   return { checkedCount, handleCopySelectedRows }
@@ -113,7 +113,7 @@ export function ResultToolbar({
       testId="result-toolbar"
       viewMode={
         <ViewModeGroup
-          currentMode={activeResult.viewMode}
+          currentMode={activeResult.view.mode}
           availableModes={['grid', 'form', 'text']}
           onModeChange={actions.handleViewMode}
           testIdPrefix="view-mode"
@@ -132,12 +132,12 @@ export function ResultToolbar({
           filterModel={filterModel}
           onFilterClick={onFilterClick}
           onClearFilterClick={onClearFilterClick}
-          isFilterDisabled={activeResult.columns.length === 0 || isEditingActive}
+          isFilterDisabled={activeResult.view.slot.columns.length === 0 || isEditingActive}
           hasResults={hasResults}
           isCopySelectedDisabled={isCopySelectedDisabled({
             hasResults: hasResults,
             checkedCount: checkedCount,
-            isRowActionPending: activeResult.rowActionProgress !== null,
+            isRowActionPending: activeResult.view.rowAction !== null,
           })}
           onExport={actions.handleExport}
           onCopySelectedRows={() => void handleCopySelectedRows()}

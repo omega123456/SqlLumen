@@ -26,7 +26,7 @@ async function settleQueryEditorTabBeforeClose(tabId: string): Promise<boolean> 
 
   const activeIndex = queryTabState.activeResultIndex ?? 0
   const isDirtyNonActiveResult = (result: SingleResultState, index: number): boolean =>
-    index !== activeIndex && hasModifiedColumns(result.editState)
+    index !== activeIndex && hasModifiedColumns(result.view.edit.state)
   const hasNonActiveDirty = queryTabState.results.some(isDirtyNonActiveResult)
   if (hasNonActiveDirty) {
     const confirmed = globalThis.confirm(
@@ -36,7 +36,7 @@ async function settleQueryEditorTabBeforeClose(tabId: string): Promise<boolean> 
   }
 
   const activeResult = queryTabState.results[activeIndex]
-  if (!hasModifiedColumns(activeResult?.editState)) return true
+  if (!hasModifiedColumns(activeResult?.view.edit.state)) return true
   const activeSurface = querySurfaceRef(tabId, activeIndex)
   return saveRowBeforeClose(() => useQueryStore.getState().saveCurrentRow(activeSurface))
 }
@@ -89,7 +89,8 @@ export function connectionsWithUnsavedEdits(): string[] {
       if (tab.type === 'query-editor') {
         const queryTabState = queryTabs[tab.id]
         return (
-          queryTabState?.results?.some((result) => hasModifiedColumns(result.editState)) ?? false
+          queryTabState?.results?.some((result) => hasModifiedColumns(result.view.edit.state)) ??
+          false
         )
       }
       if (tab.type === 'table-data') {

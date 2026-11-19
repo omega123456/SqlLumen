@@ -6,6 +6,7 @@ import { reexecuteAndPatchResult } from './query-rerun'
 import { patchResultByIndex, resultAt, getQueryState } from './query-store-access'
 import { freshResultFields, seedResultFromResponse } from './result-seeding'
 import { rerunViewSpec } from './result-view-spec'
+import { mergeResultPatches } from './query-tab-reducers'
 import type { RowSaveContext } from './row-save'
 
 export async function reexecuteSingleResultAfterMutation(save: RowSaveContext, sql: string) {
@@ -15,17 +16,14 @@ export async function reexecuteSingleResultAfterMutation(save: RowSaveContext, s
     resultIndex: save.resultIndex,
     sql: sql,
     rowLimit: save.result.rowLimit,
-    capturedQueryId: save.result.queryId,
-    extraPatch: {
-      isStale: false,
-      saveError: null,
-    },
+    capturedQueryId: save.result.view.slot.queryId,
+    extraPatch: { view: { edit: { isStale: false, saveError: null } } },
   })
 }
 
 export async function reexecuteOnlyResultAfterMutation(save: RowSaveContext, sql: string) {
   const { connectionId, tabId, resultIndex, result } = save
-  const capturedQueryId = result.queryId
+  const capturedQueryId = result.view.slot.queryId
   const spec = rerunViewSpec(resultAt(tabId, resultIndex) ?? result)
   const execResult = await executeQueryCmd({
     connectionId: connectionId,
@@ -39,7 +37,7 @@ export async function reexecuteOnlyResultAfterMutation(save: RowSaveContext, sql
 
   const postTab = getQueryState().tabs[tabId]
   const postResult = postTab?.results[resultIndex]
-  const isResultReplacedMeanwhile = postResult?.queryId !== capturedQueryId
+  const isResultReplacedMeanwhile = postResult?.view.slot.queryId !== capturedQueryId
   if (capturedQueryId && isResultReplacedMeanwhile) {
     logFrontend(
       'warn',
@@ -52,13 +50,15 @@ export async function reexecuteOnlyResultAfterMutation(save: RowSaveContext, sql
     { connectionId: connectionId, tabId: tabId, resultIndex: resultIndex },
     execResult
   )
-  patchResultByIndex(tabId, resultIndex, {
-    ...freshResultFields(execResult, spec),
-    resultStatus: 'success',
-    errorMessage: null,
-    isStale: false,
-    saveError: null,
-  })
+  patchResultByIndex(
+    tabId,
+    resultIndex,
+    mergeResultPatches(freshResultFields({ response: execResult, spec: spec }), {
+      resultStatus: 'success',
+      errorMessage: null,
+      view: { edit: { isStale: false, saveError: null } },
+    })
+  )
 
   launchBackgroundAnalysis({
     tabId: tabId,

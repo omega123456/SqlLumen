@@ -1,13 +1,10 @@
+import { patchedLegacyResult } from '../../helpers/legacy-result-fields'
+import { resultState } from '../../helpers/legacy-result-fields'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ExportDialog from '../../../components/dialogs/ExportDialog'
-import {
-  useQueryStore,
-  DEFAULT_RESULT_STATE,
-  type SingleResultState,
-  activeQuerySurfaceRef,
-} from '../../../stores/query-store'
+import { useQueryStore, activeQuerySurfaceRef } from '../../../stores/query-store'
 import { useToastStore } from '../../../stores/toast-store'
 import { ipc, expectToast } from '../../ipc-mock'
 import { makeTabState } from '../../helpers/query-test-utils'
@@ -270,22 +267,19 @@ describe('ExportDialog', () => {
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({
               resultStatus: 'success',
-              queryId: 'q-1',
               lastExecutedSql: 'SELECT 1',
-            },
-            {
-              ...DEFAULT_RESULT_STATE,
+              view: { slot: { queryId: 'q-1' } },
+            }),
+            resultState({
               resultStatus: 'success',
-              queryId: 'q-2',
               lastExecutedSql: 'SELECT 2',
-            },
+              view: { slot: { queryId: 'q-2' } },
+            }),
           ],
           activeResultIndex: 0,
           activeBottomPanelItem: { type: 'result' },
-          pendingNavigationAction: null,
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
@@ -300,8 +294,12 @@ describe('ExportDialog', () => {
     await user.click(screen.getByTestId('export-submit-button'))
 
     await waitFor(() => {
-      expect(useQueryStore.getState().tabs['tab-1']?.results[0]?.isExpired).toBe(false)
-      expect(useQueryStore.getState().tabs['tab-1']?.results[1]?.isExpired).toBe(true)
+      expect(useQueryStore.getState().tabs['tab-1']?.results[0]?.view.residency.isExpired).toBe(
+        false
+      )
+      expect(useQueryStore.getState().tabs['tab-1']?.results[1]?.view.residency.isExpired).toBe(
+        true
+      )
     })
   })
 
@@ -630,24 +628,25 @@ describe('ExportDialog — full export of truncated results', () => {
     error: null,
   })
 
-  function seedResult(overrides: Partial<SingleResultState> = {}) {
+  function seedResult(overrides: Record<string, unknown> = {}) {
     useQueryStore.setState({
       exportJobs: {},
       tabs: {
         [TAB]: {
           ...makeTabState({ connectionId: CONN, tabStatus: 'success' }),
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
-              resultStatus: 'success',
-              queryId: 'q-truncated',
-              truncated: true,
-              rowCeiling: 100_000,
-              totalRows: 100_000,
-              viewRowCount: 2_340,
-              exportDialogOpen: true,
-              ...overrides,
-            },
+            patchedLegacyResult(
+              resultState({
+                view: {
+                  slot: { queryId: 'q-truncated', totalRows: 100_000, viewRowCount: 2_340 },
+                  prompts: { isExportOpen: true },
+                },
+                resultStatus: 'success',
+                truncated: true,
+                rowCeiling: 100_000,
+              }),
+              overrides
+            ),
           ],
         },
       },
@@ -656,7 +655,7 @@ describe('ExportDialog — full export of truncated results', () => {
 
   /** Renders the dialog while the store says it is open, as ResultPanel does. */
   function Harness() {
-    const open = useQueryStore((s) => s.tabs[TAB]?.results[0]?.exportDialogOpen ?? false)
+    const open = useQueryStore((s) => s.tabs[TAB]?.results[0]?.view.prompts.isExportOpen ?? false)
     if (!open) return null
     return (
       <ExportDialog
@@ -720,7 +719,7 @@ describe('ExportDialog — full export of truncated results', () => {
   it.each(['call', 'locking', 'unknownDatabase'] as const)(
     'offers no Rows choice for a truncated %s result',
     (reason) => {
-      seedResult({ fullExportBlockedReason: reason, preferredExportScope: 'allRows' })
+      seedResult({ fullExportBlockedReason: reason, view: { prompts: { exportScope: 'allRows' } } })
       render(<Harness />)
       expect(screen.queryByTestId('export-rows-select')).not.toBeInTheDocument()
       expect(screen.queryByTestId('export-sheet-limit-warning')).not.toBeInTheDocument()
@@ -751,7 +750,7 @@ describe('ExportDialog — full export of truncated results', () => {
   })
 
   it('preselects All rows when opened from "Export all rows…"', () => {
-    seedResult({ preferredExportScope: 'allRows' })
+    seedResult({ view: { prompts: { exportScope: 'allRows' } } })
     render(<Harness />)
     expect(screen.getByTestId('export-rows-select')).toHaveTextContent(
       'All rows · re-runs the query'
@@ -761,11 +760,15 @@ describe('ExportDialog — full export of truncated results', () => {
   it('warns that sort and filters are ignored, and "Use current view" switches back', async () => {
     const user = userEvent.setup()
     seedResult({
-      preferredExportScope: 'allRows',
-      filterModel: [
-        { column: 'a', operator: '==', value: '1' },
-        { column: 'b', operator: '!=', value: '2' },
-      ],
+      view: {
+        spec: {
+          filters: [
+            { column: 'a', operator: '==', value: '1' },
+            { column: 'b', operator: '!=', value: '2' },
+          ],
+        },
+        prompts: { exportScope: 'allRows' },
+      },
     })
     render(<Harness />)
 
@@ -797,7 +800,7 @@ describe('ExportDialog — full export of truncated results', () => {
 
   it('warns about the Excel sheet limit, and "Switch to CSV" changes the format', async () => {
     const user = userEvent.setup()
-    seedResult({ preferredExportScope: 'allRows' })
+    seedResult({ view: { prompts: { exportScope: 'allRows' } } })
     render(<Harness />)
     expect(screen.queryByTestId('export-sheet-limit-warning')).not.toBeInTheDocument()
 
@@ -835,7 +838,7 @@ describe('ExportDialog — full export of truncated results', () => {
 
   it('streams all rows with progress, cannot be dismissed, and cancels', async () => {
     const user = userEvent.setup()
-    seedResult({ preferredExportScope: 'allRows' })
+    seedResult({ view: { prompts: { exportScope: 'allRows' } } })
     render(<Harness />)
     progress = running(1_240_000, 318 * 1024 * 1024, 42_000)
 
@@ -874,7 +877,7 @@ describe('ExportDialog — full export of truncated results', () => {
 
   it('shows "Building workbook…" for XLSX until rows flow, then rows and time without MB', async () => {
     const user = userEvent.setup()
-    seedResult({ preferredExportScope: 'allRows' })
+    seedResult({ view: { prompts: { exportScope: 'allRows' } } })
     render(<Harness />)
     await pick(user, 'export-format-select', /Excel \(\.xlsx\)/)
     await startAllRowsExport(user)
@@ -895,7 +898,7 @@ describe('ExportDialog — full export of truncated results', () => {
 
   it('completion closes the dialog and shows the success toast', async () => {
     const user = userEvent.setup()
-    seedResult({ preferredExportScope: 'allRows' })
+    seedResult({ view: { prompts: { exportScope: 'allRows' } } })
     render(<Harness />)
     progress = running(10, 2048, 1_000)
     await startAllRowsExport(user)
@@ -915,7 +918,7 @@ describe('ExportDialog — full export of truncated results', () => {
 
   it('a failure shows the error bar, moves focus to it, toasts, and Try again restarts', async () => {
     const user = userEvent.setup()
-    seedResult({ preferredExportScope: 'allRows' })
+    seedResult({ view: { prompts: { exportScope: 'allRows' } } })
     render(<Harness />)
     progress = { ...running(3), status: 'failed', error: 'Query failed: Deadlock found' }
     setExportDestinationPath('/tmp/all.csv')
@@ -937,7 +940,7 @@ describe('ExportDialog — full export of truncated results', () => {
 
   it('closing on a tab switch keeps the export running, and reopening shows its progress', async () => {
     const user = userEvent.setup()
-    seedResult({ preferredExportScope: 'allRows' })
+    seedResult({ view: { prompts: { exportScope: 'allRows' } } })
     render(<Harness />)
     progress = running(5, 10, 0)
     await startAllRowsExport(user)

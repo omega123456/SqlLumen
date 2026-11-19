@@ -64,28 +64,28 @@ async function reloadEvictedResultWindow(restore: EvictedResultRestore): Promise
   }
   const window = await fetchResultWindowCmd({
     ...slot,
-    viewVersion: result.viewVersion,
+    viewVersion: result.view.slot.viewVersion,
     offset: restoreWindowStart(result),
     limit: VIEW_REFRESH_WINDOW_ROWS,
   })
 
   if (!getQueryState().tabs[tabId]) return
   const latestResult = resultAt(tabId, resultIndex) ?? result
-  if (latestResult.queryId !== slot.queryId) return
+  const latestQueryId = latestResult.view.slot.queryId
+  if (latestQueryId !== slot.queryId) return
 
   seedResultWindow({
     ...slot,
     viewVersion: window.viewVersion,
     viewRowCount: window.viewRowCount,
-    columns: latestResult.columns,
+    columns: latestResult.view.slot.columns,
     window: window,
   })
   patchResultByIndex(tabId, resultIndex, {
-    viewVersion: window.viewVersion,
-    viewRowCount: window.viewRowCount,
-    isExpired: false,
-    rowsEvictedAt: null,
-    rowResidency: residentRowResidency(latestResult),
+    view: {
+      slot: { viewVersion: window.viewVersion, viewRowCount: window.viewRowCount },
+      residency: { isExpired: false, evictedAt: null, rows: residentRowResidency(latestResult) },
+    },
   })
 }
 
@@ -121,7 +121,7 @@ function switchActiveResult(tabId: string, previousIndex: number, nextIndex: num
     getQueryState().markResultSurfaceInactive(tabId, previousIndex)
   }
   patchTab(tabId, { activeResultIndex: nextIndex })
-  patchResultByIndex(tabId, nextIndex, { checkedRanges: [] })
+  patchResultByIndex(tabId, nextIndex, { view: { checked: { ranges: [] } } })
   if (isResultSurfaceVisible) {
     void getQueryState().markResultSurfaceActive(tabId, nextIndex)
   }
@@ -195,7 +195,7 @@ export async function restoreEvictedResultRows(tabId: string, resultIndex?: numb
   const result = tab.results[targetIndex]
   if (!isRestorableEvictedResult(result)) return
 
-  const hasRestoreSource = Boolean(tab.connectionId) && Boolean(result.queryId)
+  const hasRestoreSource = Boolean(tab.connectionId) && Boolean(result.view.slot.queryId)
   if (!hasRestoreSource) {
     markTabResultsExpired(tabId)
     return
@@ -235,11 +235,9 @@ export function setActiveResultIndex(tabId: string, index: number) {
     return
   }
 
-  if (currentResult?.editState) {
+  if (currentResult?.view.edit.state) {
     patchResultByIndex(tabId, tab.activeResultIndex, {
-      editState: null,
-      editingRowIndex: null,
-      saveError: null,
+      view: { edit: { state: null, rowIndex: null, saveError: null } },
     })
   }
   switchActiveResult(tabId, tab.activeResultIndex, index)

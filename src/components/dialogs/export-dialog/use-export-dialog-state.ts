@@ -78,7 +78,7 @@ export function useExportDialogState(source: ExportDialogSource) {
   const { resolvedResultIndex, result, exportJob } = useExportResult(source)
   const offersAllRows = offersAllRowsExport(result, source.hasCustomExport)
   const [scope, setScope] = useState<ExportRowScope>(() =>
-    offersAllRows && result ? result.preferredExportScope : 'currentView'
+    offersAllRows && result ? result.view.prompts.exportScope : 'currentView'
   )
   const effectiveScope: ExportRowScope = offersAllRows ? scope : 'currentView'
   const failureBarRef = useFailureFocus(exportJob?.status)

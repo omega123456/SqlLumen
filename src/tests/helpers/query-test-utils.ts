@@ -14,6 +14,12 @@ import { beforeEach } from 'vitest'
 import type { TabQueryState, SingleResultState } from '../../stores/query-store'
 import { useQueryStore, getFlatTabState, DEFAULT_RESULT_STATE } from '../../stores/query-store'
 import {
+  PENDING_ROWS,
+  legacyFieldsOf,
+  resultState,
+  type LegacyResultFields,
+} from './legacy-result-fields'
+import {
   getLoadedRow,
   getResultSurface,
   seedResultWindow,
@@ -37,7 +43,8 @@ import type {
 export function flat(tabId: string) {
   const tab = useQueryStore.getState().getTabState(tabId)
   const resultIndex = Math.max(0, Math.min(tab.activeResultIndex, tab.results.length - 1))
-  return { ...getFlatTabState(tab), rows: rowsOf(tabId, resultIndex) }
+  const flatTab = getFlatTabState(tab)
+  return { ...flatTab, ...legacyFieldsOf(flatTab), rows: rowsOf(tabId, resultIndex) }
 }
 
 /**
@@ -70,16 +77,15 @@ function loadedRowsOf(tabId: string, resultIndex: number): CachedRow[] {
   return rows
 }
 
-/** Marks a result object whose rows still have to be seeded into the page cache. */
-export const PENDING_ROWS = Symbol('pendingRows')
+export { PENDING_ROWS }
 
 /**
  * Result-state patch for a result that shows `rows` (identity view). The rows
  * are seeded into the real page cache when the result reaches the store; the
  * store itself never holds rows.
  */
-export function withRows(rows: unknown[][]): Partial<SingleResultState> {
-  return { viewRowCount: rows.length, [PENDING_ROWS]: rows } as Partial<SingleResultState>
+export function withRows(rows: unknown[][]): Record<string, unknown> {
+  return { viewRowCount: rows.length, [PENDING_ROWS]: rows }
 }
 
 /**
@@ -102,17 +108,17 @@ interface ResultOverrides {
   rowCeiling?: number
   appliedRowLimit?: number | null
   fullExportBlockedReason?: SingleResultState['fullExportBlockedReason']
-  filterModel?: SingleResultState['filterModel']
+  filterModel?: LegacyResultFields['filterModel']
   draftRow?: unknown[] | null
   editingBaseIndex?: number | null
-  checkedRanges?: SingleResultState['checkedRanges']
+  checkedRanges?: LegacyResultFields['checkedRanges']
   checkedViewVersion?: number
   isStale?: boolean
   isFiltering?: boolean
   viewError?: string | null
-  pendingWindowRange?: SingleResultState['pendingWindowRange']
-  failedWindowRange?: SingleResultState['failedWindowRange']
-  rowActionProgress?: SingleResultState['rowActionProgress']
+  pendingWindowRange?: LegacyResultFields['pendingWindowRange']
+  failedWindowRange?: LegacyResultFields['failedWindowRange']
+  rowActionProgress?: LegacyResultFields['rowActionProgress']
   isExpired?: boolean
   isSorting?: boolean
   executionTimeMs?: number
@@ -216,6 +222,7 @@ const RESULT_KEYS = new Set<string>([
   'editingRowIndex',
   'scrollRow',
   'scrollCol',
+  'pendingNavigationAction',
 ])
 
 /**
@@ -235,7 +242,7 @@ export function makeTabState(
       status?: 'idle' | 'running' | 'success' | 'error'
     } = {}
 ): TabQueryState {
-  const resultOverrides: Partial<SingleResultState> = {}
+  const resultOverrides: Record<string, unknown> = {}
   const tabOverrides: Partial<TabQueryState> = {}
   let rows: unknown[][] | undefined
 
@@ -272,10 +279,7 @@ export function makeTabState(
   }
   resultOverrides.checkedViewVersion ??= resultOverrides.viewVersion ?? 0
 
-  const singleResult: SingleResultState = {
-    ...DEFAULT_RESULT_STATE,
-    ...resultOverrides,
-  }
+  const singleResult = resultState(resultOverrides)
   if (rows) (singleResult as unknown as Record<symbol, unknown>)[PENDING_ROWS] = rows
 
   return {
@@ -289,7 +293,6 @@ export function makeTabState(
     results: [singleResult],
     activeResultIndex: 0,
     activeBottomPanelItem: { type: 'result' },
-    pendingNavigationAction: null,
     executionStartedAt: null,
     isCancelling: false,
     wasCancelled: false,
@@ -325,7 +328,7 @@ beforeEach(() => {
 export function seedResultRows(
   tabId: string,
   resultIndex: number,
-  result: Pick<SingleResultState, 'queryId' | 'viewVersion' | 'viewRowCount' | 'columns'>,
+  result: SingleResultState,
   rows: unknown[][],
   connectionId = 'conn-1'
 ): void {
@@ -333,10 +336,10 @@ export function seedResultRows(
     connectionId,
     tabId,
     resultIndex,
-    queryId: result.queryId ?? 'q-test',
-    viewVersion: result.viewVersion,
-    viewRowCount: result.viewRowCount,
-    columns: result.columns,
+    queryId: result.view.slot.queryId ?? 'q-test',
+    viewVersion: result.view.slot.viewVersion,
+    viewRowCount: result.view.slot.viewRowCount,
+    columns: result.view.slot.columns,
     window: { offset: 0, rows, baseIndices: rows.map((_, index) => index) },
   })
 }

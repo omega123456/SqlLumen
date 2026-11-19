@@ -35,7 +35,7 @@ function schedulePendingStatus(surface: Surface, fetchedRange: ViewRange): void 
     const isStillLoading = hasInflightPages(surface) && isRegisteredSurface(surface)
     if (!isStillLoading) return
     surface.pendingRange = surface.lastRequested ?? fetchedRange
-    reportStatus(surface, { pendingWindowRange: surface.pendingRange })
+    reportStatus(surface, { pendingRange: surface.pendingRange })
   }, RESULT_LOADING_STATUS_DELAY_MS)
 }
 
@@ -76,7 +76,7 @@ function handleWindowFetchFailure(surface: Surface, failure: WindowFetchFailure)
   )
   const failed: ViewRange = surface.lastRequested ?? failure.range
   surface.failedRange = failed
-  reportStatus(surface, { failedWindowRange: failed }, { message })
+  reportStatus(surface, { failedRange: failed }, { message })
 }
 
 interface PageFetchOutcome {
@@ -164,7 +164,7 @@ export function retryFailedWindow(tabId: string, resultIndex: number): void {
   if (!surface) return
   const failed = surface.failedRange
   surface.failedRange = null
-  reportStatus(surface, { failedWindowRange: null })
+  reportStatus(surface, { failedRange: null })
   const range = failed ?? surface.lastRequested
   if (range) requestVisibleRange(tabId, resultIndex, range)
 }

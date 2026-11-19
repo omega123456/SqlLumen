@@ -60,8 +60,8 @@ export function useResultRowActions(inputs: ResultRowActionInputs) {
     canAddRow: rowInsertion.canAddRow,
     canCloneSelection: rowInsertion.canCloneSelection,
     deleteTargetCount: deleteTargetCount,
-    hasPendingChanges: hasPendingRowChanges(result.editState),
-    isBusy: result.rowActionProgress !== null,
+    hasPendingChanges: hasPendingRowChanges(result.view.edit.state),
+    isBusy: result.view.rowAction !== null,
   })
   return {
     availability: availability,

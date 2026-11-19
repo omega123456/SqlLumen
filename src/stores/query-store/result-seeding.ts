@@ -14,8 +14,10 @@ import {
 } from '../../lib/query-edit-utils'
 import { isBlobEnvelope } from '../../lib/blob-utils'
 import { DEFAULT_RESULT_STATE } from './query-state-defaults'
-import type { ExecutionStatus, SingleResultState } from './query-state-types'
-import { viewFieldsForColumns, windowMetaFromResponse } from './result-view-spec'
+import type { ExecutionStatus, SingleResultState, ResultPatch } from './query-state-types'
+import { viewSpecForColumns, windowMetaFromResponse } from './result-view-spec'
+import { patchedResult } from './query-tab-reducers'
+import type { DataViewPatch, DataViewResidency, DataViewSlot } from '../data-view/data-view-types'
 import type { ResultTarget } from './result-view-spec'
 
 function compositeTableKey(database: string, table: string): string {
@@ -27,14 +29,14 @@ export function seedResultFromResponse(
   response: Pick<MultiQueryResultItem, 'queryId' | 'columns' | 'totalRows'> &
     Partial<MultiQueryResultItem>
 ): void {
-  const { fields, window } = windowMetaFromResponse(response)
+  const { slot, window } = windowMetaFromResponse(response)
   seedResultWindow({
     connectionId: connectionId,
     tabId: tabId,
     resultIndex: resultIndex,
     queryId: response.queryId,
-    viewVersion: fields.viewVersion,
-    viewRowCount: fields.viewRowCount,
+    viewVersion: slot.viewVersion,
+    viewRowCount: slot.viewRowCount,
     columns: response.columns,
     window: window,
   })
@@ -43,7 +45,7 @@ export function seedResultFromResponse(
 export function buildEditBindingContext(
   result: SingleResultState,
   tableInfo: QueryTableEditInfo,
-  metadataSource: Record<string, QueryTableEditInfo> = result.editTableMetadata
+  metadataSource: Record<string, QueryTableEditInfo> = result.view.editTarget.tables
 ): {
   columnBindings: Map<number, string>
   boundColumnIndexMap: Map<string, number>
@@ -51,7 +53,7 @@ export function buildEditBindingContext(
   const queryTablesInOrder = Object.values(metadataSource)
   const columnBindings = buildQueryEditColumnBindings({
     sql: result.lastExecutedSql,
-    resultColumns: result.columns,
+    resultColumns: result.view.slot.columns,
     targetTable: tableInfo,
     queryTablesInOrder: queryTablesInOrder,
   })
@@ -137,73 +139,91 @@ export function buildSeededRowEditState(
   const primaryKeyColumns = tableInfo.primaryKey?.keyColumns ?? []
   const baseEditState = buildRowEditState({
     row: row,
-    resultColumns: result.columns,
-    editableMap: result.editableColumnMap,
+    resultColumns: result.view.slot.columns,
+    editableMap: result.view.editTarget.editableColumns,
     primaryKeyColumnNames: primaryKeyColumns,
-    columnBindings: result.editColumnBindings,
-    boundColumnIndexMap: result.editBoundColumnIndexMap,
+    columnBindings: result.view.editTarget.bindings,
+    boundColumnIndexMap: result.view.editTarget.boundIndexByName,
   })
   return seedBlobViewerEditValues(baseEditState, {
     row: row,
     tableInfo: tableInfo,
-    columnBindings: result.editColumnBindings,
+    columnBindings: result.view.editTarget.bindings,
   })
 }
 
-export function buildSingleResultFromItem(
-  item: MultiQueryResultItem,
-  defaultRowLimit: number,
-  isActive = false
-): SingleResultState {
-  const resultStatus: ExecutionStatus = item.error ? 'error' : 'success'
+type ResultResponse = ExecuteQueryResult | MultiQueryResultItem
+
+function slotFromResponse(response: ResultResponse): Omit<DataViewSlot, 'connectionId'> {
   return {
-    ...DEFAULT_RESULT_STATE,
+    ...windowMetaFromResponse(response).slot,
+    columns: response.columns,
+    totalRows: response.totalRows,
+    queryId: response.queryId,
+  }
+}
+
+export function residentRows(isActive: boolean): DataViewResidency['rows'] {
+  return {
+    status: 'resident',
+    isActive: isActive,
+    inactiveSince: isActive ? null : Date.now(),
+  }
+}
+
+export interface ResultItemSeed {
+  item: MultiQueryResultItem
+  connectionId: string
+  defaultRowLimit: number
+  isActive: boolean
+}
+
+export function buildSingleResultFromItem(seed: ResultItemSeed): SingleResultState {
+  const { item } = seed
+  const resultStatus: ExecutionStatus = item.error ? 'error' : 'success'
+  return patchedResult(DEFAULT_RESULT_STATE, {
     ...windowMetaFromResponse(item).fields,
     resultStatus: resultStatus,
-    columns: item.columns,
-    totalRows: item.totalRows,
     exportedRowCount: item.exportedRowCount ?? null,
     executionTimeMs: item.executionTimeMs,
     totalTimeMs: item.totalTimeMs,
     affectedRows: item.affectedRows,
-    queryId: item.queryId,
-    rowLimit: defaultRowLimit,
+    rowLimit: seed.defaultRowLimit,
     autoLimitApplied: item.autoLimitApplied,
     errorMessage: item.error ?? null,
     lastExecutedSql: item.sourceSql,
     reExecutable: item.reExecutable,
     isAnalyzed: false,
-    rowResidency: {
-      status: 'resident',
-      isActive: isActive,
-      inactiveSince: isActive ? null : Date.now(),
+    view: {
+      slot: { ...slotFromResponse(item), connectionId: seed.connectionId },
+      residency: { rows: residentRows(seed.isActive) },
     },
-  }
+  })
 }
 
-export function freshResultFields(
-  response: ExecuteQueryResult | MultiQueryResultItem,
+export interface ResultResponseSeed {
+  response: ResultResponse
   spec: ResultViewSpec | null
-): Partial<SingleResultState> {
+  view?: DataViewPatch
+}
+
+export function freshResultFields({ response, spec, view = {} }: ResultResponseSeed): ResultPatch {
   return {
     ...windowMetaFromResponse(response).fields,
-    ...viewFieldsForColumns(spec, response.columns),
-    columns: response.columns,
-    totalRows: response.totalRows,
     exportedRowCount: null,
-    queryId: response.queryId,
     executionTimeMs: response.executionTimeMs,
     totalTimeMs: response.totalTimeMs,
     affectedRows: response.affectedRows,
     autoLimitApplied: response.autoLimitApplied,
     viewRequestSeq: 0,
-    isFiltering: false,
-    isSorting: false,
-    viewError: null,
-    pendingWindowRange: null,
-    failedWindowRange: null,
-    checkedRanges: [],
-    selectedRowIndex: null,
-    draftRow: null,
+    view: {
+      ...view,
+      slot: slotFromResponse(response),
+      selection: { rowIndex: null },
+      checked: { ranges: [] },
+      spec: { ...viewSpecForColumns(spec, response.columns), applying: null, error: null },
+      window: { pendingRange: null, failedRange: null },
+      edit: { ...view.edit, draftRow: null },
+    },
   }
 }

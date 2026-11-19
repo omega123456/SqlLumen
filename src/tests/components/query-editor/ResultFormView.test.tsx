@@ -595,7 +595,7 @@ describe('ResultFormView — Edit Mode', () => {
       />
     )
     await waitFor(() =>
-      expect(useQueryStore.getState().tabs['tab-1']!.results[0].isExpired).toBe(true)
+      expect(useQueryStore.getState().tabs['tab-1']!.results[0].view.residency.isExpired).toBe(true)
     )
   })
 
@@ -822,7 +822,7 @@ describe('ResultFormView — Edit Mode', () => {
     fireEvent.focus(screen.getByTestId('form-input-name'))
 
     const result = useQueryStore.getState().tabs['tab-1']?.results[0]
-    expect(result?.selectedRowIndex).toBeNull()
+    expect(result?.view.selection.rowIndex).toBeNull()
     expect(screen.getByTestId('form-record-label')).toHaveTextContent(/^Record 1 of 5$/)
   })
 

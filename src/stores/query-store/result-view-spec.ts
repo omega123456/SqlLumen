@@ -6,16 +6,11 @@ import type {
   ResultWindow,
 } from '../../types/schema'
 import { EMPTY_WINDOW } from './query-state-defaults'
-import type { SingleResultState } from './query-state-types'
+import type { DataViewSlot, DataViewSpecState } from '../data-view/data-view-types'
+import type { SingleResultState, ResultPatch } from './query-state-types'
 
 export function getResultViewSpec(result: SingleResultState): ResultViewSpec {
-  return {
-    sort:
-      result.sortColumn && result.sortDirection
-        ? { column: result.sortColumn, direction: result.sortDirection }
-        : null,
-    filters: result.filterModel,
-  }
+  return { sort: result.view.spec.sort, filters: result.view.spec.filters }
 }
 
 export function rerunViewSpec(result: SingleResultState | undefined): ResultViewSpec | null {
@@ -37,16 +32,14 @@ function sortOverPresentColumn(
   return sort
 }
 
-export function viewFieldsForColumns(
+export function viewSpecForColumns(
   spec: ResultViewSpec | null,
   columns: ColumnMeta[]
-): Pick<SingleResultState, 'sortColumn' | 'sortDirection' | 'filterModel'> {
+): Pick<DataViewSpecState, 'sort' | 'filters'> {
   const names = new Set(columns.map((column) => column.name))
-  const sort = sortOverPresentColumn(spec?.sort ?? null, names)
   return {
-    sortColumn: sort?.column ?? null,
-    sortDirection: sort?.direction ?? null,
-    filterModel: (spec?.filters ?? []).filter((condition) => names.has(condition.column)),
+    sort: sortOverPresentColumn(spec?.sort ?? null, names),
+    filters: (spec?.filters ?? []).filter((condition) => names.has(condition.column)),
   }
 }
 
@@ -67,21 +60,22 @@ export function windowMetaFromResponse(
 ): {
   fields: Pick<
     SingleResultState,
-    | 'viewRowCount'
-    | 'viewVersion'
     | 'latestKnownViewVersion'
     | 'truncated'
     | 'rowCeiling'
     | 'appliedRowLimit'
     | 'fullExportBlockedReason'
   >
+  slot: Pick<DataViewSlot, 'viewVersion' | 'viewRowCount'>
   window: ResultWindow
 } {
   const viewVersion = response.viewVersion ?? 1
   return {
-    fields: {
+    slot: {
       viewRowCount: response.viewRowCount ?? response.totalRows,
       viewVersion: viewVersion,
+    },
+    fields: {
       latestKnownViewVersion: viewVersion,
       truncated: response.truncated ?? false,
       rowCeiling: response.rowCeiling ?? 0,
@@ -118,7 +112,7 @@ interface PaintedViewMetrics {
 
 export interface ViewPaint extends ViewSpecTarget {
   view: PaintedViewMetrics
-  extra?: Partial<SingleResultState>
+  extra?: ResultPatch
 }
 
 export interface ViewChangeRequest extends ViewSpecTarget {

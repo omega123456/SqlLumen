@@ -1,7 +1,8 @@
+import { resultState } from '../../helpers/legacy-result-fields'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { ResultSubTabs } from '../../../components/query-editor/ResultSubTabs'
-import { useQueryStore, DEFAULT_RESULT_STATE } from '../../../stores/query-store'
+import { useQueryStore } from '../../../stores/query-store'
 import type { SingleResultState } from '../../../stores/query-store'
 import { makeTabState, withRows } from '../../helpers/query-test-utils'
 
@@ -11,8 +12,8 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn()
 })
 
-function makeResult(overrides: Partial<SingleResultState> = {}): SingleResultState {
-  return { ...DEFAULT_RESULT_STATE, ...overrides }
+function makeResult(overrides: Record<string, unknown> = {}): SingleResultState {
+  return resultState(overrides)
 }
 
 describe('ResultSubTabs', () => {
@@ -44,15 +45,13 @@ describe('ResultSubTabs', () => {
           results: [
             makeResult({
               resultStatus: 'success',
-              columns: [{ name: 'id', dataType: 'INT' }],
               ...withRows([[1]]),
-              totalRows: 1,
+              view: { slot: { columns: [{ name: 'id', dataType: 'INT' }], totalRows: 1 } },
             }),
             makeResult({
               resultStatus: 'success',
-              columns: [{ name: 'name', dataType: 'VARCHAR' }],
               ...withRows([['Alice']]),
-              totalRows: 1,
+              view: { slot: { columns: [{ name: 'name', dataType: 'VARCHAR' }], totalRows: 1 } },
             }),
           ],
           activeResultIndex: 0,
@@ -273,7 +272,10 @@ describe('ResultSubTabs', () => {
         'tab-1': {
           ...makeTabState({ status: 'success' }),
           results: [
-            makeResult({ resultStatus: 'success', columns: [{ name: 'id', dataType: 'INT' }] }),
+            makeResult({
+              resultStatus: 'success',
+              view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
+            }),
             makeResult({ resultStatus: 'error', errorMessage: 'bad SQL' }),
           ],
           activeResultIndex: 0,
@@ -292,8 +294,15 @@ describe('ResultSubTabs', () => {
         'tab-1': {
           ...makeTabState({ status: 'success' }),
           results: [
-            makeResult({ resultStatus: 'success', columns: [], affectedRows: 5 }),
-            makeResult({ resultStatus: 'success', columns: [{ name: 'id', dataType: 'INT' }] }),
+            makeResult({
+              resultStatus: 'success',
+              affectedRows: 5,
+              view: { slot: { columns: [] } },
+            }),
+            makeResult({
+              resultStatus: 'success',
+              view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
+            }),
           ],
           activeResultIndex: 0,
         },
@@ -312,11 +321,14 @@ describe('ResultSubTabs', () => {
           results: [
             makeResult({
               resultStatus: 'success',
-              columns: [{ name: 'id', dataType: 'INT' }],
               truncated: true,
               rowCeiling: 100000,
+              view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
             }),
-            makeResult({ resultStatus: 'success', columns: [{ name: 'id', dataType: 'INT' }] }),
+            makeResult({
+              resultStatus: 'success',
+              view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
+            }),
           ],
           activeResultIndex: 0,
         },

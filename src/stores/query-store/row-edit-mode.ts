@@ -1,4 +1,5 @@
 import type { QueryTableEditInfo } from '../../types/schema'
+import { mergeResultPatches } from './query-tab-reducers'
 import { type CachedRow } from '../../lib/result-window-cache'
 import { showErrorToast } from '../toast-store'
 import {
@@ -12,7 +13,7 @@ import { toErrorMessage } from '../../lib/error-message'
 import { hasResultAt } from './result-lists'
 import { runEditAnalysis } from './edit-analysis'
 import { EDIT_STATE_DEFAULTS, EMPTY_OBJECT } from './query-state-defaults'
-import type { SingleResultState } from './query-state-types'
+import type { ResultPatch, SingleResultState } from './query-state-types'
 import {
   patchResultByIndex,
   patchSurface,
@@ -31,25 +32,30 @@ export function ensureResultEditState(
   rowIndex: number
 ): SingleResultState | null {
   const { tabId, resultIndex, result } = located
-  if (!result.editMode) return null
+  if (!result.view.editTarget.tableName) return null
 
-  const tableInfo = result.editTableMetadata[result.editMode]
+  const tableInfo = result.view.editTarget.tables[result.view.editTarget.tableName]
   const cached = rowAt(located, rowIndex)
   if (!tableInfo) return null
   if (!cached) return null
   const row = cached.row
   if (!row) return null
 
-  const isAlreadyEditingRow = Boolean(result.editState) && result.editingRowIndex === rowIndex
+  const isAlreadyEditingRow =
+    Boolean(result.view.edit.state) && result.view.edit.rowIndex === rowIndex
   if (isAlreadyEditingRow) {
     return result
   }
 
   patchResultByIndex(tabId, resultIndex, {
-    editState: buildSeededRowEditState(result, tableInfo, row),
-    editingRowIndex: rowIndex,
-    editingBaseIndex: cached.baseIndex >= 0 ? cached.baseIndex : null,
-    saveError: null,
+    view: {
+      edit: {
+        state: buildSeededRowEditState(result, tableInfo, row),
+        rowIndex: rowIndex,
+        baseIndex: cached.baseIndex >= 0 ? cached.baseIndex : null,
+        saveError: null,
+      },
+    },
   })
 
   return resultAt(tabId, resultIndex) ?? null
@@ -73,7 +79,7 @@ async function loadEditTableInfo(
   request: EditModeRequest,
   result: SingleResultState
 ): Promise<QueryTableEditInfo | null> {
-  const cachedTableInfo = result.editTableMetadata[request.tableName]
+  const cachedTableInfo = result.view.editTarget.tables[request.tableName]
   if (cachedTableInfo) return cachedTableInfo
 
   if (!result.lastExecutedSql) {
@@ -86,7 +92,7 @@ async function loadEditTableInfo(
       tabId: request.tabId,
       connectionId: request.connectionId,
       sql: result.lastExecutedSql,
-      expectedQueryId: result.queryId,
+      expectedQueryId: result.view.slot.queryId,
       resultIndex: request.resultIndex,
     })
     if (!metadata) return null
@@ -105,9 +111,9 @@ async function loadEditTableInfo(
 
 function activateEditMode(activation: EditModeActivation) {
   const { request, result, tableInfo, keyColumns } = activation
-  const ambiguous = findAmbiguousColumns(result.columns)
+  const ambiguous = findAmbiguousColumns(result.view.slot.columns)
   const metadataSource = editMetadataWithTable(
-    result.editTableMetadata,
+    result.view.editTarget.tables,
     request.tableName,
     tableInfo
   )
@@ -119,7 +125,7 @@ function activateEditMode(activation: EditModeActivation) {
 
   const validation = validateKeyColumnsPresent({
     primaryKeyColumns: keyColumns,
-    resultColumns: result.columns,
+    resultColumns: result.view.slot.columns,
     ambiguousNames: ambiguous,
     boundColumnIndexMap: boundColumnIndexMap,
   })
@@ -139,27 +145,29 @@ function activateEditMode(activation: EditModeActivation) {
   })
 
   patchResultByIndex(request.tabId, request.resultIndex, {
-    editMode: request.tableName,
-    editableColumnMap: buildEditableColumnMap({
-      resultColumns: result.columns,
-      tableColumns: tableInfo.columns,
-      ambiguousNames: ambiguous,
-      columnBindings: columnBindings,
-    }),
-    editColumnBindings: columnBindings,
-    editBoundColumnIndexMap: boundColumnIndexMap,
-    editForeignKeys: mapSingleColumnForeignKeys(tableInfo.foreignKeys),
-    editState: null,
-    editConnectionId: request.connectionId,
-    editingRowIndex: null,
-    saveError: null,
+    view: {
+      slot: { connectionId: request.connectionId },
+      edit: { state: null, rowIndex: null, saveError: null },
+      editTarget: {
+        tableName: request.tableName,
+        editableColumns: buildEditableColumnMap({
+          resultColumns: result.view.slot.columns,
+          tableColumns: tableInfo.columns,
+          ambiguousNames: ambiguous,
+          columnBindings: columnBindings,
+        }),
+        bindings: columnBindings,
+        boundIndexByName: boundColumnIndexMap,
+        foreignKeys: mapSingleColumnForeignKeys(tableInfo.foreignKeys),
+      },
+    },
   })
 }
 
 function resultWithColumnsOf(ref: DataViewSurfaceRef): SingleResultState | null {
   const result = resultOf(ref)
   if (!result) return null
-  const hasColumns = result.columns.length > 0
+  const hasColumns = result.view.slot.columns.length > 0
   return hasColumns ? result : null
 }
 
@@ -167,10 +175,11 @@ export async function setEditMode(ref: DataViewSurfaceRef, tableName: string | n
   const { tabId, resultIndex } = ref
 
   if (tableName === null) {
-    patchSurface(ref, {
-      ...EDIT_STATE_DEFAULTS,
-      editTableMetadata: resultOf(ref)?.editTableMetadata ?? EMPTY_OBJECT,
-    })
+    const keptTables = resultOf(ref)?.view.editTarget.tables ?? EMPTY_OBJECT
+    patchSurface(
+      ref,
+      mergeResultPatches(EDIT_STATE_DEFAULTS, { view: { editTarget: { tables: keptTables } } })
+    )
     return
   }
 
@@ -207,34 +216,39 @@ export async function setEditMode(ref: DataViewSurfaceRef, tableName: string | n
 export function startEditingRow(ref: DataViewSurfaceRef, rowIndex: number, cachedRow?: CachedRow) {
   const { tabId, resultIndex } = ref
   const result = resultOf(ref)
-  if (!result?.editMode) return
-  if (!result.editTableMetadata[result.editMode]) return
+  if (!result?.view.editTarget.tableName) return
+  if (!result.view.editTarget.tables[result.view.editTarget.tableName]) return
 
   const cached =
     cachedRow ?? rowAt({ tabId: tabId, resultIndex: resultIndex, result: result }, rowIndex)
   if (!cached) return
   const row = cached.row
 
-  const tableInfo = result.editTableMetadata[result.editMode]
+  const tableInfo = result.view.editTarget.tables[result.view.editTarget.tableName]
   patchSurface(ref, {
-    editState: buildSeededRowEditState(result, tableInfo, row),
-    editingRowIndex: rowIndex,
-    editingBaseIndex: cached.baseIndex >= 0 ? cached.baseIndex : null,
-    saveError: null,
+    view: {
+      edit: {
+        state: buildSeededRowEditState(result, tableInfo, row),
+        rowIndex: rowIndex,
+        baseIndex: cached.baseIndex >= 0 ? cached.baseIndex : null,
+        saveError: null,
+      },
+    },
   })
 }
 
 export function discardCurrentRow(ref: DataViewSurfaceRef) {
   const result = resultOf(ref)
-  if (!result?.editState) return
+  if (!result?.view.edit.state) return
 
-  patchSurface(ref, {
-    ...(result.editState.isNewRow ? { draftRow: null, selectedRowIndex: null } : {}),
-    editState: null,
-    editingRowIndex: null,
-    editingBaseIndex: null,
-    saveError: null,
-  })
+  const editReset: ResultPatch = {
+    view: { edit: { state: null, rowIndex: null, baseIndex: null, saveError: null } },
+  }
+  const draftReset: ResultPatch = {
+    view: { edit: { draftRow: null }, selection: { rowIndex: null } },
+  }
+  const isDiscardingDraft = result.view.edit.state.isNewRow
+  patchSurface(ref, isDiscardingDraft ? mergeResultPatches(editReset, draftReset) : editReset)
 }
 
 export function clearEditState(ref: DataViewSurfaceRef) {

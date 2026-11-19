@@ -1,12 +1,14 @@
+import { patchedLegacyResult } from '../../helpers/legacy-result-fields'
+import { resultState } from '../../helpers/legacy-result-fields'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_RESULT_STATE, type SingleResultState } from '../../../stores/query-store'
+import { type SingleResultState } from '../../../stores/query-store'
 import {
   canEvictInactiveResult,
   shouldScheduleResultEviction,
 } from '../../../stores/query-store/result-residency'
 
-function resultWith(overrides: Partial<SingleResultState>): SingleResultState {
-  return { ...DEFAULT_RESULT_STATE, viewRowCount: 5, ...overrides }
+function resultWith(overrides: Record<string, unknown>): SingleResultState {
+  return patchedLegacyResult(resultState({ viewRowCount: 5 }), overrides)
 }
 
 const dirtyEditState = {
@@ -22,16 +24,28 @@ const inactiveResidency = { status: 'resident' as const, isActive: false, inacti
 describe('result residency predicates', () => {
   it('schedules eviction for clean resident results with rows', () => {
     expect(shouldScheduleResultEviction(resultWith({}))).toBe(true)
-    expect(shouldScheduleResultEviction(resultWith({ viewRowCount: 0 }))).toBe(false)
-    expect(shouldScheduleResultEviction(resultWith({ isExpired: true }))).toBe(false)
-    expect(shouldScheduleResultEviction(resultWith({ editState: dirtyEditState }))).toBe(false)
+    expect(shouldScheduleResultEviction(resultWith({ view: { slot: { viewRowCount: 0 } } }))).toBe(
+      false
+    )
+    expect(
+      shouldScheduleResultEviction(resultWith({ view: { residency: { isExpired: true } } }))
+    ).toBe(false)
+    expect(
+      shouldScheduleResultEviction(resultWith({ view: { edit: { state: dirtyEditState } } }))
+    ).toBe(false)
   })
 
   it('evicts only inactive, resident, clean results', () => {
-    expect(canEvictInactiveResult(resultWith({ rowResidency: inactiveResidency }))).toBe(true)
+    expect(
+      canEvictInactiveResult(resultWith({ view: { residency: { rows: inactiveResidency } } }))
+    ).toBe(true)
     const activeResidency = { ...inactiveResidency, isActive: true }
-    expect(canEvictInactiveResult(resultWith({ rowResidency: activeResidency }))).toBe(false)
+    expect(
+      canEvictInactiveResult(resultWith({ view: { residency: { rows: activeResidency } } }))
+    ).toBe(false)
     const evictedResidency = { ...inactiveResidency, status: 'evicted' as const }
-    expect(canEvictInactiveResult(resultWith({ rowResidency: evictedResidency }))).toBe(false)
+    expect(
+      canEvictInactiveResult(resultWith({ view: { residency: { rows: evictedResidency } } }))
+    ).toBe(false)
   })
 })

@@ -125,9 +125,9 @@ export async function saveResultRow(ref: DataViewSurfaceRef): Promise<boolean> {
   const store = useQueryStore.getState()
   const result = store.tabs[ref.tabId]?.results[ref.resultIndex] ?? DEFAULT_RESULT_STATE
   const invalidValue = reportInvalidResultRowValue({
-    editState: result.editState,
+    editState: result.view.edit.state,
     editTableColumns: readEditTable(result).editTableColumns,
-    editingRowIndex: result.editingRowIndex,
+    editingRowIndex: result.view.edit.rowIndex,
     onRowSelected: (rowIndex) => store.setSelectedRow(ref, rowIndex),
   })
   if (invalidValue) return false

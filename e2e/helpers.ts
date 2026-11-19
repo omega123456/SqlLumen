@@ -141,7 +141,7 @@ export async function getColumnIndexByName(grid: Locator, columnName: string) {
                 string,
                 {
                   activeResultIndex?: number
-                  results?: Array<{ columns?: Array<{ name?: string }> }>
+                  results?: Array<{ view?: { slot?: { columns?: Array<{ name?: string }> } } }>
                 }
               >
             }
@@ -152,7 +152,7 @@ export async function getColumnIndexByName(grid: Locator, columnName: string) {
       const tabs = store?.getState?.().tabs ?? {}
       return Object.values(tabs).flatMap((tab) => {
         const activeResultIndex = tab?.activeResultIndex ?? 0
-        return tab?.results?.[activeResultIndex]?.columns ?? []
+        return tab?.results?.[activeResultIndex]?.view?.slot?.columns ?? []
       })
     }
 

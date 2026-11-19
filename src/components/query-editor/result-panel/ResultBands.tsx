@@ -59,7 +59,7 @@ function ViewErrorBand({ message, onRetry }: { message: string; onRetry: () => v
 }
 
 interface WindowFailureBandProps {
-  failedWindowRange: NonNullable<SingleResultState['failedWindowRange']>
+  failedWindowRange: NonNullable<SingleResultState['view']['window']['failedRange']>
   onRetry: () => void
 }
 
@@ -88,7 +88,8 @@ interface FailureBandProps {
 function FailureBand({ surfaceRef, result }: FailureBandProps) {
   const retryResultWindow = useQueryStore((state) => state.retryResultWindow)
   const retryViewChange = useQueryStore((state) => state.retryViewChange)
-  const { viewError, failedWindowRange } = result
+  const viewError = result.view.spec.error
+  const failedWindowRange = result.view.window.failedRange
   if (viewError !== null) {
     return <ViewErrorBand message={viewError} onRetry={() => retryViewChange(surfaceRef)} />
   }
@@ -150,7 +151,9 @@ function ResultTruncationBand({ surfaceRef, result, isTabRunning }: ResultBandsP
 }
 
 function hasAnyBand(result: SingleResultState): boolean {
-  return result.truncated || result.failedWindowRange !== null || result.viewError !== null
+  return (
+    result.truncated || result.view.window.failedRange !== null || result.view.spec.error !== null
+  )
 }
 
 export function ResultBands({ surfaceRef, result, isTabRunning }: ResultBandsProps) {

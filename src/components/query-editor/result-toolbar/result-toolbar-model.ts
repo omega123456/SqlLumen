@@ -5,17 +5,23 @@ export type ActiveResult = SingleResultState
 
 export function canMutateResultRows(result: ActiveResult, isConnectionReadOnly: boolean): boolean {
   if (isConnectionReadOnly) return false
-  return result.editMode !== null
+  return result.view.editTarget.tableName !== null
 }
 
 export function editTableNameOf(result: ActiveResult): string {
-  if (!result.editMode) return ''
-  return result.editTableMetadata[result.editMode]?.table ?? result.editMode
+  if (!result.view.editTarget.tableName) return ''
+  return (
+    result.view.editTarget.tables[result.view.editTarget.tableName]?.table ??
+    result.view.editTarget.tableName
+  )
 }
 
-export function sortedCheckedRanges(result: ActiveResult): ActiveResult['checkedRanges'] {
-  if (result.checkedViewVersion !== result.viewVersion) return []
-  return [...result.checkedRanges].sort((left, right) => left[0] - right[0])
+export function sortedCheckedRanges(
+  result: ActiveResult
+): ActiveResult['view']['checked']['ranges'] {
+  const { checked, slot } = result.view
+  if (checked.viewVersion !== slot.viewVersion) return []
+  return [...result.view.checked.ranges].sort((left, right) => left[0] - right[0])
 }
 
 export function copiedRowsToast(

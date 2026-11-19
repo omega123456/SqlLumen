@@ -7,7 +7,8 @@ import {
 } from '../../lib/result-window-cache'
 import { logFrontend } from '../../lib/app-log-commands'
 import { toErrorMessage } from '../../lib/error-message'
-import type { SingleResultState } from './query-state-types'
+import type { ResultPatch, SingleResultState } from './query-state-types'
+import { mergeResultPatches } from './query-tab-reducers'
 import {
   markTabResultsExpired,
   patchResultByIndex,
@@ -34,7 +35,7 @@ function isTrackerReusable(
 ): tracker is ViewTracker {
   if (!tracker) return false
   const hasIssuedViewRequest = result.viewRequestSeq > 0
-  return tracker.queryId === result.queryId && hasIssuedViewRequest
+  return tracker.queryId === result.view.slot.queryId && hasIssuedViewRequest
 }
 
 export function trackerFor(tabId: string, resultIndex: number, result: SingleResultState) {
@@ -44,7 +45,7 @@ export function trackerFor(tabId: string, resultIndex: number, result: SingleRes
     return existing
   }
   const tracker: ViewTracker = {
-    queryId: result.queryId ?? '',
+    queryId: result.view.slot.queryId ?? '',
     spec: getResultViewSpec(result),
     retrySpec: null,
     lastSuccess: null,
@@ -62,25 +63,21 @@ export function dropViewTrackers(tabId: string) {
 export function paintView({ tabId, resultIndex, spec, view, extra = {} }: ViewPaint) {
   applyResultView(tabId, resultIndex, view)
   const result = resultAt(tabId, resultIndex)
-  patchResultByIndex(tabId, resultIndex, {
-    viewVersion: view.viewVersion,
+  const paintPatch: ResultPatch = {
     latestKnownViewVersion: Math.max(result?.latestKnownViewVersion ?? 0, view.viewVersion),
-    viewRowCount: view.viewRowCount,
-    totalRows: view.totalRows,
-    sortColumn: spec.sort?.column ?? null,
-    sortDirection: spec.sort?.direction ?? null,
-    filterModel: spec.filters,
-    checkedRanges: [],
-    checkedViewVersion: view.viewVersion,
-    selectedRowIndex: null,
-    selectedCell: null,
-    pendingWindowRange: null,
-    failedWindowRange: null,
-    isSorting: false,
-    isFiltering: false,
-    viewError: null,
-    ...extra,
-  })
+    view: {
+      slot: {
+        viewVersion: view.viewVersion,
+        viewRowCount: view.viewRowCount,
+        totalRows: view.totalRows,
+      },
+      selection: { rowIndex: null, cell: null },
+      checked: { ranges: [], viewVersion: view.viewVersion },
+      spec: { sort: spec.sort, filters: spec.filters, applying: null, error: null },
+      window: { pendingRange: null, failedRange: null },
+    },
+  }
+  patchResultByIndex(tabId, resultIndex, mergeResultPatches(paintPatch, extra))
 }
 
 interface IssuedViewRequest {
@@ -94,7 +91,8 @@ interface IssuedViewRequest {
 
 function currentResultOfRequest(request: IssuedViewRequest): SingleResultState | null {
   const latest = getQueryState().tabs[request.tabId]?.results[request.resultIndex]
-  return latest?.queryId === request.queryId ? latest : null
+  const latestQueryId = latest?.view.slot.queryId
+  return latestQueryId === request.queryId ? latest : null
 }
 
 async function applyViewResponse(
@@ -207,7 +205,7 @@ async function issueViewRequest({
 
 export async function settleViewFailure(tabId: string, resultIndex: number, error: unknown) {
   if (isResultsExpiredError(error)) {
-    patchResultByIndex(tabId, resultIndex, { isSorting: false, isFiltering: false })
+    patchResultByIndex(tabId, resultIndex, { view: { spec: { applying: null } } })
     markTabResultsExpired(tabId)
     return
   }
@@ -223,8 +221,7 @@ export function requestView({ tabId, resultIndex, spec, kind }: ViewChangeReques
   const seq = result.viewRequestSeq + 1
   patchResultByIndex(tabId, resultIndex, {
     viewRequestSeq: seq,
-    viewError: null,
-    ...(kind === 'sort' ? { isSorting: true } : { isFiltering: true }),
+    view: { spec: { applying: kind, error: null } },
   })
   return issueViewRequest({
     tabId: tabId,

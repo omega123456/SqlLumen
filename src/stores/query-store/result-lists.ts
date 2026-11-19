@@ -20,5 +20,5 @@ export function hasResultAt(
 
 export function hasOpenExportDialog(tab: TabQueryState | undefined): boolean {
   if (!tab) return false
-  return tab.results.some((result) => result.exportDialogOpen)
+  return tab.results.some((result) => result.view.prompts.isExportOpen)
 }

@@ -185,9 +185,9 @@ export function hasLoadedTableData(
 
 export function queryRowCountOf(result: SingleResultState) {
   return formatRowCountParts({
-    viewRowCount: result.viewRowCount,
-    totalRows: result.totalRows,
-    isFiltered: result.filterModel.length > 0,
+    viewRowCount: result.view.slot.viewRowCount,
+    totalRows: result.view.slot.totalRows,
+    isFiltered: result.view.spec.filters.length > 0,
     truncated: result.truncated,
     autoLimitApplied: result.autoLimitApplied,
     appliedRowLimit: result.appliedRowLimit,

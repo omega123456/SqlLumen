@@ -1,3 +1,4 @@
+import { patchedLegacyResult, resultState } from '../../helpers/legacy-result-fields'
 import React from 'react'
 import { act, render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -5,7 +6,7 @@ import { ipc } from '../../ipc-mock'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FilterCondition } from '../../../types/schema'
 import { ResultPanel } from '../../../components/query-editor/ResultPanel'
-import { DEFAULT_RESULT_STATE, useQueryStore, querySurfaceRef } from '../../../stores/query-store'
+import { useQueryStore, querySurfaceRef } from '../../../stores/query-store'
 import { makeTabState, withRows } from '../../helpers/query-test-utils'
 import * as ResultSubTabsModule from '../../../components/query-editor/ResultSubTabs'
 import * as ResultToolbarModule from '../../../components/query-editor/ResultToolbar'
@@ -157,7 +158,7 @@ describe('ResultPanel actions and states', () => {
         'tab-1': {
           ...makeTabState({ connectionId: 'conn-1' }),
           tabStatus: 'running',
-          results: [{ ...DEFAULT_RESULT_STATE, resultStatus: 'success' }],
+          results: [resultState({ resultStatus: 'success' })],
         },
       },
     })
@@ -172,18 +173,12 @@ describe('ResultPanel actions and states', () => {
           tabStatus: 'success',
           activeResultIndex: 1,
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({
               resultStatus: 'success',
-              columns: [{ name: 'id', dataType: 'INT' }],
               ...withRows([[1]]),
-              totalRows: 1,
-            },
-            {
-              ...DEFAULT_RESULT_STATE,
-              resultStatus: 'error',
-              errorMessage: 'Broken query',
-            },
+              view: { slot: { columns: [{ name: 'id', dataType: 'INT' }], totalRows: 1 } },
+            }),
+            resultState({ resultStatus: 'error', errorMessage: 'Broken query' }),
           ],
         },
       },
@@ -203,18 +198,12 @@ describe('ResultPanel actions and states', () => {
           tabStatus: 'success',
           activeResultIndex: 1,
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({
               resultStatus: 'success',
-              columns: [{ name: 'id', dataType: 'INT' }],
               ...withRows([[1]]),
-              totalRows: 1,
-            },
-            {
-              ...DEFAULT_RESULT_STATE,
-              resultStatus: 'error',
-              errorMessage: 'Broken query',
-            },
+              view: { slot: { columns: [{ name: 'id', dataType: 'INT' }], totalRows: 1 } },
+            }),
+            resultState({ resultStatus: 'error', errorMessage: 'Broken query' }),
           ],
         },
       },
@@ -265,7 +254,7 @@ describe('ResultPanel actions and states', () => {
             'tab-1': {
               ...state.tabs['tab-1'],
               results: state.tabs['tab-1'].results.map((result, index) =>
-                index === 0 ? { ...result, saveError: 'failed to save' } : result
+                index === 0 ? patchedLegacyResult(result, { saveError: 'failed to save' }) : result
               ),
             },
           },
@@ -463,22 +452,27 @@ describe('filter button and dialog', () => {
   /**
    * Set up a tab in the query store with success status and filter-relevant state.
    */
-  function setupQueryTab(resultOverrides: Partial<SingleResultState> = {}) {
-    const result: SingleResultState = {
-      ...DEFAULT_RESULT_STATE,
-      resultStatus: 'success',
-      columns: [
-        { name: 'id', dataType: 'INT' },
-        { name: 'name', dataType: 'VARCHAR' },
-      ],
-      ...withRows([
-        [1, 'Alice'],
-        [2, 'Bob'],
-      ]),
-      totalRows: 2,
-      queryId: 'q1',
-      ...resultOverrides,
-    }
+  function setupQueryTab(resultOverrides: object = {}) {
+    const result: SingleResultState = patchedLegacyResult(
+      resultState({
+        view: {
+          slot: {
+            columns: [
+              { name: 'id', dataType: 'INT' },
+              { name: 'name', dataType: 'VARCHAR' },
+            ],
+            totalRows: 2,
+            queryId: 'q1',
+          },
+        },
+        resultStatus: 'success',
+        ...withRows([
+          [1, 'Alice'],
+          [2, 'Bob'],
+        ]),
+      }),
+      resultOverrides
+    )
 
     const tab: TabQueryState = {
       content: '',
@@ -490,7 +484,6 @@ describe('filter button and dialog', () => {
       connectionId: 'conn-1',
       results: [result],
       activeResultIndex: 0,
-      pendingNavigationAction: null,
       executionStartedAt: null,
       isCancelling: false,
       wasCancelled: false,
@@ -503,7 +496,7 @@ describe('filter button and dialog', () => {
 
   describe('ResultPanel — Filter button state', () => {
     it('filter button is disabled when no columns', () => {
-      setupQueryTab({ columns: [], ...withRows([]) })
+      setupQueryTab({ ...withRows([]), view: { slot: { columns: [] } } })
       render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
       expect(screen.getByTestId('btn-filter')).toBeDisabled()
     })
@@ -512,9 +505,11 @@ describe('filter button and dialog', () => {
   describe('ResultPanel — Clear filter', () => {
     it('clicking clear filter directly clears filters and shows toast', async () => {
       setupQueryTab({
-        filterModel: [{ column: 'name', operator: '==', value: 'Alice' }],
         ...withRows([[1, 'Alice']]),
-        totalRows: 2,
+        view: {
+          slot: { totalRows: 2 },
+          spec: { filters: [{ column: 'name', operator: '==', value: 'Alice' }] },
+        },
       })
       render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
 
@@ -524,7 +519,7 @@ describe('filter button and dialog', () => {
       // filterModel should be cleared immediately
       await waitFor(() => {
         const result = useQueryStore.getState().tabs['tab-1']!.results[0]
-        expect(result.filterModel).toEqual([])
+        expect(result.view.spec.filters).toEqual([])
       })
 
       // Toast should be shown via real toast store
@@ -539,15 +534,19 @@ describe('filter button and dialog', () => {
 
     it('disables both filter buttons while a row is being edited', () => {
       setupQueryTab({
-        filterModel: [{ column: 'name', operator: '==', value: 'Alice' }],
-        editState: {
-          rowKey: { id: 1 },
-          originalValues: { id: 1, name: 'Alice' },
-          currentValues: { id: 1, name: 'Alice' },
-          modifiedColumns: new Set<string>(),
-          isNewRow: false,
+        view: {
+          spec: { filters: [{ column: 'name', operator: '==', value: 'Alice' }] },
+          edit: {
+            state: {
+              rowKey: { id: 1 },
+              originalValues: { id: 1, name: 'Alice' },
+              currentValues: { id: 1, name: 'Alice' },
+              modifiedColumns: new Set<string>(),
+              isNewRow: false,
+            },
+            rowIndex: 0,
+          },
         },
-        editingRowIndex: 0,
       })
       render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
       expect(screen.getByTestId('btn-filter')).toBeDisabled()
@@ -557,9 +556,7 @@ describe('filter button and dialog', () => {
 
   describe('ResultPanel — Filter auto-populate from selectedCell', () => {
     it('filter dialog auto-populates with selected cell value', async () => {
-      setupQueryTab({
-        selectedCell: { columnKey: 'name', value: 'Alice' },
-      })
+      setupQueryTab({ view: { selection: { cell: { columnKey: 'name', value: 'Alice' } } } })
       render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
 
       fireEvent.click(screen.getByTestId('btn-filter'))
@@ -577,9 +574,7 @@ describe('filter button and dialog', () => {
     })
 
     it('filter dialog auto-populates IS NULL when cell value is null', () => {
-      setupQueryTab({
-        selectedCell: { columnKey: 'name', value: null },
-      })
+      setupQueryTab({ view: { selection: { cell: { columnKey: 'name', value: null } } } })
       render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
 
       fireEvent.click(screen.getByTestId('btn-filter'))
@@ -591,10 +586,7 @@ describe('filter button and dialog', () => {
     })
 
     it('filter dialog opens with empty state when no selected cell and no filters', () => {
-      setupQueryTab({
-        selectedCell: null,
-        filterModel: [],
-      })
+      setupQueryTab({ view: { selection: { cell: null }, spec: { filters: [] } } })
       render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
 
       fireEvent.click(screen.getByTestId('btn-filter'))

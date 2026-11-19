@@ -18,7 +18,7 @@ import {
   setQueryResultsExpired,
 } from './query-tab-reducers'
 import { DEFAULT_TAB_STATE } from './query-state-defaults'
-import type { SingleResultState, TabQueryState, QueryState } from './query-state-types'
+import type { ResultPatch, SingleResultState, TabQueryState, QueryState } from './query-state-types'
 import type { LocatedResult } from './result-view-spec'
 import type { DataViewSurfaceRef } from '../data-view/data-view-types'
 import { useQueryStore } from '../query-store'
@@ -45,7 +45,7 @@ export function resultOf(ref: DataViewSurfaceRef): SingleResultState | undefined
   return resultAt(ref.tabId, ref.resultIndex)
 }
 
-export function patchSurface(ref: DataViewSurfaceRef, partial: Partial<SingleResultState>) {
+export function patchSurface(ref: DataViewSurfaceRef, partial: ResultPatch) {
   patchResultByIndex(ref.tabId, ref.resultIndex, partial)
 }
 
@@ -55,11 +55,7 @@ export function patchTab(tabId: string, partial: Partial<TabQueryState>) {
   )
 }
 
-export function patchResultByIndex(
-  tabId: string,
-  resultIndex: number,
-  partial: Partial<SingleResultState>
-) {
+export function patchResultByIndex(tabId: string, resultIndex: number, partial: ResultPatch) {
   const resultPatch = { tabId: tabId, resultIndex: resultIndex, partial: partial }
   setQueryState((state) => patchQueryResult(state, resultPatch))
 }
@@ -91,12 +87,12 @@ export function slotFor(tabId: string, resultIndex: number): ResultSlotRef | nul
   const tab = getQueryState().tabs[tabId]
   const result = tab?.results[resultIndex]
   if (!tab) return null
-  if (!result?.queryId) return null
+  if (!result?.view.slot.queryId) return null
   return {
     connectionId: getResultSurface(tabId, resultIndex)?.slot.connectionId || tab.connectionId,
     tabId: tabId,
     resultIndex: resultIndex,
-    queryId: result.queryId,
+    queryId: result.view.slot.queryId,
   }
 }
 
@@ -104,8 +100,8 @@ export function rowAt(
   { tabId, resultIndex, result }: LocatedResult,
   position: number
 ): CachedRow | null {
-  const draftRow = result.draftRow
-  const isDraftRowPosition = position === result.viewRowCount
+  const draftRow = result.view.edit.draftRow
+  const isDraftRowPosition = position === result.view.slot.viewRowCount
   if (draftRow && isDraftRowPosition) {
     return { row: draftRow, baseIndex: -1 }
   }
@@ -141,9 +137,9 @@ export function registerResultWindowHandlers() {
   setWindowStatusHandler(({ tabId, resultIndex, patch, failure }) => {
     const result = resultAt(tabId, resultIndex)
     if (!result) return
-    patchResultByIndex(tabId, resultIndex, patch)
-    if (failure && patch.failedWindowRange) {
-      const [start, end] = patch.failedWindowRange
+    patchResultByIndex(tabId, resultIndex, { view: { window: patch } })
+    if (failure && patch.failedRange) {
+      const [start, end] = patch.failedRange
       showErrorToast(`Couldn't load rows ${formatRowRange(start + 1, end)}`, failure.message)
     }
   })

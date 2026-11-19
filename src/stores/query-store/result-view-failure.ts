@@ -4,11 +4,16 @@ import { showErrorToast } from '../toast-store'
 import { logFrontend } from '../../lib/app-log-commands'
 import { toErrorMessage } from '../../lib/error-message'
 import { VIEW_REFRESH_WINDOW_ROWS } from './query-state-defaults'
-import type { SingleResultState } from './query-state-types'
+import type { SingleResultState, ResultPatch } from './query-state-types'
 import { patchResultByIndex, resultAt, slotFor } from './query-store-access'
 import { paintView, settleViewFailure, trackerFor } from './result-view-requests'
 import type { ViewTracker } from './result-view-requests'
 import { getResultViewSpec } from './result-view-spec'
+
+function isReplacedSlot(tabId: string, resultIndex: number, queryId: string): boolean {
+  const currentQueryId = resultAt(tabId, resultIndex)?.view.slot.queryId
+  return currentQueryId !== queryId
+}
 
 export async function repaintLatestKnownView(
   tabId: string,
@@ -26,7 +31,7 @@ export async function repaintLatestKnownView(
       offset: 0,
       limit: VIEW_REFRESH_WINDOW_ROWS,
     })
-    if (resultAt(tabId, resultIndex)?.queryId !== slot.queryId) return
+    if (isReplacedSlot(tabId, resultIndex, slot.queryId)) return
     paintView({
       tabId: tabId,
       resultIndex: resultIndex,
@@ -34,12 +39,12 @@ export async function repaintLatestKnownView(
       view: {
         viewVersion: window.viewVersion,
         viewRowCount: window.viewRowCount,
-        totalRows: resultAt(tabId, resultIndex)?.totalRows ?? result.totalRows,
+        totalRows: resultAt(tabId, resultIndex)?.view.slot.totalRows ?? result.view.slot.totalRows,
         window: window,
       },
     })
   } catch (error) {
-    if (resultAt(tabId, resultIndex)?.queryId !== slot.queryId) return
+    if (isReplacedSlot(tabId, resultIndex, slot.queryId)) return
     await settleViewFailure(tabId, resultIndex, error)
   }
 }
@@ -49,7 +54,7 @@ interface FailedViewSettlement {
   resultIndex: number
   result: SingleResultState
   tracker: ViewTracker
-  errorPatch: Partial<SingleResultState>
+  errorPatch: ResultPatch
 }
 
 function repaintLastSuccessfulView(
@@ -84,7 +89,7 @@ async function refetchServerViewAfterFailure(failure: FailedViewSettlement): Pro
       offset: 0,
       limit: VIEW_REFRESH_WINDOW_ROWS,
     })
-    if (resultAt(tabId, resultIndex)?.queryId !== slot.queryId) return false
+    if (isReplacedSlot(tabId, resultIndex, slot.queryId)) return false
     paintView({
       tabId: tabId,
       resultIndex: resultIndex,
@@ -92,7 +97,7 @@ async function refetchServerViewAfterFailure(failure: FailedViewSettlement): Pro
       view: {
         viewVersion: window.viewVersion,
         viewRowCount: window.viewRowCount,
-        totalRows: result.totalRows,
+        totalRows: result.view.slot.totalRows,
         window: window,
       },
       extra: errorPatch,
@@ -115,7 +120,8 @@ async function revertFailedView(failure: FailedViewSettlement): Promise<boolean>
     repaintLastSuccessfulView(failure, success)
     return true
   }
-  const hasServerViewMovedOn = failure.result.latestKnownViewVersion > failure.result.viewVersion
+  const hasServerViewMovedOn =
+    failure.result.latestKnownViewVersion > failure.result.view.slot.viewVersion
   if (hasServerViewMovedOn) {
     return refetchServerViewAfterFailure(failure)
   }
@@ -139,7 +145,7 @@ export async function settleFailedView(tabId: string, resultIndex: number, error
     resultIndex: resultIndex,
     result: result,
     tracker: tracker,
-    errorPatch: { isSorting: false, isFiltering: false, viewError: message },
+    errorPatch: { view: { spec: { applying: null, error: message } } },
   })
   if (!isStillCurrent) return
   showErrorToast("Couldn't apply sort or filter", message)

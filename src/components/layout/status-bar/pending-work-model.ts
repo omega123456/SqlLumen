@@ -2,7 +2,7 @@ import type { SingleResultState } from '../../../stores/query-store'
 import { formatCount, formatRowRange } from '../../../lib/format-row-count'
 import type { TableDataTabState } from '../../../types/schema'
 
-type RowActionProgress = NonNullable<SingleResultState['rowActionProgress']>
+type RowActionProgress = NonNullable<SingleResultState['view']['rowAction']>
 
 const FILTERING_LABEL = 'Filtering…'
 const TABLE_RESTORING_LABEL = 'Restoring cached rows...'
@@ -22,7 +22,9 @@ export function rowActionAnnouncement(progress: RowActionProgress): string {
   return `${progress.verb}… ${formatCount(progress.total)} rows`
 }
 
-export function windowLoadingLabel(range: SingleResultState['pendingWindowRange']): string | null {
+export function windowLoadingLabel(
+  range: SingleResultState['view']['window']['pendingRange']
+): string | null {
   if (!range) return null
   return `Loading rows ${formatRowRange(range[0] + 1, range[1])}…`
 }
@@ -32,7 +34,7 @@ function silentWork(label: string): PendingWork {
 }
 
 function visibleRowActionProgress(result: SingleResultState): RowActionProgress | null {
-  const progress = result.rowActionProgress
+  const progress = result.view.rowAction
   if (progress?.visible !== true) return null
   return progress
 }
@@ -47,8 +49,9 @@ export function resolveResultPendingWork(result: SingleResultState | null): Pend
       isCancellable: progress.cancellable,
     }
   }
-  if (result.isFiltering) return silentWork(FILTERING_LABEL)
-  const windowLabel = windowLoadingLabel(result.pendingWindowRange)
+  const isFiltering = result.view.spec.applying === 'filter'
+  if (isFiltering) return silentWork(FILTERING_LABEL)
+  const windowLabel = windowLoadingLabel(result.view.window.pendingRange)
   if (!windowLabel) return null
   return { label: windowLabel, announcement: windowLabel, isCancellable: false }
 }

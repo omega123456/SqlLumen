@@ -21,7 +21,9 @@ function PendingNavigationDialog({
   saveError: string | null
 }) {
   const pendingNavigationAction = useQueryStore(
-    (state) => state.tabs[surfaceRef.tabId]?.pendingNavigationAction ?? null
+    (state) =>
+      state.tabs[surfaceRef.tabId]?.results[surfaceRef.resultIndex]?.view.prompts
+        .pendingNavigation ?? null
   )
   const confirmNavigation = useQueryStore((state) => state.confirmNavigation)
   const cancelNavigation = useQueryStore((state) => state.cancelNavigation)
@@ -59,7 +61,7 @@ export function ResultPanelDialogs({
   const closeExportDialog = useQueryStore((state) => state.closeExportDialog)
   return (
     <>
-      {result.exportDialogOpen && (
+      {result.view.prompts.isExportOpen && (
         <ExportDialog
           connectionId={connectionId}
           tabId={surfaceRef.tabId}
@@ -76,7 +78,7 @@ export function ResultPanelDialogs({
         onCancel={filter.closeFilterDialog}
       />
 
-      <PendingNavigationDialog surfaceRef={surfaceRef} saveError={result.saveError} />
+      <PendingNavigationDialog surfaceRef={surfaceRef} saveError={result.view.edit.saveError} />
     </>
   )
 }

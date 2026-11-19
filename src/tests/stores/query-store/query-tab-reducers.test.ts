@@ -1,3 +1,6 @@
+import { patchedLegacyResult } from '../../helpers/legacy-result-fields'
+import { legacyFieldsOf } from '../../helpers/legacy-result-fields'
+import { resultState } from '../../helpers/legacy-result-fields'
 import { describe, expect, it } from 'vitest'
 import {
   closeQueryExportDialogs,
@@ -22,8 +25,8 @@ import { makeTabState } from '../../helpers/query-test-utils'
 const EVICTED_AT = 1_700_000_000_000
 const MISSING_RESULT_INDEX = 5
 
-function resultWith(overrides: Partial<SingleResultState> = {}): SingleResultState {
-  return { ...DEFAULT_RESULT_STATE, viewRowCount: 3, ...overrides }
+function resultWith(overrides: Record<string, unknown> = {}): SingleResultState {
+  return patchedLegacyResult(resultState({ viewRowCount: 3 }), overrides)
 }
 
 function tabWith(results: SingleResultState[]): TabQueryState {
@@ -75,12 +78,11 @@ describe('query tab reducers', () => {
     const patched = patchQueryResult(state, {
       tabId: 'tab-1',
       resultIndex: 1,
-      partial: { exportDialogOpen: true },
+      partial: { view: { prompts: { isExportOpen: true } } },
     })
-    expect(patched.tabs['tab-1'].results.map((result) => result.exportDialogOpen)).toEqual([
-      false,
-      true,
-    ])
+    expect(patched.tabs['tab-1'].results.map((result) => result.view.prompts.isExportOpen)).toEqual(
+      [false, true]
+    )
     expect(
       patchQueryResult(state, { tabId: 'tab-1', resultIndex: MISSING_RESULT_INDEX, partial: {} })
     ).toBe(state)
@@ -94,23 +96,25 @@ describe('query tab reducers', () => {
       resultIndex: 0,
       partial: { isActive: true },
     })
-    expect(patched.tabs['tab-1'].results[0].rowResidency).toEqual({
-      ...DEFAULT_RESULT_STATE.rowResidency,
+    expect(patched.tabs['tab-1'].results[0].view.residency.rows).toEqual({
+      ...DEFAULT_RESULT_STATE.view.residency.rows,
       isActive: true,
     })
   })
 
   it('evicts the rows of an inactive resident result', () => {
     const inactive = resultWith({
-      rowResidency: { status: 'resident', isActive: false, inactiveSince: 1 },
-      editingRowIndex: 2,
+      view: {
+        edit: { rowIndex: 2 },
+        residency: { rows: { status: 'resident', isActive: false, inactiveSince: 1 } },
+      },
     })
     const evicted = evictQueryResultRows(stateWith([inactive]), {
       tabId: 'tab-1',
       resultIndex: 0,
       evictedAt: EVICTED_AT,
     })
-    expect(evicted.tabs['tab-1'].results[0]).toMatchObject({
+    expect(legacyFieldsOf(evicted.tabs['tab-1'].results[0])).toMatchObject({
       editingRowIndex: null,
       editState: null,
       rowsEvictedAt: EVICTED_AT,
@@ -121,31 +125,47 @@ describe('query tab reducers', () => {
   it('does not evict an active, expired or missing result', () => {
     const eviction = { tabId: 'tab-1', resultIndex: 0, evictedAt: EVICTED_AT }
     const active = stateWith([
-      resultWith({ rowResidency: { status: 'resident', isActive: true, inactiveSince: null } }),
+      resultWith({
+        view: { residency: { rows: { status: 'resident', isActive: true, inactiveSince: null } } },
+      }),
     ])
     expect(evictQueryResultRows(active, eviction)).toBe(active)
-    const expired = stateWith([resultWith({ isExpired: true })])
+    const expired = stateWith([resultWith({ view: { residency: { isExpired: true } } })])
     expect(evictQueryResultRows(expired, eviction)).toBe(expired)
     expect(evictQueryResultRows({ tabs: {} }, eviction)).toEqual({ tabs: {} })
   })
 
   it('marks results expired and clears the flag again', () => {
-    const state = stateWith([resultWith(), resultWith({ isExpired: true })])
+    const state = stateWith([
+      resultWith(),
+      resultWith({ view: { residency: { isExpired: true } } }),
+    ])
     const expired = setQueryResultsExpired(state, { tabId: 'tab-1', isExpired: true })
-    expect(expired.tabs['tab-1'].results.map((result) => result.isExpired)).toEqual([true, true])
+    expect(expired.tabs['tab-1'].results.map((result) => result.view.residency.isExpired)).toEqual([
+      true,
+      true,
+    ])
     expect(expired.tabs['tab-1'].results[1]).toBe(state.tabs['tab-1'].results[1])
     expect(setQueryResultsExpired(expired, { tabId: 'tab-1', isExpired: true })).toBe(expired)
     const cleared = setQueryResultsExpired(expired, { tabId: 'tab-1', isExpired: false })
-    expect(cleared.tabs['tab-1'].results.map((result) => result.isExpired)).toEqual([false, false])
+    expect(cleared.tabs['tab-1'].results.map((result) => result.view.residency.isExpired)).toEqual([
+      false,
+      false,
+    ])
     expect(setQueryResultsExpired({ tabs: {} }, { tabId: 'tab-1', isExpired: true })).toEqual({
       tabs: {},
     })
   })
 
   it('closes every open export dialog of a tab', () => {
-    const state = stateWith([resultWith({ exportDialogOpen: true }), resultWith()])
+    const state = stateWith([
+      resultWith({ view: { prompts: { isExportOpen: true } } }),
+      resultWith(),
+    ])
     const closed = closeQueryExportDialogs(state, 'tab-1')
-    expect(closed.tabs['tab-1'].results.some((result) => result.exportDialogOpen)).toBe(false)
+    expect(closed.tabs['tab-1'].results.some((result) => result.view.prompts.isExportOpen)).toBe(
+      false
+    )
     expect(closed.tabs['tab-1'].results[1]).toBe(state.tabs['tab-1'].results[1])
     expect(closeQueryExportDialogs(closed, 'tab-1')).toBe(closed)
   })

@@ -3,7 +3,7 @@ import { showErrorToast, showWarningToast } from '../toast-store'
 import { buildRowEditState } from '../../lib/query-edit-utils'
 import { isPresentIndex } from '../../lib/value-checks'
 import { isCopiedIntoClone } from '../../lib/new-row-values'
-import type { SingleResultState } from './query-state-types'
+import type { SingleResultState, ResultPatch } from './query-state-types'
 import { cloneSourceRowIndex, hasUnsavedModifications } from './query-tab-selectors'
 import { toDisplayedQueryCellValue } from './result-seeding'
 
@@ -20,7 +20,7 @@ export function copiedBoundColumnNames(
   const keyColumns = table.primaryKey?.keyColumns ?? []
   const copiedColumnNames = new Set<string>()
   for (const tableColumn of table.columns) {
-    const isBound = result.editBoundColumnIndexMap.has(tableColumn.name.toLowerCase())
+    const isBound = result.view.editTarget.boundIndexByName.has(tableColumn.name.toLowerCase())
     const isCopiedBoundColumn = isBound && isCopiedIntoClone(tableColumn, keyColumns)
     if (isCopiedBoundColumn) copiedColumnNames.add(tableColumn.name)
   }
@@ -33,15 +33,15 @@ interface CloneSelection {
 }
 
 export function resolveCloneSelection(result: SingleResultState): CloneSelection | null {
-  if (!result.editMode) return null
+  if (!result.view.editTarget.tableName) return null
   if (hasUnsavedModifications(result)) {
     showErrorToast('Unsaved changes', 'Save or discard the current row before cloning another row.')
     return null
   }
-  if (result.editState?.isNewRow) return null
+  if (result.view.edit.state?.isNewRow) return null
   const sourceRowIndex = cloneSourceRowIndex(result)
   if (sourceRowIndex === null) return null
-  return { editMode: result.editMode, sourceRowIndex: sourceRowIndex }
+  return { editMode: result.view.editTarget.tableName, sourceRowIndex: sourceRowIndex }
 }
 
 export function buildClonedEditState(
@@ -51,14 +51,14 @@ export function buildClonedEditState(
 ): RowEditState {
   const editState = buildRowEditState({
     row: draft.row,
-    resultColumns: result.columns,
-    editableMap: result.editableColumnMap,
+    resultColumns: result.view.slot.columns,
+    editableMap: result.view.editTarget.editableColumns,
     primaryKeyColumnNames: keyColumns,
-    columnBindings: result.editColumnBindings,
-    boundColumnIndexMap: result.editBoundColumnIndexMap,
+    columnBindings: result.view.editTarget.bindings,
+    boundColumnIndexMap: result.view.editTarget.boundIndexByName,
   })
   for (const columnName of draft.insertEligibleColumns) {
-    const boundColumnIndex = result.editBoundColumnIndexMap.get(columnName.toLowerCase())
+    const boundColumnIndex = result.view.editTarget.boundIndexByName.get(columnName.toLowerCase())
     if (!isPresentIndex(boundColumnIndex)) continue
     const value = draft.row[boundColumnIndex]
     editState.originalValues[columnName] = value
@@ -104,12 +104,17 @@ export function draftRowPatchForCell(
   result: SingleResultState,
   resultColumnIndex: number,
   value: unknown
-): Partial<SingleResultState> {
-  const draftRow = result.draftRow
+): ResultPatch {
+  const draftRow = result.view.edit.draftRow
   if (!draftRow) return {}
-  if (result.editingRowIndex !== result.viewRowCount) return {}
+  const isEditingDraftRow = result.view.edit.rowIndex === result.view.slot.viewRowCount
+  if (!isEditingDraftRow) return {}
   return {
-    draftRow: draftRow.map((cell, index) => (index === resultColumnIndex ? value : cell)),
+    view: {
+      edit: {
+        draftRow: draftRow.map((cell, index) => (index === resultColumnIndex ? value : cell)),
+      },
+    },
   }
 }
 
@@ -155,7 +160,7 @@ export function displayedCellUpdates(
 ): Record<number, unknown> {
   const displayUpdates: Record<number, unknown> = {}
   for (const columnName of editState.modifiedColumns) {
-    const columnIndex = result.editBoundColumnIndexMap.get(columnName.toLowerCase()) ?? -1
+    const columnIndex = result.view.editTarget.boundIndexByName.get(columnName.toLowerCase()) ?? -1
     if (columnIndex === -1) continue
     displayUpdates[columnIndex] = toDisplayedQueryCellValue(editState.currentValues[columnName])
   }

@@ -1,3 +1,5 @@
+import { legacyFieldsOf } from '../helpers/legacy-result-fields'
+import { patchedLegacyResult, resultState } from '../helpers/legacy-result-fields'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { ipc, expectToast, overrideIpcCommands, overrideNamedIpcCommands } from '../ipc-mock'
 import {
@@ -32,13 +34,13 @@ import type { FilterCondition, QueryTableEditInfo, TableDataColumnMeta } from '.
 function patchResult(tabId: string, resultOverrides: Record<string, unknown>) {
   useQueryStore.setState((prev) => {
     const tab = prev.tabs[tabId]!
-    const existingResult = tab.results[0] ?? { ...DEFAULT_RESULT_STATE }
+    const existingResult = tab.results[0] ?? resultState({})
     return {
       tabs: {
         ...prev.tabs,
         [tabId]: {
           ...tab,
-          results: [{ ...existingResult, ...resultOverrides }],
+          results: [patchedLegacyResult(existingResult, resultOverrides)],
           activeResultIndex: 0,
         },
       },
@@ -830,8 +832,7 @@ describe('useQueryStore — sortResults', () => {
           connectionId: 'conn-1',
           tabStatus: 'success',
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({
               resultStatus: 'success',
               columns: [{ name: 'id', dataType: 'INT' }],
               queryId: 'q-sort',
@@ -842,7 +843,7 @@ describe('useQueryStore — sortResults', () => {
               checkedRanges: [[0, 2]],
               checkedViewVersion: 1,
               ...withRows([[3], [1], [2]]),
-            },
+            }),
           ],
         },
       },
@@ -910,15 +911,14 @@ describe('useQueryStore — sortResults', () => {
           ...prev.tabs['tab-bool']!,
           connectionId: 'conn-1',
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({
               resultStatus: 'success',
               columns: BOOLEAN_ALIAS_COLUMNS,
               queryId: 'q-bool',
               totalRows: 1,
               viewVersion: 1,
               ...withRows([[1, 0, 'x']]),
-            },
+            }),
           ],
         },
       },
@@ -1665,8 +1665,8 @@ describe('useQueryStore — setResultScrollCell', () => {
       .getState()
       .setResultScrollCell(activeQuerySurfaceRef('tab-1'), { scrollRow: 10, scrollColumn: 5 })
     const result = useQueryStore.getState().tabs['tab-1']!.results[0]
-    expect(result.scrollRow).toBe(10)
-    expect(result.scrollCol).toBe(5)
+    expect(result.view.layout.scrollRow).toBe(10)
+    expect(result.view.layout.scrollCol).toBe(5)
   })
 
   it('does not create a new state reference when values are unchanged', () => {
@@ -1690,8 +1690,8 @@ describe('useQueryStore — setResultScrollCell', () => {
 
   it('defaults scroll position to zero', () => {
     const result = useQueryStore.getState().tabs['tab-1']!.results[0]
-    expect(result.scrollRow).toBe(0)
-    expect(result.scrollCol).toBe(0)
+    expect(result.view.layout.scrollRow).toBe(0)
+    expect(result.view.layout.scrollCol).toBe(0)
   })
 })
 
@@ -2323,8 +2323,7 @@ describe('full export job', () => {
         [tabId]: {
           ...makeTabState({ connectionId: CONN, tabStatus: 'success' }),
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({
               resultStatus: 'success',
               queryId: 'q-truncated',
               truncated: true,
@@ -2333,7 +2332,7 @@ describe('full export job', () => {
               viewRowCount: 5,
               exportDialogOpen,
               preferredExportScope: 'allRows',
-            },
+            }),
           ],
         },
       },
@@ -2741,21 +2740,21 @@ describe('multi-result actions', () => {
 
       const [selectResult, dmlResult, namesResult] = tab.results
       expect(selectResult.resultStatus).toBe('success')
-      expect(selectResult.columns).toEqual([{ name: 'id', dataType: 'INT' }])
+      expect(selectResult.view.slot.columns).toEqual([{ name: 'id', dataType: 'INT' }])
       expect(rowsOf('tab-1', 0)).toEqual([[1]])
-      expect(selectResult.queryId).toBe('mq1')
+      expect(selectResult.view.slot.queryId).toBe('mq1')
       expect(selectResult.lastExecutedSql).toBe('SELECT 1')
       expect(selectResult.reExecutable).toBe(true)
 
       expect(dmlResult.resultStatus).toBe('success')
-      expect(dmlResult.columns).toEqual([])
+      expect(dmlResult.view.slot.columns).toEqual([])
       expect(rowsOf('tab-1', 1)).toEqual([])
       expect(dmlResult.affectedRows).toBe(1)
 
       expect(namesResult.resultStatus).toBe('success')
-      expect(namesResult.columns).toEqual([{ name: 'name', dataType: 'VARCHAR' }])
+      expect(namesResult.view.slot.columns).toEqual([{ name: 'name', dataType: 'VARCHAR' }])
       expect(rowsOf('tab-1', 2)).toEqual([['Alice'], ['Bob']])
-      expect(namesResult.totalRows).toBe(2)
+      expect(namesResult.view.slot.totalRows).toBe(2)
     })
 
     it('sets tab status to error on IPC failure', async () => {
@@ -2838,25 +2837,26 @@ describe('multi-result actions', () => {
             cursorPosition: null,
             connectionId: 'conn-1',
             results: [
-              {
-                ...DEFAULT_RESULT_STATE,
+              resultState({
                 resultStatus: 'success',
-                queryId: 'q1',
-                columns: [{ name: 'id', dataType: 'INT' }],
                 ...withRows([[1]]),
-                totalRows: 1,
-              },
-              {
-                ...DEFAULT_RESULT_STATE,
+                view: {
+                  slot: { queryId: 'q1', columns: [{ name: 'id', dataType: 'INT' }], totalRows: 1 },
+                },
+              }),
+              resultState({
                 resultStatus: 'success',
-                queryId: 'q2',
-                columns: [{ name: 'name', dataType: 'VARCHAR' }],
                 ...withRows([['Alice']]),
-                totalRows: 1,
-              },
+                view: {
+                  slot: {
+                    queryId: 'q2',
+                    columns: [{ name: 'name', dataType: 'VARCHAR' }],
+                    totalRows: 1,
+                  },
+                },
+              }),
             ],
             activeResultIndex: 0,
-            pendingNavigationAction: null,
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,
@@ -2874,14 +2874,16 @@ describe('multi-result actions', () => {
         tabs: {
           'tab-1': {
             ...tabBefore,
-            results: tabBefore.results.map((result) => ({ ...result, checkedRanges: [[0, 1]] })),
+            results: tabBefore.results.map((result) =>
+              patchedLegacyResult(result, { checkedRanges: [[0, 1]] })
+            ),
           },
         },
       })
 
       useQueryStore.getState().setActiveResultIndex('tab-1', 1)
       expect(useQueryStore.getState().tabs['tab-1']!.activeResultIndex).toBe(1)
-      expect(useQueryStore.getState().tabs['tab-1']!.results[1].checkedRanges).toEqual([])
+      expect(useQueryStore.getState().tabs['tab-1']!.results[1].view.checked.ranges).toEqual([])
 
       useQueryStore.getState().setActiveResultIndex('tab-1', 5)
       useQueryStore.getState().setActiveResultIndex('tab-1', -1)
@@ -2936,27 +2938,28 @@ describe('multi-result actions', () => {
             cursorPosition: null,
             connectionId: 'conn-1',
             results: [
-              {
-                ...DEFAULT_RESULT_STATE,
+              resultState({
                 resultStatus: 'success',
-                queryId: 'q1',
-                columns: [{ name: 'id', dataType: 'INT' }],
                 ...withRows([[1], [2]]),
-                totalRows: 2,
-                viewMode: 'grid',
-              },
-              {
-                ...DEFAULT_RESULT_STATE,
+                view: {
+                  mode: 'grid',
+                  slot: { queryId: 'q1', columns: [{ name: 'id', dataType: 'INT' }], totalRows: 2 },
+                },
+              }),
+              resultState({
                 resultStatus: 'success',
-                queryId: 'q2',
-                columns: [{ name: 'name', dataType: 'VARCHAR' }],
                 ...withRows([['Alice']]),
-                totalRows: 1,
-                viewMode: 'grid',
-              },
+                view: {
+                  mode: 'grid',
+                  slot: {
+                    queryId: 'q2',
+                    columns: [{ name: 'name', dataType: 'VARCHAR' }],
+                    totalRows: 1,
+                  },
+                },
+              }),
             ],
             activeResultIndex: 0,
-            pendingNavigationAction: null,
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,
@@ -2970,10 +2973,10 @@ describe('multi-result actions', () => {
       useQueryStore.getState().setViewMode(activeQuerySurfaceRef('tab-1'), 'form')
 
       const tab = useQueryStore.getState().tabs['tab-1']!
-      expect(tab.results[0].selectedRowIndex).toBe(1)
-      expect(tab.results[0].viewMode).toBe('form')
-      expect(tab.results[1].selectedRowIndex).toBeNull()
-      expect(tab.results[1].viewMode).toBe('grid')
+      expect(tab.results[0].view.selection.rowIndex).toBe(1)
+      expect(tab.results[0].view.mode).toBe('form')
+      expect(tab.results[1].view.selection.rowIndex).toBeNull()
+      expect(tab.results[1].view.mode).toBe('grid')
     })
   })
 
@@ -3002,11 +3005,10 @@ describe('multi-result actions', () => {
             cursorPosition: null,
             connectionId: 'conn-1',
             results: [
-              { ...DEFAULT_RESULT_STATE, resultStatus: 'success' },
-              { ...DEFAULT_RESULT_STATE, resultStatus: 'success' },
+              resultState({ resultStatus: 'success' }),
+              resultState({ resultStatus: 'success' }),
             ],
             activeResultIndex: 0,
-            pendingNavigationAction: null,
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,
@@ -3033,21 +3035,23 @@ describe('multi-result actions', () => {
             cursorPosition: null,
             connectionId: 'conn-1',
             results: [
-              { ...DEFAULT_RESULT_STATE, resultStatus: 'success' },
-              {
-                ...DEFAULT_RESULT_STATE,
+              resultState({ resultStatus: 'success' }),
+              resultState({
                 resultStatus: 'success',
-                editState: {
-                  rowKey: { id: 1 },
-                  originalValues: { name: 'Alice' },
-                  currentValues: { name: 'Bob' },
-                  modifiedColumns: new Set(['name']),
-                  isNewRow: false,
+                view: {
+                  edit: {
+                    state: {
+                      rowKey: { id: 1 },
+                      originalValues: { name: 'Alice' },
+                      currentValues: { name: 'Bob' },
+                      modifiedColumns: new Set(['name']),
+                      isNewRow: false,
+                    },
+                  },
                 },
-              },
+              }),
             ],
             activeResultIndex: 0,
-            pendingNavigationAction: null,
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,
@@ -3084,31 +3088,32 @@ describe('multi-result actions', () => {
             cursorPosition: null,
             connectionId: 'conn-1',
             results: [
-              {
-                ...DEFAULT_RESULT_STATE,
+              resultState({
                 resultStatus: 'success',
-                queryId: 'q1',
-                columns: [{ name: 'id', dataType: 'INT' }],
                 ...withRows([[1]]),
-                totalRows: 1,
                 isAnalyzed: true,
                 lastExecutedSql: 'SELECT 1',
                 reExecutable: true,
-              },
-              {
-                ...DEFAULT_RESULT_STATE,
+                view: {
+                  slot: { queryId: 'q1', columns: [{ name: 'id', dataType: 'INT' }], totalRows: 1 },
+                },
+              }),
+              resultState({
                 resultStatus: 'success',
-                queryId: 'q2',
-                columns: [{ name: 'name', dataType: 'VARCHAR' }],
                 ...withRows([['Alice']]),
-                totalRows: 1,
                 isAnalyzed: false,
                 lastExecutedSql: 'SELECT name FROM users',
                 reExecutable: true,
-              },
+                view: {
+                  slot: {
+                    queryId: 'q2',
+                    columns: [{ name: 'name', dataType: 'VARCHAR' }],
+                    totalRows: 1,
+                  },
+                },
+              }),
             ],
             activeResultIndex: 0,
-            pendingNavigationAction: null,
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,
@@ -3146,10 +3151,9 @@ describe('multi-result actions', () => {
             const tab = prev.tabs['tab-1']
             if (!tab) return prev
             const nextResults = [...tab.results]
-            nextResults[1] = {
-              ...nextResults[1],
-              queryId: 'q2-newer',
-            }
+            nextResults[1] = patchedLegacyResult(nextResults[1], {
+              view: { slot: { queryId: 'q2-newer' } },
+            })
             return {
               tabs: {
                 ...prev.tabs,
@@ -3168,7 +3172,7 @@ describe('multi-result actions', () => {
       await Promise.resolve()
 
       expect(useQueryStore.getState().tabs['tab-1']!.activeResultIndex).toBe(1)
-      expect(useQueryStore.getState().tabs['tab-1']!.results[1]!.queryId).toBe('q2-newer')
+      expect(useQueryStore.getState().tabs['tab-1']!.results[1]!.view.slot.queryId).toBe('q2-newer')
     })
 
     it('discards clean editState when switching result', () => {
@@ -3183,14 +3187,9 @@ describe('multi-result actions', () => {
             cursorPosition: null,
             connectionId: 'conn-1',
             results: [
-              {
-                ...DEFAULT_RESULT_STATE,
+              resultState({
                 resultStatus: 'success',
-                queryId: 'q1',
-                columns: [{ name: 'id', dataType: 'INT' }],
-                ...withRows([[1]]),
-                totalRows: 1,
-                // editState with NO modified columns (clean)
+                ...withRows([[1]]), // editState with NO modified columns (clean)
                 editState: {
                   rowKey: { id: 1 },
                   originalValues: { id: 1 },
@@ -3198,19 +3197,24 @@ describe('multi-result actions', () => {
                   modifiedColumns: new Set<string>(),
                   isNewRow: false,
                 },
-                editingRowIndex: 0,
-              },
-              {
-                ...DEFAULT_RESULT_STATE,
+                view: {
+                  slot: { queryId: 'q1', columns: [{ name: 'id', dataType: 'INT' }], totalRows: 1 },
+                  edit: { rowIndex: 0 },
+                },
+              }),
+              resultState({
                 resultStatus: 'success',
-                queryId: 'q2',
-                columns: [{ name: 'name', dataType: 'VARCHAR' }],
                 ...withRows([['Alice']]),
-                totalRows: 1,
-              },
+                view: {
+                  slot: {
+                    queryId: 'q2',
+                    columns: [{ name: 'name', dataType: 'VARCHAR' }],
+                    totalRows: 1,
+                  },
+                },
+              }),
             ],
             activeResultIndex: 0,
-            pendingNavigationAction: null,
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,
@@ -3224,8 +3228,8 @@ describe('multi-result actions', () => {
       const tab = useQueryStore.getState().tabs['tab-1']!
       expect(tab.activeResultIndex).toBe(1)
       // The clean editState should have been discarded
-      expect(tab.results[0].editState).toBeNull()
-      expect(tab.results[0].editingRowIndex).toBeNull()
+      expect(tab.results[0].view.edit.state).toBeNull()
+      expect(tab.results[0].view.edit.rowIndex).toBeNull()
     })
   })
 
@@ -3252,19 +3256,17 @@ describe('multi-result actions', () => {
             cursorPosition: null,
             connectionId: 'conn-1',
             results: [
-              {
-                ...DEFAULT_RESULT_STATE,
+              resultState({
                 resultStatus: 'success',
-                queryId: 'q1',
-                columns: [{ name: 'id', dataType: 'INT' }],
                 ...withRows([[1]]),
-                totalRows: 1,
                 reExecutable: false,
                 lastExecutedSql: 'CALL proc()',
-              },
+                view: {
+                  slot: { queryId: 'q1', columns: [{ name: 'id', dataType: 'INT' }], totalRows: 1 },
+                },
+              }),
             ],
             activeResultIndex: 0,
-            pendingNavigationAction: null,
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,
@@ -3298,7 +3300,7 @@ describe('multi-result actions', () => {
 
       const tab = useQueryStore.getState().tabs['tab-1']!
       expect(tab.results).toHaveLength(1)
-      expect(tab.results[0].viewMode).toBe('form')
+      expect(tab.results[0].view.mode).toBe('form')
     })
   })
 
@@ -3319,21 +3321,25 @@ describe('multi-result actions', () => {
             cursorPosition: null,
             connectionId: 'conn-1',
             results: [
-              {
-                ...DEFAULT_RESULT_STATE,
-                resultStatus: 'success',
-                queryId: 'q1',
-                columns: [{ name: 'id', dataType: 'INT' }],
-                ...withRows([[3], [1], [2]]),
-                totalRows: 3,
-                lastExecutedSql: 'SELECT id FROM t',
-                sortColumn: 'id',
-                sortDirection: 'asc' as const,
-                ...overrides,
-              },
+              patchedLegacyResult(
+                resultState({
+                  view: {
+                    slot: {
+                      queryId: 'q1',
+                      columns: [{ name: 'id', dataType: 'INT' }],
+                      totalRows: 3,
+                    },
+                  },
+                  resultStatus: 'success',
+                  ...withRows([[3], [1], [2]]),
+                  lastExecutedSql: 'SELECT id FROM t',
+                  sortColumn: 'id',
+                  sortDirection: 'asc' as const,
+                }),
+                overrides
+              ),
             ],
             activeResultIndex: 0,
-            pendingNavigationAction: null,
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,
@@ -3358,8 +3364,8 @@ describe('multi-result actions', () => {
         .sortResults(activeQuerySurfaceRef('tab-1'), { column: 'id', direction: null })
 
       const tab = useQueryStore.getState().tabs['tab-1']!
-      expect(tab.results[0].sortColumn).toBeNull()
-      expect(tab.results[0].sortDirection).toBeNull()
+      expect(legacyFieldsOf(tab.results[0]).sortColumn).toBeNull()
+      expect(legacyFieldsOf(tab.results[0]).sortDirection).toBeNull()
       expect(rowsOf('tab-1', 0)).toEqual([[3], [1], [2]])
       expect(ipc.payloads('reexecute_single_result')).toHaveLength(0)
       expect(ipc.payloads('execute_call_query')).toHaveLength(0)
@@ -3376,8 +3382,8 @@ describe('multi-result actions', () => {
         .sortResults(activeQuerySurfaceRef('tab-1'), { column: 'id', direction: 'desc' })
 
       const result = useQueryStore.getState().tabs['tab-1']!.results[0]
-      expect(result.sortDirection).toBe('asc')
-      expect(result.viewError).toBe('Sort failed')
+      expect(legacyFieldsOf(result).sortDirection).toBe('asc')
+      expect(result.view.spec.error).toBe('Sort failed')
     })
   })
 
@@ -3398,25 +3404,26 @@ describe('multi-result actions', () => {
             cursorPosition: null,
             connectionId: 'conn-1',
             results: [
-              {
-                ...DEFAULT_RESULT_STATE,
+              resultState({
                 resultStatus: 'success',
-                queryId: 'q1',
-                columns: [{ name: 'id', dataType: 'INT' }],
                 ...withRows([[1]]),
-                totalRows: 1,
-              },
-              {
-                ...DEFAULT_RESULT_STATE,
+                view: {
+                  slot: { queryId: 'q1', columns: [{ name: 'id', dataType: 'INT' }], totalRows: 1 },
+                },
+              }),
+              resultState({
                 resultStatus: 'success',
-                queryId: 'q2',
-                columns: [{ name: 'name', dataType: 'VARCHAR' }],
                 ...withRows([['Bob'], ['Alice']]),
-                totalRows: 2,
-              },
+                view: {
+                  slot: {
+                    queryId: 'q2',
+                    columns: [{ name: 'name', dataType: 'VARCHAR' }],
+                    totalRows: 2,
+                  },
+                },
+              }),
             ],
             activeResultIndex: 1,
-            pendingNavigationAction: null,
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,
@@ -3439,7 +3446,9 @@ describe('multi-result actions', () => {
       expect(ipc.payloads('set_result_view')[0]).toMatchObject({ resultIndex: 1, queryId: 'q2' })
       expect(rowsOf('tab-1', 1)).toEqual([['Alice'], ['Bob']])
       expect(rowsOf('tab-1', 0)).toEqual([[1]])
-      expect(useQueryStore.getState().tabs['tab-1']!.results[0].sortColumn).toBeNull()
+      expect(
+        legacyFieldsOf(useQueryStore.getState().tabs['tab-1']!.results[0]).sortColumn
+      ).toBeNull()
     })
   })
 
@@ -3460,29 +3469,30 @@ describe('multi-result actions', () => {
             cursorPosition: null,
             connectionId: 'conn-1',
             results: [
-              {
-                ...DEFAULT_RESULT_STATE,
+              resultState({
                 resultStatus: 'success',
-                queryId: 'q1',
-                columns: [{ name: 'id', dataType: 'INT' }],
                 ...withRows([[1]]),
-                totalRows: 1,
                 lastExecutedSql: 'SELECT 1',
                 reExecutable: true,
-              },
-              {
-                ...DEFAULT_RESULT_STATE,
+                view: {
+                  slot: { queryId: 'q1', columns: [{ name: 'id', dataType: 'INT' }], totalRows: 1 },
+                },
+              }),
+              resultState({
                 resultStatus: 'success',
-                queryId: 'q2',
-                columns: [{ name: 'name', dataType: 'VARCHAR' }],
                 ...withRows([['Alice']]),
-                totalRows: 1,
                 lastExecutedSql: 'SELECT 2',
                 reExecutable: true,
-              },
+                view: {
+                  slot: {
+                    queryId: 'q2',
+                    columns: [{ name: 'name', dataType: 'VARCHAR' }],
+                    totalRows: 1,
+                  },
+                },
+              }),
             ],
             activeResultIndex: 0,
-            pendingNavigationAction: null,
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,
@@ -3504,11 +3514,10 @@ describe('multi-result actions', () => {
             const tab = prev.tabs['tab-1']
             if (!tab) return prev
             const newResults = [...tab.results]
-            newResults[0] = {
-              ...newResults[0],
-              queryId: 'q1-replaced-newer',
+            newResults[0] = patchedLegacyResult(newResults[0], {
               ...withRows([[777]]),
-            }
+              view: { slot: { queryId: 'q1-replaced-newer' } },
+            })
             return {
               tabs: {
                 ...prev.tabs,
@@ -3538,7 +3547,7 @@ describe('multi-result actions', () => {
       // The stale result should have been discarded
       const tab = useQueryStore.getState().tabs['tab-1']!
       expect(rowsOf('tab-1', 0)).toEqual([[777]])
-      expect(tab.results[0].queryId).toBe('q1-replaced-newer')
+      expect(tab.results[0].view.slot.queryId).toBe('q1-replaced-newer')
       expect(warnSpy).not.toHaveBeenCalled()
       warnSpy.mockRestore()
     })
@@ -3571,7 +3580,7 @@ describe('multi-result actions', () => {
       // The result should have been applied normally
       const tab = useQueryStore.getState().tabs['tab-1']!
       expect(rowsOf('tab-1', 0)).toEqual([[42]])
-      expect(tab.results[0].queryId).toBe('new-q1')
+      expect(tab.results[0].view.slot.queryId).toBe('new-q1')
       expect(tab.results[0].rowLimit).toBe(50)
     })
   })
@@ -3596,9 +3605,9 @@ describe('multi-result actions', () => {
         .executeMultiQuery('conn-1', 'tab-multi', ['SELECT 1', 'INSERT INTO t', 'SELECT name'])
 
       const results = useQueryStore.getState().tabs['tab-multi']!.results
-      expect(results[0].rowResidency.isActive).toBe(true)
-      expect(results[1].rowResidency.isActive).toBe(false)
-      expect(results[2].rowResidency.isActive).toBe(false)
+      expect(results[0].view.residency.rows.isActive).toBe(true)
+      expect(results[1].view.residency.rows.isActive).toBe(false)
+      expect(results[2].view.residency.rows.isActive).toBe(false)
     })
 
     it('keeps every result inactive when the connection is no longer visible', async () => {
@@ -3610,9 +3619,9 @@ describe('multi-result actions', () => {
         .executeMultiQuery('conn-1', 'tab-multi-bg', ['SELECT 1', 'INSERT INTO t', 'SELECT name'])
 
       const results = useQueryStore.getState().tabs['tab-multi-bg']!.results
-      expect(results.every((result) => result.rowResidency.isActive === false)).toBe(true)
-      expect(results[0].rowResidency.status).toBe('resident')
-      expect(results[0].rowResidency.inactiveSince).toBeTypeOf('number')
+      expect(results.every((result) => result.view.residency.rows.isActive === false)).toBe(true)
+      expect(results[0].view.residency.rows.status).toBe('resident')
+      expect(results[0].view.residency.rows.inactiveSince).toBeTypeOf('number')
     })
   })
 })
@@ -3660,19 +3669,21 @@ describe('expired results', () => {
             cursorPosition: null,
             connectionId: CONN_ID,
             results: [
-              {
-                ...DEFAULT_RESULT_STATE,
+              resultState({
                 resultStatus: 'success',
-                queryId: 'q-test-1',
                 lastExecutedSql: 'SELECT * FROM users',
-                columns: [{ name: 'id', dataType: 'INT' }],
                 ...withRows([[1]]),
-                totalRows: 1,
-              },
+                view: {
+                  slot: {
+                    queryId: 'q-test-1',
+                    columns: [{ name: 'id', dataType: 'INT' }],
+                    totalRows: 1,
+                  },
+                },
+              }),
             ],
             activeResultIndex: 0,
             activeBottomPanelItem: { type: 'result' },
-            pendingNavigationAction: null,
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,
@@ -3696,28 +3707,33 @@ describe('expired results', () => {
             cursorPosition: { lineNumber: 1, column: 10 },
             connectionId: CONN_ID,
             results: [
-              {
-                ...DEFAULT_RESULT_STATE,
+              resultState({
                 resultStatus: 'success',
-                queryId: 'q-test-1',
                 lastExecutedSql: 'SELECT * FROM users',
-                columns: [{ name: 'id', dataType: 'INT' }],
                 ...withRows([[1]]),
-                totalRows: 1,
-              },
-              {
-                ...DEFAULT_RESULT_STATE,
+                view: {
+                  slot: {
+                    queryId: 'q-test-1',
+                    columns: [{ name: 'id', dataType: 'INT' }],
+                    totalRows: 1,
+                  },
+                },
+              }),
+              resultState({
                 resultStatus: 'success',
-                queryId: 'q-test-2',
                 lastExecutedSql: 'SELECT * FROM orders',
-                columns: [{ name: 'id', dataType: 'INT' }],
                 ...withRows([[2]]),
-                totalRows: 1,
-              },
+                view: {
+                  slot: {
+                    queryId: 'q-test-2',
+                    columns: [{ name: 'id', dataType: 'INT' }],
+                    totalRows: 1,
+                  },
+                },
+              }),
             ],
             activeResultIndex: 0,
             activeBottomPanelItem: { type: 'result' },
-            pendingNavigationAction: null,
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,
@@ -3771,7 +3787,7 @@ describe('expired results', () => {
 
       await waitFor(() => {
         const tab = useQueryStore.getState().tabs[TAB_ID]
-        expect(tab?.results.every((result) => result.isExpired)).toBe(true)
+        expect(tab?.results.every((result) => result.view.residency.isExpired)).toBe(true)
       })
     })
 
@@ -3790,10 +3806,10 @@ describe('expired results', () => {
       // Only the page cache is dropped; counts and view metadata stay.
       expect(rowsOf(TAB_ID)).toEqual([])
       expect(hasNoLoadedRows(TAB_ID, 0)).toBe(true)
-      expect(result?.viewRowCount).toBe(1)
-      expect(result?.rowResidency.status).toBe('evicted')
-      expect(result?.rowsEvictedAt).toBeTypeOf('number')
-      expect(result?.isExpired).toBe(false)
+      expect(result?.view.slot.viewRowCount).toBe(1)
+      expect(result?.view.residency.rows.status).toBe('evicted')
+      expect(result?.view.residency.evictedAt).toBeTypeOf('number')
+      expect(result?.view.residency.isExpired).toBe(false)
     })
 
     it('evicts a filtered result like any other, keeping its view spec', async () => {
@@ -3803,10 +3819,7 @@ describe('expired results', () => {
         useQueryStore.setState((state) => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
-          const result = {
-            ...tab.results[0],
-            filterModel: FILTER_EQ_ID_2,
-          }
+          const result = patchedLegacyResult(tab.results[0], { filterModel: FILTER_EQ_ID_2 })
           return {
             tabs: {
               ...state.tabs,
@@ -3828,10 +3841,10 @@ describe('expired results', () => {
       })
 
       const result = useQueryStore.getState().tabs[TAB_ID]?.results[0]
-      expect(result?.rowResidency.status).toBe('evicted')
-      expect(result?.filterModel).toEqual(FILTER_EQ_ID_2)
+      expect(result?.view.residency.rows.status).toBe('evicted')
+      expect(result?.view.spec.filters).toEqual(FILTER_EQ_ID_2)
       expect(hasNoLoadedRows(TAB_ID, 0)).toBe(true)
-      expect(result?.rowsEvictedAt).toBeTypeOf('number')
+      expect(result?.view.residency.evictedAt).toBeTypeOf('number')
     })
 
     it('restores an evicted result by refetching its visible window (no re-run, view kept)', async () => {
@@ -3841,8 +3854,7 @@ describe('expired results', () => {
         useQueryStore.setState((state) => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
-          const result = {
-            ...tab.results[0],
+          const result = patchedLegacyResult(tab.results[0], {
             rowsEvictedAt: 1234,
             filterModel: FILTER_EQ_ID_2,
             viewVersion: 3,
@@ -3851,7 +3863,7 @@ describe('expired results', () => {
               isActive: false,
               inactiveSince: Date.now(),
             },
-          }
+          })
           return {
             tabs: {
               ...state.tabs,
@@ -3879,11 +3891,11 @@ describe('expired results', () => {
       })
 
       const result = useQueryStore.getState().tabs[TAB_ID]?.results[0]
-      expect(result?.rowResidency.status).toBe('resident')
-      expect(result?.rowResidency.isActive).toBe(true)
-      expect(result?.rowsEvictedAt).toBeNull()
+      expect(result?.view.residency.rows.status).toBe('resident')
+      expect(result?.view.residency.rows.isActive).toBe(true)
+      expect(result?.view.residency.evictedAt).toBeNull()
       expect(rowsOf(TAB_ID)).toEqual([[2]])
-      expect(result?.filterModel).toEqual(FILTER_EQ_ID_2)
+      expect(result?.view.spec.filters).toEqual(FILTER_EQ_ID_2)
       expect(ipc.payloads('touch_results')).toHaveLength(1)
       expect(ipc.payloads('fetch_result_window')[0]).toMatchObject({
         connectionId: CONN_ID,
@@ -3906,14 +3918,17 @@ describe('expired results', () => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
           const results = [...tab.results]
-          results[1] = {
-            ...results[1],
-            rowResidency: {
-              status: 'evicted',
-              isActive: false,
-              inactiveSince: 123,
+          results[1] = patchedLegacyResult(results[1], {
+            view: {
+              residency: {
+                rows: {
+                  status: 'evicted',
+                  isActive: false,
+                  inactiveSince: 123,
+                },
+              },
             },
-          }
+          })
           return {
             tabs: {
               ...state.tabs,
@@ -3954,7 +3969,7 @@ describe('expired results', () => {
 
       const result = useQueryStore.getState().tabs[TAB_ID]?.results[1]
       expect(rowsOf(TAB_ID, 1)).toEqual([[22]])
-      expect(result?.rowResidency).toEqual({
+      expect(result?.view.residency.rows).toEqual({
         status: 'resident',
         isActive: false,
         inactiveSince: expect.any(Number),
@@ -3969,14 +3984,17 @@ describe('expired results', () => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
           const results = [...tab.results]
-          results[1] = {
-            ...results[1],
-            rowResidency: {
-              status: 'evicted',
-              isActive: false,
-              inactiveSince: 123,
+          results[1] = patchedLegacyResult(results[1], {
+            view: {
+              residency: {
+                rows: {
+                  status: 'evicted',
+                  isActive: false,
+                  inactiveSince: 123,
+                },
+              },
             },
-          }
+          })
           return {
             tabs: {
               ...state.tabs,
@@ -4006,7 +4024,7 @@ describe('expired results', () => {
       })
 
       const activeResult = useQueryStore.getState().tabs[TAB_ID]?.results[0]
-      expect(activeResult?.rowResidency.status).toBe('resident')
+      expect(activeResult?.view.residency.rows.status).toBe('resident')
       expect(useQueryStore.getState().tabs[TAB_ID]?.tabStatus).toBe('restoring')
 
       if (!deferred.resolve) {
@@ -4029,14 +4047,13 @@ describe('expired results', () => {
         useQueryStore.setState((state) => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
-          const result = {
-            ...tab.results[0],
+          const result = patchedLegacyResult(tab.results[0], {
             rowResidency: {
               status: 'evicted' as const,
               isActive: false,
               inactiveSince: Date.now(),
             },
-          }
+          })
           return {
             tabs: {
               ...state.tabs,
@@ -4056,8 +4073,8 @@ describe('expired results', () => {
       })
 
       const result = useQueryStore.getState().tabs[TAB_ID]?.results[0]
-      expect(result?.isExpired).toBe(true)
-      expect(result?.rowResidency.status).toBe('evicted')
+      expect(result?.view.residency.isExpired).toBe(true)
+      expect(result?.view.residency.rows.status).toBe('evicted')
       expect(ipc.payloads('fetch_result_window')).toHaveLength(0)
     })
 
@@ -4074,14 +4091,13 @@ describe('expired results', () => {
               [TAB_ID]: {
                 ...tab,
                 results: [
-                  {
-                    ...tab.results[0],
+                  patchedLegacyResult(tab.results[0], {
                     rowResidency: {
                       status: 'evicted',
                       isActive: false,
                       inactiveSince: 999,
                     },
-                  },
+                  }),
                 ],
               },
             },
@@ -4099,7 +4115,7 @@ describe('expired results', () => {
       })
 
       const result = useQueryStore.getState().tabs[TAB_ID]?.results[0]
-      expect(result?.rowResidency).toEqual({
+      expect(result?.view.residency.rows).toEqual({
         status: 'evicted',
         isActive: true,
         inactiveSince: null,
@@ -4113,8 +4129,7 @@ describe('expired results', () => {
         useQueryStore.setState((state) => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
-          const result = {
-            ...tab.results[0],
+          const result = patchedLegacyResult(tab.results[0], {
             editState: {
               rowKey: { id: 1 },
               originalValues: { id: 1 },
@@ -4123,7 +4138,7 @@ describe('expired results', () => {
               isNewRow: false,
               insertEligibleColumns: new Set<string>(),
             },
-          }
+          })
           return {
             tabs: {
               ...state.tabs,
@@ -4146,7 +4161,7 @@ describe('expired results', () => {
 
       const result = useQueryStore.getState().tabs[TAB_ID]?.results[0]
       expect(rowsOf(TAB_ID)).toEqual([[1]])
-      expect(result?.rowResidency.status).toBe('resident')
+      expect(result?.view.residency.rows.status).toBe('resident')
     })
 
     it('restores the newly active evicted result in a multi-result tab', async () => {
@@ -4157,14 +4172,17 @@ describe('expired results', () => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
           const results = [...tab.results]
-          results[1] = {
-            ...results[1],
-            rowResidency: {
-              status: 'evicted',
-              isActive: false,
-              inactiveSince: Date.now(),
+          results[1] = patchedLegacyResult(results[1], {
+            view: {
+              residency: {
+                rows: {
+                  status: 'evicted',
+                  isActive: false,
+                  inactiveSince: Date.now(),
+                },
+              },
             },
-          }
+          })
           return {
             tabs: {
               ...state.tabs,
@@ -4187,15 +4205,15 @@ describe('expired results', () => {
         useQueryStore.getState().setActiveResultIndex(TAB_ID, 1)
         await waitFor(() => {
           const result = useQueryStore.getState().tabs[TAB_ID]?.results[1]
-          expect(result?.rowResidency.status).toBe('resident')
+          expect(result?.view.residency.rows.status).toBe('resident')
         })
       })
 
       const tab = useQueryStore.getState().tabs[TAB_ID]
       expect(tab?.activeResultIndex).toBe(1)
       expect(rowsOf(TAB_ID, 1)).toEqual([[22]])
-      expect(tab?.results[0]?.rowResidency.isActive).toBe(false)
-      expect(tab?.results[1]?.rowResidency.isActive).toBe(true)
+      expect(tab?.results[0]?.view.residency.rows.isActive).toBe(false)
+      expect(tab?.results[1]?.view.residency.rows.isActive).toBe(true)
     })
 
     it('retryExpiredResult uses the shared editor execution plan from selected text', async () => {
@@ -4206,11 +4224,10 @@ describe('expired results', () => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
           const results = [...tab.results]
-          results[0] = {
-            ...results[0],
-            isExpired: true,
+          results[0] = patchedLegacyResult(results[0], {
             lastExecutedSql: 'SELECT * FROM users',
-          }
+            view: { residency: { isExpired: true } },
+          })
           return {
             tabs: {
               ...state.tabs,
@@ -4248,7 +4265,7 @@ describe('expired results', () => {
       expect(ipc.payloads('execute_query')[0]).toMatchObject({
         sql: 'SELECT * FROM orders WHERE id = 9',
       })
-      expect(tab?.results[0]?.isExpired).toBe(false)
+      expect(tab?.results[0]?.view.residency.isExpired).toBe(false)
     })
 
     it('retryExpiredResult keeps isExpired when no valid rerun plan is available', async () => {
@@ -4259,7 +4276,10 @@ describe('expired results', () => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
           const results = [...tab.results]
-          results[0] = { ...results[0], isExpired: true, lastExecutedSql: null }
+          results[0] = patchedLegacyResult(results[0], {
+            lastExecutedSql: null,
+            view: { residency: { isExpired: true } },
+          })
           return {
             tabs: {
               ...state.tabs,
@@ -4274,7 +4294,7 @@ describe('expired results', () => {
       })
 
       expect(ipc.payloads('execute_query')).toHaveLength(0)
-      expect(useQueryStore.getState().tabs[TAB_ID]?.results[0]?.isExpired).toBe(true)
+      expect(useQueryStore.getState().tabs[TAB_ID]?.results[0]?.view.residency.isExpired).toBe(true)
     })
 
     it('retryExpiredResult keeps isExpired when rerun fails', async () => {
@@ -4285,7 +4305,7 @@ describe('expired results', () => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
           const results = [...tab.results]
-          results[0] = { ...results[0], isExpired: true }
+          results[0] = patchedLegacyResult(results[0], { view: { residency: { isExpired: true } } })
           return { tabs: { ...state.tabs, [TAB_ID]: { ...tab, results } } }
         })
       })
@@ -4299,7 +4319,7 @@ describe('expired results', () => {
       })
 
       const tab = useQueryStore.getState().tabs[TAB_ID]
-      expect(tab?.results.every((item) => item.isExpired)).toBe(true)
+      expect(tab?.results.every((item) => item.view.residency.isExpired)).toBe(true)
       expect(tab?.results[0]?.resultStatus).toBe('error')
     })
 
@@ -4325,7 +4345,7 @@ describe('expired results', () => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
           const results = [...tab.results]
-          results[0] = { ...results[0], isExpired: true }
+          results[0] = patchedLegacyResult(results[0], { view: { residency: { isExpired: true } } })
           return { tabs: { ...state.tabs, [TAB_ID]: { ...tab, results } } }
         })
       })
@@ -4361,7 +4381,9 @@ describe('expired results', () => {
         sql: 'SELECT * FROM users',
         resultIndex: 0,
       })
-      expect(useQueryStore.getState().tabs[TAB_ID]?.results[0]?.isExpired).toBe(false)
+      expect(useQueryStore.getState().tabs[TAB_ID]?.results[0]?.view.residency.isExpired).toBe(
+        false
+      )
     })
 
     it('sortResults sets isExpired when error contains results_expired', async () => {
@@ -4378,8 +4400,8 @@ describe('expired results', () => {
       })
 
       const tab = useQueryStore.getState().tabs[TAB_ID]
-      expect(tab?.results.every((result) => result.isExpired)).toBe(true)
-      expect(tab?.results.some((result) => result.isSorting)).toBe(false)
+      expect(tab?.results.every((result) => result.view.residency.isExpired)).toBe(true)
+      expect(tab?.results.some((result) => legacyFieldsOf(result).isSorting)).toBe(false)
     })
 
     it('changeRowLimit sets all tab results expired when re-execution returns results_expired', async () => {
@@ -4394,7 +4416,9 @@ describe('expired results', () => {
       })
 
       expect(
-        useQueryStore.getState().tabs[TAB_ID]?.results.every((result) => result.isExpired)
+        useQueryStore
+          .getState()
+          .tabs[TAB_ID]?.results.every((result) => result.view.residency.isExpired)
       ).toBe(true)
     })
 
@@ -4405,8 +4429,7 @@ describe('expired results', () => {
         useQueryStore.setState((state) => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
-          const result = {
-            ...tab.results[0],
+          const result = patchedLegacyResult(tab.results[0], {
             editMode: 'db.users',
             editConnectionId: CONN_ID,
             editingRowIndex: 0,
@@ -4424,7 +4447,7 @@ describe('expired results', () => {
             editTableMetadata: {
               'db.users': TEST_EDIT_TABLE_INFO,
             },
-          }
+          })
           return {
             tabs: {
               ...state.tabs,
@@ -4445,7 +4468,9 @@ describe('expired results', () => {
       })
 
       expect(
-        useQueryStore.getState().tabs[TAB_ID]?.results.every((result) => result.isExpired)
+        useQueryStore
+          .getState()
+          .tabs[TAB_ID]?.results.every((result) => result.view.residency.isExpired)
       ).toBe(true)
     })
 
@@ -4458,7 +4483,7 @@ describe('expired results', () => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
           const results = [...tab.results]
-          results[0] = { ...results[0], isExpired: true }
+          results[0] = patchedLegacyResult(results[0], { view: { residency: { isExpired: true } } })
           return { tabs: { ...state.tabs, [TAB_ID]: { ...tab, results } } }
         })
       })
@@ -4480,7 +4505,7 @@ describe('expired results', () => {
 
       const tab = useQueryStore.getState().tabs[TAB_ID]
       // executeQuery creates a new result with DEFAULT_RESULT_STATE which has isExpired: false
-      expect(tab?.results[0]?.isExpired).toBe(false)
+      expect(tab?.results[0]?.view.residency.isExpired).toBe(false)
     })
 
     it('validateActiveTabResults leaves tab available when touch_results returns available', async () => {
@@ -4495,7 +4520,9 @@ describe('expired results', () => {
               ...state.tabs,
               [TAB_ID]: {
                 ...tab,
-                results: tab.results.map((result) => ({ ...result, isExpired: true })),
+                results: tab.results.map((result) =>
+                  patchedLegacyResult(result, { isExpired: true })
+                ),
               },
             },
           }
@@ -4510,7 +4537,9 @@ describe('expired results', () => {
 
       await waitFor(() => {
         expect(
-          useQueryStore.getState().tabs[TAB_ID]?.results.every((result) => result.isExpired)
+          useQueryStore
+            .getState()
+            .tabs[TAB_ID]?.results.every((result) => result.view.residency.isExpired)
         ).toBe(true)
       })
     })
@@ -4537,9 +4566,9 @@ describe('expired results', () => {
       })
 
       const completed = useQueryStore.getState().tabs[TAB_ID]?.results[0]
-      expect(completed?.rowResidency.status).toBe('resident')
-      expect(completed?.rowResidency.isActive).toBe(false)
-      expect(completed?.rowResidency.inactiveSince).toBeTypeOf('number')
+      expect(completed?.view.residency.rows.status).toBe('resident')
+      expect(completed?.view.residency.rows.isActive).toBe(false)
+      expect(completed?.view.residency.rows.inactiveSince).toBeTypeOf('number')
       expect(rowsOf(TAB_ID)).toEqual([[1]])
 
       // The background completion is on the normal inactive TTL lifecycle.
@@ -4549,7 +4578,7 @@ describe('expired results', () => {
 
       const evicted = useQueryStore.getState().tabs[TAB_ID]?.results[0]
       expect(rowsOf(TAB_ID)).toEqual([])
-      expect(evicted?.rowResidency.status).toBe('evicted')
+      expect(evicted?.view.residency.rows.status).toBe('evicted')
     })
   })
 })

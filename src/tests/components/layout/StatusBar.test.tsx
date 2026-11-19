@@ -1,3 +1,4 @@
+import { patchedLegacyResult } from '../../helpers/legacy-result-fields'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import { StatusBar } from '../../../components/layout/StatusBar'
@@ -637,10 +638,9 @@ describe('StatusBar', () => {
             'tab-1': {
               ...state.tabs['tab-1']!,
               results: [
-                {
-                  ...result,
-                  rowActionProgress: { ...result.rowActionProgress!, done: 4000, visible: true },
-                },
+                patchedLegacyResult(result, {
+                  rowActionProgress: { ...result.view.rowAction!, done: 4000, visible: true },
+                }),
               ],
             },
           },

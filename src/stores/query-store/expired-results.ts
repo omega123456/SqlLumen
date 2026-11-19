@@ -40,8 +40,8 @@ async function retryExpiredResultOfMultiResultTab(retry: ExpiredResultRetry) {
       resultIndex: activeResultIndex,
       sql: plan.payload,
       rowLimit: result.rowLimit,
-      capturedQueryId: result.queryId,
-      extraPatch: { isExpired: false, errorMessage: null },
+      capturedQueryId: result.view.slot.queryId,
+      extraPatch: { errorMessage: null, view: { residency: { isExpired: false } } },
     })
     if (!getQueryState().tabs[tabId]) return
     patchTab(tabId, { tabStatus: 'success' })
@@ -94,7 +94,7 @@ export function markResultsExpired(tabId: string) {
 }
 
 export function markResultExpired(tabId: string, resultIndex: number) {
-  patchResultByIndex(tabId, resultIndex, { isExpired: true })
+  patchResultByIndex(tabId, resultIndex, { view: { residency: { isExpired: true } } })
 }
 
 export function validateActiveTabResults(tabId: string) {
@@ -102,7 +102,7 @@ export function validateActiveTabResults(tabId: string) {
   if (!tab) return
   const resultIndex = getActiveIndex(tabId)
   const result = tab.results[resultIndex]
-  if (!result?.queryId) return
+  if (!result?.view.slot.queryId) return
 
   const connectionId = tab.connectionId
   if (!connectionId) return
@@ -139,7 +139,7 @@ export async function retryExpiredResult(tabId: string) {
   if (!connectionId) return
 
   const result = getActiveResult(tab)
-  if (!result.isExpired) return
+  if (!result.view.residency.isExpired) return
   if (!result.reExecutable) return
 
   const plan = buildExecuteQueryPlan(tab.content, tab.selectedText ?? '', tab.cursorPosition)

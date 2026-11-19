@@ -9,7 +9,7 @@ import { logFrontend, logFrontendError } from '../../lib/app-log-commands'
 import { describeQueryFailure, toErrorMessage } from '../../lib/error-message'
 import { launchBackgroundAnalysis } from './edit-analysis'
 import { DEFAULT_RESULT_STATE, EDIT_STATE_DEFAULTS } from './query-state-defaults'
-import type { SingleResultState } from './query-state-types'
+import type { SingleResultState, ResultPatch } from './query-state-types'
 import {
   beginExecution,
   clearExpiredFlags,
@@ -22,7 +22,8 @@ import {
   getQueryState,
 } from './query-store-access'
 import { residentRowResidency } from './query-tab-selectors'
-import { freshResultFields, seedResultFromResponse } from './result-seeding'
+import { freshResultFields, residentRows, seedResultFromResponse } from './result-seeding'
+import { mergeResultPatches, patchedResult } from './query-tab-reducers'
 import { rerunViewSpec } from './result-view-spec'
 import type { ResultTarget } from './result-view-spec'
 
@@ -30,7 +31,7 @@ interface ResultRerun extends ResultTarget {
   sql: string
   rowLimit: number
   capturedQueryId: string | null
-  extraPatch: Partial<SingleResultState>
+  extraPatch: ResultPatch
 }
 
 export async function reexecuteAndPatchResult({
@@ -55,7 +56,8 @@ export async function reexecuteAndPatchResult({
   if (!getQueryState().tabs[tabId]) return
 
   const postResult = resultAt(tabId, resultIndex)
-  const isReplacedResult = Boolean(capturedQueryId) && postResult?.queryId !== capturedQueryId
+  const isReplacedResult =
+    Boolean(capturedQueryId) && postResult?.view.slot.queryId !== capturedQueryId
   if (isReplacedResult) {
     logFrontend(
       'warn',
@@ -68,15 +70,20 @@ export async function reexecuteAndPatchResult({
     { connectionId: connectionId, tabId: tabId, resultIndex: resultIndex },
     reResult
   )
-  patchResultByIndex(tabId, resultIndex, {
-    ...freshResultFields(reResult, spec),
+  const rerunPatch = mergeResultPatches(freshResultFields({ response: reResult, spec: spec }), {
     resultStatus: 'success',
     errorMessage: reResult.error ?? null,
-    isExpired: false,
-    rowsEvictedAt: null,
-    rowResidency: residentRowResidency(postResult),
-    ...extraPatch,
   })
+  const residencyPatch: ResultPatch = {
+    view: {
+      residency: { isExpired: false, evictedAt: null, rows: residentRowResidency(postResult) },
+    },
+  }
+  patchResultByIndex(
+    tabId,
+    resultIndex,
+    mergeResultPatches(mergeResultPatches(rerunPatch, extraPatch), residencyPatch)
+  )
 
   launchBackgroundAnalysis({
     tabId: tabId,
@@ -100,9 +107,9 @@ interface RowLimitRerun {
 }
 
 function isRerunResultReplaced(rerun: RowLimitRerun): boolean {
-  const capturedQueryId = rerun.result.queryId
+  const capturedQueryId = rerun.result.view.slot.queryId
   const postResult = resultAt(rerun.tabId, rerun.resultIndex)
-  return Boolean(capturedQueryId) && postResult?.queryId !== capturedQueryId
+  return Boolean(capturedQueryId) && postResult?.view.slot.queryId !== capturedQueryId
 }
 
 function handleMultiResultRerunFailure(rerun: RowLimitRerun, error: unknown) {
@@ -131,7 +138,7 @@ async function rerunMultiResultWithRowLimit(rerun: RowLimitRerun) {
       resultIndex: rerun.resultIndex,
       sql: rerun.sql,
       rowLimit: rerun.rowLimit,
-      capturedQueryId: rerun.result.queryId,
+      capturedQueryId: rerun.result.view.slot.queryId,
       extraPatch: { rowLimit: rerun.rowLimit },
     })
   } catch (error) {
@@ -146,20 +153,21 @@ function applySingleResultRerun(
 ) {
   const { connectionId, tabId, sql } = rerun
   seedResultFromResponse({ connectionId: connectionId, tabId: tabId, resultIndex: 0 }, response)
-  const updatedResult: SingleResultState = {
-    ...DEFAULT_RESULT_STATE,
-    ...freshResultFields(response, spec),
+  const fresh = freshResultFields({
+    response: response,
+    spec: spec,
+    view: {
+      slot: { connectionId: connectionId },
+      residency: { rows: residentRows(true), evictedAt: null },
+    },
+  })
+  const updatedResult = patchedResult(DEFAULT_RESULT_STATE, {
+    ...fresh,
     resultStatus: 'success',
     rowLimit: rerun.rowLimit,
     lastExecutedSql: sql,
     reExecutable: true,
-    rowResidency: {
-      status: 'resident',
-      isActive: true,
-      inactiveSince: null,
-    },
-    rowsEvictedAt: null,
-  }
+  })
   patchTab(tabId, {
     tabStatus: 'success',
     results: [updatedResult],

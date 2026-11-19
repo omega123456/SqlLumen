@@ -17,7 +17,7 @@ import { toErrorMessage } from '../../../lib/error-message'
 import type { ColumnMeta } from '../../../types/schema'
 import { copiedRowsToast, type ActiveResult } from './result-toolbar-model'
 
-type CheckedRanges = ActiveResult['checkedRanges']
+type CheckedRanges = ActiveResult['view']['checked']['ranges']
 
 interface CheckedRowsRead {
   tabId: string

@@ -22,8 +22,8 @@ function useResultNavigationHandlers(surfaceRef: DataViewSurfaceRef, result: Sin
   const requestNavigationAction = useQueryStore((state) => state.requestNavigationAction)
   const sortResults = useQueryStore((state) => state.sortResults)
   const setSelectedRow = useQueryStore((state) => state.setSelectedRow)
-  const { selectedRowIndex } = result
-  const formRowCount = result.viewRowCount + (result.draftRow ? 1 : 0)
+  const selectedRowIndex = result.view.selection.rowIndex
+  const formRowCount = result.view.slot.viewRowCount + (result.view.edit.draftRow ? 1 : 0)
 
   const handleSortChanged = useCallback(
     (column: string, direction: 'asc' | 'desc' | null) => {
@@ -108,7 +108,7 @@ function useResultRowSaveHandlers(surfaceRef: DataViewSurfaceRef) {
     await saveCurrentRow(surfaceRef)
     const tab = useQueryStore.getState().tabs[surfaceRef.tabId]
     const result = tab?.results[surfaceRef.resultIndex]
-    return !result?.saveError
+    return !result?.view.edit.saveError
   }, [saveCurrentRow, surfaceRef])
 
   const handleFormDiscard = useCallback(() => {

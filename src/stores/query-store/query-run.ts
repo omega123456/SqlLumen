@@ -27,8 +27,13 @@ import {
   getQueryState,
 } from './query-store-access'
 import { isExecutionLocked, isQueryTabVisibleInWorkspace } from './query-tab-selectors'
-import { buildSingleResultFromItem, seedResultFromResponse } from './result-seeding'
-import { viewFieldsForColumns, windowMetaFromResponse } from './result-view-spec'
+import {
+  buildSingleResultFromItem,
+  freshResultFields,
+  residentRows,
+  seedResultFromResponse,
+} from './result-seeding'
+import { patchedResult } from './query-tab-reducers'
 
 interface MultiResultExecution {
   connectionId: string
@@ -74,30 +79,21 @@ function buildExecutedSingleResult(
   completion: SingleQueryCompletion,
   isVisibleOnCompletion: boolean
 ): SingleResultState {
-  const { response, sql, viewSpec } = completion
-  return {
-    ...DEFAULT_RESULT_STATE,
-    ...windowMetaFromResponse(response).fields,
-    ...viewFieldsForColumns(viewSpec, response.columns),
+  const { connectionId, response, sql, viewSpec } = completion
+  const fresh = freshResultFields({
+    response: response,
+    spec: viewSpec,
+    view: { residency: { rows: residentRows(isVisibleOnCompletion), evictedAt: null } },
+  })
+  const executed = patchedResult(DEFAULT_RESULT_STATE, {
+    ...fresh,
     resultStatus: 'success',
-    columns: response.columns,
-    totalRows: response.totalRows,
-    executionTimeMs: response.executionTimeMs,
-    totalTimeMs: response.totalTimeMs,
-    affectedRows: response.affectedRows,
-    queryId: response.queryId,
     rowLimit: getDefaultRowLimit(),
-    autoLimitApplied: response.autoLimitApplied,
     lastExecutedSql: sql,
     reExecutable: true,
     isAnalyzed: false,
-    rowResidency: {
-      status: 'resident',
-      isActive: isVisibleOnCompletion,
-      inactiveSince: isVisibleOnCompletion ? null : Date.now(),
-    },
-    rowsEvictedAt: null,
-  }
+  })
+  return patchedResult(executed, { view: { slot: { connectionId: connectionId } } })
 }
 
 function applySingleQuerySuccess(completion: SingleQueryCompletion) {
@@ -149,9 +145,9 @@ function launchFirstResultAnalysis(run: MultiResultRun, results: SingleResultSta
     tabId: run.tabId,
     connectionId: run.connectionId,
     sql: firstResult.lastExecutedSql,
-    queryId: firstResult.queryId,
+    queryId: firstResult.view.slot.queryId,
     resultIndex: 0,
-    hasColumns: firstResult.columns.length > 0,
+    hasColumns: firstResult.view.slot.columns.length > 0,
     onFailure: (error) =>
       logFrontendError('[query-edit] analyze_query_for_edit failed (multi):', error),
   })
@@ -162,7 +158,12 @@ function applyMultiResultSuccess(run: MultiResultRun, items: MultiQueryResultIte
   cancelAllResultLifecycleTimers(tabId, run.previousResultCount)
   const isVisibleOnCompletion = isQueryTabVisibleInWorkspace(tabId)
   const results = items.map((item, index) =>
-    buildSingleResultFromItem(item, getDefaultRowLimit(), index === 0 && isVisibleOnCompletion)
+    buildSingleResultFromItem({
+      item: item,
+      connectionId: connectionId,
+      defaultRowLimit: getDefaultRowLimit(),
+      isActive: index === 0 && isVisibleOnCompletion,
+    })
   )
   items.forEach((item, index) =>
     seedResultFromResponse({ connectionId: connectionId, tabId: tabId, resultIndex: index }, item)

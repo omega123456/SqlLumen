@@ -23,7 +23,9 @@ export interface ResultFilter {
 export function useResultFilter({ surfaceRef, result }: ResultFilterInputs): ResultFilter {
   const applyQueryFilters = useQueryStore((state) => state.applyQueryFilters)
   const showSuccess = useToastStore((state) => state.showSuccess)
-  const { columns, filterModel, selectedCell } = result
+  const { columns } = result.view.slot
+  const filterModel = result.view.spec.filters
+  const selectedCell = result.view.selection.cell
   const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false)
   const filterColumns = useMemo(() => columns.map((column) => column.name), [columns])
 

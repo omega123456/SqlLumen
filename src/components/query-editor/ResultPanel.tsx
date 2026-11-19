@@ -37,7 +37,7 @@ export function ResultPanel({
 
   const displayStatus = resolveDisplayStatus({
     tabStatus: tabStatus,
-    rowResidencyStatus: activeResult.rowResidency.status,
+    rowResidencyStatus: activeResult.view.residency.rows.status,
     resultStatus: activeResult.resultStatus,
   })
   const showsSubTabs = hasVisibleSubTabs(hideSubTabs, results.length)
@@ -64,7 +64,7 @@ export function ResultPanel({
       aria-busy={displayStatus === 'restoring'}
     >
       <div role="status" aria-live="polite" aria-atomic="true" data-testid="expired-status">
-        {shouldShowExpiredState(activeResult.isExpired, displayStatus) && (
+        {shouldShowExpiredState(activeResult.view.residency.isExpired, displayStatus) && (
           <ExpiredResultState
             isRestoring={displayStatus === 'restoring'}
             onRetry={handleRetryExpired}
@@ -72,7 +72,9 @@ export function ResultPanel({
         )}
       </div>
 
-      {!activeResult.isExpired && <ResultStatusView showsSubTabs={showsSubTabs} body={body} />}
+      {!activeResult.view.residency.isExpired && (
+        <ResultStatusView showsSubTabs={showsSubTabs} body={body} />
+      )}
 
       <ResultPanelDialogs
         surfaceRef={controllers.surfaceRef}

@@ -2,20 +2,20 @@ import { hasPendingRowChanges } from '../../lib/row-edit-state'
 import type { SingleResultState } from '../query-store'
 
 function isDirtyResult(result: SingleResultState): boolean {
-  return hasPendingRowChanges(result.editState)
+  return hasPendingRowChanges(result.view.edit.state)
 }
 
 function isEvictableResult(result: SingleResultState): boolean {
-  const isResident = result.rowResidency.status === 'resident'
+  const isResident = result.view.residency.rows.status === 'resident'
   if (!isResident) return false
-  if (result.isExpired) return false
+  if (result.view.residency.isExpired) return false
   return !isDirtyResult(result)
 }
 
 export function shouldScheduleResultEviction(result: SingleResultState): boolean {
-  return isEvictableResult(result) && result.viewRowCount !== 0
+  return isEvictableResult(result) && result.view.slot.viewRowCount !== 0
 }
 
 export function canEvictInactiveResult(result: SingleResultState): boolean {
-  return !result.rowResidency.isActive && isEvictableResult(result)
+  return !result.view.residency.rows.isActive && isEvictableResult(result)
 }

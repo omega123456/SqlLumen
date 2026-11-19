@@ -162,15 +162,12 @@ function handleExportStartFailure(tabId: string, message: string, isStillThisJob
 }
 
 export function openExportDialog(ref: DataViewSurfaceRef, scope: ExportRowScope = 'currentView') {
-  patchSurface(ref, {
-    exportDialogOpen: true,
-    preferredExportScope: scope,
-  })
+  patchSurface(ref, { view: { prompts: { isExportOpen: true, exportScope: scope } } })
 }
 
 export function closeExportDialog(ref: DataViewSurfaceRef) {
   const { tabId } = ref
-  patchSurface(ref, { exportDialogOpen: false })
+  patchSurface(ref, { view: { prompts: { isExportOpen: false } } })
   const job = getQueryState().exportJobs[tabId]
   const hasFinishedExportJob = job !== undefined && job.status !== 'running'
   if (hasFinishedExportJob) dropExportJob(tabId)
@@ -178,7 +175,7 @@ export function closeExportDialog(ref: DataViewSurfaceRef) {
 
 export async function startFullExport(tabId: string, request: FullExportRequest) {
   if (isExportRunning(tabId)) return
-  const queryId = resultAt(tabId, request.resultIndex)?.queryId ?? ''
+  const queryId = resultAt(tabId, request.resultIndex)?.view.slot.queryId ?? ''
   const startToken = ++nextExportStartToken
   stopExportPolling(tabId)
   const startingJob: ResultExportJob = {

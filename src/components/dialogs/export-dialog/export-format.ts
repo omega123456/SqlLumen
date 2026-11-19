@@ -103,7 +103,7 @@ export function offersAllRowsExport(
 ): boolean {
   if (hasCustomExport) return false
   if (!result?.truncated) return false
-  return result.fullExportBlockedReason === null && result.queryId !== null
+  return result.fullExportBlockedReason === null && result.view.slot.queryId !== null
 }
 
 export interface ViewModifiers {
@@ -115,9 +115,9 @@ export interface ViewModifiers {
 export function viewModifiersOf(result: ExportResult | undefined): ViewModifiers {
   if (!result) return { viewRowCount: 0, filterCount: 0, hasSort: false }
   return {
-    viewRowCount: result.viewRowCount,
-    filterCount: result.filterModel.length,
-    hasSort: result.sortColumn !== null,
+    viewRowCount: result.view.slot.viewRowCount,
+    filterCount: result.view.spec.filters.length,
+    hasSort: result.view.spec.sort !== null,
   }
 }
 

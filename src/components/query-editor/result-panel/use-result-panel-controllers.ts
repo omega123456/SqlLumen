@@ -52,7 +52,7 @@ export function useResultPanelControllers(
   useCloseOverlaysWhenInactive({
     surfaceRef: surfaceRef,
     isActive: isActive,
-    exportDialogOpen: activeResult.exportDialogOpen,
+    exportDialogOpen: activeResult.view.prompts.isExportOpen,
     closeFilterDialog: filter.closeFilterDialog,
   })
   return { activeResult, activeResultIndex, surfaceRef, viewHandlers, filter }

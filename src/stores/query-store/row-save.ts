@@ -10,10 +10,11 @@ import { buildInsertPayload, buildUpdatePayload } from '../../lib/query-edit-uti
 import { logFrontend, logFrontendWarning } from '../../lib/app-log-commands'
 import { hasModifiedColumns } from '../../lib/row-edit-state'
 import { toErrorMessage } from '../../lib/error-message'
-import type { SingleResultState } from './query-state-types'
+import type { SingleResultState, ResultPatch } from './query-state-types'
 import { markTabResultsExpired, patchResultByIndex, getQueryState } from './query-store-access'
 import type { DataViewSurfaceRef } from '../data-view/data-view-types'
 import { displayedCellUpdates } from './row-edit-builders'
+import { mergeResultPatches } from './query-tab-reducers'
 import {
   reexecuteOnlyResultAfterMutation,
   reexecuteSingleResultAfterMutation,
@@ -43,38 +44,37 @@ interface SavedRowCacheUpdate {
 function resolveRowSave({ tabId, resultIndex }: DataViewSurfaceRef): RowSaveContext | null {
   const tab = getQueryState().tabs[tabId]
   const result = tab?.results[resultIndex]
-  if (!result?.editState) return null
-  if (!result.editMode) return null
-  if (!result.editConnectionId) return null
-  if (result.editingRowIndex === null) return null
+  if (!result?.view.edit.state) return null
+  if (!result.view.editTarget.tableName) return null
+  if (!result.view.slot.connectionId) return null
+  const editingRowIndex = result.view.edit.rowIndex
+  if (editingRowIndex === null) return null
   return {
-    connectionId: result.editConnectionId,
+    connectionId: result.view.slot.connectionId,
     tabId: tabId,
     resultIndex: resultIndex,
     result: result,
-    editState: result.editState,
-    editMode: result.editMode,
+    editState: result.view.edit.state,
+    editMode: result.view.editTarget.tableName,
     isMultiResultTab: (tab?.results.length ?? 0) > 1,
   }
 }
 
 function clearUnmodifiedRowEdit(save: RowSaveContext) {
-  const draftReset: Partial<SingleResultState> = save.editState.isNewRow
-    ? { draftRow: null, selectedRowIndex: null }
-    : {}
-  patchResultByIndex(save.tabId, save.resultIndex, {
-    ...draftReset,
-    editState: null,
-    editingRowIndex: null,
-    editingBaseIndex: null,
-    saveError: null,
-  })
+  const editReset: ResultPatch = {
+    view: { edit: { state: null, rowIndex: null, baseIndex: null, saveError: null } },
+  }
+  const draftReset: ResultPatch = {
+    view: { edit: { draftRow: null }, selection: { rowIndex: null } },
+  }
+  const reset = save.editState.isNewRow ? mergeResultPatches(editReset, draftReset) : editReset
+  patchResultByIndex(save.tabId, save.resultIndex, reset)
 }
 
 function reportRowSaveFailure(save: RowSaveContext, error: unknown): boolean {
   if (!getQueryState().tabs[save.tabId]) return false
   const errorMessage = toErrorMessage(error)
-  patchResultByIndex(save.tabId, save.resultIndex, { saveError: errorMessage })
+  patchResultByIndex(save.tabId, save.resultIndex, { view: { edit: { saveError: errorMessage } } })
   showErrorToast('Save failed', errorMessage)
   return false
 }
@@ -97,7 +97,7 @@ async function refreshResultAfterInsert(save: RowSaveContext) {
     await rerunResultAfterMutation(save, sql)
   } catch (refreshError) {
     if (!getQueryState().tabs[tabId]) return
-    patchResultByIndex(tabId, resultIndex, { isStale: true })
+    patchResultByIndex(tabId, resultIndex, { view: { edit: { isStale: true } } })
     showErrorToast(
       'Refresh failed',
       `Row inserted successfully, but the query result could not be refreshed: ${toErrorMessage(refreshError)}`
@@ -122,13 +122,17 @@ async function insertEditedRow(save: RowSaveContext, target: RowSaveTarget): Pro
   }
   if (!getQueryState().tabs[tabId]) return true
   patchResultByIndex(tabId, resultIndex, {
-    draftRow: null,
-    editState: null,
-    editingRowIndex: null,
-    editingBaseIndex: null,
-    selectedRowIndex: null,
-    saveError: null,
-    isStale: false,
+    view: {
+      selection: { rowIndex: null },
+      edit: {
+        draftRow: null,
+        state: null,
+        rowIndex: null,
+        baseIndex: null,
+        saveError: null,
+        isStale: false,
+      },
+    },
   })
   await refreshResultAfterInsert(save)
   return true
@@ -174,8 +178,8 @@ async function pushSavedRowToResultCache(
 }
 
 async function syncSavedRowIntoResult(save: RowSaveContext) {
-  const baseIndex = save.result.editingBaseIndex
-  const queryId = save.result.queryId
+  const baseIndex = save.result.view.edit.baseIndex
+  const queryId = save.result.view.slot.queryId
   if (baseIndex === null) return
   if (!queryId) return
   const displayUpdates = displayedCellUpdates(save.result, save.editState)
@@ -215,11 +219,9 @@ async function updateEditedRow(save: RowSaveContext, target: RowSaveTarget): Pro
     await syncSavedRowIntoResult(save)
     if (!getQueryState().tabs[tabId]) return true
     patchResultByIndex(tabId, resultIndex, {
-      editState: null,
-      editingRowIndex: null,
-      editingBaseIndex: null,
-      saveError: null,
-      isStale: false,
+      view: {
+        edit: { state: null, rowIndex: null, baseIndex: null, saveError: null, isStale: false },
+      },
     })
     showSuccessToast('Row saved', 'Changes saved successfully.')
     return true
@@ -237,11 +239,11 @@ export async function saveCurrentRow(ref: DataViewSurfaceRef): Promise<boolean> 
     return true
   }
 
-  const tableInfo = save.result.editTableMetadata[save.editMode]
+  const tableInfo = save.result.view.editTarget.tables[save.editMode]
   const primaryKey = tableInfo?.primaryKey
   if (!primaryKey) {
     const message = 'No primary key info available'
-    patchResultByIndex(save.tabId, save.resultIndex, { saveError: message })
+    patchResultByIndex(save.tabId, save.resultIndex, { view: { edit: { saveError: message } } })
     showErrorToast('Save failed', message)
     return false
   }

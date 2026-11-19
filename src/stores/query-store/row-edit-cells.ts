@@ -1,4 +1,6 @@
 import type { QueryTableEditInfo, RowEditState, TableDataColumnMeta } from '../../types/schema'
+import { mergeResultPatches } from './query-tab-reducers'
+import type { ResultPatch } from './query-state-types'
 import { getInitialValueForNewRow, isSeededFromColumnDefault } from '../../lib/new-row-values'
 import { showErrorToast } from '../toast-store'
 import { envelopeForBase64 } from '../../lib/blob-utils'
@@ -29,7 +31,7 @@ function resolveCloneSource(
   const selection = resolveCloneSelection(result)
   if (!selection) return null
 
-  const tableInfo = result.editTableMetadata[selection.editMode]
+  const tableInfo = result.view.editTarget.tables[selection.editMode]
   if (!tableInfo?.primaryKey) return null
 
   if (tableInfo.primaryKey.isUniqueKeyFallback) {
@@ -45,7 +47,7 @@ function resolveCloneSource(
     selection.sourceRowIndex
   )?.row
   if (!sourceRow) return null
-  if (result.draftRow) return null
+  if (result.view.edit.draftRow) return null
   return {
     tableInfo: tableInfo,
     keyColumns: tableInfo.primaryKey.keyColumns,
@@ -66,22 +68,22 @@ function resolveCellEditTarget(
   const result = resultOf(ref)
   if (!result) return null
 
-  const editingRowIndex = result.editingRowIndex ?? result.selectedRowIndex
+  const editingRowIndex = result.view.edit.rowIndex ?? result.view.selection.rowIndex
   if (editingRowIndex === null) return null
 
   const activeResult = ensureResultEditState(
     { tabId: ref.tabId, resultIndex: ref.resultIndex, result: result },
     editingRowIndex
   )
-  if (!activeResult?.editState) return null
+  if (!activeResult?.view.edit.state) return null
 
   const columnName =
-    activeResult.editColumnBindings.get(resultColumnIndex) ??
-    activeResult.columns[resultColumnIndex]?.name
+    activeResult.view.editTarget.bindings.get(resultColumnIndex) ??
+    activeResult.view.slot.columns[resultColumnIndex]?.name
   if (!columnName) return null
   return {
     result: activeResult,
-    editState: activeResult.editState,
+    editState: activeResult.view.edit.state,
     columnName: columnName,
   }
 }
@@ -98,7 +100,7 @@ function buildClonedDraftRow(
   sourceRow: unknown[]
 ): ClonedDraftRow {
   const copiedColumnNames = copiedBoundColumnNames(result, tableInfo)
-  const row = result.columns.map((_column, index) => {
+  const row = result.view.slot.columns.map((_column, index) => {
     const sourceValue = sourceRow[index] ?? null
     const tableColumn = boundTableColumnAt(result, tableInfo, index)
     if (!tableColumn) return sourceValue
@@ -121,15 +123,19 @@ interface DraftRowRequest {
 
 function openDraftRow(ref: DataViewSurfaceRef, request: DraftRowRequest) {
   const { result, draft, keyColumns } = request
-  const draftRowIndex = result.viewRowCount
+  const draftRowIndex = result.view.slot.viewRowCount
   patchSurface(ref, {
-    draftRow: draft.row,
-    selectedRowIndex: draftRowIndex,
-    editingRowIndex: draftRowIndex,
-    editingBaseIndex: null,
-    editState: buildClonedEditState(result, draft, keyColumns),
-    saveError: null,
-    isStale: false,
+    view: {
+      selection: { rowIndex: draftRowIndex },
+      edit: {
+        draftRow: draft.row,
+        rowIndex: draftRowIndex,
+        baseIndex: null,
+        state: buildClonedEditState(result, draft, keyColumns),
+        saveError: null,
+        isStale: false,
+      },
+    },
   })
 }
 
@@ -153,13 +159,13 @@ interface InsertTable {
 }
 
 function resolveInsertTable(result: SingleResultState): InsertTable | null {
-  if (!result.editMode) return null
-  if (result.draftRow) return null
+  if (!result.view.editTarget.tableName) return null
+  if (result.view.edit.draftRow) return null
   if (hasUnsavedModifications(result)) {
     showErrorToast('Unsaved changes', 'Save or discard the current row before adding a row.')
     return null
   }
-  const tableInfo = result.editTableMetadata[result.editMode]
+  const tableInfo = result.view.editTarget.tables[result.view.editTarget.tableName]
   const primaryKey = tableInfo?.primaryKey
   if (!primaryKey) return null
   if (primaryKey.isUniqueKeyFallback) return null
@@ -171,7 +177,7 @@ function boundTableColumnAt(
   tableInfo: QueryTableEditInfo,
   resultColumnIndex: number
 ): TableDataColumnMeta | undefined {
-  const boundName = result.editColumnBindings.get(resultColumnIndex)
+  const boundName = result.view.editTarget.bindings.get(resultColumnIndex)
   if (!boundName) return undefined
   const lowerBoundName = boundName.toLowerCase()
   return tableInfo.columns.find((column) => column.name.toLowerCase() === lowerBoundName)
@@ -186,12 +192,12 @@ function buildNewDraftRow(
   result: SingleResultState,
   tableInfo: QueryTableEditInfo
 ): ClonedDraftRow {
-  const row = result.columns.map((_column, index) =>
+  const row = result.view.slot.columns.map((_column, index) =>
     initialResultCellValue(boundTableColumnAt(result, tableInfo, index))
   )
   const modifiedColumns = new Set<string>()
   for (const tableColumn of tableInfo.columns) {
-    const isBound = result.editBoundColumnIndexMap.has(tableColumn.name.toLowerCase())
+    const isBound = result.view.editTarget.boundIndexByName.has(tableColumn.name.toLowerCase())
     const isSeededBoundColumn = isBound && isSeededFromColumnDefault(tableColumn)
     if (isSeededBoundColumn) modifiedColumns.add(tableColumn.name)
   }
@@ -222,22 +228,31 @@ export function updateCellValue(
   if (!target) return
 
   patchSurface(ref, {
-    editState: editStateWithCellValue(target.editState, target.columnName, value),
-    saveError: null,
+    view: {
+      edit: {
+        state: editStateWithCellValue(target.editState, target.columnName, value),
+        saveError: null,
+      },
+    },
   })
 }
 
 export function syncCellValue(ref: DataViewSurfaceRef, resultColumnIndex: number, value: unknown) {
   const target = resolveCellEditTarget(ref, resultColumnIndex)
   if (!target) return
-  const isEditingRow = target.result.editingRowIndex !== null
+  const isEditingRow = target.result.view.edit.rowIndex !== null
   if (!isEditingRow) return
 
-  patchSurface(ref, {
-    ...draftRowPatchForCell(target.result, resultColumnIndex, value),
-    editState: editStateWithCellValue(target.editState, target.columnName, value),
-    saveError: null,
-  })
+  const cellPatch: ResultPatch = {
+    view: {
+      edit: {
+        state: editStateWithCellValue(target.editState, target.columnName, value),
+        saveError: null,
+      },
+    },
+  }
+  const draftPatch = draftRowPatchForCell(target.result, resultColumnIndex, value)
+  patchSurface(ref, mergeResultPatches(draftPatch, cellPatch))
 }
 
 export function rowEditCellActions() {

@@ -40,7 +40,7 @@ function InfoBody({ children }: { children: ReactNode }) {
 
 function ResultContent({ views, isTabRunning }: ResultBodyProps) {
   const { result } = views
-  const hasNoColumns = result.columns.length === 0
+  const hasNoColumns = result.view.slot.columns.length === 0
   if (hasNoColumns) {
     return (
       <InfoBody>
@@ -114,7 +114,7 @@ export function ResultStatusView({ showsSubTabs, body }: ResultStatusViewProps) 
       <SuccessResultBody {...body} />
       <ResultActivityOverlay
         displayStatus={displayStatus}
-        isSorting={body.views.result.isSorting}
+        isSorting={body.views.result.view.spec.applying === 'sort'}
       />
     </>
   )

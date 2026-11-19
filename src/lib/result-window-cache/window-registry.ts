@@ -35,8 +35,8 @@ export interface ReadOptions {
 }
 
 export interface WindowStatusPatch {
-  pendingWindowRange?: ViewRange | null
-  failedWindowRange?: ViewRange | null
+  pendingRange?: ViewRange | null
+  failedRange?: ViewRange | null
 }
 
 export interface WindowStatusUpdate {
@@ -210,7 +210,7 @@ export function settlePending(surface: Surface): void {
   clearPendingTimer(surface)
   if (surface.pendingRange) {
     surface.pendingRange = null
-    reportStatus(surface, { pendingWindowRange: null })
+    reportStatus(surface, { pendingRange: null })
   }
 }
 

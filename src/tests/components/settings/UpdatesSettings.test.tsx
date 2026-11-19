@@ -1,10 +1,11 @@
+import { resultState } from '../../helpers/legacy-result-fields'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { UpdatesSettings } from '../../../components/settings/UpdatesSettings'
 import { useConnectionStore } from '../../../stores/connection-store'
 import { useObjectEditorStore } from '../../../stores/object-editor-store'
-import { DEFAULT_RESULT_STATE, useQueryStore } from '../../../stores/query-store'
+import { useQueryStore } from '../../../stores/query-store'
 import { useSettingsStore } from '../../../stores/settings-store'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import { useTableDesignerStore } from '../../../stores/table-designer-store'
@@ -365,16 +366,14 @@ describe('UpdatesSettings', () => {
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({
               resultStatus: 'running',
-              queryId: 'q1',
               rowLimit: 100,
               lastExecutedSql: 'select 1',
-            },
+              view: { slot: { queryId: 'q1' } },
+            }),
           ],
           activeResultIndex: 0,
-          pendingNavigationAction: null,
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
@@ -390,29 +389,28 @@ describe('UpdatesSettings', () => {
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
-            {
-              ...DEFAULT_RESULT_STATE,
+            resultState({
               resultStatus: 'success',
-              totalRows: 1,
-              queryId: 'q2',
               rowLimit: 100,
               lastExecutedSql: 'select 2',
-              editMode: 'users',
-              editTableMetadata: {},
-              editForeignKeys: [],
-              editState: {
-                rowKey: { id: 1 },
-                originalValues: { id: 1, name: 'Alice' },
-                currentValues: { id: 1, name: 'Alicia' },
-                modifiedColumns: new Set(['name']),
-                isNewRow: false,
-              },
               editConnectionId: 'conn-1',
-              editingRowIndex: 0,
-            },
+              view: {
+                slot: { totalRows: 1, queryId: 'q2' },
+                edit: {
+                  state: {
+                    rowKey: { id: 1 },
+                    originalValues: { id: 1, name: 'Alice' },
+                    currentValues: { id: 1, name: 'Alicia' },
+                    modifiedColumns: new Set(['name']),
+                    isNewRow: false,
+                  },
+                  rowIndex: 0,
+                },
+                editTarget: { tableName: 'users', tables: {}, foreignKeys: [] },
+              },
+            }),
           ],
           activeResultIndex: 0,
-          pendingNavigationAction: null,
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,

@@ -20,14 +20,15 @@ export function beginRowAction(
   { verb, total, onCancel }: RowActionStart
 ): RowActionHandle {
   const actionKey = rowActionKeyOf(ref)
-  const queryId = resultOf(ref)?.queryId ?? null
+  const queryId = resultOf(ref)?.view.slot.queryId ?? null
   let done = 0
   let visible = false
   let finished = false
   const patchProgress = (progress: RowActionProgress | null) => {
     const current = resultOf(ref)
-    if (current?.queryId !== queryId) return
-    patchSurface(ref, { rowActionProgress: progress })
+    const currentQueryId = current?.view.slot.queryId
+    if (currentQueryId !== queryId) return
+    patchSurface(ref, { view: { rowAction: progress } })
   }
   const snapshot = (): RowActionProgress => ({
     verb: verb,

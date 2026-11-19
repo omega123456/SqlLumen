@@ -52,6 +52,8 @@ export type {
   TabStatus,
   ActiveBottomPanelItem,
   SingleResultState,
+  QueryResultFields,
+  ResultPatch,
   TabQueryState,
   FlatTabView,
   RowActionHandle,
