@@ -1,5 +1,5 @@
 import type { DataViewSurfaceRef, PageRequest } from '../../../stores/data-view/data-view-types'
-import type { ViewMode } from '../../../types/schema'
+import type { ViewMode } from '../../../types/shared-data-view'
 
 export interface DataViewTestIds {
   grid: string

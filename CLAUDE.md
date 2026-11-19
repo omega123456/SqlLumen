@@ -90,14 +90,14 @@ The frontend **never** touches SQLite or MySQL directly. All backend work goes t
 ```
 src/
   lib/               # Typed invoke() wrappers (*-commands.ts) + utilities
-  stores/            # Zustand global state (connection-, query-, table-data-, schema-, theme-store)
+  stores/            # Zustand global state (connection-, query-, table-data-, schema-, theme-store; data-view/ holds the shared view orchestration and route registry)
   components/
     common/          # Shared primitives — Button, TextInput, Checkbox, Dropdown, Textarea, …
-    shared/          # Cross-feature building blocks (CanvasBaseGridView wrapper, grid editors)
+    shared/          # Cross-feature building blocks (CanvasBaseGridView wrapper, grid editors, data-view/ stack shared by table data and query results)
     layout/          # AppLayout, Sidebar, WorkspaceArea, ConnectionTabBar, StatusBar
     workspace/       # WorkspaceTabs
-    query-editor/    # Monaco editor, ResultPanel, ResultGridView/FormView/TextView
-    table-data/      # TableDataTab, TableDataGrid, TableDataFormView, TableDataToolbar
+    query-editor/    # Monaco editor, ResultPanel (query route over shared/data-view), EditModeDropdown
+    table-data/      # TableDataTab (table route over shared/data-view), TableDataBadges, export dialog
     table-designer/  # TableDesignerTab, ColumnEditor, IndexEditor, ForeignKeyEditor, …
     schema-info/
     dialogs/         # ExportDialog, ConfirmDialog, create/alter DB, DialogShell, …

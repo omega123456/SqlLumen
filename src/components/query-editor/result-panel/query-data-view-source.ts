@@ -1,6 +1,6 @@
 import type { DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
 import type { DataViewSource, DataViewTestIds } from '../../shared/data-view/data-view-source'
-import type { ViewMode } from '../../../types/schema'
+import type { ViewMode } from '../../../types/shared-data-view'
 
 const QUERY_RESULT_MODES: readonly ViewMode[] = ['grid', 'form', 'text']
 

@@ -3,8 +3,8 @@ import type {
   FilterCondition,
   FullExportBlockedReason,
   SelectedCellInfo,
-  ViewMode,
 } from '../../types/schema'
+import type { ViewMode } from '../../types/shared-data-view'
 import { type CachedRow, type ViewRange } from '../../lib/result-window-cache'
 import { type ResultExportProgress, type ResultExportStatus } from '../../lib/export-commands'
 import type { RunExportProgress } from '../../types/run-export'

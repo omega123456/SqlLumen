@@ -5,7 +5,7 @@ import {
   useTableDataStore,
 } from '../../../stores/table-data-store'
 import type { TableDataTabState } from '../../../stores/table-data-store'
-import type { ViewMode } from '../../../types/schema'
+import type { ViewMode } from '../../../types/shared-data-view'
 import type {
   DataViewColumnJump,
   DataViewPaging,

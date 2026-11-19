@@ -7,8 +7,8 @@ import type {
   ResultViewSort,
   RowEditState,
   SelectedCellInfo,
-  ViewMode,
 } from '../../types/schema'
+import type { ViewMode } from '../../types/shared-data-view'
 import type { ViewRange } from '../../lib/result-window-cache'
 
 export type DataViewRouteKind = 'query' | 'table'

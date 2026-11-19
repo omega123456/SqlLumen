@@ -30,7 +30,6 @@ export type {
   AppendResultRowResult,
   FrontendRowResidencyStatus,
   FrontendRowResidencyState,
-  ViewMode,
   SortDirection,
   ExportFormat,
   ExportOptions,

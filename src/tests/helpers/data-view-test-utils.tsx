@@ -18,8 +18,8 @@ import type {
   RowEditState,
   SelectedCellInfo,
   TableDataColumnMeta,
-  ViewMode,
 } from '../../types/schema'
+import type { ViewMode } from '../../types/shared-data-view'
 import type { DataViewSource } from '../../components/shared/data-view/data-view-source'
 import { queryDataViewSource } from '../../components/query-editor/result-panel/query-data-view-source'
 import { resultState } from './legacy-result-fields'

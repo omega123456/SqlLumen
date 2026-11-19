@@ -1,4 +1,5 @@
-import type { FilterCondition, SelectedCellInfo, ViewMode } from '../../types/schema'
+import type { FilterCondition, SelectedCellInfo } from '../../types/schema'
+import type { ViewMode } from '../../types/shared-data-view'
 import { retryFailedWindow, type ViewRange } from '../../lib/result-window-cache'
 import { showErrorToast } from '../toast-store'
 import type { DataViewPatch, DataViewSurfaceRef, ExportRowScope } from './data-view-types'

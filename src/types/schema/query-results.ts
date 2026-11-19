@@ -91,8 +91,6 @@ export interface FrontendRowResidencyState {
   inactiveSince: number | null
 }
 
-export type ViewMode = 'grid' | 'form' | 'text'
-
 export type SortDirection = 'asc' | 'desc'
 
 export type ExportFormat = 'csv' | 'json' | 'xlsx' | 'sql-insert'

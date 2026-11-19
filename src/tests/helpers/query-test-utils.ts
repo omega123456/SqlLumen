@@ -33,8 +33,8 @@ import type {
   ForeignKeyColumnInfo,
   QueryTableEditInfo,
   RowEditState,
-  ViewMode,
 } from '../../types/schema'
+import type { ViewMode } from '../../types/shared-data-view'
 
 /**
  * Shorthand: get a flat (tab + active result) view for the given tab ID.

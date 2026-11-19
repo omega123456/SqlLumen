@@ -1,4 +1,4 @@
-import type { ViewMode } from '../../types/schema'
+import type { ViewMode } from '../../types/shared-data-view'
 import type { DataViewSurfaceRef } from '../data-view/data-view-types'
 import {
   applyFilters,
