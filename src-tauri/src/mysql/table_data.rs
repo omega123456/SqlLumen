@@ -6,6 +6,7 @@ use crate::mysql::cell_values::{grid_cell_json, CellValue, DecodedRow, GridCellV
 use crate::mysql::logged_query::LoggedStatement;
 use crate::mysql::metadata_cache::{MetadataCache, MetadataTableKey, TableKeyMetadata};
 use crate::mysql::pool::BackgroundPool;
+use crate::mysql::query_executor::{SharedRow, SharedRows};
 use crate::mysql::result_cache::{CacheKey, VersionedValue};
 use crate::mysql::schema_queries::safe_identifier;
 use crate::state::AppState;
@@ -19,6 +20,7 @@ mod cache_sync;
 mod edit_sql;
 mod export;
 mod filters;
+mod page_slot;
 mod paging;
 mod serialization;
 pub use blob_values::*;
@@ -26,6 +28,7 @@ pub use cache_sync::*;
 pub use edit_sql::*;
 pub use export::*;
 pub use filters::*;
+pub use page_slot::*;
 pub use paging::*;
 pub use serialization::*;
 
@@ -68,7 +71,7 @@ pub struct BlobValueResponse {
 #[serde(rename_all = "camelCase")]
 pub struct TableDataResponse {
     pub columns: Vec<TableDataColumnMeta>,
-    pub rows: Arc<Vec<Vec<serde_json::Value>>>,
+    pub rows: SharedRows,
     pub current_page: u32,
     pub page_size: u32,
     pub primary_key: Option<PrimaryKeyInfo>,

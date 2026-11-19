@@ -12,6 +12,7 @@ pub mod mock_mysql_server;
 pub mod mock_session;
 pub mod schema_index_chunks;
 pub mod silent_listener;
+pub mod table_page_steps;
 pub mod tls_fixtures;
 pub mod utc_timestamps;
 

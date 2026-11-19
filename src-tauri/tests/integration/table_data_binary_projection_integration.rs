@@ -6,6 +6,9 @@ mod binary_projection_integration {
     use crate::common::mock_mysql_server::{
         MockCell, MockColumnDef, MockMySqlServer, MockQueryStep,
     };
+    use crate::common::table_page_steps::{
+        info_schema_columns_step, nullable_column_row, primary_key_step,
+    };
     use opensrv_mysql::{ColumnFlags, ColumnType};
     use rusqlite::Connection;
     use serde::de::DeserializeOwned;
@@ -27,9 +30,6 @@ mod binary_projection_integration {
     use tauri::ipc::{CallbackFn, InvokeBody};
     use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
     use tauri::webview::InvokeRequest;
-
-    const INFO_SCHEMA_COLUMNS_QUERY: &str = "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT, EXTRA FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION";
-    const PRIMARY_KEY_QUERY: &str = "SELECT kcu.COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME WHERE kcu.TABLE_SCHEMA = ? AND kcu.TABLE_NAME = ? AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' ORDER BY kcu.ORDINAL_POSITION";
 
     fn test_state() -> AppState {
         crate::common::ensure_fake_backend_once();
@@ -204,82 +204,6 @@ mod binary_projection_integration {
         session_id: String,
     }
 
-    fn info_schema_columns_step(rows: Vec<Vec<MockCell>>) -> MockQueryStep {
-        MockQueryStep {
-            query: INFO_SCHEMA_COLUMNS_QUERY,
-            columns: vec![
-                MockColumnDef {
-                    name: "COLUMN_NAME",
-                    coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                    colflags: ColumnFlags::NOT_NULL_FLAG,
-                },
-                MockColumnDef {
-                    name: "DATA_TYPE",
-                    coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                    colflags: ColumnFlags::NOT_NULL_FLAG,
-                },
-                MockColumnDef {
-                    name: "COLUMN_TYPE",
-                    coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                    colflags: ColumnFlags::NOT_NULL_FLAG,
-                },
-                MockColumnDef {
-                    name: "IS_NULLABLE",
-                    coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                    colflags: ColumnFlags::NOT_NULL_FLAG,
-                },
-                MockColumnDef {
-                    name: "COLUMN_KEY",
-                    coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                    colflags: ColumnFlags::empty(),
-                },
-                MockColumnDef {
-                    name: "COLUMN_DEFAULT",
-                    coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                    colflags: ColumnFlags::empty(),
-                },
-                MockColumnDef {
-                    name: "EXTRA",
-                    coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                    colflags: ColumnFlags::NOT_NULL_FLAG,
-                },
-            ],
-            rows,
-            error: None,
-            affected_rows: None,
-        }
-    }
-
-    fn nullable_column_row(
-        name: &'static [u8],
-        data_type: &'static [u8],
-        column_type: &'static [u8],
-    ) -> Vec<MockCell> {
-        vec![
-            MockCell::Bytes(name),
-            MockCell::Bytes(data_type),
-            MockCell::Bytes(column_type),
-            MockCell::Bytes(b"YES"),
-            MockCell::Bytes(b""),
-            MockCell::Null,
-            MockCell::Bytes(b""),
-        ]
-    }
-
-    fn primary_key_step(pk_column: &'static [u8]) -> MockQueryStep {
-        MockQueryStep {
-            query: PRIMARY_KEY_QUERY,
-            columns: vec![MockColumnDef {
-                name: "COLUMN_NAME",
-                coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                colflags: ColumnFlags::NOT_NULL_FLAG,
-            }],
-            rows: vec![vec![MockCell::Bytes(pk_column)]],
-            error: None,
-            affected_rows: None,
-        }
-    }
-
     async fn fetch_table_data_response(steps: Vec<MockQueryStep>) -> TableDataResponse {
         let server = MockMySqlServer::start_script(steps).await;
         set_test_pool_factory(None);
@@ -364,7 +288,10 @@ mod binary_projection_integration {
         ])
         .await;
 
-        assert_eq!(*response.rows, vec![vec![json!(7), json!("[BLOB - 4 KB]")]]);
+        assert_eq!(
+            response.rows,
+            crate::common::shared_rows(vec![vec![json!(7), json!("[BLOB - 4 KB]")]])
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -419,11 +346,11 @@ mod binary_projection_integration {
         .await;
 
         assert_eq!(
-            *response.rows,
-            vec![vec![
+            response.rows,
+            crate::common::shared_rows(vec![vec![
                 json!("0x1234567890ABCDEFFEDCBA0987654321"),
                 json!("binary key row")
-            ]]
+            ]])
         );
     }
 
@@ -465,8 +392,8 @@ mod binary_projection_integration {
         .await;
 
         assert_eq!(
-            *response.rows,
-            vec![vec![json!(8), serde_json::Value::Null]]
+            response.rows,
+            crate::common::shared_rows(vec![vec![json!(8), serde_json::Value::Null]])
         );
     }
 
@@ -507,7 +434,10 @@ mod binary_projection_integration {
         ])
         .await;
 
-        assert_eq!(*response.rows, vec![vec![json!(9), json!("[BLOB - 14 B]")]]);
+        assert_eq!(
+            response.rows,
+            crate::common::shared_rows(vec![vec![json!(9), json!("[BLOB - 14 B]")]])
+        );
     }
 
     fn mixed_table_columns_step() -> MockQueryStep {
@@ -579,13 +509,13 @@ mod binary_projection_integration {
         .await;
 
         assert_eq!(
-            *response.rows,
-            vec![vec![
+            response.rows,
+            crate::common::shared_rows(vec![vec![
                 json!(3),
                 json!("Ada"),
                 json!("[BLOB - 512 B]"),
                 json!("Engineer and writer"),
-            ]]
+            ]])
         );
     }
 
@@ -671,8 +601,8 @@ mod binary_projection_integration {
         .await;
 
         assert_eq!(
-            *response.rows,
-            vec![vec![
+            response.rows,
+            crate::common::shared_rows(vec![vec![
                 json!(5),
                 json!("[BLOB - 1 B]"),
                 json!("[BLOB - 2 B]"),
@@ -680,7 +610,7 @@ mod binary_projection_integration {
                 json!("[BLOB - 4 B]"),
                 json!("[BLOB - 8 B]"),
                 json!("[BLOB - 64 B]"),
-            ]]
+            ]])
         );
     }
 

@@ -33,6 +33,7 @@ pub fn validate_full_export(
     if stored.query_id != *query_id {
         return Err(crate::mysql::result_view::STALE_QUERY_MESSAGE.to_string());
     }
+    crate::mysql::result_view::ensure_query_result(stored)?;
     let rerunnable = stored.truncated
         && stored.full_export_blocked_reason.is_none()
         && stored.run_database != RunDatabase::NotCaptured

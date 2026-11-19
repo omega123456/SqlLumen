@@ -102,6 +102,7 @@ pub fn prepare_result_view(
         .result_cache
         .current_invalidation_version(&request.slot.connection_id, &request.slot.tab_id);
     let slot = read_slot(state, &request.slot)?;
+    ensure_query_result(&slot)?;
     if slot.view_version != base_view_version {
         return Err(superseded(slot.view_version));
     }

@@ -219,6 +219,41 @@ fn insert_replaces_existing_entry() {
     assert_eq!(cache.entry_count(), 1);
 }
 
+fn versioned_slot(
+    version: u64,
+    query_id: &str,
+) -> sqllumen_lib::mysql::result_cache::VersionedValue<Vec<StoredResult>> {
+    sqllumen_lib::mysql::result_cache::VersionedValue {
+        expected_invalidation_version: version,
+        value: vec![stub_result(query_id)],
+    }
+}
+
+#[test]
+fn slot_replacement_keeps_the_old_slot_and_refuses_an_overlapped_earlier_replacement() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
+    let key = sqllumen_lib::mysql::result_cache::CacheKey::new("conn1", "tab1");
+    cache.insert(key, vec![stub_result("old")]);
+
+    let earlier = cache.begin_slot_replacement("conn1", "tab1");
+    let later = cache.begin_slot_replacement("conn1", "tab1");
+    assert_ne!(earlier, later);
+    let still_cached = cache
+        .get("conn1", "tab1")
+        .into_entry()
+        .expect("old slot kept");
+    assert_eq!(still_cached.value[0].query_id, "old");
+
+    assert!(!cache.insert_if_current(key, versioned_slot(earlier, "earlier")));
+    assert!(cache.insert_if_current(key, versioned_slot(later, "later")));
+    let replaced = cache
+        .get("conn1", "tab1")
+        .into_entry()
+        .expect("replaced slot");
+    assert_eq!(replaced.value[0].query_id, "later");
+}
+
 #[test]
 fn sysinfo_snapshot_reports_sane_available_memory() {
     let mut snapshot = SysinfoMemorySnapshot::new();

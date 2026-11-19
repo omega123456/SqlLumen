@@ -121,7 +121,7 @@ pub fn sync_table_data_cache_after_write_impl(
     };
     let response = TableDataResponse {
         columns: request.columns,
-        rows: Arc::new(request.rows),
+        rows: Arc::new(request.rows.into_iter().map(SharedRow::from).collect()),
         current_page: request.current_page,
         page_size: request.page_size,
         primary_key: request.primary_key,

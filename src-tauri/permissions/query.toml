@@ -23,6 +23,12 @@ commands.allow = ["remove_result_rows"]
 commands.deny = []
 
 [[permission]]
+identifier = "allow-append-result-row"
+description = "Enables the append_result_row command without any pre-configured scope."
+commands.allow = ["append_result_row"]
+commands.deny = []
+
+[[permission]]
 identifier = "allow-evict-results"
 description = "Enables the evict_results command without any pre-configured scope."
 commands.allow = ["evict_results"]

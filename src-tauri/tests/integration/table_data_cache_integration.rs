@@ -51,7 +51,7 @@ fn sample_response(id: i64) -> TableDataResponse {
                 is_generated: false,
             },
         ],
-        rows: std::sync::Arc::new(vec![vec![
+        rows: crate::common::shared_rows(vec![vec![
             serde_json::Value::Number(serde_json::Number::from(id)),
             serde_json::Value::Number(serde_json::Number::from_f64(1.25).unwrap()),
         ]]),
@@ -125,11 +125,11 @@ fn insert_and_get_round_trips_table_data_response() {
         .into_entry()
         .expect("cache entry should be present");
     assert_eq!(
-        *entry.value.rows,
-        vec![vec![
+        entry.value.rows,
+        crate::common::shared_rows(vec![vec![
             serde_json::json!(42),
             serde_json::Value::Number(serde_json::Number::from_f64(1.25).unwrap()),
-        ]]
+        ]])
     );
     assert_eq!(entry.value.columns[0].name, "id");
 }
@@ -185,11 +185,11 @@ fn touch_rewarms_spilled_entry_from_disk() {
         .into_entry()
         .expect("re-warmed entry should be available");
     assert_eq!(
-        *entry.value.rows,
-        vec![vec![
+        entry.value.rows,
+        crate::common::shared_rows(vec![vec![
             serde_json::json!(99),
             serde_json::Value::Number(serde_json::Number::from_f64(1.25).unwrap()),
-        ]]
+        ]])
     );
     assert_eq!(entry.value.columns[1].name, "score");
 }
@@ -368,7 +368,7 @@ fn sync_after_cleanup_does_not_recreate_table_data_cache_entry() {
             database: "app_db".to_string(),
             table: "users".to_string(),
             columns: response.columns.clone(),
-            rows: (*response.rows).clone(),
+            rows: response.rows.iter().map(|row| row.to_vec()).collect(),
             current_page: response.current_page,
             page_size: response.page_size,
             primary_key: response.primary_key.clone(),
@@ -500,8 +500,8 @@ fn cache_sync_updates_rows_after_insert_update_and_delete() {
         .expect("insert sync should keep data available");
     assert_eq!(after_insert.rows.len(), 2);
     assert_eq!(
-        after_insert.rows[1],
-        vec![serde_json::json!(2), serde_json::json!(9.5)]
+        *after_insert.rows[1],
+        [serde_json::json!(2), serde_json::json!(9.5)]
     );
 
     let updated = sync_table_data_cache_after_write_impl(
@@ -520,8 +520,8 @@ fn cache_sync_updates_rows_after_insert_update_and_delete() {
         .data
         .expect("update sync should keep data available");
     assert_eq!(
-        after_update.rows[0],
-        vec![serde_json::json!(1), serde_json::json!(4.2)]
+        *after_update.rows[0],
+        [serde_json::json!(1), serde_json::json!(4.2)]
     );
     assert_eq!(after_update.execution_time_ms, 25);
 
@@ -535,8 +535,8 @@ fn cache_sync_updates_rows_after_insert_update_and_delete() {
         .data
         .expect("delete sync should keep data available");
     assert_eq!(
-        *after_delete.rows,
-        vec![vec![serde_json::json!(2), serde_json::json!(9.5)]]
+        after_delete.rows,
+        crate::common::shared_rows(vec![vec![serde_json::json!(2), serde_json::json!(9.5)]])
     );
     assert_eq!(after_delete.execution_time_ms, 30);
 }

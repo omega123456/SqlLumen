@@ -110,6 +110,17 @@ where
         versions.get(&key).copied().unwrap_or(0)
     }
 
+    pub fn begin_slot_replacement(&self, connection_id: &str, tab_id: &str) -> u64 {
+        let key = (connection_id.to_string(), tab_id.to_string());
+        let invalidation_version = self.next_generation.fetch_add(1, Ordering::Relaxed);
+        let mut versions = self
+            .invalidation_versions
+            .write()
+            .expect("invalidation_versions lock poisoned");
+        versions.insert(key, invalidation_version);
+        invalidation_version
+    }
+
     pub fn insert_if_current(&self, cache_key: CacheKey<'_>, write: VersionedValue<V>) -> bool {
         let CacheKey {
             connection_id,

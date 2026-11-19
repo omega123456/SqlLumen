@@ -60,6 +60,13 @@ pub enum RunDatabase {
     Named(String),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum StoredResultOrigin {
+    #[default]
+    Query,
+    TablePage,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredResult {
     pub query_id: String,
@@ -83,6 +90,8 @@ pub struct StoredResult {
     pub statement_index: usize,
     #[serde(default)]
     pub error_message: Option<String>,
+    #[serde(default)]
+    pub origin: StoredResultOrigin,
 }
 
 pub struct StoredResultParts {
@@ -131,6 +140,7 @@ impl StoredResult {
             full_export_blocked_reason: None,
             statement_index: 0,
             error_message: None,
+            origin: StoredResultOrigin::Query,
         }
     }
 
@@ -140,6 +150,10 @@ impl StoredResult {
 
     pub fn live_row_count(&self) -> usize {
         self.rows.len().saturating_sub(self.tombstones.len())
+    }
+
+    pub fn is_table_page(&self) -> bool {
+        self.origin == StoredResultOrigin::TablePage
     }
 }
 

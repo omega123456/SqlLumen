@@ -22,11 +22,12 @@ use sqllumen_lib::mysql::query_executor::{
 };
 use sqllumen_lib::mysql::result_cache::{SlotWrite, SlotWriteTarget};
 use sqllumen_lib::mysql::result_view::{
-    apply_initial_view, commit_result_view, fetch_result_window_impl, first_window,
-    is_tinyint_boolean_alias, js_number, js_number_to_string, js_string, js_string_to_number,
-    like_pattern_to_regex, normalize_tinyint_value, prepare_result_view, remove_result_rows_impl,
-    resolve_spec, set_result_view_impl, slice_window, view_len, ResultViewSpec, SpecMode,
-    FIRST_WINDOW_ROWS, MAX_WINDOW_ROWS, STALE_QUERY_MESSAGE,
+    append_result_row_impl, apply_initial_view, commit_result_view, fetch_result_window_impl,
+    first_window, is_tinyint_boolean_alias, js_number, js_number_to_string, js_string,
+    js_string_to_number, like_pattern_to_regex, normalize_tinyint_value, prepare_result_view,
+    remove_result_rows_impl, resolve_spec, set_result_view_impl, slice_window, view_len,
+    AppendResultRowRequest, ResultViewSpec, SpecMode, FIRST_WINDOW_ROWS, MAX_WINDOW_ROWS,
+    ROW_CEILING_REACHED_PREFIX, STALE_QUERY_MESSAGE, VIEW_SUPERSEDED_PREFIX,
 };
 use sqllumen_lib::state::AppState;
 
@@ -792,6 +793,69 @@ fn tombstones_remove_rows_from_counts_windows_and_later_views() {
         *slot(&state).tombstones,
         [1u32, 3].into_iter().collect::<BTreeSet<_>>()
     );
+}
+
+fn append_row(
+    state: &AppState,
+    base_view_version: u64,
+    row: Value,
+) -> Result<sqllumen_lib::mysql::result_view::AppendResultRowResult, String> {
+    append_result_row_impl(
+        state,
+        &AppendResultRowRequest {
+            slot: default_slot_key(),
+            base_view_version,
+            row: serde_json::from_value(row).expect("row is an array"),
+        },
+    )
+}
+
+#[test]
+fn append_result_row_extends_identity_and_sorted_views_and_bumps_the_version() {
+    let state = people_state();
+    let appended = append_row(&state, 1, json!([5, "eve", 7])).expect("append");
+    assert_eq!(appended.base_index, 4);
+    assert_eq!(appended.view_version, 2);
+    assert_eq!(appended.view_row_count, 5);
+    assert_eq!(appended.total_rows, 5);
+    assert_eq!(appended.window.offset, 4);
+    assert_eq!(appended.window.base_indices, vec![4]);
+    assert_eq!(
+        &*appended.window.rows[0],
+        &[json!(5), json!("eve"), json!(7)]
+    );
+    assert!(
+        slot(&state).view.is_none(),
+        "an identity view stays implicit"
+    );
+
+    let sorted = set_view(
+        &state,
+        2,
+        json!({ "sort": { "column": "id", "direction": "desc" } }),
+    )
+    .expect("sorted");
+    assert_eq!(sorted, vec![4, 3, 2, 1, 0]);
+    let appended = append_row(&state, 3, json!([6, "fay", 1])).expect("append under a sort");
+    assert_eq!(appended.base_index, 5);
+    assert_eq!(appended.window.offset, 5);
+    assert_eq!(
+        *slot(&state).view.expect("explicit view"),
+        vec![4, 3, 2, 1, 0, 5],
+        "the appended row goes last in the view"
+    );
+}
+
+#[test]
+fn append_result_row_is_refused_for_a_stale_view_and_at_the_row_ceiling() {
+    let state = people_state();
+    let stale = append_row(&state, 7, json!([5, "eve", 7])).expect_err("stale base version");
+    assert!(stale.starts_with(VIEW_SUPERSEDED_PREFIX), "{stale}");
+
+    state.result_cache.set_row_ceiling(4);
+    let full = append_row(&state, 1, json!([5, "eve", 7])).expect_err("ceiling reached");
+    assert!(full.starts_with(ROW_CEILING_REACHED_PREFIX), "{full}");
+    assert_eq!(slot(&state).rows.len(), 4);
 }
 
 #[test]

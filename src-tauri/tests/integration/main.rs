@@ -107,6 +107,7 @@ mod table_data_binary_pk_write_integration;
 mod table_data_binary_projection_integration;
 mod table_data_cache_integration;
 mod table_data_integration;
+mod table_data_page_slot_integration;
 mod table_designer_integration;
 mod timestamps_integration;
 mod window_chrome_integration;

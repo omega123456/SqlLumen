@@ -47,6 +47,7 @@ fn resolve_export_data(
             result_vec.len()
         )
     })?;
+    crate::mysql::result_view::ensure_query_result(stored)?;
     let cols: Vec<String> = stored
         .columns
         .iter()

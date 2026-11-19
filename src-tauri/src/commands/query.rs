@@ -21,9 +21,10 @@ use crate::mysql::query_executor::{
 };
 #[cfg(not(coverage))]
 use crate::mysql::result_view::{
-    fetch_result_window_impl, remove_result_rows_impl, set_result_view_impl,
-    FetchResultWindowRequest, FetchResultWindowResult, RemoveResultRowsRequest,
-    RemoveResultRowsResult, SetResultViewRequest, SetResultViewResult,
+    append_result_row_impl, fetch_result_window_impl, remove_result_rows_impl,
+    set_result_view_impl, AppendResultRowRequest, AppendResultRowResult, FetchResultWindowRequest,
+    FetchResultWindowResult, RemoveResultRowsRequest, RemoveResultRowsResult, SetResultViewRequest,
+    SetResultViewResult,
 };
 #[cfg(not(coverage))]
 use crate::state::AppState;
@@ -62,6 +63,15 @@ pub async fn remove_result_rows(
     app: tauri::AppHandle,
 ) -> Result<RemoveResultRowsResult, String> {
     run_blocking_with_state(app, move |state| remove_result_rows_impl(state, &payload)).await?
+}
+
+#[cfg(not(coverage))]
+#[tauri::command]
+pub async fn append_result_row(
+    payload: AppendResultRowRequest,
+    app: tauri::AppHandle,
+) -> Result<AppendResultRowResult, String> {
+    run_blocking_with_state(app, move |state| append_result_row_impl(state, &payload)).await?
 }
 
 #[cfg(not(coverage))]

@@ -14,10 +14,12 @@ use crate::state::AppState;
 
 mod filters;
 mod js_coercion;
+mod row_append;
 mod slot_commands;
 mod view_building;
 pub use filters::*;
 pub use js_coercion::*;
+pub use row_append::*;
 pub use slot_commands::*;
 pub use view_building::*;
 
@@ -31,6 +33,16 @@ pub const STALE_QUERY_MESSAGE: &str =
     "Results were refreshed by a newer query. Re-run the query to continue.";
 pub const VIEW_SUPERSEDED_PREFIX: &str = "view_superseded:";
 pub const VIEW_STALE_PREFIX: &str = "view_stale:";
+pub const TABLE_PAGE_REFUSED_MESSAGE: &str =
+    "table_page_refused: This command applies to query results only, not to table data pages.";
+pub const ROW_CEILING_REACHED_PREFIX: &str = "row_ceiling_reached:";
+
+pub fn ensure_query_result(stored: &StoredResult) -> Result<(), String> {
+    if stored.is_table_page() {
+        return Err(TABLE_PAGE_REFUSED_MESSAGE.to_string());
+    }
+    Ok(())
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

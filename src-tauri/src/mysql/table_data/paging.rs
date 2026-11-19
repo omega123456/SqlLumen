@@ -273,7 +273,7 @@ fn serialize_page_row(
     row: DecodedRow,
     columns: &[TableDataColumnMeta],
     primary_key_columns: &std::collections::HashSet<&str>,
-) -> Vec<serde_json::Value> {
+) -> SharedRow {
     let mut cells = row.into_cells().into_iter();
     columns
         .iter()
@@ -332,7 +332,7 @@ pub async fn fetch_table_data_impl(
     let data_rows = fetch_cancellable_page_rows(context.pool, page_fetch).await?;
     let execution_time_ms = start.elapsed().as_millis() as u64;
 
-    let serialized_rows: Vec<Vec<serde_json::Value>> = data_rows
+    let serialized_rows: Vec<SharedRow> = data_rows
         .into_iter()
         .map(|row| serialize_page_row(row, &columns, &primary_key_column_set))
         .collect();

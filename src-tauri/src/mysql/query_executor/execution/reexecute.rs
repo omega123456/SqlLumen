@@ -20,7 +20,9 @@ pub(super) fn capture_reexecute_target(
             "Result index {result_index} out of range (total: {result_count})"
         ));
     }
-    Ok(result_vec[result_index].query_id.clone())
+    let stored = &result_vec[result_index];
+    crate::mysql::result_view::ensure_query_result(stored)?;
+    Ok(stored.query_id.clone())
 }
 
 pub(super) struct ReexecutedSlot<'a> {

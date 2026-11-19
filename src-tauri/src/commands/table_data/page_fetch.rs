@@ -141,6 +141,83 @@ pub async fn fetch_table_data_with_cache(
     result
 }
 
+pub const TABLE_PAGE_SUPERSEDED_MESSAGE: &str =
+    "table_page_superseded: A newer page fetch or a cleanup replaced this table page.";
+
+struct TablePageStoreTarget<'a> {
+    connection_id: &'a str,
+    tab_id: &'a str,
+    expected_invalidation_version: u64,
+}
+
+fn store_table_page(
+    state: &AppState,
+    target: &TablePageStoreTarget<'_>,
+    response: table_data::TableDataResponse,
+) -> Result<table_data::TablePageResult, String> {
+    let stored = table_data::table_page_stored_result(table_data::TablePageSlotSource {
+        response: &response,
+        query_id: uuid::Uuid::new_v4().to_string(),
+        row_ceiling: state.result_cache.row_ceiling(),
+    });
+    let page = table_data::table_page_result(response, &stored);
+    let write = VersionedValue {
+        expected_invalidation_version: target.expected_invalidation_version,
+        value: vec![stored],
+    };
+    let key = CacheKey::new(target.connection_id, target.tab_id);
+    if state.result_cache.insert_if_current(key, write) {
+        return Ok(page);
+    }
+    tracing::debug!(
+        connection_id = %target.connection_id,
+        tab_id = %target.tab_id,
+        "table page not stored: slot replaced or cleaned up during the fetch"
+    );
+    Err(TABLE_PAGE_SUPERSEDED_MESSAGE.to_string())
+}
+
+pub async fn fetch_table_page_impl(
+    state: &AppState,
+    request: table_data::FetchTableDataRequest,
+) -> Result<table_data::TablePageResult, String> {
+    if request.page_size == 0 {
+        return Err("page_size must be at least 1".to_string());
+    }
+    let connection_id = request.connection_id.clone();
+    let pool = connection_pool(state, &connection_id)?;
+    let mut query = page_query_from(request);
+    query.page_size =
+        table_data::clamp_table_page_size(query.page_size, state.result_cache.row_ceiling());
+    let store_target = TablePageStoreTarget {
+        connection_id: &connection_id,
+        tab_id: &query.tab_id,
+        expected_invalidation_version: state
+            .result_cache
+            .begin_slot_replacement(&connection_id, &query.tab_id),
+    };
+    let context = table_data::TableDataContext {
+        pool: &pool,
+        connection_id: &connection_id,
+        metadata_cache: &state.metadata_cache,
+    };
+    let result = table_data::fetch_table_data_impl(&context, &state.running_queries, &query).await;
+    let statement = HistoryStatement {
+        session_id: &connection_id,
+        sql_text: fetch_history_sql(&query),
+    };
+    log_fetch_history(state, statement, &result);
+    store_table_page(state, &store_target, result?)
+}
+
+#[tauri::command]
+pub async fn fetch_table_page(
+    state: tauri::State<'_, AppState>,
+    payload: table_data::FetchTableDataRequest,
+) -> Result<table_data::TablePageResult, String> {
+    fetch_table_page_impl(&state, payload).await
+}
+
 #[tauri::command]
 pub async fn fetch_table_data(
     state: tauri::State<'_, AppState>,
