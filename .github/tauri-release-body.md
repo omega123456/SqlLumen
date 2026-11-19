@@ -1,7 +1,5 @@
-### Fixes
-- Grid edits, scroll position and selection are kept when switching between grid and form views in table data.
-
-### Improvements
-- Refresh buttons use the clockwise-arrows icon for a more consistent look.
+### Features
+- Connection groups can now be given a colour. Their connections inherit it on the connections page, the connection tab bar and the object browser header.
+- Connection groups can be edited from the connections page through a new popover.
 
 See release assets for platform installers.
