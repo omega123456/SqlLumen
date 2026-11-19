@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react'
-import { useQueryStore, getActiveResult, type SingleResultState } from '../../../stores/query-store'
+import { useQueryStore, type SingleResultState } from '../../../stores/query-store'
+import type { DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
 import type { GridRowActions } from '../../shared/glide/CanvasBaseGridView'
 import type { CachedRow } from '../../../lib/result-window-cache'
 import { isIndexInBounds } from '../../../lib/value-checks'
@@ -17,7 +18,7 @@ export interface ResultViewHandlers {
   handleFormDiscard: () => void
 }
 
-function useResultNavigationHandlers(tabId: string, result: SingleResultState) {
+function useResultNavigationHandlers(surfaceRef: DataViewSurfaceRef, result: SingleResultState) {
   const requestNavigationAction = useQueryStore((state) => state.requestNavigationAction)
   const sortResults = useQueryStore((state) => state.sortResults)
   const setSelectedRow = useQueryStore((state) => state.setSelectedRow)
@@ -26,18 +27,18 @@ function useResultNavigationHandlers(tabId: string, result: SingleResultState) {
 
   const handleSortChanged = useCallback(
     (column: string, direction: 'asc' | 'desc' | null) => {
-      requestNavigationAction(tabId, () => {
-        sortResults(tabId, column, direction)
+      requestNavigationAction(surfaceRef, () => {
+        sortResults(surfaceRef, { column: column, direction: direction })
       })
     },
-    [requestNavigationAction, sortResults, tabId]
+    [requestNavigationAction, sortResults, surfaceRef]
   )
 
   const handleRowSelected = useCallback(
     (rowIndex: number) => {
-      setSelectedRow(tabId, rowIndex)
+      setSelectedRow(surfaceRef, rowIndex)
     },
-    [setSelectedRow, tabId]
+    [setSelectedRow, surfaceRef]
   )
 
   const handleFormNavigate = useCallback(
@@ -45,86 +46,86 @@ function useResultNavigationHandlers(tabId: string, result: SingleResultState) {
       const currentIndex = selectedRowIndex ?? 0
       const newIndex = direction === 'prev' ? currentIndex - 1 : currentIndex + 1
       if (!isIndexInBounds(newIndex, formRowCount)) return
-      setSelectedRow(tabId, newIndex)
+      setSelectedRow(surfaceRef, newIndex)
     },
-    [setSelectedRow, tabId, selectedRowIndex, formRowCount]
+    [setSelectedRow, surfaceRef, selectedRowIndex, formRowCount]
   )
 
   return { handleSortChanged, handleRowSelected, handleFormNavigate }
 }
 
-function useGridRowActions(tabId: string): GridRowActions {
+function useGridRowActions(surfaceRef: DataViewSurfaceRef): GridRowActions {
   const beginRowAction = useQueryStore((state) => state.beginRowAction)
   const markResultsExpired = useQueryStore((state) => state.markResultsExpired)
   return useMemo<GridRowActions>(
     () => ({
       begin: (verb, total, onCancel) =>
-        beginRowAction(tabId, { verb: verb, total: total, onCancel: onCancel }),
-      onExpired: () => markResultsExpired(tabId),
+        beginRowAction(surfaceRef, { verb: verb, total: total, onCancel: onCancel }),
+      onExpired: () => markResultsExpired(surfaceRef.tabId),
     }),
-    [beginRowAction, markResultsExpired, tabId]
+    [beginRowAction, markResultsExpired, surfaceRef]
   )
 }
 
-function useResultCellEditHandlers(tabId: string) {
+function useResultCellEditHandlers(surfaceRef: DataViewSurfaceRef) {
   const startEditingRow = useQueryStore((state) => state.startEditingRow)
   const updateCellValue = useQueryStore((state) => state.updateCellValue)
   const syncCellValue = useQueryStore((state) => state.syncCellValue)
 
   const handleStartEditing = useCallback(
     (rowIndex: number, row?: CachedRow) => {
-      startEditingRow(tabId, rowIndex, row)
+      startEditingRow(surfaceRef, rowIndex, row)
     },
-    [startEditingRow, tabId]
+    [startEditingRow, surfaceRef]
   )
 
   const handleUpdateCellValue = useCallback(
     (columnIndex: number, value: unknown) => {
-      updateCellValue(tabId, columnIndex, value)
+      updateCellValue(surfaceRef, columnIndex, value)
     },
-    [updateCellValue, tabId]
+    [updateCellValue, surfaceRef]
   )
 
   const handleSyncCellValue = useCallback(
     (columnIndex: number, value: unknown) => {
-      syncCellValue(tabId, columnIndex, value)
+      syncCellValue(surfaceRef, columnIndex, value)
     },
-    [syncCellValue, tabId]
+    [syncCellValue, surfaceRef]
   )
 
   return { handleStartEditing, handleUpdateCellValue, handleSyncCellValue }
 }
 
-function useResultRowSaveHandlers(tabId: string) {
+function useResultRowSaveHandlers(surfaceRef: DataViewSurfaceRef) {
   const saveCurrentRow = useQueryStore((state) => state.saveCurrentRow)
   const discardCurrentRow = useQueryStore((state) => state.discardCurrentRow)
 
   const handleAutoSave = useCallback(async (): Promise<boolean> => {
-    return await saveCurrentRow(tabId)
-  }, [saveCurrentRow, tabId])
+    return await saveCurrentRow(surfaceRef)
+  }, [saveCurrentRow, surfaceRef])
 
   const handleFormSave = useCallback(async (): Promise<boolean> => {
-    await saveCurrentRow(tabId)
-    const tab = useQueryStore.getState().tabs[tabId]
-    const result = getActiveResult(tab)
-    return !result.saveError
-  }, [saveCurrentRow, tabId])
+    await saveCurrentRow(surfaceRef)
+    const tab = useQueryStore.getState().tabs[surfaceRef.tabId]
+    const result = tab?.results[surfaceRef.resultIndex]
+    return !result?.saveError
+  }, [saveCurrentRow, surfaceRef])
 
   const handleFormDiscard = useCallback(() => {
-    discardCurrentRow(tabId)
-  }, [discardCurrentRow, tabId])
+    discardCurrentRow(surfaceRef)
+  }, [discardCurrentRow, surfaceRef])
 
   return { handleAutoSave, handleFormSave, handleFormDiscard }
 }
 
 export function useResultViewHandlers(
-  tabId: string,
+  surfaceRef: DataViewSurfaceRef,
   result: SingleResultState
 ): ResultViewHandlers {
   return {
-    ...useResultNavigationHandlers(tabId, result),
-    ...useResultCellEditHandlers(tabId),
-    ...useResultRowSaveHandlers(tabId),
-    gridRowActions: useGridRowActions(tabId),
+    ...useResultNavigationHandlers(surfaceRef, result),
+    ...useResultCellEditHandlers(surfaceRef),
+    ...useResultRowSaveHandlers(surfaceRef),
+    gridRowActions: useGridRowActions(surfaceRef),
   }
 }

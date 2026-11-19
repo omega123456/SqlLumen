@@ -49,7 +49,7 @@ export function handleRunStatement({
   const sql = statement.sql
   if (!sql.trim()) return
 
-  queryState.requestNavigationAction(tabId, () => {
+  queryState.requestTabNavigation(tabId, () => {
     if (isCallSql(sql)) {
       queryState.executeCallQuery(connectionId, tabId, sql)
       return

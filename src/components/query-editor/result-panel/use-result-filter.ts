@@ -3,10 +3,10 @@ import { useQueryStore, type SingleResultState } from '../../../stores/query-sto
 import { useToastStore } from '../../../stores/toast-store'
 import type { FilterCondition } from '../../../types/schema'
 import { buildInitialConditionsFromCell } from '../../../lib/filter-utils'
+import type { DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
 
 interface ResultFilterInputs {
-  tabId: string
-  activeResultIndex: number
+  surfaceRef: DataViewSurfaceRef
   result: SingleResultState
 }
 
@@ -20,11 +20,7 @@ export interface ResultFilter {
   clearFilter: () => void
 }
 
-export function useResultFilter({
-  tabId,
-  activeResultIndex,
-  result,
-}: ResultFilterInputs): ResultFilter {
+export function useResultFilter({ surfaceRef, result }: ResultFilterInputs): ResultFilter {
   const applyQueryFilters = useQueryStore((state) => state.applyQueryFilters)
   const showSuccess = useToastStore((state) => state.showSuccess)
   const { columns, filterModel, selectedCell } = result
@@ -42,15 +38,15 @@ export function useResultFilter({
   const applyFilter = useCallback(
     (conditions: FilterCondition[]) => {
       setIsFilterDialogOpen(false)
-      applyQueryFilters(tabId, activeResultIndex, conditions)
+      applyQueryFilters(surfaceRef, conditions)
     },
-    [tabId, activeResultIndex, applyQueryFilters]
+    [surfaceRef, applyQueryFilters]
   )
 
   const clearFilter = useCallback(() => {
-    applyQueryFilters(tabId, activeResultIndex, [])
+    applyQueryFilters(surfaceRef, [])
     showSuccess('Filters cleared')
-  }, [tabId, activeResultIndex, applyQueryFilters, showSuccess])
+  }, [surfaceRef, applyQueryFilters, showSuccess])
 
   return {
     isFilterDialogOpen,

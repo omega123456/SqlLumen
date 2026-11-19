@@ -30,6 +30,7 @@ export {
   isEditableSelectSql,
   isCallSql,
   isTableDataInBottomPanel,
+  activeResultIndexOf,
   getActiveResult,
   hasUnsavedModifications,
   hasAnyUnsavedEdits,
@@ -58,6 +59,7 @@ export type {
   RunTarget,
 } from './query-store/query-state-types'
 export { getResultViewSpec } from './query-store/result-view-spec'
+export { activeQuerySurfaceRef, querySurfaceRef } from './query-store/query-surface'
 
 export const useQueryStore = create<QueryState>()(() => ({
   tabs: {},

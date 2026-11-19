@@ -75,9 +75,8 @@ export function ResultPanel({
       {!activeResult.isExpired && <ResultStatusView showsSubTabs={showsSubTabs} body={body} />}
 
       <ResultPanelDialogs
-        tabId={tabId}
+        surfaceRef={controllers.surfaceRef}
         connectionId={connectionId}
-        activeResultIndex={controllers.activeResultIndex}
         result={activeResult}
         filter={controllers.filter}
       />

@@ -14,12 +14,14 @@ import { runEditAnalysis } from './edit-analysis'
 import { EDIT_STATE_DEFAULTS, EMPTY_OBJECT } from './query-state-defaults'
 import type { SingleResultState } from './query-state-types'
 import {
-  getActiveIndex,
   patchResultByIndex,
+  patchSurface,
   resultAt,
+  resultOf,
   rowAt,
   getQueryState,
 } from './query-store-access'
+import type { DataViewSurfaceRef } from '../data-view/data-view-types'
 import { buildEditBindingContext, buildSeededRowEditState } from './result-seeding'
 import type { LocatedResult } from './result-view-spec'
 import { editMetadataWithTable, warnAboutAmbiguousEditColumns } from './row-edit-builders'
@@ -154,21 +156,28 @@ function activateEditMode(activation: EditModeActivation) {
   })
 }
 
-export async function setEditMode(connectionId: string, tabId: string, tableName: string | null) {
-  const resultIndex = getActiveIndex(tabId)
+function resultWithColumnsOf(ref: DataViewSurfaceRef): SingleResultState | null {
+  const result = resultOf(ref)
+  if (!result) return null
+  const hasColumns = result.columns.length > 0
+  return hasColumns ? result : null
+}
+
+export async function setEditMode(ref: DataViewSurfaceRef, tableName: string | null) {
+  const { tabId, resultIndex } = ref
 
   if (tableName === null) {
-    patchResultByIndex(tabId, resultIndex, {
+    patchSurface(ref, {
       ...EDIT_STATE_DEFAULTS,
-      editTableMetadata: resultAt(tabId, resultIndex)?.editTableMetadata ?? EMPTY_OBJECT,
+      editTableMetadata: resultOf(ref)?.editTableMetadata ?? EMPTY_OBJECT,
     })
     return
   }
 
-  const result = resultAt(tabId, resultIndex)
+  const connectionId = getQueryState().tabs[tabId]?.connectionId
+  const result = resultWithColumnsOf(ref)
+  if (!connectionId) return
   if (!result) return
-  const hasColumns = result.columns.length > 0
-  if (!hasColumns) return
 
   const request: EditModeRequest = {
     connectionId: connectionId,
@@ -184,7 +193,7 @@ export async function setEditMode(connectionId: string, tabId: string, tableName
     return
   }
 
-  const currentResult = resultAt(tabId, resultIndex)
+  const currentResult = resultOf(ref)
   if (!currentResult) return
 
   activateEditMode({
@@ -195,10 +204,9 @@ export async function setEditMode(connectionId: string, tabId: string, tableName
   })
 }
 
-export function startEditingRow(tabId: string, rowIndex: number, cachedRow?: CachedRow) {
-  const resultIndex = getActiveIndex(tabId)
-  const tab = getQueryState().tabs[tabId]
-  const result = tab?.results[resultIndex]
+export function startEditingRow(ref: DataViewSurfaceRef, rowIndex: number, cachedRow?: CachedRow) {
+  const { tabId, resultIndex } = ref
+  const result = resultOf(ref)
   if (!result?.editMode) return
   if (!result.editTableMetadata[result.editMode]) return
 
@@ -208,7 +216,7 @@ export function startEditingRow(tabId: string, rowIndex: number, cachedRow?: Cac
   const row = cached.row
 
   const tableInfo = result.editTableMetadata[result.editMode]
-  patchResultByIndex(tabId, resultIndex, {
+  patchSurface(ref, {
     editState: buildSeededRowEditState(result, tableInfo, row),
     editingRowIndex: rowIndex,
     editingBaseIndex: cached.baseIndex >= 0 ? cached.baseIndex : null,
@@ -216,13 +224,11 @@ export function startEditingRow(tabId: string, rowIndex: number, cachedRow?: Cac
   })
 }
 
-export function discardCurrentRow(tabId: string) {
-  const resultIndex = getActiveIndex(tabId)
-  const tab = getQueryState().tabs[tabId]
-  const result = tab?.results[resultIndex]
+export function discardCurrentRow(ref: DataViewSurfaceRef) {
+  const result = resultOf(ref)
   if (!result?.editState) return
 
-  patchResultByIndex(tabId, resultIndex, {
+  patchSurface(ref, {
     ...(result.editState.isNewRow ? { draftRow: null, selectedRowIndex: null } : {}),
     editState: null,
     editingRowIndex: null,
@@ -231,13 +237,10 @@ export function discardCurrentRow(tabId: string) {
   })
 }
 
-export function clearEditState(tabId: string) {
-  const tab = getQueryState().tabs[tabId]
-  if (!tab) return
-  const resultIndex = getActiveIndex(tabId)
-  if (hasResultAt(tab, resultIndex)) {
-    patchResultByIndex(tabId, resultIndex, { ...EDIT_STATE_DEFAULTS })
-  }
+export function clearEditState(ref: DataViewSurfaceRef) {
+  const tab = getQueryState().tabs[ref.tabId]
+  if (!hasResultAt(tab, ref.resultIndex)) return
+  patchSurface(ref, { ...EDIT_STATE_DEFAULTS })
 }
 
 export function rowEditModeActions() {

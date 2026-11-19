@@ -5,7 +5,8 @@
  * indices 0..n-1, so the editing base index defaults to the editing row) and
  * renders the windowed props.
  */
-import { useLayoutEffect, type ComponentProps } from 'react'
+import { useLayoutEffect, useMemo, type ComponentProps } from 'react'
+import { querySurfaceRef } from '../../stores/query-store'
 import { ResultGridView } from '../../components/query-editor/ResultGridView'
 import { seedResultWindow } from '../../lib/result-window-cache'
 import type { GridRowSource } from '../../components/shared/glide/grid-row-source'
@@ -14,7 +15,13 @@ type WindowedProps = ComponentProps<typeof ResultGridView>
 
 export type LegacyResultGridViewProps = Omit<
   WindowedProps,
-  'resultIndex' | 'queryId' | 'viewRowCount' | 'viewVersion' | 'draftRow' | 'editingBaseIndex'
+  | 'resultIndex'
+  | 'queryId'
+  | 'viewRowCount'
+  | 'viewVersion'
+  | 'draftRow'
+  | 'editingBaseIndex'
+  | 'surfaceRef'
 > & {
   rows: unknown[][]
   draftRow?: unknown[] | null
@@ -41,9 +48,11 @@ export function LegacyResultGridView({
       window: { offset: 0, rows, baseIndices: rows.map((_, index) => index) },
     })
   }, [props.columns, props.tabId, rows])
+  const surfaceRef = useMemo(() => querySurfaceRef(props.tabId, 0), [props.tabId])
   return (
     <ResultGridView
       {...props}
+      surfaceRef={surfaceRef}
       resultIndex={0}
       queryId={LEGACY_GRID_QUERY_ID}
       viewRowCount={rows.length}

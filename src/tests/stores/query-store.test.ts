@@ -5,6 +5,7 @@ import {
   DEFAULT_RESULT_STATE,
   RESULT_EXPORT_POLL_MS,
   countRanges,
+  activeQuerySurfaceRef,
 } from '../../stores/query-store'
 import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
 import { useTableDataStore } from '../../stores/table-data-store'
@@ -660,13 +661,13 @@ describe('useQueryStore — setViewMode', () => {
   it('sets the view mode to form, text and back to grid', () => {
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
 
-    useQueryStore.getState().setViewMode('tab-1', 'form')
+    useQueryStore.getState().setViewMode(activeQuerySurfaceRef('tab-1'), 'form')
     expect(flat('tab-1').viewMode).toBe('form')
 
-    useQueryStore.getState().setViewMode('tab-1', 'text')
+    useQueryStore.getState().setViewMode(activeQuerySurfaceRef('tab-1'), 'text')
     expect(flat('tab-1').viewMode).toBe('text')
 
-    useQueryStore.getState().setViewMode('tab-1', 'grid')
+    useQueryStore.getState().setViewMode(activeQuerySurfaceRef('tab-1'), 'grid')
     expect(flat('tab-1').viewMode).toBe('grid')
   })
 
@@ -674,7 +675,7 @@ describe('useQueryStore — setViewMode', () => {
     useQueryStore.getState().setContent('tab-same-row', 'SELECT 1')
     patchResult('tab-same-row', { selectedRowIndex: 2 })
 
-    useQueryStore.getState().setSelectedRow('tab-same-row', 2)
+    useQueryStore.getState().setSelectedRow(activeQuerySurfaceRef('tab-same-row'), 2)
 
     expect(flat('tab-same-row').selectedRowIndex).toBe(2)
   })
@@ -685,7 +686,9 @@ describe('useQueryStore — setViewMode', () => {
       selectedCell: { columnKey: 'name', value: 'Ada' },
     })
 
-    useQueryStore.getState().setSelectedCell('tab-same-cell', { columnKey: 'name', value: 'Ada' })
+    useQueryStore
+      .getState()
+      .setSelectedCell(activeQuerySurfaceRef('tab-same-cell'), { columnKey: 'name', value: 'Ada' })
 
     expect(flat('tab-same-cell').selectedCell).toEqual({ columnKey: 'name', value: 'Ada' })
   })
@@ -711,11 +714,11 @@ describe('useQueryStore — setViewMode', () => {
 
     const saveSpy = vi.spyOn(useQueryStore.getState(), 'saveCurrentRow').mockResolvedValue(true)
 
-    useQueryStore.getState().setViewMode('tab-text-save-fail', 'text')
+    useQueryStore.getState().setViewMode(activeQuerySurfaceRef('tab-text-save-fail'), 'text')
     await Promise.resolve()
     await Promise.resolve()
 
-    expect(saveSpy).toHaveBeenCalledWith('tab-text-save-fail')
+    expect(saveSpy).toHaveBeenCalledWith(activeQuerySurfaceRef('tab-text-save-fail'))
     expect(flat('tab-text-save-fail').viewMode).toBe('grid')
     expect(
       useToastStore
@@ -750,11 +753,11 @@ describe('useQueryStore — setViewMode', () => {
       .spyOn(useQueryStore.getState(), 'saveCurrentRow')
       .mockRejectedValue(new Error('save blew up'))
 
-    useQueryStore.getState().setViewMode('tab-text-save-throw', 'text')
+    useQueryStore.getState().setViewMode(activeQuerySurfaceRef('tab-text-save-throw'), 'text')
     await Promise.resolve()
     await Promise.resolve()
 
-    expect(saveSpy).toHaveBeenCalledWith('tab-text-save-throw')
+    expect(saveSpy).toHaveBeenCalledWith(activeQuerySurfaceRef('tab-text-save-throw'))
     expect(flat('tab-text-save-throw').viewMode).toBe('grid')
     expect(
       useToastStore
@@ -772,15 +775,17 @@ describe('useQueryStore — setResultColumnWidth', () => {
   it('remembers each resized column width on the active result', async () => {
     await useQueryStore.getState().executeQuery('conn-1', 'tab-widths', 'SELECT 1')
 
-    useQueryStore.getState().setResultColumnWidth('tab-widths', 'col_0', 180)
-    useQueryStore.getState().setResultColumnWidth('tab-widths', 'col_1', 90)
+    useQueryStore.getState().setResultColumnWidth(activeQuerySurfaceRef('tab-widths'), 'col_0', 180)
+    useQueryStore.getState().setResultColumnWidth(activeQuerySurfaceRef('tab-widths'), 'col_1', 90)
 
     expect(flat('tab-widths').columnWidths).toEqual({ col_0: 180, col_1: 90 })
   })
 
   it('forgets the widths when the query runs again', async () => {
     await useQueryStore.getState().executeQuery('conn-1', 'tab-widths-rerun', 'SELECT 1')
-    useQueryStore.getState().setResultColumnWidth('tab-widths-rerun', 'col_0', 180)
+    useQueryStore
+      .getState()
+      .setResultColumnWidth(activeQuerySurfaceRef('tab-widths-rerun'), 'col_0', 180)
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-widths-rerun', 'SELECT 1')
 
@@ -793,10 +798,10 @@ describe('useQueryStore — setSelectedRow', () => {
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
     patchResult('tab-1', {})
 
-    useQueryStore.getState().setSelectedRow('tab-1', 5)
+    useQueryStore.getState().setSelectedRow(activeQuerySurfaceRef('tab-1'), 5)
     expect(flat('tab-1').selectedRowIndex).toBe(5)
 
-    useQueryStore.getState().setSelectedRow('tab-1', null)
+    useQueryStore.getState().setSelectedRow(activeQuerySurfaceRef('tab-1'), null)
     expect(flat('tab-1').selectedRowIndex).toBeNull()
   })
 })
@@ -806,10 +811,10 @@ describe('useQueryStore — export dialog', () => {
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
     patchResult('tab-1', {})
 
-    useQueryStore.getState().openExportDialog('tab-1')
+    useQueryStore.getState().openExportDialog(activeQuerySurfaceRef('tab-1'))
     expect(flat('tab-1').exportDialogOpen).toBe(true)
 
-    useQueryStore.getState().closeExportDialog('tab-1')
+    useQueryStore.getState().closeExportDialog(activeQuerySurfaceRef('tab-1'))
     expect(flat('tab-1').exportDialogOpen).toBe(false)
   })
 })
@@ -853,7 +858,9 @@ describe('useQueryStore — sortResults', () => {
       firstWindow: { offset: 0, rows: [[1], [2], [3]], baseIndices: [1, 2, 0] },
     }))
 
-    await useQueryStore.getState().sortResults('tab-1', 'id', 'asc')
+    await useQueryStore
+      .getState()
+      .sortResults(activeQuerySurfaceRef('tab-1'), { column: 'id', direction: 'asc' })
 
     expect(ipc.payloads('set_result_view')[0]).toMatchObject({
       queryId: 'q-sort',
@@ -879,7 +886,9 @@ describe('useQueryStore — sortResults', () => {
       firstWindow: { offset: 0, rows: [[3], [1], [2]], baseIndices: [0, 1, 2] },
     }))
 
-    await useQueryStore.getState().sortResults('tab-1', 'id', null)
+    await useQueryStore
+      .getState()
+      .sortResults(activeQuerySurfaceRef('tab-1'), { column: 'id', direction: null })
 
     expect(ipc.payloads('set_result_view')[0]).toMatchObject({
       viewSpec: { sort: null, filters: [] },
@@ -921,13 +930,17 @@ describe('useQueryStore — sortResults', () => {
       firstWindow: { offset: 0, rows: [[true, false, 'x']], baseIndices: [0] },
     }))
 
-    await useQueryStore.getState().sortResults('tab-bool', 'label', 'desc')
+    await useQueryStore
+      .getState()
+      .sortResults(activeQuerySurfaceRef('tab-bool'), { column: 'label', direction: 'desc' })
 
     expect(flat('tab-bool').rows).toEqual([[1, 0, 'x']])
   })
 
   it('ignores a sort request for an unknown tab', async () => {
-    await useQueryStore.getState().sortResults('missing', 'id', 'asc')
+    await useQueryStore
+      .getState()
+      .sortResults(activeQuerySurfaceRef('missing'), { column: 'id', direction: 'asc' })
     expect(ipc.payloads('set_result_view')).toHaveLength(0)
   })
 
@@ -947,7 +960,9 @@ describe('useQueryStore — sortResults', () => {
             })
         })
     )
-    const sortPromise = useQueryStore.getState().sortResults('tab-1', 'id', 'asc')
+    const sortPromise = useQueryStore
+      .getState()
+      .sortResults(activeQuerySurfaceRef('tab-1'), { column: 'id', direction: 'asc' })
     useQueryStore.getState().cleanupTab('conn-1', 'tab-1')
     release?.()
     await sortPromise
@@ -1646,22 +1661,30 @@ describe('useQueryStore — setResultScrollCell', () => {
   })
 
   it('persists scroll position on the active result', () => {
-    useQueryStore.getState().setResultScrollCell('tab-1', 10, 5)
+    useQueryStore
+      .getState()
+      .setResultScrollCell(activeQuerySurfaceRef('tab-1'), { scrollRow: 10, scrollColumn: 5 })
     const result = useQueryStore.getState().tabs['tab-1']!.results[0]
     expect(result.scrollRow).toBe(10)
     expect(result.scrollCol).toBe(5)
   })
 
   it('does not create a new state reference when values are unchanged', () => {
-    useQueryStore.getState().setResultScrollCell('tab-1', 10, 5)
+    useQueryStore
+      .getState()
+      .setResultScrollCell(activeQuerySurfaceRef('tab-1'), { scrollRow: 10, scrollColumn: 5 })
     const before = useQueryStore.getState().tabs['tab-1']!.results[0]
-    useQueryStore.getState().setResultScrollCell('tab-1', 10, 5)
+    useQueryStore
+      .getState()
+      .setResultScrollCell(activeQuerySurfaceRef('tab-1'), { scrollRow: 10, scrollColumn: 5 })
     const after = useQueryStore.getState().tabs['tab-1']!.results[0]
     expect(before).toBe(after)
   })
 
   it('no-ops for non-existent tab', () => {
-    useQueryStore.getState().setResultScrollCell('nonexistent', 10, 5)
+    useQueryStore
+      .getState()
+      .setResultScrollCell(activeQuerySurfaceRef('nonexistent'), { scrollRow: 10, scrollColumn: 5 })
     expect(useQueryStore.getState().tabs['nonexistent']).toBeUndefined()
   })
 
@@ -1677,16 +1700,16 @@ describe('useQueryStore — setCheckedRanges', () => {
     useQueryStore.getState().setContent('tab-chk', 'SELECT 1')
     patchResult('tab-chk', { viewVersion: 4, checkedRanges: [] })
 
-    useQueryStore.getState().setCheckedRanges('tab-chk', [[0, 100_000]])
+    useQueryStore.getState().setCheckedRanges(activeQuerySurfaceRef('tab-chk'), [[0, 100_000]])
     expect(flat('tab-chk').checkedRanges).toEqual([[0, 100_000]])
     expect(flat('tab-chk').checkedViewVersion).toBe(4)
     expect(countRanges(flat('tab-chk').checkedRanges)).toBe(100_000)
 
-    useQueryStore.getState().setCheckedRanges('tab-chk', [])
+    useQueryStore.getState().setCheckedRanges(activeQuerySurfaceRef('tab-chk'), [])
     expect(flat('tab-chk').checkedRanges).toEqual([])
     // Clearing an already-empty set is a no-op.
-    useQueryStore.getState().setCheckedRanges('tab-chk', [])
-    useQueryStore.getState().setCheckedRanges('missing', [[0, 1]])
+    useQueryStore.getState().setCheckedRanges(activeQuerySurfaceRef('tab-chk'), [])
+    useQueryStore.getState().setCheckedRanges(activeQuerySurfaceRef('missing'), [[0, 1]])
   })
 })
 
@@ -1755,7 +1778,7 @@ describe('useQueryStore — deleteResultRows', () => {
     removedResponse()
     setupEditableResult('tab-del')
 
-    const count = await useQueryStore.getState().deleteResultRows('tab-del')
+    const count = await useQueryStore.getState().deleteResultRows(activeQuerySurfaceRef('tab-del'))
 
     expect(count).toBe(2)
     const calls = ipc.payloads('delete_table_row') as Array<Record<string, unknown>>
@@ -1809,7 +1832,7 @@ describe('useQueryStore — deleteResultRows', () => {
       viewVersion: 1,
     }))
 
-    await useQueryStore.getState().deleteResultRows('tab-del-sel')
+    await useQueryStore.getState().deleteResultRows(activeQuerySurfaceRef('tab-del-sel'))
 
     expect(ipc.payloads('fetch_result_window')).toHaveLength(1)
     expect(ipc.payloads('remove_result_rows')[0]).toMatchObject({ baseIndices: [2, 0, 1] })
@@ -1825,7 +1848,7 @@ describe('useQueryStore — deleteResultRows', () => {
     })
     setupEditableResult('tab-del-cas')
 
-    await useQueryStore.getState().deleteResultRows('tab-del-cas')
+    await useQueryStore.getState().deleteResultRows(activeQuerySurfaceRef('tab-del-cas'))
 
     const calls = ipc.payloads('remove_result_rows') as Array<Record<string, unknown>>
     expect(calls.map((call) => call.baseViewVersion)).toEqual([1, 5])
@@ -1842,7 +1865,7 @@ describe('useQueryStore — deleteResultRows', () => {
     ipc.override('remove_result_rows', () => ({ viewVersion: 2, viewRowCount: 1, totalRows: 1 }))
     setupEditableResult('tab-del-late')
 
-    await useQueryStore.getState().deleteResultRows('tab-del-late')
+    await useQueryStore.getState().deleteResultRows(activeQuerySurfaceRef('tab-del-late'))
 
     const result = flat('tab-del-late')
     expect(result.viewVersion).toBe(3)
@@ -1858,7 +1881,9 @@ describe('useQueryStore — deleteResultRows', () => {
     })
     setupEditableResult('tab-del-stale')
 
-    const count = await useQueryStore.getState().deleteResultRows('tab-del-stale')
+    const count = await useQueryStore
+      .getState()
+      .deleteResultRows(activeQuerySurfaceRef('tab-del-stale'))
 
     expect(count).toBe(2)
     expect(flat('tab-del-stale').isStale).toBe(true)
@@ -1877,7 +1902,7 @@ describe('useQueryStore — deleteResultRows', () => {
     })
     setupEditableResult('tab-del-cas2')
 
-    await useQueryStore.getState().deleteResultRows('tab-del-cas2')
+    await useQueryStore.getState().deleteResultRows(activeQuerySurfaceRef('tab-del-cas2'))
 
     expect(ipc.payloads('remove_result_rows')).toHaveLength(2)
     expect(flat('tab-del-cas2').isStale).toBe(true)
@@ -1887,7 +1912,9 @@ describe('useQueryStore — deleteResultRows', () => {
     ipc.override('delete_table_row', () => undefined)
     setupEditableResult('tab-del-ro', { editMode: null })
 
-    const count = await useQueryStore.getState().deleteResultRows('tab-del-ro')
+    const count = await useQueryStore
+      .getState()
+      .deleteResultRows(activeQuerySurfaceRef('tab-del-ro'))
 
     expect(count).toBe(0)
     expect(ipc.payloads('delete_table_row')).toHaveLength(0)
@@ -1899,11 +1926,15 @@ describe('useQueryStore — deleteResultRows', () => {
     setupEditableResult('tab-del-nopk', {
       editTableMetadata: { users: { ...editMetadata.users, primaryKey: null } },
     })
-    expect(await useQueryStore.getState().deleteResultRows('tab-del-nopk')).toBe(0)
+    expect(
+      await useQueryStore.getState().deleteResultRows(activeQuerySurfaceRef('tab-del-nopk'))
+    ).toBe(0)
     await expectToast('error', 'no primary or unique key')
 
     setupEditableResult('tab-del-noconn', { editConnectionId: null })
-    expect(await useQueryStore.getState().deleteResultRows('tab-del-noconn')).toBe(0)
+    expect(
+      await useQueryStore.getState().deleteResultRows(activeQuerySurfaceRef('tab-del-noconn'))
+    ).toBe(0)
     await expectToast('error', 'No active connection')
     expect(ipc.payloads('delete_table_row')).toHaveLength(0)
   })
@@ -1912,7 +1943,9 @@ describe('useQueryStore — deleteResultRows', () => {
     ipc.override('delete_table_row', () => undefined)
     setupEditableResult('tab-del-nokey', { editBoundColumnIndexMap: new Map([['name', 1]]) })
 
-    const count = await useQueryStore.getState().deleteResultRows('tab-del-nokey')
+    const count = await useQueryStore
+      .getState()
+      .deleteResultRows(activeQuerySurfaceRef('tab-del-nokey'))
 
     expect(count).toBe(0)
     expect(ipc.payloads('delete_table_row')).toHaveLength(0)
@@ -1922,11 +1955,15 @@ describe('useQueryStore — deleteResultRows', () => {
   it('deletes nothing for checked ranges of an older view, or above the 10,000-row cap', async () => {
     ipc.override('delete_table_row', () => undefined)
     setupEditableResult('tab-del-old', { checkedViewVersion: 0 })
-    expect(await useQueryStore.getState().deleteResultRows('tab-del-old')).toBe(0)
+    expect(
+      await useQueryStore.getState().deleteResultRows(activeQuerySurfaceRef('tab-del-old'))
+    ).toBe(0)
     expect(flat('tab-del-old').checkedRanges).toEqual([])
 
     setupEditableResult('tab-del-cap', { viewRowCount: 100_000, checkedRanges: [[0, 100_000]] })
-    expect(await useQueryStore.getState().deleteResultRows('tab-del-cap')).toBe(0)
+    expect(
+      await useQueryStore.getState().deleteResultRows(activeQuerySurfaceRef('tab-del-cap'))
+    ).toBe(0)
     expect(ipc.payloads('delete_table_row')).toHaveLength(0)
     expect(ipc.payloads('fetch_result_window')).toHaveLength(0)
   })
@@ -1942,7 +1979,9 @@ describe('useQueryStore — deleteResultRows', () => {
       checkedRanges: [[0, 3]],
     })
 
-    expect(await useQueryStore.getState().deleteResultRows('tab-del-load')).toBe(0)
+    expect(
+      await useQueryStore.getState().deleteResultRows(activeQuerySurfaceRef('tab-del-load'))
+    ).toBe(0)
     expect(ipc.payloads('delete_table_row')).toHaveLength(0)
     await expectToast('error', 'offline')
   })
@@ -1957,7 +1996,9 @@ describe('useQueryStore — deleteResultRows', () => {
       checkedRanges: [[0, 3]],
     })
 
-    expect(await useQueryStore.getState().deleteResultRows('tab-del-exp')).toBe(0)
+    expect(
+      await useQueryStore.getState().deleteResultRows(activeQuerySurfaceRef('tab-del-exp'))
+    ).toBe(0)
     expect(flat('tab-del-exp').isExpired).toBe(true)
   })
 
@@ -1972,7 +2013,9 @@ describe('useQueryStore — deleteResultRows', () => {
     useToastStore.setState({ toasts: [] })
     setupEditableResult('tab-del-err')
 
-    const count = await useQueryStore.getState().deleteResultRows('tab-del-err')
+    const count = await useQueryStore
+      .getState()
+      .deleteResultRows(activeQuerySurfaceRef('tab-del-err'))
 
     expect(count).toBe(1)
     expect(ipc.payloads('remove_result_rows')[0]).toMatchObject({ baseIndices: [0] })
@@ -1993,7 +2036,9 @@ describe('useQueryStore — deleteResultRows', () => {
     })
     setupEditableResult('tab-del-first-err')
 
-    const count = await useQueryStore.getState().deleteResultRows('tab-del-first-err')
+    const count = await useQueryStore
+      .getState()
+      .deleteResultRows(activeQuerySurfaceRef('tab-del-first-err'))
 
     expect(count).toBe(0)
     expect(ipc.payloads('remove_result_rows')).toHaveLength(0)
@@ -2008,7 +2053,9 @@ describe('useQueryStore — deleteResultRows', () => {
     removedResponse()
     setupEditableResult('tab-del-selected', { checkedRanges: [] })
 
-    const count = await useQueryStore.getState().deleteResultRows('tab-del-selected')
+    const count = await useQueryStore
+      .getState()
+      .deleteResultRows(activeQuerySurfaceRef('tab-del-selected'))
 
     expect(count).toBe(1)
     const calls = ipc.payloads('delete_table_row') as Array<Record<string, unknown>>
@@ -2021,7 +2068,9 @@ describe('useQueryStore — deleteResultRows', () => {
     ipc.override('delete_table_row', () => undefined)
     setupEditableResult('tab-del-empty', { checkedRanges: [], selectedRowIndex: null })
 
-    const count = await useQueryStore.getState().deleteResultRows('tab-del-empty')
+    const count = await useQueryStore
+      .getState()
+      .deleteResultRows(activeQuerySurfaceRef('tab-del-empty'))
     expect(count).toBe(0)
     expect(ipc.payloads('delete_table_row')).toHaveLength(0)
     expect(flat('tab-del-empty').rows).toHaveLength(3)
@@ -2041,7 +2090,9 @@ describe('useQueryStore — deleteResultRows', () => {
       removedResponse()
       setupEditableResult('tab-del-progress', { checkedRanges: [[0, 1]] })
 
-      const deletion = useQueryStore.getState().deleteResultRows('tab-del-progress')
+      const deletion = useQueryStore
+        .getState()
+        .deleteResultRows(activeQuerySurfaceRef('tab-del-progress'))
       await vi.advanceTimersByTimeAsync(0)
       expect(flat('tab-del-progress').rowActionProgress).toMatchObject({
         verb: 'Deleting',
@@ -2066,13 +2117,15 @@ describe('useQueryStore — row actions', () => {
     useQueryStore.getState().setContent('tab-act', 'SELECT 1')
     patchResult('tab-act', { queryId: 'q-act' })
     const onCancel = vi.fn()
-    const handle = useQueryStore
-      .getState()
-      .beginRowAction('tab-act', { verb: 'Copying', total: 5000, onCancel: onCancel })
+    const handle = useQueryStore.getState().beginRowAction(activeQuerySurfaceRef('tab-act'), {
+      verb: 'Copying',
+      total: 5000,
+      onCancel: onCancel,
+    })
     expect(flat('tab-act').rowActionProgress).toMatchObject({ cancellable: true, total: 5000 })
     handle.update(2000)
-    useQueryStore.getState().cancelRowAction('tab-act')
-    useQueryStore.getState().cancelRowAction('tab-act')
+    useQueryStore.getState().cancelRowAction(activeQuerySurfaceRef('tab-act'))
+    useQueryStore.getState().cancelRowAction(activeQuerySurfaceRef('tab-act'))
     expect(onCancel).toHaveBeenCalledTimes(1)
     expect(handle.finish()).toBe(false)
     expect(flat('tab-act').rowActionProgress).toBeNull()
@@ -2085,7 +2138,7 @@ describe('useQueryStore — row actions', () => {
       patchResult('tab-act2', { queryId: 'q-act2' })
       const handle = useQueryStore
         .getState()
-        .beginRowAction('tab-act2', { verb: 'Pasting', total: 4000 })
+        .beginRowAction(activeQuerySurfaceRef('tab-act2'), { verb: 'Pasting', total: 4000 })
       vi.advanceTimersByTime(1000)
       handle.update(2000)
       expect(flat('tab-act2').rowActionProgress).toMatchObject({ visible: true, done: 2000 })
@@ -2146,7 +2199,9 @@ describe('useQueryStore — totalTimeMs propagation', () => {
       firstWindow: { offset: 0, rows: [], baseIndices: [] },
     }))
 
-    await useQueryStore.getState().sortResults('tab-sort-total', 'id', null)
+    await useQueryStore
+      .getState()
+      .sortResults(activeQuerySurfaceRef('tab-sort-total'), { column: 'id', direction: null })
 
     expect(flat('tab-sort-total').totalTimeMs).toBe(33)
     expect(ipc.payloads('execute_query')).toHaveLength(0)
@@ -2360,7 +2415,7 @@ describe('full export job', () => {
     seedTruncatedTab()
     await startAndFirstPoll()
     // ResultPanel closes the dialog whenever its tab goes inactive.
-    useQueryStore.getState().closeExportDialog(TAB)
+    useQueryStore.getState().closeExportDialog(activeQuerySurfaceRef(TAB))
 
     const calls = progressCalls()
     await vi.advanceTimersByTimeAsync(RESULT_EXPORT_POLL_MS * 2)
@@ -2422,7 +2477,7 @@ describe('full export job', () => {
     expect(job()).toMatchObject({ status: 'failed', error: 'Query failed: Deadlock found' })
 
     // Closing the dialog dismisses the finished job.
-    useQueryStore.getState().closeExportDialog(TAB)
+    useQueryStore.getState().closeExportDialog(activeQuerySurfaceRef(TAB))
     expect(job()).toBeUndefined()
   })
 
@@ -2484,7 +2539,7 @@ describe('full export job', () => {
       cancelRequested: false,
     })
 
-    useQueryStore.getState().closeExportDialog(TAB)
+    useQueryStore.getState().closeExportDialog(activeQuerySurfaceRef(TAB))
     expect(job()).toBeUndefined()
     progress = running(0)
     ipc.override('start_result_export', () => 'job-1')
@@ -2911,8 +2966,8 @@ describe('multi-result actions', () => {
         },
       })
 
-      useQueryStore.getState().setSelectedRow('tab-1', 1)
-      useQueryStore.getState().setViewMode('tab-1', 'form')
+      useQueryStore.getState().setSelectedRow(activeQuerySurfaceRef('tab-1'), 1)
+      useQueryStore.getState().setViewMode(activeQuerySurfaceRef('tab-1'), 'form')
 
       const tab = useQueryStore.getState().tabs['tab-1']!
       expect(tab.results[0].selectedRowIndex).toBe(1)
@@ -3239,7 +3294,7 @@ describe('multi-result actions', () => {
     it('creates a result with the new viewMode when tab has empty results', () => {
       useQueryStore.getState().setContent('tab-1', '')
       // tab-1 now has results: []
-      useQueryStore.getState().setViewMode('tab-1', 'form')
+      useQueryStore.getState().setViewMode(activeQuerySurfaceRef('tab-1'), 'form')
 
       const tab = useQueryStore.getState().tabs['tab-1']!
       expect(tab.results).toHaveLength(1)
@@ -3298,7 +3353,9 @@ describe('multi-result actions', () => {
         firstWindow: { offset: 0, rows: [[3], [1], [2]], baseIndices: [0, 1, 2] },
       }))
 
-      await useQueryStore.getState().sortResults('tab-1', 'id', null)
+      await useQueryStore
+        .getState()
+        .sortResults(activeQuerySurfaceRef('tab-1'), { column: 'id', direction: null })
 
       const tab = useQueryStore.getState().tabs['tab-1']!
       expect(tab.results[0].sortColumn).toBeNull()
@@ -3314,7 +3371,9 @@ describe('multi-result actions', () => {
         throw new Error('Sort failed')
       })
 
-      await useQueryStore.getState().sortResults('tab-1', 'id', 'desc')
+      await useQueryStore
+        .getState()
+        .sortResults(activeQuerySurfaceRef('tab-1'), { column: 'id', direction: 'desc' })
 
       const result = useQueryStore.getState().tabs['tab-1']!.results[0]
       expect(result.sortDirection).toBe('asc')
@@ -3373,7 +3432,9 @@ describe('multi-result actions', () => {
         firstWindow: { offset: 0, rows: [['Alice'], ['Bob']], baseIndices: [1, 0] },
       }))
 
-      await useQueryStore.getState().sortResults('tab-1', 'name', 'asc')
+      await useQueryStore
+        .getState()
+        .sortResults(activeQuerySurfaceRef('tab-1'), { column: 'name', direction: 'asc' })
 
       expect(ipc.payloads('set_result_view')[0]).toMatchObject({ resultIndex: 1, queryId: 'q2' })
       expect(rowsOf('tab-1', 1)).toEqual([['Alice'], ['Bob']])
@@ -4311,7 +4372,9 @@ describe('expired results', () => {
       })
 
       await act(async () => {
-        await useQueryStore.getState().sortResults(TAB_ID, 'id', 'asc')
+        await useQueryStore
+          .getState()
+          .sortResults(activeQuerySurfaceRef(TAB_ID), { column: 'id', direction: 'asc' })
       })
 
       const tab = useQueryStore.getState().tabs[TAB_ID]
@@ -4377,7 +4440,7 @@ describe('expired results', () => {
       })
 
       await act(async () => {
-        const saved = await useQueryStore.getState().saveCurrentRow(TAB_ID)
+        const saved = await useQueryStore.getState().saveCurrentRow(activeQuerySurfaceRef(TAB_ID))
         expect(saved).toBe(true)
       })
 

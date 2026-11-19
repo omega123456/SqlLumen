@@ -198,6 +198,7 @@ describe('useBlobViewer with query results', () => {
         ...editInputs,
         ...callbacks,
         tabId: TAB_ID,
+        resultIndex: 0,
         queryId: 'q1',
         viewVersion: 1,
         editState: null,

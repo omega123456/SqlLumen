@@ -43,10 +43,13 @@ export function isTableDataInBottomPanel(
   return bottomPanelItem.tabId === tableTabId
 }
 
+export function activeResultIndexOf(tab: TabQueryState | undefined): number {
+  if (!hasResults(tab)) return 0
+  return Math.min(tab.activeResultIndex, tab.results.length - 1)
+}
+
 export function getActiveResult(tab: TabQueryState | undefined): SingleResultState {
-  if (!hasResults(tab)) return DEFAULT_RESULT_STATE
-  const index = Math.min(tab.activeResultIndex, tab.results.length - 1)
-  return tab.results[index] ?? DEFAULT_RESULT_STATE
+  return tab?.results[activeResultIndexOf(tab)] ?? DEFAULT_RESULT_STATE
 }
 
 export function hasUnsavedModifications(result: SingleResultState | undefined): boolean {

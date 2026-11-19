@@ -1,11 +1,12 @@
 import { useQueryStore, type SingleResultState } from '../../../stores/query-store'
+import type { DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
 import { formatCount, formatRowRange } from '../../../lib/format-row-count'
 import { Button } from '../../common/Button'
 import { InfoBar } from '../../common/InfoBar'
 import { TRUNCATION_MESSAGES } from './result-panel-model'
 
 interface ResultBandsProps {
-  tabId: string
+  surfaceRef: DataViewSurfaceRef
   result: SingleResultState
   isTabRunning: boolean
 }
@@ -79,18 +80,23 @@ function WindowFailureBand({ failedWindowRange, onRetry }: WindowFailureBandProp
   )
 }
 
-function FailureBand({ tabId, result }: { tabId: string; result: SingleResultState }) {
+interface FailureBandProps {
+  surfaceRef: DataViewSurfaceRef
+  result: SingleResultState
+}
+
+function FailureBand({ surfaceRef, result }: FailureBandProps) {
   const retryResultWindow = useQueryStore((state) => state.retryResultWindow)
   const retryViewChange = useQueryStore((state) => state.retryViewChange)
   const { viewError, failedWindowRange } = result
   if (viewError !== null) {
-    return <ViewErrorBand message={viewError} onRetry={() => retryViewChange(tabId)} />
+    return <ViewErrorBand message={viewError} onRetry={() => retryViewChange(surfaceRef)} />
   }
   if (failedWindowRange === null) return null
   return (
     <WindowFailureBand
       failedWindowRange={failedWindowRange}
-      onRetry={() => retryResultWindow(tabId)}
+      onRetry={() => retryResultWindow(surfaceRef)}
     />
   )
 }
@@ -121,7 +127,7 @@ function RunFileBand({ result, exportedRowCount, onCopyRunFilePath }: RunFileBan
   )
 }
 
-function ResultTruncationBand({ tabId, result, isTabRunning }: ResultBandsProps) {
+function ResultTruncationBand({ surfaceRef, result, isTabRunning }: ResultBandsProps) {
   const openExportDialog = useQueryStore((state) => state.openExportDialog)
   const copyLastRunFilePath = useQueryStore((state) => state.copyLastRunFilePath)
   const exportedRowCount = result.exportedRowCount
@@ -130,7 +136,7 @@ function ResultTruncationBand({ tabId, result, isTabRunning }: ResultBandsProps)
       <RunFileBand
         result={result}
         exportedRowCount={exportedRowCount}
-        onCopyRunFilePath={() => void copyLastRunFilePath(tabId)}
+        onCopyRunFilePath={() => void copyLastRunFilePath(surfaceRef.tabId)}
       />
     )
   }
@@ -138,7 +144,7 @@ function ResultTruncationBand({ tabId, result, isTabRunning }: ResultBandsProps)
     <TruncationBand
       result={result}
       isTabRunning={isTabRunning}
-      onExportAllRows={() => openExportDialog(tabId, 'allRows')}
+      onExportAllRows={() => openExportDialog(surfaceRef, 'allRows')}
     />
   )
 }
@@ -147,7 +153,7 @@ function hasAnyBand(result: SingleResultState): boolean {
   return result.truncated || result.failedWindowRange !== null || result.viewError !== null
 }
 
-export function ResultBands({ tabId, result, isTabRunning }: ResultBandsProps) {
+export function ResultBands({ surfaceRef, result, isTabRunning }: ResultBandsProps) {
   if (!hasAnyBand(result)) return null
   return (
     <div
@@ -155,9 +161,9 @@ export function ResultBands({ tabId, result, isTabRunning }: ResultBandsProps) {
       data-testid="result-band-slot"
     >
       {result.truncated && (
-        <ResultTruncationBand tabId={tabId} result={result} isTabRunning={isTabRunning} />
+        <ResultTruncationBand surfaceRef={surfaceRef} result={result} isTabRunning={isTabRunning} />
       )}
-      <FailureBand tabId={tabId} result={result} />
+      <FailureBand surfaceRef={surfaceRef} result={result} />
     </div>
   )
 }

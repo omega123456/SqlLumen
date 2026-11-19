@@ -1,5 +1,7 @@
 import { useCallback, useMemo } from 'react'
-import { countRanges, useQueryStore, getActiveResult } from '../../stores/query-store'
+import { countRanges, useQueryStore } from '../../stores/query-store'
+import { useQuerySurfaceResult } from './use-query-surface-result'
+import type { DataViewSurfaceRef } from '../../stores/data-view/data-view-types'
 import { EditModeDropdown } from './EditModeDropdown'
 import { ViewModeGroup } from '../shared/toolbar/ViewModeGroup'
 import { DataActionButtons } from '../shared/toolbar/DataActionButtons'
@@ -18,7 +20,7 @@ import { useCopySelectedRows } from './result-toolbar/use-copy-selected-rows'
 import { useResultRowActions } from './result-toolbar/use-result-row-actions'
 
 interface ResultToolbarProps {
-  tabId: string
+  surfaceRef: DataViewSurfaceRef
   connectionId: string
   filterModel: FilterCondition[]
   onFilterClick: () => void
@@ -27,22 +29,23 @@ interface ResultToolbarProps {
   rowInsertion?: ResultRowInsertion
 }
 
-function useResultViewActions(tabId: string) {
+function useResultViewActions(surfaceRef: DataViewSurfaceRef) {
   const setViewMode = useQueryStore((state) => state.setViewMode)
   const openExportDialog = useQueryStore((state) => state.openExportDialog)
   return {
-    handleViewMode: useCallback((mode: ViewMode) => setViewMode(tabId, mode), [setViewMode, tabId]),
-    handleExport: useCallback(() => openExportDialog(tabId), [openExportDialog, tabId]),
+    handleViewMode: useCallback(
+      (mode: ViewMode) => setViewMode(surfaceRef, mode),
+      [setViewMode, surfaceRef]
+    ),
+    handleExport: useCallback(() => openExportDialog(surfaceRef), [openExportDialog, surfaceRef]),
   }
 }
 
-function useCheckedRowCopy(tabId: string, activeResult: ActiveResult) {
-  const activeResultIndex = useQueryStore((state) => state.tabs[tabId]?.activeResultIndex ?? 0)
+function useCheckedRowCopy(surfaceRef: DataViewSurfaceRef, activeResult: ActiveResult) {
   const checkedRanges = useMemo(() => sortedCheckedRanges(activeResult), [activeResult])
   const checkedCount = countRanges(checkedRanges)
   const handleCopySelectedRows = useCopySelectedRows({
-    tabId: tabId,
-    activeResultIndex: activeResultIndex,
+    surfaceRef: surfaceRef,
     columns: activeResult.columns,
     checkedRanges: checkedRanges,
   })
@@ -85,7 +88,7 @@ function ResultDataActions(props: ResultDataActionsProps) {
 }
 
 export function ResultToolbar({
-  tabId,
+  surfaceRef,
   connectionId,
   filterModel,
   onFilterClick,
@@ -93,11 +96,11 @@ export function ResultToolbar({
   isEditingActive = false,
   rowInsertion = NO_ROW_INSERTION,
 }: ResultToolbarProps) {
-  const activeResult = useQueryStore((state) => getActiveResult(state.tabs[tabId]))
-  const actions = useResultViewActions(tabId)
-  const { checkedCount, handleCopySelectedRows } = useCheckedRowCopy(tabId, activeResult)
+  const activeResult = useQuerySurfaceResult(surfaceRef)
+  const actions = useResultViewActions(surfaceRef)
+  const { checkedCount, handleCopySelectedRows } = useCheckedRowCopy(surfaceRef, activeResult)
   const rowActions = useResultRowActions({
-    tabId: tabId,
+    surfaceRef: surfaceRef,
     connectionId: connectionId,
     result: activeResult,
     checkedCount: checkedCount,
@@ -116,7 +119,7 @@ export function ResultToolbar({
           testIdPrefix="view-mode"
         />
       }
-      editTarget={<EditModeDropdown tabId={tabId} connectionId={connectionId} />}
+      editTarget={<EditModeDropdown surfaceRef={surfaceRef} connectionId={connectionId} />}
       rowActions={
         <RowActionButtons
           availability={rowActions.availability}

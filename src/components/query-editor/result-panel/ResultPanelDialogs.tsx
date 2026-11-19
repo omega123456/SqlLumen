@@ -4,44 +4,44 @@ import { UnsavedChangesDialog } from '../../shared/UnsavedChangesDialog'
 import ExportDialog from '../../dialogs/ExportDialog'
 import { FilterDialog } from '../../dialogs/FilterDialog'
 import type { ResultFilter } from './use-result-filter'
+import type { DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
 
 interface ResultPanelDialogsProps {
-  tabId: string
+  surfaceRef: DataViewSurfaceRef
   connectionId: string
-  activeResultIndex: number
   result: SingleResultState
   filter: ResultFilter
 }
 
 function PendingNavigationDialog({
-  tabId,
+  surfaceRef,
   saveError,
 }: {
-  tabId: string
+  surfaceRef: DataViewSurfaceRef
   saveError: string | null
 }) {
   const pendingNavigationAction = useQueryStore(
-    (state) => state.tabs[tabId]?.pendingNavigationAction ?? null
+    (state) => state.tabs[surfaceRef.tabId]?.pendingNavigationAction ?? null
   )
   const confirmNavigation = useQueryStore((state) => state.confirmNavigation)
   const cancelNavigation = useQueryStore((state) => state.cancelNavigation)
 
   const handleDialogSave = useCallback(async () => {
-    await confirmNavigation(tabId, true)
-  }, [confirmNavigation, tabId])
+    await confirmNavigation(surfaceRef, true)
+  }, [confirmNavigation, surfaceRef])
 
   const handleDialogDiscard = useCallback(() => {
-    confirmNavigation(tabId, false)
-  }, [confirmNavigation, tabId])
+    confirmNavigation(surfaceRef, false)
+  }, [confirmNavigation, surfaceRef])
 
   const handleDialogCancel = useCallback(() => {
-    cancelNavigation(tabId)
-  }, [cancelNavigation, tabId])
+    cancelNavigation(surfaceRef)
+  }, [cancelNavigation, surfaceRef])
 
   if (pendingNavigationAction === null) return null
   return (
     <UnsavedChangesDialog
-      tabId={tabId}
+      tabId={surfaceRef.tabId}
       onSave={handleDialogSave}
       onDiscard={handleDialogDiscard}
       onCancel={handleDialogCancel}
@@ -51,9 +51,8 @@ function PendingNavigationDialog({
 }
 
 export function ResultPanelDialogs({
-  tabId,
+  surfaceRef,
   connectionId,
-  activeResultIndex,
   result,
   filter,
 }: ResultPanelDialogsProps) {
@@ -63,9 +62,9 @@ export function ResultPanelDialogs({
       {result.exportDialogOpen && (
         <ExportDialog
           connectionId={connectionId}
-          tabId={tabId}
-          resultIndex={activeResultIndex}
-          onClose={() => closeExportDialog(tabId)}
+          tabId={surfaceRef.tabId}
+          resultIndex={surfaceRef.resultIndex}
+          onClose={() => closeExportDialog(surfaceRef)}
         />
       )}
 
@@ -77,7 +76,7 @@ export function ResultPanelDialogs({
         onCancel={filter.closeFilterDialog}
       />
 
-      <PendingNavigationDialog tabId={tabId} saveError={result.saveError} />
+      <PendingNavigationDialog surfaceRef={surfaceRef} saveError={result.saveError} />
     </>
   )
 }

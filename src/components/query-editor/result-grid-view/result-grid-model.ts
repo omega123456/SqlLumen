@@ -19,6 +19,7 @@ import type {
   RowEditState as SharedRowEditState,
 } from '../../../types/shared-data-view'
 import type { GridRowActions } from '../../shared/glide/CanvasBaseGridView'
+import type { DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
 import { rowClassNameOf } from '../../shared/data-view/row-class-names'
 import type { GridCellPosition } from '../../shared/glide/glide-grid-types'
 
@@ -35,6 +36,7 @@ export interface ResultGridViewProps {
   onRowSelected: (rowIndex: number) => void
   selectedRowIndex: number | null
   tabId: string
+  surfaceRef: DataViewSurfaceRef
   editMode: string | null
   editableColumnMap: Map<number, boolean>
   editState: RowEditState | null

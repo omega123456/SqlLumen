@@ -1,9 +1,10 @@
+import type { DataViewSurfaceRef } from '../../stores/data-view/data-view-types'
 import { useEffect, useMemo, useRef, type RefObject } from 'react'
 import { columnIndexFromKey, columnKey } from '../../lib/col-key-utils'
 import { toCachedRow } from '../../lib/result-row-materializer'
 import type { CachedRow } from '../../lib/result-window-cache'
 import { useLatestRef } from '../../hooks/use-latest-ref'
-import { getActiveResult, useQueryStore } from '../../stores/query-store'
+import { DEFAULT_RESULT_STATE, querySurfaceRef, useQueryStore } from '../../stores/query-store'
 import type { ColumnMeta, RowEditState, TableDataColumnMeta } from '../../types/schema'
 import type {
   BlobContent,
@@ -23,6 +24,7 @@ export interface ResultRowIdentity {
 
 export interface ResultEditSessionInputs {
   tabId: string
+  resultIndex: number
   queryId: string | null
   viewVersion: number
   columns: ColumnMeta[]
@@ -119,17 +121,17 @@ function reportInvalidResultRowValue(
   return invalidValue
 }
 
-export async function saveActiveResultRow(tabId: string): Promise<boolean> {
+export async function saveResultRow(ref: DataViewSurfaceRef): Promise<boolean> {
   const store = useQueryStore.getState()
-  const result = getActiveResult(store.tabs[tabId])
+  const result = store.tabs[ref.tabId]?.results[ref.resultIndex] ?? DEFAULT_RESULT_STATE
   const invalidValue = reportInvalidResultRowValue({
     editState: result.editState,
     editTableColumns: readEditTable(result).editTableColumns,
     editingRowIndex: result.editingRowIndex,
-    onRowSelected: (rowIndex) => store.setSelectedRow(tabId, rowIndex),
+    onRowSelected: (rowIndex) => store.setSelectedRow(ref, rowIndex),
   })
   if (invalidValue) return false
-  return store.saveCurrentRow(tabId)
+  return store.saveCurrentRow(ref)
 }
 
 async function saveResultEditingRow(inputs: ResultEditSessionInputs): Promise<RowSaveOutcome> {
@@ -166,7 +168,7 @@ function selectResultCell(
   inputs.onRowSelected(target.rowIndex)
   const column = inputs.columns[columnIndexFromKey(target.columnKey)]
   if (!column) return
-  useQueryStore.getState().setSelectedCell(inputs.tabId, {
+  useQueryStore.getState().setSelectedCell(querySurfaceRef(inputs.tabId, inputs.resultIndex), {
     columnKey: column.name,
     value: selection.value,
   })

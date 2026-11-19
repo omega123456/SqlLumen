@@ -1,3 +1,4 @@
+import type { DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
 import { useCallback } from 'react'
 import { countRanges, useQueryStore, type RowActionHandle } from '../../../stores/query-store'
 import { showErrorToast, useToastStore } from '../../../stores/toast-store'
@@ -89,14 +90,13 @@ async function writeRowsToClipboard({ columns, rows, wasVisible, showSuccess }: 
 }
 
 interface CopySelectedRowsInputs {
-  tabId: string
-  activeResultIndex: number
+  surfaceRef: DataViewSurfaceRef
   columns: ColumnMeta[]
   checkedRanges: CheckedRanges
 }
 
 export function useCopySelectedRows(inputs: CopySelectedRowsInputs) {
-  const { tabId, activeResultIndex, columns, checkedRanges } = inputs
+  const { surfaceRef, columns, checkedRanges } = inputs
   const beginRowAction = useQueryStore((state) => state.beginRowAction)
   const markResultsExpired = useQueryStore((state) => state.markResultsExpired)
   const showSuccess = useToastStore((state) => state.showSuccess)
@@ -105,7 +105,7 @@ export function useCopySelectedRows(inputs: CopySelectedRowsInputs) {
     if (checkedRanges.length === 0) return
     const controller = new AbortController()
     const spansSeveralChunks = chunkCountOf(checkedRanges) > 1
-    const action = beginRowAction(tabId, {
+    const action = beginRowAction(surfaceRef, {
       verb: 'Copying',
       total: countRanges(checkedRanges),
       onCancel: spansSeveralChunks ? () => controller.abort() : undefined,
@@ -113,26 +113,18 @@ export function useCopySelectedRows(inputs: CopySelectedRowsInputs) {
     let rows: CachedRow[]
     try {
       rows = await readCheckedRows({
-        tabId: tabId,
-        resultIndex: activeResultIndex,
+        tabId: surfaceRef.tabId,
+        resultIndex: surfaceRef.resultIndex,
         checkedRanges: checkedRanges,
         action: action,
         signal: controller.signal,
       })
     } catch (error) {
       action.finish()
-      handleReadFailure(error, () => markResultsExpired(tabId))
+      handleReadFailure(error, () => markResultsExpired(surfaceRef.tabId))
       return
     }
     const wasVisible = action.finish()
     await writeRowsToClipboard({ columns, rows, wasVisible, showSuccess })
-  }, [
-    columns,
-    activeResultIndex,
-    beginRowAction,
-    checkedRanges,
-    markResultsExpired,
-    showSuccess,
-    tabId,
-  ])
+  }, [columns, beginRowAction, checkedRanges, markResultsExpired, showSuccess, surfaceRef])
 }

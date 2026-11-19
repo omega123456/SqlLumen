@@ -34,6 +34,7 @@ function useFormSession(props: ResultFormViewProps, edit: FormEditProps) {
   return useResultEditSession({
     ...edit,
     tabId: props.tabId,
+    resultIndex: props.resultIndex,
     queryId: props.queryId,
     viewVersion: props.viewVersion,
     columns: props.columns,

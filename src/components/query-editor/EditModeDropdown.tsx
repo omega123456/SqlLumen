@@ -1,16 +1,22 @@
 import { useCallback, useMemo } from 'react'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
-import { useQueryStore, getActiveResult, isEditableSelectSql } from '../../stores/query-store'
+import {
+  useQueryStore,
+  isEditableSelectSql,
+  type SingleResultState,
+} from '../../stores/query-store'
+import { useQuerySurfaceResult } from './use-query-surface-result'
+import type { DataViewSurfaceRef } from '../../stores/data-view/data-view-types'
 import { useConnectionStore } from '../../stores/connection-store'
 import { hasResultColumns } from '../../lib/query-result-column-utils'
 import { joinClassNames } from '../../lib/class-names'
 
 interface EditModeDropdownProps {
-  tabId: string
+  surfaceRef: DataViewSurfaceRef
   connectionId: string
 }
 
-type ActiveResult = ReturnType<typeof getActiveResult>
+type ActiveResult = SingleResultState
 
 function isEditModeAvailable(result: ActiveResult, isConnectionReadOnly: boolean): boolean {
   if (result.resultStatus !== 'success') return false
@@ -43,8 +49,8 @@ function useEditModeOptions(detectedTables: DetectedTable[]): DropdownOption[] {
   }, [detectedTables])
 }
 
-export function EditModeDropdown({ tabId, connectionId }: EditModeDropdownProps) {
-  const activeResult = useQueryStore((state) => getActiveResult(state.tabs[tabId]))
+export function EditModeDropdown({ surfaceRef, connectionId }: EditModeDropdownProps) {
+  const activeResult = useQuerySurfaceResult(surfaceRef)
   const setEditMode = useQueryStore((state) => state.setEditMode)
   const requestNavigationAction = useQueryStore((state) => state.requestNavigationAction)
 
@@ -65,15 +71,15 @@ export function EditModeDropdown({ tabId, connectionId }: EditModeDropdownProps)
 
       const hasUnsavedEdits = (editState?.modifiedColumns.size ?? 0) > 0
       if (hasUnsavedEdits) {
-        requestNavigationAction(tabId, () => {
-          setEditMode(connectionId, tabId, newTableName)
+        requestNavigationAction(surfaceRef, () => {
+          setEditMode(surfaceRef, newTableName)
         })
         return
       }
 
-      setEditMode(connectionId, tabId, newTableName)
+      setEditMode(surfaceRef, newTableName)
     },
-    [editState, requestNavigationAction, setEditMode, connectionId, tabId]
+    [editState, requestNavigationAction, setEditMode, surfaceRef]
   )
 
   const editModeOptions = useEditModeOptions(detectedTables)
@@ -85,7 +91,7 @@ export function EditModeDropdown({ tabId, connectionId }: EditModeDropdownProps)
   return (
     <div className="flex shrink-0 items-center" data-testid="edit-mode-group">
       <Dropdown
-        id={`edit-mode-dropdown-${tabId}`}
+        id={`edit-mode-dropdown-${surfaceRef.tabId}`}
         ariaLabel="Edit mode"
         options={editModeOptions}
         value={editMode ?? ''}

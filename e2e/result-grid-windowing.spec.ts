@@ -177,12 +177,17 @@ test.describe('windowed query results', () => {
       }
       const queryStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
         getState: () => {
-          setCheckedRanges: (tabId: string, ranges: Array<[number, number]>) => void
+          setCheckedRanges: (
+            ref: { route: 'query'; tabId: string; resultIndex: number },
+            ranges: Array<[number, number]>
+          ) => void
         }
       }
       const tabId = wsStore.getState().activeTabByConnection['session-playwright-1']
       if (!tabId) throw new Error('No active query tab')
-      queryStore.getState().setCheckedRanges(tabId, [[0, 2]])
+      queryStore
+        .getState()
+        .setCheckedRanges({ route: 'query', tabId: tabId, resultIndex: 0 }, [[0, 2]])
     })
 
     await activePanel(page).getByTestId('btn-delete-row').click()

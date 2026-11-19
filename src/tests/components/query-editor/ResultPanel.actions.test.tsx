@@ -5,7 +5,7 @@ import { ipc } from '../../ipc-mock'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FilterCondition } from '../../../types/schema'
 import { ResultPanel } from '../../../components/query-editor/ResultPanel'
-import { DEFAULT_RESULT_STATE, useQueryStore } from '../../../stores/query-store'
+import { DEFAULT_RESULT_STATE, useQueryStore, querySurfaceRef } from '../../../stores/query-store'
 import { makeTabState, withRows } from '../../helpers/query-test-utils'
 import * as ResultSubTabsModule from '../../../components/query-editor/ResultSubTabs'
 import * as ResultToolbarModule from '../../../components/query-editor/ResultToolbar'
@@ -243,8 +243,14 @@ describe('ResultPanel actions and states', () => {
       capturedGridProps.onSortChanged as (column: string, direction: 'asc' | 'desc' | null) => void
     )('name', 'desc')
 
-    expect(requestNavigationActionSpy).toHaveBeenCalledWith('tab-1', expect.any(Function))
-    expect(sortResultsSpy).toHaveBeenCalledWith('tab-1', 'name', 'desc')
+    expect(requestNavigationActionSpy).toHaveBeenCalledWith(
+      querySurfaceRef('tab-1', 0),
+      expect.any(Function)
+    )
+    expect(sortResultsSpy).toHaveBeenCalledWith(querySurfaceRef('tab-1', 0), {
+      column: 'name',
+      direction: 'desc',
+    })
   })
 
   it('navigates form rows, saves form edits, and discards form edits', async () => {
@@ -275,7 +281,7 @@ describe('ResultPanel actions and states', () => {
     })
 
     expect(setSelectedRowSpy).toHaveBeenCalledTimes(1)
-    expect(setSelectedRowSpy).toHaveBeenCalledWith('tab-1', 1)
+    expect(setSelectedRowSpy).toHaveBeenCalledWith(querySurfaceRef('tab-1', 0), 1)
 
     useQueryStore.setState({
       tabs: {
@@ -306,17 +312,17 @@ describe('ResultPanel actions and states', () => {
     })
 
     expect(setSelectedRowSpy).toHaveBeenCalledTimes(2)
-    expect(setSelectedRowSpy).toHaveBeenLastCalledWith('tab-1', 0)
+    expect(setSelectedRowSpy).toHaveBeenLastCalledWith(querySurfaceRef('tab-1', 0), 0)
 
     await act(async () => {
       await expect((capturedFormProps.onSaveRow as () => Promise<boolean>)()).resolves.toBe(false)
     })
-    expect(saveCurrentRowSpy).toHaveBeenCalledWith('tab-1')
+    expect(saveCurrentRowSpy).toHaveBeenCalledWith(querySurfaceRef('tab-1', 0))
 
     act(() => {
       ;(capturedFormProps.onDiscardRow as () => void)()
     })
-    expect(discardCurrentRowSpy).toHaveBeenCalledWith('tab-1')
+    expect(discardCurrentRowSpy).toHaveBeenCalledWith(querySurfaceRef('tab-1', 0))
   })
 
   it('applies and cancels filter dialog interactions', async () => {
@@ -330,7 +336,7 @@ describe('ResultPanel actions and states', () => {
 
     await user.click(screen.getByTestId('filter-dialog-apply'))
 
-    expect(applyQueryFiltersSpy).toHaveBeenCalledWith('tab-1', 0, [
+    expect(applyQueryFiltersSpy).toHaveBeenCalledWith(querySurfaceRef('tab-1', 0), [
       { column: 'name', operator: '==', value: 'Alice' },
     ])
 
@@ -356,14 +362,14 @@ describe('ResultPanel actions and states', () => {
 
     await user.click(screen.getByTestId('btn-save-changes'))
     await waitFor(() => {
-      expect(confirmNavigationSpy).toHaveBeenCalledWith('tab-1', true)
+      expect(confirmNavigationSpy).toHaveBeenCalledWith(querySurfaceRef('tab-1', 0), true)
     })
 
     await user.click(screen.getByTestId('btn-discard-changes'))
-    expect(confirmNavigationSpy).toHaveBeenCalledWith('tab-1', false)
+    expect(confirmNavigationSpy).toHaveBeenCalledWith(querySurfaceRef('tab-1', 0), false)
 
     await user.click(screen.getByTestId('btn-cancel-changes'))
-    expect(cancelNavigationSpy).toHaveBeenCalledWith('tab-1')
+    expect(cancelNavigationSpy).toHaveBeenCalledWith(querySurfaceRef('tab-1', 0))
   })
 
   it('renders export dialog and closes it through the provided handler', async () => {
@@ -377,7 +383,7 @@ describe('ResultPanel actions and states', () => {
 
     await user.click(screen.getByTestId('export-dialog-close'))
 
-    expect(closeExportDialogSpy).toHaveBeenCalledWith('tab-1')
+    expect(closeExportDialogSpy).toHaveBeenCalledWith(querySurfaceRef('tab-1', 0))
   })
 
   it('passes the edit table location and row discard handler to the grid', () => {

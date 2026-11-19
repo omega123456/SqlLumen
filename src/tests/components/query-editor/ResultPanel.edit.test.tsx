@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, act } from '@testing-library/react'
 import { ipc } from '../../ipc-mock'
 import React from 'react'
-import { useQueryStore } from '../../../stores/query-store'
+import { useQueryStore, activeQuerySurfaceRef, querySurfaceRef } from '../../../stores/query-store'
 import { makeTabState } from '../../helpers/query-test-utils'
 import { ResultPanel } from '../../../components/query-editor/ResultPanel'
 import * as ResultGridViewModule from '../../../components/query-editor/ResultGridView'
@@ -91,9 +91,9 @@ describe('ResultPanel edit mode callbacks', () => {
     onUpdateCellValue(1, 'Bob')
     onSyncCellValue(1, 'Charlie')
 
-    expect(startEditingRowSpy).toHaveBeenCalledWith('tab-1', 0, undefined)
-    expect(updateCellValueSpy).toHaveBeenCalledWith('tab-1', 1, 'Bob')
-    expect(syncCellValueSpy).toHaveBeenCalledWith('tab-1', 1, 'Charlie')
+    expect(startEditingRowSpy).toHaveBeenCalledWith(querySurfaceRef('tab-1', 0), 0, undefined)
+    expect(updateCellValueSpy).toHaveBeenCalledWith(querySurfaceRef('tab-1', 0), 1, 'Bob')
+    expect(syncCellValueSpy).toHaveBeenCalledWith(querySurfaceRef('tab-1', 0), 1, 'Charlie')
   })
 
   it('auto-saves through store.saveCurrentRow and reports whether the save succeeded', async () => {
@@ -111,7 +111,7 @@ describe('ResultPanel edit mode callbacks', () => {
       failed = await onAutoSave()
     })
 
-    expect(saveCurrentRowSpy).toHaveBeenCalledWith('tab-1')
+    expect(saveCurrentRowSpy).toHaveBeenCalledWith(querySurfaceRef('tab-1', 0))
     expect(succeeded).toBe(true)
     expect(failed).toBe(false)
   })
@@ -362,14 +362,14 @@ describe('edit callback stability (focus-loss regression)', () => {
       const renderCountBeforeSync = capturedCallbacksByRender.length
 
       act(() => {
-        useQueryStore.getState().syncCellValue('tab-1', 1, 'A')
+        useQueryStore.getState().syncCellValue(activeQuerySurfaceRef('tab-1'), 1, 'A')
       })
       expect(capturedCallbacksByRender.length).toBeGreaterThan(renderCountBeforeSync)
       act(() => {
-        useQueryStore.getState().syncCellValue('tab-1', 1, 'Al')
+        useQueryStore.getState().syncCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Al')
       })
       act(() => {
-        useQueryStore.getState().syncCellValue('tab-1', 1, 'Ali')
+        useQueryStore.getState().syncCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Ali')
       })
 
       // A changed reference recomputes the column definitions, remounts the editor and loses focus.

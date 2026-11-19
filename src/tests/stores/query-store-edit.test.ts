@@ -5,6 +5,8 @@ import {
   isEditableSelectSql,
   DEFAULT_RESULT_STATE,
   type SingleResultState,
+  activeQuerySurfaceRef,
+  querySurfaceRef,
 } from '../../stores/query-store'
 import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
 import type {
@@ -308,7 +310,7 @@ async function executeAndAnalyze(connId = 'conn-1', tabId = 'tab-1') {
 describe('useQueryStore — setEditMode', () => {
   it('enables edit mode for a valid table', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
 
     const f = flat('tab-1')
     expect(f.editMode).toBe('testdb.users')
@@ -367,7 +369,7 @@ describe('useQueryStore — setEditMode', () => {
     })
 
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
 
     const tab = flat('tab-1')
     expect(tab.editForeignKeys).toEqual([
@@ -383,8 +385,8 @@ describe('useQueryStore — setEditMode', () => {
 
   it('disables edit mode when tableName is null', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', null)
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), null)
 
     const tab = flat('tab-1')
     expect(tab.editMode).toBeNull()
@@ -415,7 +417,7 @@ describe('useQueryStore — setEditMode', () => {
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT 1')
     await flushMicrotasks()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'somedb.nonexistent')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'somedb.nonexistent')
 
     const tab = flat('tab-1')
     expect(tab.editMode).toBeNull()
@@ -448,7 +450,7 @@ describe('useQueryStore — setEditMode', () => {
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT name FROM users')
     await flushMicrotasks()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
 
     const tab = flat('tab-1')
     expect(tab.editMode).toBeNull()
@@ -487,7 +489,7 @@ describe('useQueryStore — setEditMode', () => {
       .getState()
       .executeQuery('conn-1', 'tab-1', 'SELECT * FROM users JOIN orders')
     await flushMicrotasks()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
 
     const tab = flat('tab-1')
     expect(tab.editMode).toBeNull()
@@ -524,7 +526,7 @@ describe('useQueryStore — setEditMode', () => {
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT * FROM users')
     await flushMicrotasks()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
 
     const tab = flat('tab-1')
     expect(tab.editMode).toBe('testdb.users') // editing is enabled
@@ -569,12 +571,12 @@ describe('useQueryStore — setEditMode', () => {
         'SELECT users.*, orders.* FROM users JOIN orders ON users.id = orders.user_id'
       )
     await flushMicrotasks()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
 
     let tab = flat('tab-1')
     expect(tab.editMode).toBe('testdb.users')
 
-    useQueryStore.getState().startEditingRow('tab-1', 0)
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
     tab = flat('tab-1')
     expect(tab.editState?.rowKey).toEqual({ id: 1 })
     expect(tab.editState?.originalValues).toMatchObject({
@@ -617,12 +619,12 @@ describe('useQueryStore — setEditMode', () => {
         'SELECT users.id AS user_id, users.name, users.email, orders.id AS order_id, orders.total FROM users JOIN orders ON users.id = orders.user_id'
       )
     await flushMicrotasks()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
 
     let tab = flat('tab-1')
     expect(tab.editMode).toBe('testdb.users')
 
-    useQueryStore.getState().startEditingRow('tab-1', 0)
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
     tab = flat('tab-1')
     expect(tab.editState?.rowKey).toEqual({ id: 1 })
     expect(tab.editState?.originalValues).toMatchObject({
@@ -714,7 +716,7 @@ describe('useQueryStore — setEditMode', () => {
         'SELECT users.id, users.name, users.created_at, orders.id, orders.created_at FROM users JOIN orders ON users.id = orders.user_id'
       )
     await flushMicrotasks()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
 
     const tab = flat('tab-1')
     expect(tab.editMode).toBe('testdb.users')
@@ -755,7 +757,7 @@ describe('useQueryStore — setEditMode', () => {
         'SELECT orders.id FROM users JOIN orders ON users.id = orders.user_id'
       )
     await flushMicrotasks()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
 
     const tab = flat('tab-1')
     expect(tab.editMode).toBeNull()
@@ -788,7 +790,7 @@ describe('useQueryStore — setEditMode', () => {
       .getState()
       .executeQuery('conn-1', 'tab-1', 'SELECT COUNT(*) AS id, users.name FROM users')
     await flushMicrotasks()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
 
     const tab = flat('tab-1')
     expect(tab.editMode).toBeNull()
@@ -821,7 +823,7 @@ describe('useQueryStore — setEditMode', () => {
       .getState()
       .executeQuery('conn-1', 'tab-1', 'SELECT COUNT(*) AS id FROM users')
     await flushMicrotasks()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
 
     const tab = flat('tab-1')
     expect(tab.editMode).toBeNull()
@@ -849,7 +851,7 @@ describe('useQueryStore — setEditMode', () => {
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT id + 1 id FROM users')
     await flushMicrotasks()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
 
     const tab = flat('tab-1')
     expect(tab.editMode).toBeNull()
@@ -886,7 +888,7 @@ describe('useQueryStore — setEditMode', () => {
         'SELECT x.* FROM (SELECT COUNT(*) AS id, MAX(name) AS name FROM users) x'
       )
     await flushMicrotasks()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
 
     const tab = flat('tab-1')
     expect(tab.editMode).toBeNull()
@@ -926,11 +928,11 @@ describe('useQueryStore — setEditMode', () => {
     const countBefore = analyzeCallCount
 
     // Disable then re-enable
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
     const countAfterFirst = analyzeCallCount
 
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', null)
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), null)
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
     const countAfterSecond = analyzeCallCount
 
     // setEditMode should find cached metadata (from background analysis in executeQuery)
@@ -980,7 +982,7 @@ describe('useQueryStore — setEditMode', () => {
         'SELECT users.*, orders.* FROM users JOIN orders ON users.id = orders.user_id'
       )
 
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
 
     const tab = flat('tab-1')
     expect(tab.editMode).toBe('testdb.users')
@@ -1017,7 +1019,7 @@ describe('useQueryStore — setEditMode', () => {
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT * FROM users')
     await flushMicrotasks()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
 
     const tab = flat('tab-1')
     expect(tab.editMode).toBeNull()
@@ -1036,8 +1038,8 @@ describe('useQueryStore — setEditMode', () => {
 describe('useQueryStore — startEditingRow', () => {
   it('creates edit state for the specified row', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().startEditingRow('tab-1', 0)
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
 
     const tab = flat('tab-1')
     expect(tab.editState).not.toBeNull()
@@ -1049,7 +1051,7 @@ describe('useQueryStore — startEditingRow', () => {
 
   it('does nothing when edit mode is not enabled', async () => {
     await executeAndAnalyze()
-    useQueryStore.getState().startEditingRow('tab-1', 0)
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
 
     const tab = flat('tab-1')
     expect(tab.editState).toBeNull()
@@ -1063,10 +1065,10 @@ describe('useQueryStore — startEditingRow', () => {
 describe('useQueryStore — cloneSelectedRow', () => {
   it('creates one unsaved insert draft with blank primary key values and copied non-key values', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().setSelectedRow('tab-1', 0)
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().setSelectedRow(activeQuerySurfaceRef('tab-1'), 0)
 
-    useQueryStore.getState().cloneSelectedRow('tab-1')
+    useQueryStore.getState().cloneSelectedRow(activeQuerySurfaceRef('tab-1'))
 
     const tab = flat('tab-1')
     // The draft is a virtual row right after the last view row; cached rows are untouched.
@@ -1116,9 +1118,9 @@ describe('useQueryStore — cloneSelectedRow', () => {
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT * FROM projects')
     await flushMicrotasks()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.projects')
-    useQueryStore.getState().setSelectedRow('tab-1', 0)
-    useQueryStore.getState().cloneSelectedRow('tab-1')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.projects')
+    useQueryStore.getState().setSelectedRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().cloneSelectedRow(activeQuerySurfaceRef('tab-1'))
 
     const tab = flat('tab-1')
     expect(tab.draftRow).toEqual(['p-001', 'Alpha'])
@@ -1128,14 +1130,14 @@ describe('useQueryStore — cloneSelectedRow', () => {
 
   it('clones the only checkbox-checked row and refuses while several rows are checked', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
 
-    useQueryStore.getState().setCheckedRanges('tab-1', [[0, 2]])
-    useQueryStore.getState().cloneSelectedRow('tab-1')
+    useQueryStore.getState().setCheckedRanges(activeQuerySurfaceRef('tab-1'), [[0, 2]])
+    useQueryStore.getState().cloneSelectedRow(activeQuerySurfaceRef('tab-1'))
     expect(flat('tab-1').draftRow).toBeNull()
 
-    useQueryStore.getState().setCheckedRanges('tab-1', [[1, 2]])
-    useQueryStore.getState().cloneSelectedRow('tab-1')
+    useQueryStore.getState().setCheckedRanges(activeQuerySurfaceRef('tab-1'), [[1, 2]])
+    useQueryStore.getState().cloneSelectedRow(activeQuerySurfaceRef('tab-1'))
     expect(flat('tab-1').draftRow).toEqual([null, 'Bob', 'bob@test.com'])
   })
 
@@ -1174,10 +1176,10 @@ describe('useQueryStore — cloneSelectedRow', () => {
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT * FROM users')
     await flushMicrotasks()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().setSelectedRow('tab-1', 0)
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().setSelectedRow(activeQuerySurfaceRef('tab-1'), 0)
 
-    useQueryStore.getState().cloneSelectedRow('tab-1')
+    useQueryStore.getState().cloneSelectedRow(activeQuerySurfaceRef('tab-1'))
 
     const tab = flat('tab-1')
     expect(tab.rows).toHaveLength(1)
@@ -1191,12 +1193,12 @@ describe('useQueryStore — cloneSelectedRow', () => {
 
   it('refuses clone when current row has unsaved edits that would be lost', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().syncCellValue('tab-1', 1, 'Unsaved')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().syncCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Unsaved')
 
     const before = flat('tab-1')
-    useQueryStore.getState().cloneSelectedRow('tab-1')
+    useQueryStore.getState().cloneSelectedRow(activeQuerySurfaceRef('tab-1'))
 
     const tab = flat('tab-1')
     expect(tab.rows).toEqual(before.rows)
@@ -1272,10 +1274,10 @@ describe('useQueryStore — cloneSelectedRow', () => {
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT id FROM users')
     await flushMicrotasks()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().setSelectedRow('tab-1', 0)
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().setSelectedRow(activeQuerySurfaceRef('tab-1'), 0)
 
-    useQueryStore.getState().cloneSelectedRow('tab-1')
+    useQueryStore.getState().cloneSelectedRow(activeQuerySurfaceRef('tab-1'))
 
     const tab = flat('tab-1')
     expect(tab.rows).toHaveLength(1)
@@ -1291,9 +1293,9 @@ describe('useQueryStore — cloneSelectedRow', () => {
 describe('useQueryStore — updateCellValue', () => {
   it('updates currentValues and modifiedColumns', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().updateCellValue('tab-1', 1, 'Charlie')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().updateCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Charlie')
 
     const tab = flat('tab-1')
     expect(tab.editState!.currentValues.name).toBe('Charlie')
@@ -1302,13 +1304,13 @@ describe('useQueryStore — updateCellValue', () => {
 
   it('removes from modifiedColumns when value reverts to original', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().startEditingRow('tab-1', 0)
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
 
-    useQueryStore.getState().updateCellValue('tab-1', 1, 'Charlie')
+    useQueryStore.getState().updateCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Charlie')
     expect(flat('tab-1').editState!.modifiedColumns.has('name')).toBe(true)
 
-    useQueryStore.getState().updateCellValue('tab-1', 1, 'Alice')
+    useQueryStore.getState().updateCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Alice')
     expect(flat('tab-1').editState!.modifiedColumns.has('name')).toBe(false)
   })
 })
@@ -1320,9 +1322,9 @@ describe('useQueryStore — updateCellValue', () => {
 describe('useQueryStore — syncCellValue', () => {
   it('updates editState and leaves the cached row untouched (the grid overlays edits)', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().syncCellValue('tab-1', 1, 'Dave')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().syncCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Dave')
 
     const tab = flat('tab-1')
     expect(tab.editState!.currentValues.name).toBe('Dave')
@@ -1334,14 +1336,14 @@ describe('useQueryStore — syncCellValue', () => {
 
   it('removes from modifiedColumns when value reverts to original', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().startEditingRow('tab-1', 0)
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
 
-    useQueryStore.getState().syncCellValue('tab-1', 1, 'Changed')
+    useQueryStore.getState().syncCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Changed')
     expect(flat('tab-1').editState!.modifiedColumns.has('name')).toBe(true)
 
     // Revert to original value
-    useQueryStore.getState().syncCellValue('tab-1', 1, 'Alice')
+    useQueryStore.getState().syncCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Alice')
     expect(flat('tab-1').editState!.modifiedColumns.has('name')).toBe(false)
   })
 })
@@ -1353,11 +1355,11 @@ describe('useQueryStore — syncCellValue', () => {
 describe('useQueryStore — saveCurrentRow', () => {
   it('calls updateTableRow and clears editState on success, returns true', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().updateCellValue('tab-1', 1, 'Updated')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().updateCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Updated')
 
-    const result = await useQueryStore.getState().saveCurrentRow('tab-1')
+    const result = await useQueryStore.getState().saveCurrentRow(activeQuerySurfaceRef('tab-1'))
 
     expect(result).toBe(true)
     const tab = flat('tab-1')
@@ -1370,11 +1372,11 @@ describe('useQueryStore — saveCurrentRow', () => {
 
   it('shows a success toast when row is saved successfully', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().updateCellValue('tab-1', 1, 'Saved Value')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().updateCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Saved Value')
 
-    await useQueryStore.getState().saveCurrentRow('tab-1')
+    await useQueryStore.getState().saveCurrentRow(activeQuerySurfaceRef('tab-1'))
 
     const toasts = useToastStore.getState().toasts
     expect(toasts.some((t) => t.variant === 'success' && t.title === 'Row saved')).toBe(true)
@@ -1408,11 +1410,11 @@ describe('useQueryStore — saveCurrentRow', () => {
     })
 
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().updateCellValue('tab-1', 1, 'Updated')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().updateCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Updated')
 
-    const result = await useQueryStore.getState().saveCurrentRow('tab-1')
+    const result = await useQueryStore.getState().saveCurrentRow(activeQuerySurfaceRef('tab-1'))
 
     expect(result).toBe(false)
     const tab = flat('tab-1')
@@ -1425,11 +1427,11 @@ describe('useQueryStore — saveCurrentRow', () => {
 
   it('clears editState without IPC when nothing is modified, returns true', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().startEditingRow('tab-1', 0)
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
 
     // No updateCellValue — nothing modified
-    const result = await useQueryStore.getState().saveCurrentRow('tab-1')
+    const result = await useQueryStore.getState().saveCurrentRow(activeQuerySurfaceRef('tab-1'))
 
     expect(result).toBe(true)
     const tab = flat('tab-1')
@@ -1460,7 +1462,7 @@ describe('useQueryStore — saveCurrentRow', () => {
       },
     })
 
-    const result = await useQueryStore.getState().saveCurrentRow('tab-1')
+    const result = await useQueryStore.getState().saveCurrentRow(activeQuerySurfaceRef('tab-1'))
 
     expect(result).toBe(false)
     const tabAfter = flat('tab-1')
@@ -1514,11 +1516,11 @@ describe('useQueryStore — saveCurrentRow', () => {
         'SELECT users.id AS user_id, users.name, users.email, orders.id AS order_id, orders.total FROM users JOIN orders ON users.id = orders.user_id'
       )
     await flushMicrotasks()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().syncCellValue('tab-1', 0, 5)
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().syncCellValue(activeQuerySurfaceRef('tab-1'), 0, 5)
 
-    const result = await useQueryStore.getState().saveCurrentRow('tab-1')
+    const result = await useQueryStore.getState().saveCurrentRow(activeQuerySurfaceRef('tab-1'))
 
     expect(result).toBe(true)
     expect(updateTableRowSpy).toHaveBeenCalledWith(
@@ -1596,10 +1598,10 @@ describe('useQueryStore — saveCurrentRow', () => {
     })
 
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().setSelectedRow('tab-1', 0)
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().setSelectedRow(activeQuerySurfaceRef('tab-1'), 0)
 
-    useQueryStore.getState().syncCellValue('tab-1', 1, mockBlobEnvelope)
+    useQueryStore.getState().syncCellValue(activeQuerySurfaceRef('tab-1'), 1, mockBlobEnvelope)
 
     const staged = flat('tab-1')
     expect(staged.editingRowIndex).toBe(0)
@@ -1607,7 +1609,7 @@ describe('useQueryStore — saveCurrentRow', () => {
     expect(staged.editState?.currentValues.photo).toEqual(mockBlobEnvelope)
     expect(staged.rows[0][1]).toBe('SGVsbG8=')
 
-    const result = await useQueryStore.getState().saveCurrentRow('tab-1')
+    const result = await useQueryStore.getState().saveCurrentRow(activeQuerySurfaceRef('tab-1'))
 
     expect(result).toBe(true)
     expect(updateTableRowSpy).toHaveBeenCalledWith(
@@ -1666,11 +1668,13 @@ describe('useQueryStore — saveCurrentRow', () => {
     })
 
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().setSelectedRow('tab-1', 0)
-    useQueryStore.getState().syncCellValue('tab-1', 1, 'Alicia')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().setSelectedRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().syncCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Alicia')
 
-    await expect(useQueryStore.getState().saveCurrentRow('tab-1')).resolves.toBe(true)
+    await expect(
+      useQueryStore.getState().saveCurrentRow(activeQuerySurfaceRef('tab-1'))
+    ).resolves.toBe(true)
 
     expect(flat('tab-1').rows[0][1]).toBe('Alice')
     expect(ipc.payloads('log_frontend')).toContainEqual({
@@ -1737,11 +1741,11 @@ describe('useQueryStore — saveCurrentRow', () => {
     })
 
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().setSelectedRow('tab-1', 0)
-    useQueryStore.getState().cloneSelectedRow('tab-1')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().setSelectedRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().cloneSelectedRow(activeQuerySurfaceRef('tab-1'))
 
-    const result = await useQueryStore.getState().saveCurrentRow('tab-1')
+    const result = await useQueryStore.getState().saveCurrentRow(activeQuerySurfaceRef('tab-1'))
 
     expect(result).toBe(true)
     expect(insertTableRowSpy).toHaveBeenCalledWith(
@@ -1817,12 +1821,12 @@ describe('useQueryStore — saveCurrentRow', () => {
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT * FROM projects')
     await flushMicrotasks()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.projects')
-    useQueryStore.getState().setSelectedRow('tab-1', 0)
-    useQueryStore.getState().cloneSelectedRow('tab-1')
-    useQueryStore.getState().updateCellValue('tab-1', 0, 'p-002')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.projects')
+    useQueryStore.getState().setSelectedRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().cloneSelectedRow(activeQuerySurfaceRef('tab-1'))
+    useQueryStore.getState().updateCellValue(activeQuerySurfaceRef('tab-1'), 0, 'p-002')
 
-    const result = await useQueryStore.getState().saveCurrentRow('tab-1')
+    const result = await useQueryStore.getState().saveCurrentRow(activeQuerySurfaceRef('tab-1'))
 
     expect(result).toBe(true)
     expect(insertTableRowSpy).toHaveBeenCalledWith(
@@ -1892,14 +1896,14 @@ describe('useQueryStore — saveCurrentRow', () => {
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT * FROM users')
     await flushMicrotasks()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().setSelectedRow('tab-1', 0)
-    useQueryStore.getState().cloneSelectedRow('tab-1')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().setSelectedRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().cloneSelectedRow(activeQuerySurfaceRef('tab-1'))
 
     const cloned = flat('tab-1')
     expect(cloned.draftRow).toEqual([null, 'Alice', bytesEnvelope('q80=')])
 
-    await useQueryStore.getState().saveCurrentRow('tab-1')
+    await useQueryStore.getState().saveCurrentRow(activeQuerySurfaceRef('tab-1'))
 
     expect(insertTableRowSpy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1945,11 +1949,11 @@ describe('useQueryStore — saveCurrentRow', () => {
     })
 
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().setSelectedRow('tab-1', 0)
-    useQueryStore.getState().cloneSelectedRow('tab-1')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().setSelectedRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().cloneSelectedRow(activeQuerySurfaceRef('tab-1'))
 
-    const result = await useQueryStore.getState().saveCurrentRow('tab-1')
+    const result = await useQueryStore.getState().saveCurrentRow(activeQuerySurfaceRef('tab-1'))
 
     expect(result).toBe(true)
     const tab = flat('tab-1')
@@ -2030,11 +2034,11 @@ describe('useQueryStore — saveCurrentRow', () => {
     })
 
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().setSelectedRow('tab-1', 0)
-    useQueryStore.getState().cloneSelectedRow('tab-1')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().setSelectedRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().cloneSelectedRow(activeQuerySurfaceRef('tab-1'))
 
-    const savePromise = useQueryStore.getState().saveCurrentRow('tab-1')
+    const savePromise = useQueryStore.getState().saveCurrentRow(activeQuerySurfaceRef('tab-1'))
     await flushMicrotasks()
     await useQueryStore
       .getState()
@@ -2075,15 +2079,15 @@ describe('useQueryStore — saveCurrentRow', () => {
 describe('useQueryStore — discardCurrentRow', () => {
   it('restores original values in local row data', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().syncCellValue('tab-1', 1, 'Modified')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().syncCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Modified')
 
     // The edit lives in editState only; the cached row is untouched.
     expect(flat('tab-1').editState?.currentValues.name).toBe('Modified')
     expect(flat('tab-1').rows[0][1]).toBe('Alice')
 
-    useQueryStore.getState().discardCurrentRow('tab-1')
+    useQueryStore.getState().discardCurrentRow(activeQuerySurfaceRef('tab-1'))
 
     const tab = flat('tab-1')
     expect(tab.editState).toBeNull()
@@ -2124,14 +2128,14 @@ describe('useQueryStore — discardCurrentRow', () => {
         'SELECT users.id AS user_id, users.name, users.email, orders.id AS order_id, orders.total FROM users JOIN orders ON users.id = orders.user_id'
       )
     await flushMicrotasks()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().syncCellValue('tab-1', 0, 5)
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().syncCellValue(activeQuerySurfaceRef('tab-1'), 0, 5)
 
     expect(flat('tab-1').editState?.modifiedColumns.size).toBe(1)
     expect(flat('tab-1').rows[0][0]).toBe(1)
 
-    useQueryStore.getState().discardCurrentRow('tab-1')
+    useQueryStore.getState().discardCurrentRow(activeQuerySurfaceRef('tab-1'))
 
     const tab = flat('tab-1')
     expect(tab.rows[0][0]).toBe(1)
@@ -2184,13 +2188,13 @@ describe('useQueryStore — discardCurrentRow', () => {
     })
 
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().setSelectedRow('tab-1', 0)
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().setSelectedRow(activeQuerySurfaceRef('tab-1'), 0)
 
-    useQueryStore.getState().syncCellValue('tab-1', 1, mockBlobEnvelope)
+    useQueryStore.getState().syncCellValue(activeQuerySurfaceRef('tab-1'), 1, mockBlobEnvelope)
     expect(flat('tab-1').editState?.currentValues.photo).toEqual(mockBlobEnvelope)
 
-    useQueryStore.getState().discardCurrentRow('tab-1')
+    useQueryStore.getState().discardCurrentRow(activeQuerySurfaceRef('tab-1'))
 
     const tab = flat('tab-1')
     expect(tab.editState).toBeNull()
@@ -2200,15 +2204,15 @@ describe('useQueryStore — discardCurrentRow', () => {
 
   it('removes a cloned draft without changing the source row', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().setSelectedRow('tab-1', 0)
-    useQueryStore.getState().cloneSelectedRow('tab-1')
-    useQueryStore.getState().syncCellValue('tab-1', 1, 'Clone Only')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().setSelectedRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().cloneSelectedRow(activeQuerySurfaceRef('tab-1'))
+    useQueryStore.getState().syncCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Clone Only')
 
     expect(flat('tab-1').rows).toHaveLength(2)
     expect(flat('tab-1').draftRow?.[1]).toBe('Clone Only')
 
-    useQueryStore.getState().discardCurrentRow('tab-1')
+    useQueryStore.getState().discardCurrentRow(activeQuerySurfaceRef('tab-1'))
 
     const tab = flat('tab-1')
     expect(tab.rows).toEqual([
@@ -2235,7 +2239,7 @@ describe('useQueryStore — discardCurrentRow', () => {
       editingRowIndex: null,
     })
 
-    useQueryStore.getState().discardCurrentRow('tab-1')
+    useQueryStore.getState().discardCurrentRow(activeQuerySurfaceRef('tab-1'))
 
     const tab = flat('tab-1')
     expect(tab.editState).toBeNull()
@@ -2251,18 +2255,18 @@ describe('useQueryStore — requestNavigationAction', () => {
   it('executes action immediately when no pending edits', async () => {
     await executeAndAnalyze()
     const action = vi.fn()
-    useQueryStore.getState().requestNavigationAction('tab-1', action)
+    useQueryStore.getState().requestNavigationAction(activeQuerySurfaceRef('tab-1'), action)
     expect(action).toHaveBeenCalledOnce()
   })
 
   it('executes immediately and clears editState when editState has no modifications', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().startEditingRow('tab-1', 0)
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
     // No modifications
 
     const action = vi.fn()
-    useQueryStore.getState().requestNavigationAction('tab-1', action)
+    useQueryStore.getState().requestNavigationAction(activeQuerySurfaceRef('tab-1'), action)
     expect(action).toHaveBeenCalledOnce()
 
     // Edit state should be discarded since dataset is changing
@@ -2273,12 +2277,12 @@ describe('useQueryStore — requestNavigationAction', () => {
 
   it('defers action when there are pending edits', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().updateCellValue('tab-1', 1, 'Changed')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().updateCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Changed')
 
     const action = vi.fn()
-    useQueryStore.getState().requestNavigationAction('tab-1', action)
+    useQueryStore.getState().requestNavigationAction(activeQuerySurfaceRef('tab-1'), action)
     expect(action).not.toHaveBeenCalled()
     expect(useQueryStore.getState().getTabState('tab-1').pendingNavigationAction).toBeTruthy()
   })
@@ -2291,29 +2295,29 @@ describe('useQueryStore — requestNavigationAction', () => {
 describe('useQueryStore — confirmNavigation', () => {
   it('saves and executes pending action when shouldSave is true', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().updateCellValue('tab-1', 1, 'Saved')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().updateCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Saved')
 
     const action = vi.fn()
-    useQueryStore.getState().requestNavigationAction('tab-1', action)
+    useQueryStore.getState().requestNavigationAction(activeQuerySurfaceRef('tab-1'), action)
     expect(action).not.toHaveBeenCalled()
 
-    await useQueryStore.getState().confirmNavigation('tab-1', true)
+    await useQueryStore.getState().confirmNavigation(activeQuerySurfaceRef('tab-1'), true)
     expect(action).toHaveBeenCalledOnce()
     expect(useQueryStore.getState().getTabState('tab-1').pendingNavigationAction).toBeNull()
   })
 
   it('discards and executes pending action when shouldSave is false', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().syncCellValue('tab-1', 1, 'Discardable')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().syncCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Discardable')
 
     const action = vi.fn()
-    useQueryStore.getState().requestNavigationAction('tab-1', action)
+    useQueryStore.getState().requestNavigationAction(activeQuerySurfaceRef('tab-1'), action)
 
-    await useQueryStore.getState().confirmNavigation('tab-1', false)
+    await useQueryStore.getState().confirmNavigation(activeQuerySurfaceRef('tab-1'), false)
     expect(action).toHaveBeenCalledOnce()
     expect(flat('tab-1').rows[0][1]).toBe('Alice') // restored
   })
@@ -2326,13 +2330,13 @@ describe('useQueryStore — confirmNavigation', () => {
 describe('useQueryStore — cancelNavigation', () => {
   it('clears pendingNavigationAction', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().updateCellValue('tab-1', 1, 'Changed')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().updateCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Changed')
 
     const action = vi.fn()
-    useQueryStore.getState().requestNavigationAction('tab-1', action)
-    useQueryStore.getState().cancelNavigation('tab-1')
+    useQueryStore.getState().requestNavigationAction(activeQuerySurfaceRef('tab-1'), action)
+    useQueryStore.getState().cancelNavigation(activeQuerySurfaceRef('tab-1'))
 
     expect(useQueryStore.getState().getTabState('tab-1').pendingNavigationAction).toBeNull()
     expect(action).not.toHaveBeenCalled()
@@ -2346,11 +2350,11 @@ describe('useQueryStore — cancelNavigation', () => {
 describe('useQueryStore — clearEditState', () => {
   it('resets all edit-related fields to defaults', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().updateCellValue('tab-1', 1, 'Changed')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().updateCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Changed')
 
-    useQueryStore.getState().clearEditState('tab-1')
+    useQueryStore.getState().clearEditState(activeQuerySurfaceRef('tab-1'))
 
     const tab = flat('tab-1')
     expect(tab.editMode).toBeNull()
@@ -2365,9 +2369,9 @@ describe('useQueryStore — clearEditState', () => {
 
   it('is called when executeQuery runs', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().updateCellValue('tab-1', 1, 'Changed')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().updateCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Changed')
 
     // Verify edit state is active
     expect(flat('tab-1').editMode).toBe('testdb.users')
@@ -2630,7 +2634,7 @@ describe('useQueryStore — saveCurrentRow return value edge cases', () => {
   it('returns true when no editState exists', async () => {
     await executeAndAnalyze()
     // No edit mode enabled — no editState
-    const result = await useQueryStore.getState().saveCurrentRow('tab-1')
+    const result = await useQueryStore.getState().saveCurrentRow(activeQuerySurfaceRef('tab-1'))
     expect(result).toBe(true)
   })
 })
@@ -2642,9 +2646,9 @@ describe('useQueryStore — saveCurrentRow return value edge cases', () => {
 describe('useQueryStore — changeRowLimit clears edit state', () => {
   it('clears edit mode, editableColumnMap, editTableMetadata, editState, and editingRowIndex', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().updateCellValue('tab-1', 1, 'Changed')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().updateCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Changed')
 
     // Verify edit state is active
     const before = flat('tab-1')
@@ -2677,16 +2681,18 @@ describe('useQueryStore — changeRowLimit clears edit state', () => {
 describe('useQueryStore — sortResults sort-clear clears edit state', () => {
   it('clearing a sort keeps edit mode but drops the editing row (no re-run)', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().updateCellValue('tab-1', 1, 'Changed')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().updateCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Changed')
 
     // Verify edit state is active
     const before = flat('tab-1')
     expect(before.editMode).toBe('testdb.users')
     expect(before.editState).not.toBeNull()
 
-    await useQueryStore.getState().sortResults('tab-1', 'id', null)
+    await useQueryStore
+      .getState()
+      .sortResults(activeQuerySurfaceRef('tab-1'), { column: 'id', direction: null })
     await flushMicrotasks()
 
     const after = flat('tab-1')
@@ -2739,10 +2745,12 @@ describe('useQueryStore — sortResults sort-clear clears edit state', () => {
     })
 
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
 
     // Normal sort (asc) should not clear edit mode
-    await useQueryStore.getState().sortResults('tab-1', 'id', 'asc')
+    await useQueryStore
+      .getState()
+      .sortResults(activeQuerySurfaceRef('tab-1'), { column: 'id', direction: 'asc' })
 
     const after = flat('tab-1')
     expect(after.editMode).toBe('testdb.users')
@@ -2757,9 +2765,9 @@ describe('useQueryStore — sortResults sort-clear clears edit state', () => {
 describe('useQueryStore — insertDraftRow', () => {
   it('opens an empty insert draft right after the last view row', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
 
-    useQueryStore.getState().insertDraftRow('tab-1')
+    useQueryStore.getState().insertDraftRow(activeQuerySurfaceRef('tab-1'))
 
     const tab = flat('tab-1')
     expect(tab.rows).toHaveLength(2)
@@ -2774,12 +2782,12 @@ describe('useQueryStore — insertDraftRow', () => {
   it('inserts the values typed into the draft when saved', async () => {
     ipc.override('insert_table_row', () => [['id', 3]])
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().insertDraftRow('tab-1')
-    useQueryStore.getState().updateCellValue('tab-1', 1, 'Carol')
-    useQueryStore.getState().updateCellValue('tab-1', 2, 'carol@test.com')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().insertDraftRow(activeQuerySurfaceRef('tab-1'))
+    useQueryStore.getState().updateCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Carol')
+    useQueryStore.getState().updateCellValue(activeQuerySurfaceRef('tab-1'), 2, 'carol@test.com')
 
-    await useQueryStore.getState().saveCurrentRow('tab-1')
+    await useQueryStore.getState().saveCurrentRow(activeQuerySurfaceRef('tab-1'))
 
     expect(ipc.payloads('insert_table_row')[0]).toMatchObject({
       database: 'testdb',
@@ -2790,11 +2798,11 @@ describe('useQueryStore — insertDraftRow', () => {
 
   it('refuses with a toast while another row has unsaved changes', async () => {
     await executeAndAnalyze()
-    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
-    useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().updateCellValue('tab-1', 1, 'Alicia')
+    await useQueryStore.getState().setEditMode(activeQuerySurfaceRef('tab-1'), 'testdb.users')
+    useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
+    useQueryStore.getState().updateCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Alicia')
 
-    useQueryStore.getState().insertDraftRow('tab-1')
+    useQueryStore.getState().insertDraftRow(activeQuerySurfaceRef('tab-1'))
 
     expect(flat('tab-1').draftRow).toBeNull()
     const toasts = useToastStore.getState().toasts
@@ -2804,7 +2812,7 @@ describe('useQueryStore — insertDraftRow', () => {
   it('does nothing when edit mode is not enabled', async () => {
     await executeAndAnalyze()
 
-    useQueryStore.getState().insertDraftRow('tab-1')
+    useQueryStore.getState().insertDraftRow(activeQuerySurfaceRef('tab-1'))
 
     expect(flat('tab-1').draftRow).toBeNull()
     expect(flat('tab-1').editState).toBeNull()
@@ -2910,7 +2918,7 @@ describe('result view filter and sort', () => {
       ipc.override('set_result_view', () => viewResponse(2, [ROWS[0], ROWS[2]], [0, 2]))
 
       await act(async () => {
-        useQueryStore.getState().applyQueryFilters(TAB, 0, FILTER_A)
+        useQueryStore.getState().applyQueryFilters(querySurfaceRef(TAB, 0), FILTER_A)
         expect(result().isFiltering).toBe(true)
         await flush()
       })
@@ -2952,7 +2960,7 @@ describe('result view filter and sort', () => {
       ipc.override('set_result_view', () => viewResponse(2, [ROWS[2]], [2]))
 
       await act(async () => {
-        useQueryStore.getState().applyQueryFilters(TAB, 0, FILTER_A)
+        useQueryStore.getState().applyQueryFilters(querySurfaceRef(TAB, 0), FILTER_A)
         await flush()
       })
 
@@ -2966,7 +2974,7 @@ describe('result view filter and sort', () => {
       ipc.override('set_result_view', () => viewResponse(3, ROWS, [0, 1, 2]))
 
       await act(async () => {
-        useQueryStore.getState().applyQueryFilters(TAB, 0, [])
+        useQueryStore.getState().applyQueryFilters(querySurfaceRef(TAB, 0), [])
         await flush()
       })
 
@@ -2980,8 +2988,8 @@ describe('result view filter and sort', () => {
     })
 
     it('ignores an out-of-range result index', () => {
-      useQueryStore.getState().applyQueryFilters(TAB, 5, FILTER_A)
-      useQueryStore.getState().applyQueryFilters('missing', 0, FILTER_A)
+      useQueryStore.getState().applyQueryFilters(querySurfaceRef(TAB, 5), FILTER_A)
+      useQueryStore.getState().applyQueryFilters(querySurfaceRef('missing', 0), FILTER_A)
       expect(ipc.payloads('set_result_view')).toHaveLength(0)
     })
   })
@@ -2991,7 +2999,9 @@ describe('result view filter and sort', () => {
       const pending = deferSetResultView()
       let sortPromise: Promise<void> = Promise.resolve()
       act(() => {
-        sortPromise = useQueryStore.getState().sortResults(TAB, 'id', 'asc')
+        sortPromise = useQueryStore
+          .getState()
+          .sortResults(activeQuerySurfaceRef(TAB), { column: 'id', direction: 'asc' })
       })
       expect(result().isSorting).toBe(true)
       await act(async () => {
@@ -3005,7 +3015,9 @@ describe('result view filter and sort', () => {
       const pending = deferSetResultView()
       let sortPromise: Promise<void> = Promise.resolve()
       act(() => {
-        sortPromise = useQueryStore.getState().sortResults(TAB, 'id', 'asc')
+        sortPromise = useQueryStore
+          .getState()
+          .sortResults(activeQuerySurfaceRef(TAB), { column: 'id', direction: 'asc' })
       })
       act(() => {
         useQueryStore.setState((state) => ({
@@ -3030,11 +3042,13 @@ describe('result view filter and sort', () => {
 
       // Filter A (seq 1) and sort B (seq 2) both start from version 1.
       act(() => {
-        useQueryStore.getState().applyQueryFilters(TAB, 0, FILTER_A)
+        useQueryStore.getState().applyQueryFilters(querySurfaceRef(TAB, 0), FILTER_A)
       })
       let sortPromise: Promise<void> = Promise.resolve()
       act(() => {
-        sortPromise = useQueryStore.getState().sortResults(TAB, 'name', 'asc')
+        sortPromise = useQueryStore
+          .getState()
+          .sortResults(activeQuerySurfaceRef(TAB), { column: 'name', direction: 'asc' })
       })
       expect(pending.map((call) => call.args.baseViewVersion)).toEqual([1, 1])
       expect(pending[1].args.viewSpec).toEqual({
@@ -3083,11 +3097,13 @@ describe('result view filter and sort', () => {
     it('a second refusal reverts to the latest successful view and shows the view-error band', async () => {
       const pending = deferSetResultView()
       act(() => {
-        useQueryStore.getState().applyQueryFilters(TAB, 0, FILTER_A)
+        useQueryStore.getState().applyQueryFilters(querySurfaceRef(TAB, 0), FILTER_A)
       })
       let sortPromise: Promise<void> = Promise.resolve()
       act(() => {
-        sortPromise = useQueryStore.getState().sortResults(TAB, 'name', 'asc')
+        sortPromise = useQueryStore
+          .getState()
+          .sortResults(activeQuerySurfaceRef(TAB), { column: 'name', direction: 'asc' })
       })
       await act(async () => {
         pending[0].resolve(viewResponse(2, [ROWS[0], ROWS[2]], [0, 2]))
@@ -3116,11 +3132,13 @@ describe('result view filter and sort', () => {
     it('a newer request failing with a non-superseded error reverts to the latest success without re-issuing', async () => {
       const pending = deferSetResultView()
       act(() => {
-        useQueryStore.getState().applyQueryFilters(TAB, 0, FILTER_A)
+        useQueryStore.getState().applyQueryFilters(querySurfaceRef(TAB, 0), FILTER_A)
       })
       let sortPromise: Promise<void> = Promise.resolve()
       act(() => {
-        sortPromise = useQueryStore.getState().sortResults(TAB, 'missing', 'asc')
+        sortPromise = useQueryStore
+          .getState()
+          .sortResults(activeQuerySurfaceRef(TAB), { column: 'missing', direction: 'asc' })
       })
       await act(async () => {
         pending[0].resolve(viewResponse(2, [ROWS[0], ROWS[2]], [0, 2]))
@@ -3145,7 +3163,9 @@ describe('result view filter and sort', () => {
       }))
       let sortPromise: Promise<void> = Promise.resolve()
       act(() => {
-        sortPromise = useQueryStore.getState().sortResults(TAB, 'id', 'asc')
+        sortPromise = useQueryStore
+          .getState()
+          .sortResults(activeQuerySurfaceRef(TAB), { column: 'id', direction: 'asc' })
       })
       await act(async () => {
         pending[0].reject(new Error('view_superseded: current=4'))
@@ -3167,7 +3187,9 @@ describe('result view filter and sort', () => {
         throw new Error('boom')
       })
       await act(async () => {
-        await useQueryStore.getState().sortResults(TAB, 'id', 'asc')
+        await useQueryStore
+          .getState()
+          .sortResults(activeQuerySurfaceRef(TAB), { column: 'id', direction: 'asc' })
       })
       expect(result().viewVersion).toBe(1)
       expect(result().sortColumn).toBeNull()
@@ -3182,7 +3204,9 @@ describe('result view filter and sort', () => {
       })
       let sortPromise: Promise<void> = Promise.resolve()
       act(() => {
-        sortPromise = useQueryStore.getState().sortResults(TAB, 'id', 'asc')
+        sortPromise = useQueryStore
+          .getState()
+          .sortResults(activeQuerySurfaceRef(TAB), { column: 'id', direction: 'asc' })
       })
       await act(async () => {
         pending[0].reject(new Error('view_superseded: current=4'))
@@ -3198,7 +3222,9 @@ describe('result view filter and sort', () => {
       const pending = deferSetResultView()
       let sortPromise: Promise<void> = Promise.resolve()
       act(() => {
-        sortPromise = useQueryStore.getState().sortResults(TAB, 'name', 'desc')
+        sortPromise = useQueryStore
+          .getState()
+          .sortResults(activeQuerySurfaceRef(TAB), { column: 'name', direction: 'desc' })
       })
       // Meanwhile a delete tombstoned row 1 on top of the sorted view (v3) and painted.
       act(() => {
@@ -3246,7 +3272,9 @@ describe('result view filter and sort', () => {
       const pending = deferSetResultView()
       let sortPromise: Promise<void> = Promise.resolve()
       act(() => {
-        sortPromise = useQueryStore.getState().sortResults(TAB, 'name', 'desc')
+        sortPromise = useQueryStore
+          .getState()
+          .sortResults(activeQuerySurfaceRef(TAB), { column: 'name', direction: 'desc' })
       })
       act(() => {
         useQueryStore.setState((state) => {
@@ -3275,14 +3303,14 @@ describe('result view filter and sort', () => {
         throw new Error('boom')
       })
       await act(async () => {
-        useQueryStore.getState().applyQueryFilters(TAB, 0, FILTER_A)
+        useQueryStore.getState().applyQueryFilters(querySurfaceRef(TAB, 0), FILTER_A)
         await flush()
       })
       expect(result().viewError).toBe('boom')
 
       ipc.override('set_result_view', () => viewResponse(2, [ROWS[0], ROWS[2]], [0, 2]))
       await act(async () => {
-        useQueryStore.getState().retryViewChange(TAB)
+        useQueryStore.getState().retryViewChange(activeQuerySurfaceRef(TAB))
         await flush()
       })
       expect(ipc.payloads('set_result_view')[1]).toMatchObject({
@@ -3293,7 +3321,7 @@ describe('result view filter and sort', () => {
     })
 
     it('retryViewChange is a no-op for unknown tabs', () => {
-      useQueryStore.getState().retryViewChange('missing')
+      useQueryStore.getState().retryViewChange(activeQuerySurfaceRef('missing'))
       expect(ipc.payloads('set_result_view')).toHaveLength(0)
     })
   })
@@ -3320,7 +3348,7 @@ describe('result view filter and sort', () => {
         await flush()
       })
       act(() => {
-        useQueryStore.getState().retryResultWindow(TAB)
+        useQueryStore.getState().retryResultWindow(activeQuerySurfaceRef(TAB))
       })
       expect(result().failedWindowRange).toBeNull()
     })
@@ -3564,10 +3592,10 @@ describe('windowed results', () => {
       )
 
       act(() => {
-        useQueryStore.getState().cloneSelectedRow(TAB)
+        useQueryStore.getState().cloneSelectedRow(activeQuerySurfaceRef(TAB))
       })
       await act(async () => {
-        await useQueryStore.getState().saveCurrentRow(TAB)
+        await useQueryStore.getState().saveCurrentRow(activeQuerySurfaceRef(TAB))
       })
 
       expect(ipc.payloads('insert_table_row')).toHaveLength(1)
@@ -3624,13 +3652,13 @@ describe('windowed results', () => {
       ipc.override('update_result_cell', () => undefined)
 
       act(() => {
-        useQueryStore.getState().startEditingRow(TAB, 1)
-        useQueryStore.getState().syncCellValue(TAB, 1, 'Zed')
+        useQueryStore.getState().startEditingRow(activeQuerySurfaceRef(TAB), 1)
+        useQueryStore.getState().syncCellValue(activeQuerySurfaceRef(TAB), 1, 'Zed')
       })
       expect(useQueryStore.getState().tabs[TAB]!.results[0].editingBaseIndex).toBe(0)
 
       await act(async () => {
-        expect(await useQueryStore.getState().saveCurrentRow(TAB)).toBe(true)
+        expect(await useQueryStore.getState().saveCurrentRow(activeQuerySurfaceRef(TAB))).toBe(true)
       })
 
       expect(ipc.payloads('update_table_row')[0]).toMatchObject({

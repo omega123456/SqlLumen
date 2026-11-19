@@ -1,6 +1,7 @@
+import type { DataViewSurfaceRef } from '../../stores/data-view/data-view-types'
 import { type ReactNode } from 'react'
 import { useConnectionStore } from '../../stores/connection-store'
-import { getActiveResult, useQueryStore } from '../../stores/query-store'
+import { getActiveResult, useQueryStore, activeQuerySurfaceRef } from '../../stores/query-store'
 import { useTableDataStore } from '../../stores/table-data-store'
 import { useSchemaIndexStore } from '../../stores/schema-index-store'
 import { useSettingsStore } from '../../stores/settings-store'
@@ -84,9 +85,12 @@ function StatusBarTrailing(props: StatusBarTrailingProps) {
   )
 }
 
-function cancelPendingRowAction(tabId: string | null, cancelRowAction: (tabId: string) => void) {
+function cancelPendingRowAction(
+  tabId: string | null,
+  cancelRowAction: (ref: DataViewSurfaceRef) => void
+) {
   if (!tabId) return
-  cancelRowAction(tabId)
+  cancelRowAction(activeQuerySurfaceRef(tabId))
 }
 
 function useVisibleRun(activeWorkspaceTabId: string | null): VisibleRun | null {

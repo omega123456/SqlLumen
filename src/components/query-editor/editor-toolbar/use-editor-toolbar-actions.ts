@@ -22,11 +22,11 @@ export interface EditorToolbarTarget {
 }
 
 function useRunAllStatements({ connectionId, tabId, content, isDisabled }: EditorToolbarTarget) {
-  const requestNavigationAction = useQueryStore((state) => state.requestNavigationAction)
+  const requestTabNavigation = useQueryStore((state) => state.requestTabNavigation)
   return function runAllStatements(run: (target: RunTarget) => void) {
     if (isDisabled) return
     if (!content.trim()) return
-    requestNavigationAction(tabId, () => {
+    requestTabNavigation(tabId, () => {
       const statements = executableStatements(content)
       if (statements.length === 0) return
       run({ connectionId: connectionId, tabId: tabId, statements: statements })

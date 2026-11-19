@@ -1,3 +1,4 @@
+import { querySurfaceRef } from './query-surface'
 import {
   fetchResultWindow as fetchResultWindowCmd,
   touchResults as touchResultsCmd,
@@ -227,7 +228,7 @@ export function setActiveResultIndex(tabId: string, index: number) {
 
   const currentResult = tab.results[tab.activeResultIndex]
   if (hasUnsavedModifications(currentResult)) {
-    getQueryState().requestNavigationAction(tabId, () => {
+    getQueryState().requestNavigationAction(querySurfaceRef(tabId, tab.activeResultIndex), () => {
       const previousIndex = getQueryState().tabs[tabId]?.activeResultIndex ?? tab.activeResultIndex
       switchActiveResult(tabId, previousIndex, index)
     })

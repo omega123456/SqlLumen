@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { EditModeDropdown } from '../../../components/query-editor/EditModeDropdown'
-import { useQueryStore } from '../../../stores/query-store'
+import { useQueryStore, querySurfaceRef } from '../../../stores/query-store'
 import { useConnectionStore } from '../../../stores/connection-store'
 import type { QueryTableEditInfo } from '../../../types/schema'
 import { makeTabState } from '../../helpers/query-test-utils'
@@ -124,7 +124,9 @@ describe('EditModeDropdown', () => {
     it('is hidden when status is idle', () => {
       setupTabState(tabId, { status: 'idle' })
       setupConnectionStore(connectionId)
-      const { container } = render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
+      const { container } = render(
+        <EditModeDropdown surfaceRef={querySurfaceRef(tabId, 0)} connectionId={connectionId} />
+      )
       expect(container.innerHTML).toBe('')
     })
 
@@ -135,14 +137,18 @@ describe('EditModeDropdown', () => {
         columns: [{ name: 'id', dataType: 'INT' }],
       })
       setupConnectionStore(connectionId)
-      const { container } = render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
+      const { container } = render(
+        <EditModeDropdown surfaceRef={querySurfaceRef(tabId, 0)} connectionId={connectionId} />
+      )
       expect(container.innerHTML).toBe('')
     })
 
     it('is hidden when no result columns', () => {
       setupTabState(tabId, { status: 'success', columns: [] })
       setupConnectionStore(connectionId)
-      const { container } = render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
+      const { container } = render(
+        <EditModeDropdown surfaceRef={querySurfaceRef(tabId, 0)} connectionId={connectionId} />
+      )
       expect(container.innerHTML).toBe('')
     })
 
@@ -152,7 +158,9 @@ describe('EditModeDropdown', () => {
         columns: [{ name: 'id', dataType: 'INT' }],
       })
       setupConnectionStore(connectionId, true)
-      const { container } = render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
+      const { container } = render(
+        <EditModeDropdown surfaceRef={querySurfaceRef(tabId, 0)} connectionId={connectionId} />
+      )
       expect(container.innerHTML).toBe('')
     })
 
@@ -163,7 +171,9 @@ describe('EditModeDropdown', () => {
         lastExecutedSql: 'SELECT * FROM users',
       })
       setupConnectionStore(connectionId)
-      render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
+      render(
+        <EditModeDropdown surfaceRef={querySurfaceRef(tabId, 0)} connectionId={connectionId} />
+      )
       expect(screen.getByTestId('edit-mode-dropdown')).toBeInTheDocument()
     })
 
@@ -174,7 +184,9 @@ describe('EditModeDropdown', () => {
         lastExecutedSql: 'SHOW TABLES',
       })
       setupConnectionStore(connectionId)
-      const { container } = render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
+      const { container } = render(
+        <EditModeDropdown surfaceRef={querySurfaceRef(tabId, 0)} connectionId={connectionId} />
+      )
       expect(container.innerHTML).toBe('')
     })
 
@@ -185,7 +197,9 @@ describe('EditModeDropdown', () => {
         lastExecutedSql: 'DESCRIBE users',
       })
       setupConnectionStore(connectionId)
-      const { container } = render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
+      const { container } = render(
+        <EditModeDropdown surfaceRef={querySurfaceRef(tabId, 0)} connectionId={connectionId} />
+      )
       expect(container.innerHTML).toBe('')
     })
 
@@ -196,7 +210,9 @@ describe('EditModeDropdown', () => {
         lastExecutedSql: 'EXPLAIN SELECT * FROM users',
       })
       setupConnectionStore(connectionId)
-      const { container } = render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
+      const { container } = render(
+        <EditModeDropdown surfaceRef={querySurfaceRef(tabId, 0)} connectionId={connectionId} />
+      )
       expect(container.innerHTML).toBe('')
     })
 
@@ -207,7 +223,9 @@ describe('EditModeDropdown', () => {
         lastExecutedSql: null,
       })
       setupConnectionStore(connectionId)
-      const { container } = render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
+      const { container } = render(
+        <EditModeDropdown surfaceRef={querySurfaceRef(tabId, 0)} connectionId={connectionId} />
+      )
       expect(container.innerHTML).toBe('')
     })
   })
@@ -220,7 +238,9 @@ describe('EditModeDropdown', () => {
         lastExecutedSql: 'SELECT * FROM users',
       })
       setupConnectionStore(connectionId)
-      render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
+      render(
+        <EditModeDropdown surfaceRef={querySurfaceRef(tabId, 0)} connectionId={connectionId} />
+      )
       expect(screen.getByTestId('edit-mode-dropdown')).toBeInTheDocument()
     })
 
@@ -231,7 +251,9 @@ describe('EditModeDropdown', () => {
         lastExecutedSql: 'SELECT * FROM users',
       })
       setupConnectionStore(connectionId)
-      render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
+      render(
+        <EditModeDropdown surfaceRef={querySurfaceRef(tabId, 0)} connectionId={connectionId} />
+      )
       expect(screen.getByTestId('edit-mode-group')).toBeInTheDocument()
     })
 
@@ -242,7 +264,9 @@ describe('EditModeDropdown', () => {
         lastExecutedSql: 'SELECT * FROM users',
       })
       setupConnectionStore(connectionId)
-      render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
+      render(
+        <EditModeDropdown surfaceRef={querySurfaceRef(tabId, 0)} connectionId={connectionId} />
+      )
       expect(screen.getByTestId('edit-mode-dropdown')).toHaveTextContent('Read only')
     })
 
@@ -255,7 +279,9 @@ describe('EditModeDropdown', () => {
         lastExecutedSql: 'SELECT * FROM users',
       })
       setupConnectionStore(connectionId)
-      render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
+      render(
+        <EditModeDropdown surfaceRef={querySurfaceRef(tabId, 0)} connectionId={connectionId} />
+      )
       await user.click(screen.getByTestId('edit-mode-dropdown'))
       const opts = screen.getAllByRole('option')
       expect(opts).toHaveLength(2)
@@ -274,7 +300,9 @@ describe('EditModeDropdown', () => {
         lastExecutedSql: 'SELECT * FROM users',
       })
       setupConnectionStore(connectionId)
-      render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
+      render(
+        <EditModeDropdown surfaceRef={querySurfaceRef(tabId, 0)} connectionId={connectionId} />
+      )
       await user.click(screen.getByTestId('edit-mode-dropdown'))
       const opts = screen.getAllByRole('option')
       expect(opts).toHaveLength(3)
@@ -295,7 +323,9 @@ describe('EditModeDropdown', () => {
         lastExecutedSql: 'SELECT * FROM users',
       })
       setupConnectionStore(connectionId)
-      render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
+      render(
+        <EditModeDropdown surfaceRef={querySurfaceRef(tabId, 0)} connectionId={connectionId} />
+      )
       await user.click(screen.getByTestId('edit-mode-dropdown'))
       const opts = screen.getAllByRole('option')
       expect(opts[1]).toHaveAccessibleName('users')
@@ -310,7 +340,9 @@ describe('EditModeDropdown', () => {
         lastExecutedSql: 'SELECT * FROM users',
       })
       setupConnectionStore(connectionId)
-      render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
+      render(
+        <EditModeDropdown surfaceRef={querySurfaceRef(tabId, 0)} connectionId={connectionId} />
+      )
       expect(screen.getByTestId('edit-mode-dropdown')).toBeDisabled()
     })
 
@@ -323,7 +355,9 @@ describe('EditModeDropdown', () => {
         lastExecutedSql: 'SELECT * FROM users',
       })
       setupConnectionStore(connectionId)
-      render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
+      render(
+        <EditModeDropdown surfaceRef={querySurfaceRef(tabId, 0)} connectionId={connectionId} />
+      )
       expect(screen.getByTestId('edit-mode-dropdown')).toHaveTextContent('users')
     })
   })
@@ -342,11 +376,13 @@ describe('EditModeDropdown', () => {
       const setEditModeSpy = vi.fn()
       useQueryStore.setState({ setEditMode: setEditModeSpy })
 
-      render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
+      render(
+        <EditModeDropdown surfaceRef={querySurfaceRef(tabId, 0)} connectionId={connectionId} />
+      )
       await user.click(screen.getByTestId('edit-mode-dropdown'))
       await user.click(screen.getByRole('option', { name: 'users' }))
 
-      expect(setEditModeSpy).toHaveBeenCalledWith(connectionId, tabId, 'test_db.users')
+      expect(setEditModeSpy).toHaveBeenCalledWith(querySurfaceRef(tabId, 0), 'test_db.users')
     })
 
     it('calls setEditMode with null when "Read only" is selected', async () => {
@@ -363,11 +399,13 @@ describe('EditModeDropdown', () => {
       const setEditModeSpy = vi.fn()
       useQueryStore.setState({ setEditMode: setEditModeSpy })
 
-      render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
+      render(
+        <EditModeDropdown surfaceRef={querySurfaceRef(tabId, 0)} connectionId={connectionId} />
+      )
       await user.click(screen.getByTestId('edit-mode-dropdown'))
       await user.click(screen.getByRole('option', { name: 'Read only' }))
 
-      expect(setEditModeSpy).toHaveBeenCalledWith(connectionId, tabId, null)
+      expect(setEditModeSpy).toHaveBeenCalledWith(querySurfaceRef(tabId, 0), null)
     })
 
     it('triggers requestNavigationAction when edits are pending', async () => {
@@ -391,11 +429,13 @@ describe('EditModeDropdown', () => {
       const requestNavSpy = vi.fn()
       useQueryStore.setState({ requestNavigationAction: requestNavSpy })
 
-      render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
+      render(
+        <EditModeDropdown surfaceRef={querySurfaceRef(tabId, 0)} connectionId={connectionId} />
+      )
       await user.click(screen.getByTestId('edit-mode-dropdown'))
       await user.click(screen.getByRole('option', { name: 'Read only' }))
 
-      expect(requestNavSpy).toHaveBeenCalledWith(tabId, expect.any(Function))
+      expect(requestNavSpy).toHaveBeenCalledWith(querySurfaceRef(tabId, 0), expect.any(Function))
     })
 
     it('does not trigger requestNavigationAction when no modifications exist', async () => {
@@ -423,12 +463,14 @@ describe('EditModeDropdown', () => {
         requestNavigationAction: requestNavSpy,
       })
 
-      render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
+      render(
+        <EditModeDropdown surfaceRef={querySurfaceRef(tabId, 0)} connectionId={connectionId} />
+      )
       await user.click(screen.getByTestId('edit-mode-dropdown'))
       await user.click(screen.getByRole('option', { name: 'Read only' }))
 
       expect(requestNavSpy).not.toHaveBeenCalled()
-      expect(setEditModeSpy).toHaveBeenCalledWith(connectionId, tabId, null)
+      expect(setEditModeSpy).toHaveBeenCalledWith(querySurfaceRef(tabId, 0), null)
     })
 
     it('has aria-label="Edit mode"', () => {
@@ -438,7 +480,9 @@ describe('EditModeDropdown', () => {
         lastExecutedSql: 'SELECT * FROM users',
       })
       setupConnectionStore(connectionId)
-      render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
+      render(
+        <EditModeDropdown surfaceRef={querySurfaceRef(tabId, 0)} connectionId={connectionId} />
+      )
       expect(screen.getByLabelText('Edit mode')).toBeInTheDocument()
     })
   })

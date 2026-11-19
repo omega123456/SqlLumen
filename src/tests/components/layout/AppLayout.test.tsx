@@ -285,7 +285,7 @@ describe('AppLayout', () => {
       useQueryStore.setState({
         executeQuery: executeQueryMock,
         executeCallQuery: vi.fn(),
-        requestNavigationAction: requestNavigationActionMock,
+        requestTabNavigation: requestNavigationActionMock,
       } as never)
 
       render(<AppLayout />)
@@ -308,7 +308,7 @@ describe('AppLayout', () => {
       useQueryStore.setState({
         executeQuery: executeQueryMock,
         executeCallQuery: vi.fn(),
-        requestNavigationAction: requestNavigationActionMock,
+        requestTabNavigation: requestNavigationActionMock,
       } as never)
 
       render(<AppLayout />)
@@ -328,7 +328,7 @@ describe('AppLayout', () => {
       useQueryStore.setState({
         executeQuery: executeQueryMock,
         executeCallQuery: vi.fn(),
-        requestNavigationAction: requestNavigationActionMock,
+        requestTabNavigation: requestNavigationActionMock,
       } as never)
 
       render(<AppLayout />)
@@ -351,7 +351,7 @@ describe('AppLayout', () => {
       useQueryStore.setState({
         executeQuery: vi.fn(),
         executeCallQuery: executeCallQueryMock,
-        requestNavigationAction: requestNavigationActionMock,
+        requestTabNavigation: requestNavigationActionMock,
       } as never)
 
       render(<AppLayout />)
@@ -374,7 +374,7 @@ describe('AppLayout', () => {
         executeQuery: vi.fn(),
         executeCallQuery: vi.fn(),
         executeMultiQuery: executeMultiQueryMock,
-        requestNavigationAction: requestNavigationActionMock,
+        requestTabNavigation: requestNavigationActionMock,
       } as never)
 
       render(<AppLayout />)
@@ -408,7 +408,7 @@ describe('AppLayout', () => {
           },
         },
         executeQuery: executeQueryMock,
-        requestNavigationAction: vi.fn(),
+        requestTabNavigation: vi.fn(),
       } as never)
 
       render(<AppLayout />)
@@ -439,7 +439,7 @@ describe('AppLayout', () => {
           },
         },
         executeQuery: executeQueryMock,
-        requestNavigationAction: vi.fn(),
+        requestTabNavigation: vi.fn(),
       } as never)
 
       render(<AppLayout />)
@@ -472,7 +472,7 @@ describe('AppLayout', () => {
         },
         executeQuery: vi.fn(),
         executeCallQuery: executeCallQueryMock,
-        requestNavigationAction: requestNavigationActionMock,
+        requestTabNavigation: requestNavigationActionMock,
       } as never)
 
       render(<AppLayout />)
@@ -508,7 +508,7 @@ describe('AppLayout', () => {
         },
         executeMultiQuery: executeMultiQueryMock,
         executeAllAndCopyResultPath: executeAllAndCopyResultPathMock,
-        requestNavigationAction: requestNavigationActionMock,
+        requestTabNavigation: requestNavigationActionMock,
       } as never)
 
       render(<AppLayout />)
@@ -552,7 +552,7 @@ describe('AppLayout', () => {
           },
         },
         executeMultiQuery: executeMultiQueryMock,
-        requestNavigationAction: vi.fn(),
+        requestTabNavigation: vi.fn(),
       } as never)
 
       render(<AppLayout />)

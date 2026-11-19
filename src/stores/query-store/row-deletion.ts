@@ -17,8 +17,8 @@ import { logFrontend } from '../../lib/app-log-commands'
 import { toErrorMessage } from '../../lib/error-message'
 import { MAX_BULK_DELETE_ROWS } from './query-state-defaults'
 import type { SingleResultState } from './query-state-types'
+import type { DataViewSurfaceRef } from '../data-view/data-view-types'
 import {
-  getActiveIndex,
   markTabResultsExpired,
   patchResultByIndex,
   resultAt,
@@ -112,12 +112,19 @@ async function loadRowsToDelete(deletion: RowDeletionContext): Promise<CachedRow
   }
 }
 
-async function deleteRowsInDatabase(
-  tabId: string,
-  plan: RowDeletionPlan,
+interface DatabaseRowDeletion {
+  ref: DataViewSurfaceRef
+  plan: RowDeletionPlan
   targets: CachedRow[]
-): Promise<RowDeletionOutcome> {
-  const action = getQueryState().beginRowAction(tabId, { verb: 'Deleting', total: targets.length })
+}
+
+async function deleteRowsInDatabase({
+  ref,
+  plan,
+  targets,
+}: DatabaseRowDeletion): Promise<RowDeletionOutcome> {
+  const tabId = ref.tabId
+  const action = getQueryState().beginRowAction(ref, { verb: 'Deleting', total: targets.length })
   const outcome: RowDeletionOutcome = {
     deletedBaseIndices: [],
     failureMessage: null,
@@ -293,8 +300,8 @@ function hasStaleCheckedRows(result: SingleResultState): boolean {
   return hasCheckedRows && result.checkedViewVersion !== result.viewVersion
 }
 
-export async function deleteResultRows(tabId: string): Promise<number> {
-  const resultIndex = getActiveIndex(tabId)
+export async function deleteResultRows(ref: DataViewSurfaceRef): Promise<number> {
+  const { tabId, resultIndex } = ref
   const result = resultAt(tabId, resultIndex)
   if (!result) return 0
   const targetRanges = deleteTargetRangesOf(result)
@@ -319,7 +326,7 @@ export async function deleteResultRows(tabId: string): Promise<number> {
   const targets = await loadRowsToDelete(deletion)
   if (targets.length === 0) return 0
 
-  const outcome = await deleteRowsInDatabase(tabId, plan, targets)
+  const outcome = await deleteRowsInDatabase({ ref: ref, plan: plan, targets: targets })
   if (!outcome.isTabClosed) {
     await finishRowDeletion(deletion, outcome)
   }

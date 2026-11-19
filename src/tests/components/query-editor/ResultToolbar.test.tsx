@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ResultToolbar } from '../../../components/query-editor/ResultToolbar'
-import { useQueryStore } from '../../../stores/query-store'
+import { useQueryStore, querySurfaceRef } from '../../../stores/query-store'
 import { useToastStore } from '../../../stores/toast-store'
 import { useConnectionStore } from '../../../stores/connection-store'
 import { makeTabState, flat } from '../../helpers/query-test-utils'
@@ -38,7 +38,7 @@ describe('ResultToolbar', () => {
     })
     render(
       <ResultToolbar
-        tabId={tabId}
+        surfaceRef={querySurfaceRef(tabId, 0)}
         connectionId={connectionId}
         filterModel={[]}
         onFilterClick={() => {}}
@@ -59,7 +59,7 @@ describe('ResultToolbar', () => {
     })
     render(
       <ResultToolbar
-        tabId={tabId}
+        surfaceRef={querySurfaceRef(tabId, 0)}
         connectionId={connectionId}
         filterModel={[]}
         onFilterClick={() => {}}
@@ -80,7 +80,7 @@ describe('ResultToolbar', () => {
     })
     render(
       <ResultToolbar
-        tabId={tabId}
+        surfaceRef={querySurfaceRef(tabId, 0)}
         connectionId={connectionId}
         filterModel={[]}
         onFilterClick={() => {}}
@@ -101,7 +101,7 @@ describe('ResultToolbar', () => {
     })
     render(
       <ResultToolbar
-        tabId={tabId}
+        surfaceRef={querySurfaceRef(tabId, 0)}
         connectionId={connectionId}
         filterModel={[]}
         onFilterClick={() => {}}
@@ -129,7 +129,7 @@ describe('ResultToolbar', () => {
     })
     render(
       <ResultToolbar
-        tabId={tabId}
+        surfaceRef={querySurfaceRef(tabId, 0)}
         connectionId={connectionId}
         filterModel={[]}
         onFilterClick={() => {}}
@@ -159,7 +159,7 @@ describe('ResultToolbar', () => {
     })
     render(
       <ResultToolbar
-        tabId={tabId}
+        surfaceRef={querySurfaceRef(tabId, 0)}
         connectionId={connectionId}
         filterModel={[]}
         onFilterClick={() => {}}
@@ -181,7 +181,7 @@ describe('ResultToolbar', () => {
     setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
     render(
       <ResultToolbar
-        tabId={tabId}
+        surfaceRef={querySurfaceRef(tabId, 0)}
         connectionId={connectionId}
         filterModel={[]}
         onFilterClick={() => {}}
@@ -197,7 +197,7 @@ describe('ResultToolbar', () => {
     setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
     render(
       <ResultToolbar
-        tabId={tabId}
+        surfaceRef={querySurfaceRef(tabId, 0)}
         connectionId={connectionId}
         filterModel={[]}
         onFilterClick={() => {}}
@@ -212,7 +212,7 @@ describe('ResultToolbar', () => {
     setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
     render(
       <ResultToolbar
-        tabId={tabId}
+        surfaceRef={querySurfaceRef(tabId, 0)}
         connectionId={connectionId}
         filterModel={[]}
         onFilterClick={() => {}}
@@ -229,7 +229,7 @@ describe('ResultToolbar', () => {
     setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
     render(
       <ResultToolbar
-        tabId={tabId}
+        surfaceRef={querySurfaceRef(tabId, 0)}
         connectionId={connectionId}
         filterModel={[]}
         onFilterClick={() => {}}
@@ -244,7 +244,7 @@ describe('ResultToolbar', () => {
     setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
     render(
       <ResultToolbar
-        tabId={tabId}
+        surfaceRef={querySurfaceRef(tabId, 0)}
         connectionId={connectionId}
         filterModel={[]}
         onFilterClick={() => {}}
@@ -258,7 +258,7 @@ describe('ResultToolbar', () => {
     setupTabState(tabId, { status: 'idle' })
     render(
       <ResultToolbar
-        tabId={tabId}
+        surfaceRef={querySurfaceRef(tabId, 0)}
         connectionId={connectionId}
         filterModel={[]}
         onFilterClick={() => {}}
@@ -272,7 +272,7 @@ describe('ResultToolbar', () => {
     setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
     render(
       <ResultToolbar
-        tabId={tabId}
+        surfaceRef={querySurfaceRef(tabId, 0)}
         connectionId={connectionId}
         filterModel={[]}
         onFilterClick={() => {}}
@@ -292,7 +292,7 @@ describe('ResultToolbar', () => {
     })
     render(
       <ResultToolbar
-        tabId={tabId}
+        surfaceRef={querySurfaceRef(tabId, 0)}
         connectionId={connectionId}
         filterModel={[]}
         onFilterClick={() => {}}
@@ -347,7 +347,7 @@ describe('ResultToolbar', () => {
 
     render(
       <ResultToolbar
-        tabId={tabId}
+        surfaceRef={querySurfaceRef(tabId, 0)}
         connectionId={connectionId}
         filterModel={[]}
         onFilterClick={() => {}}
@@ -393,7 +393,7 @@ describe('ResultToolbar', () => {
 
     render(
       <ResultToolbar
-        tabId={tabId}
+        surfaceRef={querySurfaceRef(tabId, 0)}
         connectionId={connectionId}
         filterModel={[]}
         onFilterClick={() => {}}
@@ -427,7 +427,7 @@ describe('ResultToolbar', () => {
 
     render(
       <ResultToolbar
-        tabId={tabId}
+        surfaceRef={querySurfaceRef(tabId, 0)}
         connectionId={connectionId}
         filterModel={[]}
         onFilterClick={() => {}}
@@ -507,7 +507,7 @@ describe('ResultToolbar', () => {
 
     render(
       <ResultToolbar
-        tabId={tabId}
+        surfaceRef={querySurfaceRef(tabId, 0)}
         connectionId={connectionId}
         filterModel={[]}
         onFilterClick={() => {}}
@@ -532,7 +532,7 @@ describe('ResultToolbar', () => {
 
     render(
       <ResultToolbar
-        tabId={tabId}
+        surfaceRef={querySurfaceRef(tabId, 0)}
         connectionId={connectionId}
         filterModel={[]}
         onFilterClick={() => {}}
@@ -595,7 +595,7 @@ describe('ResultToolbar', () => {
 
     render(
       <ResultToolbar
-        tabId={tabId}
+        surfaceRef={querySurfaceRef(tabId, 0)}
         connectionId={connectionId}
         filterModel={[]}
         onFilterClick={() => {}}
@@ -657,20 +657,38 @@ describe('ResultToolbar', () => {
 
     it('disables the delete button when no rows are checked or selected', () => {
       setupDeletableTab({ checkedRowIndices: [], selectedRowIndex: null })
-      render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
+      render(
+        <ResultToolbar
+          surfaceRef={querySurfaceRef(tabId, 0)}
+          connectionId={connectionId}
+          {...props}
+        />
+      )
       expect(screen.getByTestId('btn-delete-row')).toBeDisabled()
     })
 
     it('disables the delete button when not in edit mode (no unique key)', () => {
       setupDeletableTab({ editMode: null })
-      render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
+      render(
+        <ResultToolbar
+          surfaceRef={querySurfaceRef(tabId, 0)}
+          connectionId={connectionId}
+          {...props}
+        />
+      )
       expect(screen.getByTestId('btn-delete-row')).toBeDisabled()
     })
 
     it('disables the delete button on a read-only connection', () => {
       act(() => setupTestConnection(true))
       setupDeletableTab()
-      render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
+      render(
+        <ResultToolbar
+          surfaceRef={querySurfaceRef(tabId, 0)}
+          connectionId={connectionId}
+          {...props}
+        />
+      )
       expect(screen.getByTestId('btn-delete-row')).toBeDisabled()
     })
 
@@ -678,7 +696,13 @@ describe('ResultToolbar', () => {
       ipc.override('delete_table_row', () => undefined)
       ipc.override('remove_result_rows', () => ({ viewVersion: 2, viewRowCount: 2, totalRows: 2 }))
       setupDeletableTab({ checkedRowIndices: [], selectedRowIndex: 1 })
-      render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
+      render(
+        <ResultToolbar
+          surfaceRef={querySurfaceRef(tabId, 0)}
+          connectionId={connectionId}
+          {...props}
+        />
+      )
 
       expect(screen.getByTestId('btn-delete-row')).toHaveAccessibleName('Delete row')
       expect(screen.queryByTestId('delete-count-badge')).not.toBeInTheDocument()
@@ -693,7 +717,13 @@ describe('ResultToolbar', () => {
 
     it('renders a delete button with the checked count when rows are checked in edit mode', () => {
       setupDeletableTab()
-      render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
+      render(
+        <ResultToolbar
+          surfaceRef={querySurfaceRef(tabId, 0)}
+          connectionId={connectionId}
+          {...props}
+        />
+      )
       expect(screen.getByTestId('btn-delete-row')).toHaveAccessibleName('Delete 2 rows')
       expect(screen.getByTestId('delete-count-badge')).toHaveTextContent('2')
     })
@@ -702,7 +732,13 @@ describe('ResultToolbar', () => {
       ipc.override('delete_table_row', () => undefined)
       ipc.override('remove_result_rows', () => ({ viewVersion: 2, viewRowCount: 1, totalRows: 1 }))
       setupDeletableTab()
-      render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
+      render(
+        <ResultToolbar
+          surfaceRef={querySurfaceRef(tabId, 0)}
+          connectionId={connectionId}
+          {...props}
+        />
+      )
 
       // First click only opens the confirmation dialog — no delete yet.
       fireEvent.click(screen.getByTestId('btn-delete-row'))
@@ -724,7 +760,13 @@ describe('ResultToolbar', () => {
 
     it('uses the single-row copy for one checked row', () => {
       setupDeletableTab({ checkedRowIndices: [1] })
-      render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
+      render(
+        <ResultToolbar
+          surfaceRef={querySurfaceRef(tabId, 0)}
+          connectionId={connectionId}
+          {...props}
+        />
+      )
       fireEvent.click(screen.getByTestId('btn-delete-row'))
       expect(screen.getByRole('heading', { name: 'Delete row' })).toBeInTheDocument()
       expect(screen.getByText('Delete this row from users?')).toBeInTheDocument()
@@ -733,7 +775,13 @@ describe('ResultToolbar', () => {
 
     it('adds the long-running warning between 1,001 and 10,000 rows (wireframe 7)', () => {
       setupDeletableTab({ viewRowCount: 5000, checkedRanges: [[0, 4200]] })
-      render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
+      render(
+        <ResultToolbar
+          surfaceRef={querySurfaceRef(tabId, 0)}
+          connectionId={connectionId}
+          {...props}
+        />
+      )
       expect(screen.getByTestId('btn-delete-row')).toHaveAccessibleName('Delete 4,200 rows')
       expect(screen.getByTestId('delete-count-badge')).toHaveTextContent('99+')
       fireEvent.click(screen.getByTestId('btn-delete-row'))
@@ -750,7 +798,13 @@ describe('ResultToolbar', () => {
     it('blocks more than 10,000 rows with a single OK and deletes nothing (wireframe 7)', async () => {
       ipc.override('delete_table_row', () => undefined)
       setupDeletableTab({ viewRowCount: 100000, checkedRanges: [[0, 100000]] })
-      render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
+      render(
+        <ResultToolbar
+          surfaceRef={querySurfaceRef(tabId, 0)}
+          connectionId={connectionId}
+          {...props}
+        />
+      )
       const deleteButton = screen.getByTestId('btn-delete-row')
       // Stays enabled so keyboard users can reach the explanation.
       expect(deleteButton).toBeEnabled()
@@ -778,7 +832,13 @@ describe('ResultToolbar', () => {
     it('does not delete when the confirmation is cancelled', async () => {
       ipc.override('delete_table_row', () => undefined)
       setupDeletableTab()
-      render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
+      render(
+        <ResultToolbar
+          surfaceRef={querySurfaceRef(tabId, 0)}
+          connectionId={connectionId}
+          {...props}
+        />
+      )
 
       fireEvent.click(screen.getByTestId('btn-delete-row'))
       fireEvent.click(screen.getByTestId('confirm-cancel-button'))
@@ -809,7 +869,13 @@ describe('ResultToolbar', () => {
           visible: true,
         },
       })
-      render(<ResultToolbar {...props} tabId={tabId} connectionId={connectionId} />)
+      render(
+        <ResultToolbar
+          {...props}
+          surfaceRef={querySurfaceRef(tabId, 0)}
+          connectionId={connectionId}
+        />
+      )
       expect(screen.getByTestId('result-toolbar')).not.toHaveTextContent('Deleting')
       expect(screen.getByTestId('btn-copy-selected-rows')).toBeDisabled()
       expect(screen.getByTestId('btn-add-row')).toBeDisabled()
@@ -838,7 +904,13 @@ describe('ResultToolbar', () => {
           viewVersion: 1,
         }
       })
-      render(<ResultToolbar {...props} tabId={tabId} connectionId={connectionId} />)
+      render(
+        <ResultToolbar
+          {...props}
+          surfaceRef={querySurfaceRef(tabId, 0)}
+          connectionId={connectionId}
+        />
+      )
       await user.click(screen.getByTestId('btn-copy-selected-rows'))
       await waitFor(() => expect(writeText).toHaveBeenCalled())
       const csv = writeText.mock.lastCall?.[0] as string
@@ -863,7 +935,13 @@ describe('ResultToolbar', () => {
       ipc.override('fetch_result_window', () => {
         throw new Error('offline')
       })
-      render(<ResultToolbar {...props} tabId={tabId} connectionId={connectionId} />)
+      render(
+        <ResultToolbar
+          {...props}
+          surfaceRef={querySurfaceRef(tabId, 0)}
+          connectionId={connectionId}
+        />
+      )
       await user.click(screen.getByTestId('btn-copy-selected-rows'))
       await expectToast('error', "Couldn't load all selected rows. Nothing was copied. Try again.")
     })
@@ -881,7 +959,13 @@ describe('ResultToolbar', () => {
       ipc.override('fetch_result_window', () => {
         throw new Error('results_expired: gone')
       })
-      render(<ResultToolbar {...props} tabId={tabId} connectionId={connectionId} />)
+      render(
+        <ResultToolbar
+          {...props}
+          surfaceRef={querySurfaceRef(tabId, 0)}
+          connectionId={connectionId}
+        />
+      )
       await user.click(screen.getByTestId('btn-copy-selected-rows'))
       await waitFor(() => expect(flat(tabId).isExpired).toBe(true))
     })
@@ -895,7 +979,13 @@ describe('ResultToolbar', () => {
         checkedRanges: [[0, 1]],
         checkedViewVersion: 1,
       })
-      render(<ResultToolbar {...props} tabId={tabId} connectionId={connectionId} />)
+      render(
+        <ResultToolbar
+          {...props}
+          surfaceRef={querySurfaceRef(tabId, 0)}
+          connectionId={connectionId}
+        />
+      )
       expect(screen.getByTestId('btn-copy-selected-rows')).toBeDisabled()
     })
   })

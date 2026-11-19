@@ -6,7 +6,7 @@ import {
 } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { resetWorkspaceStore, seedVisibleConnection } from '../helpers/workspace-test-utils'
-import { useQueryStore, DEFAULT_RESULT_STATE } from '../../stores/query-store'
+import { useQueryStore, DEFAULT_RESULT_STATE, querySurfaceRef } from '../../stores/query-store'
 import { useTableDataStore } from '../../stores/table-data-store'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
 import { ipc, expectToast } from '../ipc-mock'
@@ -379,7 +379,7 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
     // confirm should have been called for the non-active dirty result
     expect(confirmSpy).toHaveBeenCalled()
     // saveCurrentRow should ALSO have been called for the active dirty result
-    expect(saveCurrentRowSpy).toHaveBeenCalledWith(tabId)
+    expect(saveCurrentRowSpy).toHaveBeenCalledWith(querySurfaceRef(tabId, 0))
     // Connection should have been closed
     expect(useConnectionStore.getState().activeConnections['session-1']).toBeUndefined()
 

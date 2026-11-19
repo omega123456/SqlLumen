@@ -44,7 +44,7 @@ function resolveToolbarProps(inputs: ResultBodyInputs): ResultBodyProps['toolbar
   const { activeResult: result, filter } = controllers
   const { primaryKey, editTableColumns } = readEditTable(result)
   return {
-    tabId: location.tabId,
+    surfaceRef: controllers.surfaceRef,
     connectionId: location.connectionId,
     filterModel: result.filterModel,
     onFilterClick: filter.openFilterDialog,
@@ -84,6 +84,7 @@ export function buildResultBodyProps(
     toolbar: resolveToolbarProps(inputs),
     views: {
       tabId: location.tabId,
+      surfaceRef: controllers.surfaceRef,
       activeResultIndex: activeResultIndex,
       result: result,
       editTableColumns: readEditTable(result).editTableColumns,

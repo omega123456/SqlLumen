@@ -55,7 +55,7 @@ function ResultContent({ views, isTabRunning }: ResultBodyProps) {
   }
   return (
     <>
-      <ResultBands tabId={views.tabId} result={result} isTabRunning={isTabRunning} />
+      <ResultBands surfaceRef={views.surfaceRef} result={result} isTabRunning={isTabRunning} />
       <ResultViews {...views} />
     </>
   )

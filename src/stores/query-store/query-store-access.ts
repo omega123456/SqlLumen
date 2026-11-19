@@ -10,7 +10,7 @@ import {
 import { formatRowRange } from '../../lib/format-row-count'
 import { showErrorToast } from '../toast-store'
 import { frontendCacheLifecycle } from '../../lib/frontend-cache-lifecycle'
-import { hasResults } from './result-lists'
+import { activeResultIndexOf } from './query-tab-selectors'
 import {
   patchQueryResult,
   patchQueryResultResidency,
@@ -20,6 +20,7 @@ import {
 import { DEFAULT_TAB_STATE } from './query-state-defaults'
 import type { SingleResultState, TabQueryState, QueryState } from './query-state-types'
 import type { LocatedResult } from './result-view-spec'
+import type { DataViewSurfaceRef } from '../data-view/data-view-types'
 import { useQueryStore } from '../query-store'
 
 type QueryStateUpdate = Partial<QueryState> | ((state: QueryState) => Partial<QueryState>)
@@ -38,6 +39,14 @@ export function getResultSurfaceKey(tabId: string, resultIndex: number): string 
 
 export function resultAt(tabId: string, resultIndex: number): SingleResultState | undefined {
   return getQueryState().tabs[tabId]?.results[resultIndex]
+}
+
+export function resultOf(ref: DataViewSurfaceRef): SingleResultState | undefined {
+  return resultAt(ref.tabId, ref.resultIndex)
+}
+
+export function patchSurface(ref: DataViewSurfaceRef, partial: Partial<SingleResultState>) {
+  patchResultByIndex(ref.tabId, ref.resultIndex, partial)
 }
 
 export function patchTab(tabId: string, partial: Partial<TabQueryState>) {
@@ -75,9 +84,7 @@ export function patchResultResidency(
 }
 
 export function getActiveIndex(tabId: string): number {
-  const tab = getQueryState().tabs[tabId]
-  if (!hasResults(tab)) return 0
-  return Math.min(tab.activeResultIndex, tab.results.length - 1)
+  return activeResultIndexOf(getQueryState().tabs[tabId])
 }
 
 export function slotFor(tabId: string, resultIndex: number): ResultSlotRef | null {

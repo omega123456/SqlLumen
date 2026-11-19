@@ -6,6 +6,7 @@ import {
   useQueryStore,
   DEFAULT_RESULT_STATE,
   type SingleResultState,
+  activeQuerySurfaceRef,
 } from '../../../stores/query-store'
 import { useToastStore } from '../../../stores/toast-store'
 import { ipc, expectToast } from '../../ipc-mock'
@@ -662,7 +663,7 @@ describe('ExportDialog — full export of truncated results', () => {
         connectionId={CONN}
         tabId={TAB}
         resultIndex={0}
-        onClose={() => useQueryStore.getState().closeExportDialog(TAB)}
+        onClose={() => useQueryStore.getState().closeExportDialog(activeQuerySurfaceRef(TAB))}
       />
     )
   }
@@ -943,7 +944,7 @@ describe('ExportDialog — full export of truncated results', () => {
 
     // ResultPanel closes the dialog when its tab goes inactive.
     act(() => {
-      useQueryStore.getState().closeExportDialog(TAB)
+      useQueryStore.getState().closeExportDialog(activeQuerySurfaceRef(TAB))
     })
     expect(screen.queryByTestId('export-dialog')).not.toBeInTheDocument()
     expect(ipc.calls('cancel_result_export')).toHaveLength(0)
@@ -954,7 +955,7 @@ describe('ExportDialog — full export of truncated results', () => {
     )
 
     act(() => {
-      useQueryStore.getState().openExportDialog(TAB, 'allRows')
+      useQueryStore.getState().openExportDialog(activeQuerySurfaceRef(TAB), 'allRows')
     })
     expect(await screen.findByTestId('export-progress')).toBeInTheDocument()
     expect(screen.getByTestId('export-progress-stats')).toHaveTextContent('Rows written 5')

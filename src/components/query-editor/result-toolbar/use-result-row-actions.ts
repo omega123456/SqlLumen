@@ -10,35 +10,36 @@ import {
 } from '../../shared/toolbar/row-actions/row-action-model'
 import { useRowDeletionConfirm } from '../../shared/toolbar/row-actions/use-row-deletion-confirm'
 import type { ResultRowInsertion } from '../result-panel/result-panel-model'
-import { saveActiveResultRow } from '../result-edit-session'
+import { saveResultRow } from '../result-edit-session'
+import type { DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
 import { canMutateResultRows, editTableNameOf, type ActiveResult } from './result-toolbar-model'
 
 export interface ResultRowActionInputs {
-  tabId: string
+  surfaceRef: DataViewSurfaceRef
   connectionId: string
   result: ActiveResult
   checkedCount: number
   rowInsertion: ResultRowInsertion
 }
 
-function useResultRowEdits(tabId: string): Omit<RowActionHandlers, 'onDelete'> {
+function useResultRowEdits(surfaceRef: DataViewSurfaceRef): Omit<RowActionHandlers, 'onDelete'> {
   const insertDraftRow = useQueryStore((state) => state.insertDraftRow)
   const cloneSelectedRow = useQueryStore((state) => state.cloneSelectedRow)
   const discardCurrentRow = useQueryStore((state) => state.discardCurrentRow)
   return {
-    onAdd: useCallback(() => insertDraftRow(tabId), [insertDraftRow, tabId]),
-    onClone: useCallback(() => cloneSelectedRow(tabId), [cloneSelectedRow, tabId]),
-    onSave: useCallback(() => void saveActiveResultRow(tabId), [tabId]),
-    onDiscard: useCallback(() => discardCurrentRow(tabId), [discardCurrentRow, tabId]),
+    onAdd: useCallback(() => insertDraftRow(surfaceRef), [insertDraftRow, surfaceRef]),
+    onClone: useCallback(() => cloneSelectedRow(surfaceRef), [cloneSelectedRow, surfaceRef]),
+    onSave: useCallback(() => void saveResultRow(surfaceRef), [surfaceRef]),
+    onDiscard: useCallback(() => discardCurrentRow(surfaceRef), [discardCurrentRow, surfaceRef]),
   }
 }
 
 function useResultRowDeletion(inputs: ResultRowActionInputs, deleteTargetCount: number) {
-  const { tabId } = inputs
+  const { surfaceRef } = inputs
   const deleteResultRows = useQueryStore((state) => state.deleteResultRows)
   const deleteRows = useCallback(async () => {
-    await deleteResultRows(tabId)
-  }, [deleteResultRows, tabId])
+    await deleteResultRows(surfaceRef)
+  }, [deleteResultRows, surfaceRef])
   return useRowDeletionConfirm({
     deleteTargetCount: deleteTargetCount,
     tableName: editTableNameOf(inputs.result),
@@ -52,7 +53,7 @@ export function useResultRowActions(inputs: ResultRowActionInputs) {
     (state) => state.activeConnections[inputs.connectionId]?.profile?.readOnly ?? false
   )
   const deleteTargetCount = deleteTargetCountFor(inputs.checkedCount, isSelectedRowInView(result))
-  const rowEdits = useResultRowEdits(inputs.tabId)
+  const rowEdits = useResultRowEdits(inputs.surfaceRef)
   const deletion = useResultRowDeletion(inputs, deleteTargetCount)
   const availability = rowActionAvailability({
     canMutate: canMutateResultRows(result, isConnectionReadOnly),

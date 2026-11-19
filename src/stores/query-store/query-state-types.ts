@@ -13,6 +13,7 @@ import type {
 import { type CachedRow, type ViewRange } from '../../lib/result-window-cache'
 import { type ResultExportProgress, type ResultExportStatus } from '../../lib/export-commands'
 import type { RunExportProgress } from '../../types/run-export'
+import type { DataViewSurfaceRef } from '../data-view/data-view-types'
 
 export type ExecutionStatus = 'idle' | 'running' | 'success' | 'error'
 
@@ -54,6 +55,16 @@ export interface RowActionProgress {
 }
 
 export type TabStatus = ExecutionStatus | 'ai-pending' | 'ai-reviewing' | 'restoring'
+
+export interface ScrollCell {
+  scrollRow: number
+  scrollColumn: number
+}
+
+export interface ColumnSortChange {
+  column: string
+  direction: 'asc' | 'desc' | null
+}
 
 export type ActiveBottomPanelItem = { type: 'result' } | { type: 'table-data'; tabId: string }
 
@@ -194,67 +205,69 @@ export interface QueryState {
 
   cleanupConnection: (connectionId: string, tabIds: string[]) => void
 
-  setViewMode: (tabId: string, mode: ViewMode) => void
+  setViewMode: (ref: DataViewSurfaceRef, mode: ViewMode) => void
 
-  setSelectedRow: (tabId: string, index: number | null) => void
+  setSelectedRow: (ref: DataViewSurfaceRef, index: number | null) => void
 
-  setCheckedRanges: (tabId: string, ranges: ViewRange[]) => void
+  setCheckedRanges: (ref: DataViewSurfaceRef, ranges: ViewRange[]) => void
 
-  deleteResultRows: (tabId: string) => Promise<number>
+  deleteResultRows: (ref: DataViewSurfaceRef) => Promise<number>
 
-  beginRowAction: (tabId: string, action: RowActionStart) => RowActionHandle
+  beginRowAction: (ref: DataViewSurfaceRef, action: RowActionStart) => RowActionHandle
 
-  cancelRowAction: (tabId: string) => void
+  cancelRowAction: (ref: DataViewSurfaceRef) => void
 
   markResultsExpired: (tabId: string) => void
 
   markResultExpired: (tabId: string, resultIndex: number) => void
 
-  retryResultWindow: (tabId: string) => void
+  retryResultWindow: (ref: DataViewSurfaceRef) => void
 
-  retryViewChange: (tabId: string) => void
+  retryViewChange: (ref: DataViewSurfaceRef) => void
 
-  setSelectedCell: (tabId: string, cell: SelectedCellInfo | null) => void
+  setSelectedCell: (ref: DataViewSurfaceRef, cell: SelectedCellInfo | null) => void
 
-  setResultScrollCell: (tabId: string, scrollRow: number, scrollColumn: number) => void
+  setResultScrollCell: (ref: DataViewSurfaceRef, scrollCell: ScrollCell) => void
 
-  setResultColumnWidth: (tabId: string, columnKey: string, width: number) => void
+  setResultColumnWidth: (ref: DataViewSurfaceRef, columnKey: string, width: number) => void
 
-  applyQueryFilters: (tabId: string, resultIndex: number, conditions: FilterCondition[]) => void
+  applyQueryFilters: (ref: DataViewSurfaceRef, conditions: FilterCondition[]) => void
 
-  openExportDialog: (tabId: string, scope?: ExportRowScope) => void
+  openExportDialog: (ref: DataViewSurfaceRef, scope?: ExportRowScope) => void
 
-  closeExportDialog: (tabId: string) => void
+  closeExportDialog: (ref: DataViewSurfaceRef) => void
 
-  sortResults: (tabId: string, column: string, direction: 'asc' | 'desc' | null) => Promise<void>
+  sortResults: (ref: DataViewSurfaceRef, sort: ColumnSortChange) => Promise<void>
 
   changeRowLimit: (connectionId: string, tabId: string, size: number) => Promise<void>
 
   cancelQuery: (connectionId: string, tabId: string) => Promise<void>
 
-  setEditMode: (connectionId: string, tabId: string, tableName: string | null) => Promise<void>
+  setEditMode: (ref: DataViewSurfaceRef, tableName: string | null) => Promise<void>
 
-  startEditingRow: (tabId: string, rowIndex: number, row?: CachedRow) => void
+  startEditingRow: (ref: DataViewSurfaceRef, rowIndex: number, row?: CachedRow) => void
 
-  cloneSelectedRow: (tabId: string) => void
+  cloneSelectedRow: (ref: DataViewSurfaceRef) => void
 
-  insertDraftRow: (tabId: string) => void
+  insertDraftRow: (ref: DataViewSurfaceRef) => void
 
-  updateCellValue: (tabId: string, resultColumnIndex: number, value: unknown) => void
+  updateCellValue: (ref: DataViewSurfaceRef, resultColumnIndex: number, value: unknown) => void
 
-  syncCellValue: (tabId: string, resultColumnIndex: number, value: unknown) => void
+  syncCellValue: (ref: DataViewSurfaceRef, resultColumnIndex: number, value: unknown) => void
 
-  saveCurrentRow: (tabId: string) => Promise<boolean>
+  saveCurrentRow: (ref: DataViewSurfaceRef) => Promise<boolean>
 
-  discardCurrentRow: (tabId: string) => void
+  discardCurrentRow: (ref: DataViewSurfaceRef) => void
 
-  requestNavigationAction: (tabId: string, action: () => void) => void
+  requestNavigationAction: (ref: DataViewSurfaceRef, action: () => void) => void
 
-  confirmNavigation: (tabId: string, shouldSave: boolean) => Promise<void>
+  requestTabNavigation: (tabId: string, action: () => void) => void
 
-  cancelNavigation: (tabId: string) => void
+  confirmNavigation: (ref: DataViewSurfaceRef, shouldSave: boolean) => Promise<void>
 
-  clearEditState: (tabId: string) => void
+  cancelNavigation: (ref: DataViewSurfaceRef) => void
+
+  clearEditState: (ref: DataViewSurfaceRef) => void
 
   setTabStatus: (tabId: string, status: TabStatus) => void
 

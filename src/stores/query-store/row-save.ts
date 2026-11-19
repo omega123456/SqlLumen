@@ -11,12 +11,8 @@ import { logFrontend, logFrontendWarning } from '../../lib/app-log-commands'
 import { hasModifiedColumns } from '../../lib/row-edit-state'
 import { toErrorMessage } from '../../lib/error-message'
 import type { SingleResultState } from './query-state-types'
-import {
-  getActiveIndex,
-  markTabResultsExpired,
-  patchResultByIndex,
-  getQueryState,
-} from './query-store-access'
+import { markTabResultsExpired, patchResultByIndex, getQueryState } from './query-store-access'
+import type { DataViewSurfaceRef } from '../data-view/data-view-types'
 import { displayedCellUpdates } from './row-edit-builders'
 import {
   reexecuteOnlyResultAfterMutation,
@@ -44,8 +40,7 @@ interface SavedRowCacheUpdate {
   displayUpdates: Record<number, unknown>
 }
 
-function resolveRowSave(tabId: string): RowSaveContext | null {
-  const resultIndex = getActiveIndex(tabId)
+function resolveRowSave({ tabId, resultIndex }: DataViewSurfaceRef): RowSaveContext | null {
   const tab = getQueryState().tabs[tabId]
   const result = tab?.results[resultIndex]
   if (!result?.editState) return null
@@ -233,8 +228,8 @@ async function updateEditedRow(save: RowSaveContext, target: RowSaveTarget): Pro
   }
 }
 
-export async function saveCurrentRow(tabId: string): Promise<boolean> {
-  const save = resolveRowSave(tabId)
+export async function saveCurrentRow(ref: DataViewSurfaceRef): Promise<boolean> {
+  const save = resolveRowSave(ref)
   if (!save) return true
 
   if (!hasModifiedColumns(save.editState)) {
@@ -246,7 +241,7 @@ export async function saveCurrentRow(tabId: string): Promise<boolean> {
   const primaryKey = tableInfo?.primaryKey
   if (!primaryKey) {
     const message = 'No primary key info available'
-    patchResultByIndex(tabId, save.resultIndex, { saveError: message })
+    patchResultByIndex(save.tabId, save.resultIndex, { saveError: message })
     showErrorToast('Save failed', message)
     return false
   }

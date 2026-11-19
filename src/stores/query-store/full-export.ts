@@ -1,3 +1,4 @@
+import type { DataViewSurfaceRef } from '../data-view/data-view-types'
 import { isResultsExpiredError } from '../../lib/result-window-cache'
 import { formatCount } from '../../lib/format-row-count'
 import {
@@ -18,13 +19,7 @@ import {
 } from './query-tab-reducers'
 import { RESULT_EXPORT_POLL_MS } from './query-state-defaults'
 import type { ExportRowScope, FullExportRequest, ResultExportJob } from './query-state-types'
-import {
-  getActiveIndex,
-  patchResultByIndex,
-  resultAt,
-  getQueryState,
-  setQueryState,
-} from './query-store-access'
+import { patchSurface, resultAt, getQueryState, setQueryState } from './query-store-access'
 
 const exportPollTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
@@ -166,17 +161,16 @@ function handleExportStartFailure(tabId: string, message: string, isStillThisJob
   patchExportJob(tabId, { status: 'failed', error: message })
 }
 
-export function openExportDialog(tabId: string, scope: ExportRowScope = 'currentView') {
-  const resultIndex = getActiveIndex(tabId)
-  patchResultByIndex(tabId, resultIndex, {
+export function openExportDialog(ref: DataViewSurfaceRef, scope: ExportRowScope = 'currentView') {
+  patchSurface(ref, {
     exportDialogOpen: true,
     preferredExportScope: scope,
   })
 }
 
-export function closeExportDialog(tabId: string) {
-  const resultIndex = getActiveIndex(tabId)
-  patchResultByIndex(tabId, resultIndex, { exportDialogOpen: false })
+export function closeExportDialog(ref: DataViewSurfaceRef) {
+  const { tabId } = ref
+  patchSurface(ref, { exportDialogOpen: false })
   const job = getQueryState().exportJobs[tabId]
   const hasFinishedExportJob = job !== undefined && job.status !== 'running'
   if (hasFinishedExportJob) dropExportJob(tabId)

@@ -5,7 +5,7 @@ import {
   LegacyResultGridView as ResultGridView,
   rowsFromSource,
 } from '../../helpers/result-grid-test-utils'
-import { useQueryStore, DEFAULT_RESULT_STATE } from '../../../stores/query-store'
+import { useQueryStore, DEFAULT_RESULT_STATE, querySurfaceRef } from '../../../stores/query-store'
 import type { ColumnMeta } from '../../../types/schema'
 import type { GridRowSource } from '../../../components/shared/glide/grid-row-source'
 import { ipc } from '../../ipc-mock'
@@ -211,7 +211,7 @@ describe('ResultGridView', () => {
         [7, 9],
       ])
     })
-    expect(setCheckedRanges).toHaveBeenCalledWith('tab-1', [
+    expect(setCheckedRanges).toHaveBeenCalledWith(querySurfaceRef('tab-1', 0), [
       [0, 1],
       [1, 2],
     ])
@@ -324,7 +324,7 @@ describe('ResultGridView', () => {
     })
 
     expect(onRowSelected).toHaveBeenCalledWith(1)
-    expect(setSelectedCellSpy).toHaveBeenCalledWith('tab-1', {
+    expect(setSelectedCellSpy).toHaveBeenCalledWith(querySurfaceRef('tab-1', 0), {
       columnKey: 'name',
       value: 'Bob',
     })
@@ -381,7 +381,7 @@ describe('ResultGridView', () => {
 
     expect(onRowSelected).toHaveBeenCalledTimes(1)
     expect(onRowSelected).toHaveBeenCalledWith(1)
-    expect(setSelectedCellSpy).toHaveBeenCalledWith('tab-1', {
+    expect(setSelectedCellSpy).toHaveBeenCalledWith(querySurfaceRef('tab-1', 0), {
       columnKey: 'name',
       value: 'Bob',
     })

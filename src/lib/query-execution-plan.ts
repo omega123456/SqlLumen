@@ -58,7 +58,7 @@ interface QueryPlanExecutor {
 }
 
 interface NavigatingQueryPlanExecutor extends QueryPlanExecutor {
-  requestNavigationAction: (tabId: string, action: () => void) => void
+  requestTabNavigation: (tabId: string, action: () => void) => void
 }
 
 export async function executeQueryPlan(
@@ -84,7 +84,7 @@ export function runExecuteQueryPlan(
   target: ConnectionTabRequest,
   plan: ExecuteQueryPlan
 ): void {
-  queryState.requestNavigationAction(target.tabId, () => {
+  queryState.requestTabNavigation(target.tabId, () => {
     void executeQueryPlan(queryState, target, plan)
   })
 }

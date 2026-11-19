@@ -5,7 +5,12 @@ import { rowsOf, withRows } from '../helpers/query-test-utils'
 import { useTableDataStore } from '../../stores/table-data-store'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
-import { useQueryStore, DEFAULT_RESULT_STATE, type TabQueryState } from '../../stores/query-store'
+import {
+  useQueryStore,
+  DEFAULT_RESULT_STATE,
+  type TabQueryState,
+  activeQuerySurfaceRef,
+} from '../../stores/query-store'
 import { useAiStore } from '../../stores/ai-store'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../stores/settings-store'
 import { makeAiTabState } from '../helpers/ai-test-utils'
@@ -1919,7 +1924,7 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
     expect(queryTab?.pendingNavigationAction).not.toBeNull()
 
     // Simulate user discarding result 0 (clears its editState and calls pendingNavigationAction)
-    useQueryStore.getState().discardCurrentRow(tabId)
+    useQueryStore.getState().discardCurrentRow(activeQuerySurfaceRef(tabId))
     // Fire the pending action (simulates what confirmNavigation does)
     const firstAction = useQueryStore.getState().tabs[tabId]?.pendingNavigationAction
     useQueryStore.setState((prev) => ({
@@ -1938,7 +1943,7 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
     expect(queryTab?.pendingNavigationAction).not.toBeNull()
 
     // Simulate user discarding result 2
-    useQueryStore.getState().discardCurrentRow(tabId)
+    useQueryStore.getState().discardCurrentRow(activeQuerySurfaceRef(tabId))
     const secondAction = useQueryStore.getState().tabs[tabId]?.pendingNavigationAction
     useQueryStore.setState((prev) => ({
       tabs: {

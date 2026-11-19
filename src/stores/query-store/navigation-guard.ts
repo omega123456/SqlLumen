@@ -1,49 +1,52 @@
 import { hasModifiedColumns } from '../../lib/row-edit-state'
-import { getActiveIndex, patchTab, getQueryState } from './query-store-access'
+import type { DataViewSurfaceRef } from '../data-view/data-view-types'
+import { patchTab, getQueryState, resultOf } from './query-store-access'
+import { activeQuerySurfaceRef } from './query-surface'
 
-export function requestNavigationAction(tabId: string, action: () => void) {
-  const tab = getQueryState().tabs[tabId]
-  const resultIndex = getActiveIndex(tabId)
-  const result = tab?.results[resultIndex]
+export function requestNavigationAction(ref: DataViewSurfaceRef, action: () => void) {
+  const result = resultOf(ref)
 
   if (!result?.editState) {
     action()
     return
   }
   if (!hasModifiedColumns(result.editState)) {
-    getQueryState().discardCurrentRow(tabId)
+    getQueryState().discardCurrentRow(ref)
     action()
     return
   }
-  patchTab(tabId, { pendingNavigationAction: action })
+  patchTab(ref.tabId, { pendingNavigationAction: action })
 }
 
-export async function confirmNavigation(tabId: string, shouldSave: boolean) {
-  const tab = getQueryState().tabs[tabId]
+export function requestTabNavigation(tabId: string, action: () => void) {
+  requestNavigationAction(activeQuerySurfaceRef(tabId), action)
+}
+
+export async function confirmNavigation(ref: DataViewSurfaceRef, shouldSave: boolean) {
+  const tab = getQueryState().tabs[ref.tabId]
   if (!tab) return
 
   if (!shouldSave) {
     const action = tab.pendingNavigationAction
-    getQueryState().discardCurrentRow(tabId)
-    patchTab(tabId, { pendingNavigationAction: null })
+    getQueryState().discardCurrentRow(ref)
+    patchTab(ref.tabId, { pendingNavigationAction: null })
     action?.()
     return
   }
 
-  await getQueryState().saveCurrentRow(tabId)
-  const afterSave = getQueryState().tabs[tabId]
-  const afterResult = afterSave?.results[getActiveIndex(tabId)]
+  await getQueryState().saveCurrentRow(ref)
+  const afterResult = resultOf(ref)
   const isSavedCleanly = afterResult !== undefined && !afterResult.saveError
   if (!isSavedCleanly) return
-  const action = afterSave?.pendingNavigationAction
-  patchTab(tabId, { pendingNavigationAction: null })
+  const action = getQueryState().tabs[ref.tabId]?.pendingNavigationAction
+  patchTab(ref.tabId, { pendingNavigationAction: null })
   action?.()
 }
 
-export function cancelNavigation(tabId: string) {
-  patchTab(tabId, { pendingNavigationAction: null })
+export function cancelNavigation(ref: DataViewSurfaceRef) {
+  patchTab(ref.tabId, { pendingNavigationAction: null })
 }
 
 export function navigationGuardActions() {
-  return { requestNavigationAction, confirmNavigation, cancelNavigation }
+  return { requestNavigationAction, requestTabNavigation, confirmNavigation, cancelNavigation }
 }

@@ -105,7 +105,7 @@ function runAllStatementsInActiveTab(run: (target: RunTarget) => void): void {
   const queryTab = getRunnableQueryTab()
   if (!queryTab) return
   const { connectionId, tabId, tabState } = queryTab
-  useQueryStore.getState().requestNavigationAction(tabId, () => {
+  useQueryStore.getState().requestTabNavigation(tabId, () => {
     const statements = executableStatements(tabState.content)
     if (statements.length === 0) return
     run({ connectionId: connectionId, tabId: tabId, statements: statements })

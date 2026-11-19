@@ -1,3 +1,4 @@
+import { activeQuerySurfaceRef } from './query-surface'
 import type { MultiQueryResult, MultiQueryResultItem, ResultViewSpec } from '../../types/schema'
 import {
   executeQuery as executeQueryCmd,
@@ -193,7 +194,7 @@ async function runMultiResultExecution({
   const currentState = getQueryState().tabs[tabId]
   if (isExecutionLocked(currentState)) return null
 
-  getQueryState().clearEditState(tabId)
+  getQueryState().clearEditState(activeQuerySurfaceRef(tabId))
   patchTab(tabId, { wasCancelled: false, connectionId: connectionId })
   clearExpiredFlags(tabId)
   beginExecution(tabId)
@@ -220,7 +221,7 @@ export async function runSingleQuery({ connectionId, tabId, sql, viewSpec }: Sin
   const currentState = getQueryState().tabs[tabId]
   if (isExecutionLocked(currentState)) return
 
-  getQueryState().clearEditState(tabId)
+  getQueryState().clearEditState(activeQuerySurfaceRef(tabId))
   cancelAllResultLifecycleTimers(tabId, currentState?.results.length ?? 0)
   patchTab(tabId, { wasCancelled: false, connectionId: connectionId })
   clearExpiredFlags(tabId)

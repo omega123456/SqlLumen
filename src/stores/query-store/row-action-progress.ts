@@ -1,22 +1,33 @@
 import { RESULT_LOADING_STATUS_DELAY_MS } from '../../lib/result-window-cache'
 import type { RowActionHandle, RowActionProgress, RowActionStart } from './query-state-types'
-import { getActiveIndex, patchResultByIndex, resultAt } from './query-store-access'
+import type { DataViewSurfaceRef } from '../data-view/data-view-types'
+import { patchSurface, resultOf } from './query-store-access'
 
-export const rowActionCancels = new Map<string, () => void>()
+const rowActionCancels = new Map<string, () => void>()
+
+function rowActionKeyOf(ref: DataViewSurfaceRef): string {
+  return `${ref.tabId}:${ref.resultIndex}`
+}
+
+export function dropRowActionCancels(tabId: string) {
+  for (const key of rowActionCancels.keys()) {
+    if (key.startsWith(`${tabId}:`)) rowActionCancels.delete(key)
+  }
+}
 
 export function beginRowAction(
-  tabId: string,
+  ref: DataViewSurfaceRef,
   { verb, total, onCancel }: RowActionStart
 ): RowActionHandle {
-  const resultIndex = getActiveIndex(tabId)
-  const queryId = resultAt(tabId, resultIndex)?.queryId ?? null
+  const actionKey = rowActionKeyOf(ref)
+  const queryId = resultOf(ref)?.queryId ?? null
   let done = 0
   let visible = false
   let finished = false
   const patchProgress = (progress: RowActionProgress | null) => {
-    const current = resultAt(tabId, resultIndex)
+    const current = resultOf(ref)
     if (current?.queryId !== queryId) return
-    patchResultByIndex(tabId, resultIndex, { rowActionProgress: progress })
+    patchSurface(ref, { rowActionProgress: progress })
   }
   const snapshot = (): RowActionProgress => ({
     verb: verb,
@@ -25,7 +36,7 @@ export function beginRowAction(
     cancellable: onCancel !== undefined,
     visible: visible,
   })
-  if (onCancel) rowActionCancels.set(tabId, onCancel)
+  if (onCancel) rowActionCancels.set(actionKey, onCancel)
   patchProgress(snapshot())
   const timer = setTimeout(() => {
     if (finished) return
@@ -41,18 +52,19 @@ export function beginRowAction(
     finish: () => {
       finished = true
       clearTimeout(timer)
-      const isOwnCancelHandler = rowActionCancels.get(tabId) === onCancel
-      if (isOwnCancelHandler) rowActionCancels.delete(tabId)
+      const isOwnCancelHandler = rowActionCancels.get(actionKey) === onCancel
+      if (isOwnCancelHandler) rowActionCancels.delete(actionKey)
       patchProgress(null)
       return visible
     },
   }
 }
 
-export function cancelRowAction(tabId: string) {
-  const cancel = rowActionCancels.get(tabId)
+export function cancelRowAction(ref: DataViewSurfaceRef) {
+  const actionKey = rowActionKeyOf(ref)
+  const cancel = rowActionCancels.get(actionKey)
   if (!cancel) return
-  rowActionCancels.delete(tabId)
+  rowActionCancels.delete(actionKey)
   cancel()
 }
 

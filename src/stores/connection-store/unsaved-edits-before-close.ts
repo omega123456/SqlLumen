@@ -1,6 +1,6 @@
 import type { WorkspaceTab } from '../../types/schema'
 import { useWorkspaceStore } from '../workspace-store'
-import { useQueryStore, type SingleResultState } from '../query-store'
+import { useQueryStore, type SingleResultState, querySurfaceRef } from '../query-store'
 import { useTableDataStore } from '../table-data-store'
 import { useObjectEditorStore } from '../object-editor-store'
 import { showErrorToast } from '../toast-store'
@@ -37,7 +37,8 @@ async function settleQueryEditorTabBeforeClose(tabId: string): Promise<boolean> 
 
   const activeResult = queryTabState.results[activeIndex]
   if (!hasModifiedColumns(activeResult?.editState)) return true
-  return saveRowBeforeClose(() => useQueryStore.getState().saveCurrentRow(tabId))
+  const activeSurface = querySurfaceRef(tabId, activeIndex)
+  return saveRowBeforeClose(() => useQueryStore.getState().saveCurrentRow(activeSurface))
 }
 
 async function settleTableDataTabBeforeClose(tabId: string): Promise<boolean> {

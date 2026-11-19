@@ -4,7 +4,7 @@ import { StatusBar } from '../../../components/layout/StatusBar'
 import { useConnectionStore } from '../../../stores/connection-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
 import { resetWorkspaceStore, seedVisibleConnection } from '../../helpers/workspace-test-utils'
-import { useQueryStore } from '../../../stores/query-store'
+import { useQueryStore, activeQuerySurfaceRef } from '../../../stores/query-store'
 import { useThemeStore } from '../../../stores/theme-store'
 import { useSchemaIndexStore } from '../../../stores/schema-index-store'
 import { useSettingsStore } from '../../../stores/settings-store'
@@ -620,9 +620,11 @@ describe('StatusBar', () => {
       const onCancel = vi.fn()
       setupQueryTab({})
       act(() => {
-        useQueryStore
-          .getState()
-          .beginRowAction('tab-1', { verb: 'Copying', total: 12340, onCancel: onCancel })
+        useQueryStore.getState().beginRowAction(activeQuerySurfaceRef('tab-1'), {
+          verb: 'Copying',
+          total: 12340,
+          onCancel: onCancel,
+        })
       })
       render(<StatusBar />)
       expect(screen.queryByTestId('status-pending-work')).not.toBeInTheDocument()

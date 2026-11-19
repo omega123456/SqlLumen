@@ -1,27 +1,26 @@
 import { useCallback, useMemo } from 'react'
 import { countRanges, useQueryStore, type QueryState } from '../../../stores/query-store'
+import type { DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
 import type { RowRange } from '../../shared/glide/grid-row-source'
 import { useSelectionResetKey } from '../../shared/use-selection-reset-key'
 
-function activeResultOf(state: QueryState, tabId: string) {
-  const tab = state.tabs[tabId]
-  const activeResultIndex = tab?.activeResultIndex ?? 0
-  return tab?.results[activeResultIndex]
+function surfaceResultOf(state: QueryState, ref: DataViewSurfaceRef) {
+  return state.tabs[ref.tabId]?.results[ref.resultIndex]
 }
 
-function useScrollCell(tabId: string) {
+function useScrollCell(ref: DataViewSurfaceRef) {
   const storeSetResultScrollCell = useQueryStore((state) => state.setResultScrollCell)
-  const storeScrollRow = useQueryStore((state) => activeResultOf(state, tabId)?.scrollRow ?? 0)
-  const storeScrollColumn = useQueryStore((state) => activeResultOf(state, tabId)?.scrollCol ?? 0)
+  const storeScrollRow = useQueryStore((state) => surfaceResultOf(state, ref)?.scrollRow ?? 0)
+  const storeScrollColumn = useQueryStore((state) => surfaceResultOf(state, ref)?.scrollCol ?? 0)
   const initialScrollCell = useMemo(
     () => ({ scrollRow: storeScrollRow, scrollCol: storeScrollColumn }),
     [storeScrollRow, storeScrollColumn]
   )
   const handleScrollCellChange = useCallback(
     (scrollRow: number, scrollColumn: number) => {
-      storeSetResultScrollCell(tabId, scrollRow, scrollColumn)
+      storeSetResultScrollCell(ref, { scrollRow: scrollRow, scrollColumn: scrollColumn })
     },
-    [storeSetResultScrollCell, tabId]
+    [storeSetResultScrollCell, ref]
   )
   return { initialScrollCell, handleScrollCellChange }
 }
@@ -29,22 +28,22 @@ function useScrollCell(tabId: string) {
 const NO_COLUMN_WIDTHS: Record<string, number> = {}
 const NO_CHECKED_RANGES: RowRange[] = []
 
-function useColumnWidths(tabId: string) {
+function useColumnWidths(ref: DataViewSurfaceRef) {
   const storeSetResultColumnWidth = useQueryStore((state) => state.setResultColumnWidth)
   const columnWidths = useQueryStore(
-    (state) => activeResultOf(state, tabId)?.columnWidths ?? NO_COLUMN_WIDTHS
+    (state) => surfaceResultOf(state, ref)?.columnWidths ?? NO_COLUMN_WIDTHS
   )
   const handleColumnResize = useCallback(
-    (columnKey: string, width: number) => storeSetResultColumnWidth(tabId, columnKey, width),
-    [storeSetResultColumnWidth, tabId]
+    (columnKey: string, width: number) => storeSetResultColumnWidth(ref, columnKey, width),
+    [storeSetResultColumnWidth, ref]
   )
   return { columnWidths, handleColumnResize }
 }
 
-function useCheckedRows(tabId: string, viewRowCount: number) {
+function useCheckedRows(ref: DataViewSurfaceRef, viewRowCount: number) {
   const storeSetCheckedRanges = useQueryStore((state) => state.setCheckedRanges)
   const checkedRanges = useQueryStore(
-    (state) => activeResultOf(state, tabId)?.checkedRanges ?? NO_CHECKED_RANGES
+    (state) => surfaceResultOf(state, ref)?.checkedRanges ?? NO_CHECKED_RANGES
   )
   const checkedRowCount = countRanges(checkedRanges)
 
@@ -53,9 +52,9 @@ function useCheckedRows(tabId: string, viewRowCount: number) {
       const clampedToViewRows = ranges
         .map(([start, end]) => [start, Math.min(end, viewRowCount)] as const)
         .filter(([start, end]) => end > start)
-      storeSetCheckedRanges(tabId, clampedToViewRows)
+      storeSetCheckedRanges(ref, clampedToViewRows)
     },
-    [storeSetCheckedRanges, tabId, viewRowCount]
+    [storeSetCheckedRanges, ref, viewRowCount]
   )
 
   return {
@@ -65,12 +64,12 @@ function useCheckedRows(tabId: string, viewRowCount: number) {
   }
 }
 
-export function useResultGridStoreState(tabId: string, viewRowCount: number) {
-  const selectedCell = useQueryStore((state) => activeResultOf(state, tabId)?.selectedCell ?? null)
+export function useResultGridStoreState(ref: DataViewSurfaceRef, viewRowCount: number) {
+  const selectedCell = useQueryStore((state) => surfaceResultOf(state, ref)?.selectedCell ?? null)
   return {
     selectedCell: selectedCell,
-    ...useScrollCell(tabId),
-    ...useColumnWidths(tabId),
-    ...useCheckedRows(tabId, viewRowCount),
+    ...useScrollCell(ref),
+    ...useColumnWidths(ref),
+    ...useCheckedRows(ref, viewRowCount),
   }
 }

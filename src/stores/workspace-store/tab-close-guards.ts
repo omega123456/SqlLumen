@@ -193,7 +193,7 @@ function closeNextDirtyResultOrTab(connectionId: string, queryTabId: string): vo
   }
   useQueryStore
     .getState()
-    .requestNavigationAction(queryTabId, () => closeNextDirtyResultOrTab(connectionId, queryTabId))
+    .requestTabNavigation(queryTabId, () => closeNextDirtyResultOrTab(connectionId, queryTabId))
 }
 
 function prepareQueryEditorClose(

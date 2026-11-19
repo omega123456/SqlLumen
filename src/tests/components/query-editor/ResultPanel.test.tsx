@@ -2,7 +2,12 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ResultPanel } from '../../../components/query-editor/ResultPanel'
-import { DEFAULT_RESULT_STATE, useQueryStore } from '../../../stores/query-store'
+import {
+  DEFAULT_RESULT_STATE,
+  useQueryStore,
+  activeQuerySurfaceRef,
+  querySurfaceRef,
+} from '../../../stores/query-store'
 import * as ResultToolbarModule from '../../../components/query-editor/ResultToolbar'
 import * as ResultGridViewModule from '../../../components/query-editor/ResultGridView'
 import * as ResultFormViewModule from '../../../components/query-editor/ResultFormView'
@@ -30,8 +35,10 @@ describe('ResultPanel', () => {
 
   beforeEach(() => {
     vi.spyOn(ResultToolbarModule, 'ResultToolbar').mockImplementation(
-      ({ tabId }: { tabId: string }) =>
-        (<div data-testid="result-toolbar">{tabId}</div>) as unknown as React.ReactElement
+      ({ surfaceRef }: { surfaceRef: { tabId: string } }) =>
+        (
+          <div data-testid="result-toolbar">{surfaceRef.tabId}</div>
+        ) as unknown as React.ReactElement
     )
     vi.spyOn(ResultGridViewModule.ResultGridView, 'type').mockImplementation(
       ({ viewRowCount }: { viewRowCount: number }) =>
@@ -90,9 +97,9 @@ describe('ResultPanel', () => {
   it('switching view mode changes the rendered view', async () => {
     const user = userEvent.setup()
     render(<ResultPanel tabId="tab1" connectionId="c1" />)
-    act(() => useQueryStore.getState().setViewMode('tab1', 'form'))
+    act(() => useQueryStore.getState().setViewMode(activeQuerySurfaceRef('tab1'), 'form'))
     expect(await screen.findByTestId('form-view')).toHaveTextContent('Form rows: 2')
-    act(() => useQueryStore.getState().setViewMode('tab1', 'text'))
+    act(() => useQueryStore.getState().setViewMode(activeQuerySurfaceRef('tab1'), 'text'))
     await user.click(document.body)
     expect(await screen.findByTestId('text-view')).toHaveTextContent('Text rows: 2')
   })
@@ -100,13 +107,13 @@ describe('ResultPanel', () => {
   it('keeps the grid instance and checked rows across a grid to form to grid switch', async () => {
     render(<ResultPanel tabId="tab1" connectionId="c1" />)
     const gridBeforeSwitch = screen.getByTestId('grid-view')
-    act(() => useQueryStore.getState().setCheckedRanges('tab1', [[0, 2]]))
+    act(() => useQueryStore.getState().setCheckedRanges(activeQuerySurfaceRef('tab1'), [[0, 2]]))
 
-    act(() => useQueryStore.getState().setViewMode('tab1', 'form'))
+    act(() => useQueryStore.getState().setViewMode(activeQuerySurfaceRef('tab1'), 'form'))
     expect(await screen.findByTestId('form-view')).toBeVisible()
     expect(gridBeforeSwitch).not.toBeVisible()
 
-    act(() => useQueryStore.getState().setViewMode('tab1', 'grid'))
+    act(() => useQueryStore.getState().setViewMode(activeQuerySurfaceRef('tab1'), 'grid'))
     expect(screen.getByTestId('grid-view')).toBe(gridBeforeSwitch)
     expect(gridBeforeSwitch).toBeVisible()
     expect(screen.queryByTestId('form-view')).not.toBeInTheDocument()
@@ -300,7 +307,7 @@ describe('ResultPanel', () => {
       expect(failure).toHaveTextContent("Couldn't load rows 12,001–13,000")
       expect(failure).toHaveTextContent('Retry to load these rows.')
       await user.click(screen.getByTestId('window-error-retry'))
-      expect(retry).toHaveBeenCalledWith('tab1')
+      expect(retry).toHaveBeenCalledWith(querySurfaceRef('tab1', 0))
     })
 
     it('shows the view-change failure band with the backend message and Retry', async () => {
@@ -312,7 +319,7 @@ describe('ResultPanel', () => {
       expect(band).toHaveTextContent("Couldn't apply sort or filter")
       expect(band).toHaveTextContent("Sort column 'x' not found")
       await user.click(screen.getByTestId('view-error-retry'))
-      expect(retry).toHaveBeenCalledWith('tab1')
+      expect(retry).toHaveBeenCalledWith(querySurfaceRef('tab1', 0))
     })
 
     it('routes an expired result to the Results expired block instead of a band', () => {

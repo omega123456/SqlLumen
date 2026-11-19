@@ -1693,8 +1693,7 @@ for (const theme of themes) {
         const queryStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
           getState: () => {
             applyQueryFilters: (
-              tabId: string,
-              resultIndex: number,
+              ref: { route: 'query'; tabId: string; resultIndex: number },
               conditions: Array<{ column: string; operator: string; value: string }>
             ) => void
           }
@@ -1703,7 +1702,9 @@ for (const theme of themes) {
         if (!activeTabId) throw new Error('No active query tab found')
         queryStore
           .getState()
-          .applyQueryFilters(activeTabId, 0, [{ column: 'name', operator: '==', value: 'Alice' }])
+          .applyQueryFilters({ route: 'query', tabId: activeTabId, resultIndex: 0 }, [
+            { column: 'name', operator: '==', value: 'Alice' },
+          ])
       })
 
       // Wait for filter badge to appear

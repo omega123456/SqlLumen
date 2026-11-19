@@ -66,6 +66,7 @@ function useDerivedGridState(
 function useResultSession(props: ResultGridViewProps) {
   return useResultEditSession({
     tabId: props.tabId,
+    resultIndex: props.resultIndex,
     queryId: props.queryId,
     viewVersion: props.viewVersion,
     columns: props.columns,
@@ -153,10 +154,10 @@ function useResultRowLookup(
 }
 
 export function useResultGridViewModel(props: ResultGridViewProps) {
-  const { tabId, editColumnBindings } = props
+  const { editColumnBindings } = props
   const isEditMode = Boolean(props.editMode)
   const gridRef = useRef<GridHandle | null>(null)
-  const storeState = useResultGridStoreState(tabId, props.viewRowCount)
+  const storeState = useResultGridStoreState(props.surfaceRef, props.viewRowCount)
   const boundColumnIndexLookup = useMemo(
     () => invertColumnBindings(editColumnBindings),
     [editColumnBindings]

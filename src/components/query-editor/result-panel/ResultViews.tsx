@@ -1,4 +1,5 @@
 import type { SingleResultState } from '../../../stores/query-store'
+import type { DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
 import type { TableDataColumnMeta } from '../../../types/schema'
 import type { DataViewLocation } from '../../../types/shared-data-view'
 import { ResultGridView } from '../ResultGridView'
@@ -9,6 +10,7 @@ import type { ResultViewHandlers } from './use-result-view-handlers'
 
 export interface ResultViewsProps {
   tabId: string
+  surfaceRef: DataViewSurfaceRef
   activeResultIndex: number
   result: SingleResultState
   editTableColumns: TableDataColumnMeta[]
@@ -19,6 +21,7 @@ export interface ResultViewsProps {
 
 function GridResultView({
   tabId,
+  surfaceRef,
   activeResultIndex,
   result,
   editTableColumns,
@@ -40,6 +43,7 @@ function GridResultView({
       onRowSelected={handlers.handleRowSelected}
       selectedRowIndex={result.selectedRowIndex}
       tabId={tabId}
+      surfaceRef={surfaceRef}
       editMode={result.editMode}
       editableColumnMap={result.editableColumnMap}
       editColumnBindings={result.editColumnBindings}
