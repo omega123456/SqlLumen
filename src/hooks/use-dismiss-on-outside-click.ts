@@ -5,7 +5,13 @@ export interface DismissOnOutsideClick {
   ref: RefObject<HTMLElement | null>
   active: boolean
   onDismiss: () => void
-  options?: { closeOnEscape?: boolean }
+  options?: { closeOnEscape?: boolean; ignoreInside?: string }
+}
+
+function isInsideIgnored(target: EventTarget | null, ignoreInside: string | undefined): boolean {
+  if (!ignoreInside) return false
+  if (!(target instanceof Element)) return false
+  return target.closest(ignoreInside) !== null
 }
 
 export function useDismissOnOutsideClick({
@@ -24,6 +30,7 @@ export function useDismissOnOutsideClick({
     if (!active) return
 
     const handleMouseDown = (event: MouseEvent) => {
+      if (isInsideIgnored(event.target, options?.ignoreInside)) return
       if (isTargetOutside(ref.current, event.target)) {
         onDismissRef.current()
       }
@@ -42,5 +49,5 @@ export function useDismissOnOutsideClick({
       document.removeEventListener('mousedown', handleMouseDown)
       if (handleKeyDown) document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [active, ref, options?.closeOnEscape])
+  }, [active, ref, options?.closeOnEscape, options?.ignoreInside])
 }

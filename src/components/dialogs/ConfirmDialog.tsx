@@ -4,6 +4,8 @@ import { DialogShell } from './DialogShell'
 import { DIALOG_FOOTER_GRID, DIALOG_TITLE } from '../../lib/class-names-dialog'
 import { joinClassNames } from '../../lib/class-names'
 
+export type ConfirmDialogFocus = 'confirm' | 'cancel'
+
 export interface ConfirmDialogProps {
   isOpen: boolean
   title: string
@@ -16,6 +18,7 @@ export interface ConfirmDialogProps {
   warningText?: string | null
   nonDismissible?: boolean
   hideCancel?: boolean
+  initialFocus?: ConfirmDialogFocus
   onConfirm: () => void
   onCancel: () => void
 }
@@ -25,6 +28,16 @@ const DEFAULT_WARNING_TEXT = 'This action cannot be undone.'
 function resolveWarningText(warningText: string | null | undefined): string | null {
   if (warningText === undefined) return DEFAULT_WARNING_TEXT
   return warningText
+}
+
+function ConfirmWarning({ warningText }: { warningText: string | null | undefined }) {
+  const resolvedWarning = resolveWarningText(warningText)
+  if (resolvedWarning === null) return null
+  return (
+    <p className="mt-3 text-body text-light-on-surface-variant dark:text-dark-on-surface-variant wrap-break-word">
+      {resolvedWarning}
+    </p>
+  )
 }
 
 function ConfirmButtonContent({ isLoading, label }: { isLoading: boolean; label: string }) {
@@ -64,11 +77,13 @@ export function ConfirmDialog({
   warningText,
   nonDismissible = false,
   hideCancel = false,
+  initialFocus = 'confirm',
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  const resolvedWarning = resolveWarningText(warningText)
   const confirmButtonRef = useRef<HTMLButtonElement>(null)
+  const cancelButtonRef = useRef<HTMLButtonElement>(null)
+  const initialFocusRef = initialFocus === 'cancel' ? cancelButtonRef : confirmButtonRef
 
   return (
     <DialogShell
@@ -80,15 +95,11 @@ export function ConfirmDialog({
       testId="confirm-dialog"
       ariaLabel={title}
       nonDismissible={nonDismissible}
-      initialFocusRef={confirmButtonRef}
+      initialFocusRef={initialFocusRef}
     >
       <h2 className={DIALOG_TITLE}>{title}</h2>
       <div className="text-body text-light-on-surface dark:text-dark-on-surface">{message}</div>
-      {resolvedWarning !== null && (
-        <p className="mt-3 text-body text-light-on-surface-variant dark:text-dark-on-surface-variant wrap-break-word">
-          {resolvedWarning}
-        </p>
-      )}
+      <ConfirmWarning warningText={warningText} />
       <ConfirmError error={error} />
       <div className={joinClassNames([DIALOG_FOOTER_GRID, 'mt-6 *:only:col-start-2'])}>
         <Button
@@ -101,7 +112,12 @@ export function ConfirmDialog({
           <ConfirmButtonContent isLoading={isLoading} label={confirmLabel} />
         </Button>
         {!hideCancel && (
-          <Button onClick={onCancel} disabled={nonDismissible} data-testid="confirm-cancel-button">
+          <Button
+            ref={cancelButtonRef}
+            onClick={onCancel}
+            disabled={nonDismissible}
+            data-testid="confirm-cancel-button"
+          >
             Cancel
           </Button>
         )}

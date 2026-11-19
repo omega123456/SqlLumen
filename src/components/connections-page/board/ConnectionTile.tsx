@@ -8,6 +8,7 @@ import { connectionEdgeFill } from '../../layout/connection-tab-bar/connection-t
 import { PRIMARY_RING_SPINNER, joinClassNames } from '../../../lib/class-names'
 import { FOCUS_RING } from '../../../lib/focus-ring'
 import { lastConnectedLabel } from '../../../lib/relative-time'
+import { useEffectiveConnectionColour } from '../../../hooks/use-connection-colour'
 import type { SavedConnection } from '../../../types/connection'
 import { META_ICON_SIZE, PAGE_ICON_SIZE } from '../page-icons'
 import { hostLabel } from './board-model'
@@ -18,6 +19,7 @@ export interface TileHandlers {
   onOpenNewSession: (connection: SavedConnection) => void
   onEdit: (profileId: string) => void
   onMore: (event: MouseEvent<HTMLButtonElement>, connection: SavedConnection) => void
+  onContextMenu: (event: MouseEvent, connection: SavedConnection) => void
   onSubmitPassword: (connection: SavedConnection, submission: PasswordSubmission) => void
   onFocusTile: (tileKey: string) => void
 }
@@ -155,8 +157,8 @@ const TILE_FOOTER: Record<TileStatus['kind'], (props: TileFooterProps) => ReactN
   needsPassword: PasswordFooter,
 }
 
-function TileEdge({ color }: { color: string | null }) {
-  const fill = connectionEdgeFill(color)
+function TileEdge({ connection }: { connection: SavedConnection }) {
+  const fill = connectionEdgeFill(useEffectiveConnectionColour(connection))
   return (
     <span
       className={joinClassNames(['absolute inset-x-0 top-0 h-0.5', fill.className])}
@@ -218,8 +220,9 @@ export function ConnectionTile({
       className="group relative flex min-h-connection-tile flex-col overflow-hidden rounded-card bg-light-surface-container-high pt-3.5 pr-2 pb-3 pl-4 shadow-light-elevated transition-bg duration-150 hover:bg-light-card-hover dark:bg-dark-surface-container-high dark:shadow-dark-elevated dark:hover:bg-dark-card-hover"
       data-testid="connection-tile"
       data-status={status.kind}
+      onContextMenu={(event) => handlers.onContextMenu(event, connection)}
     >
-      <TileEdge color={connection.color} />
+      <TileEdge connection={connection} />
       <Button
         variant="bare"
         className={joinClassNames(['absolute inset-0 cursor-pointer rounded-card', FOCUS_RING])}

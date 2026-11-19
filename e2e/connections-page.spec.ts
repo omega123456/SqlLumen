@@ -36,6 +36,34 @@ async function listNextSavedProfile(page: Page, name: string) {
   }, name)
 }
 
+async function putSampleInGroup(page: Page) {
+  await page.evaluate(async () => {
+    const registry = (window as unknown as Record<string, unknown>)
+      .__PLAYWRIGHT_FIXTURE_REGISTRY__ as {
+      overrideStaticFixture: (name: string, value: unknown) => void
+      getStaticFixture: (name: string) => Array<Record<string, unknown>>
+    }
+    registry.overrideStaticFixture('connectionGroups', [
+      {
+        id: 'grp-production',
+        name: 'Production',
+        parentId: null,
+        sortOrder: 0,
+        createdAt: '2025-01-01T00:00:00.000Z',
+        color: '#e0474c',
+      },
+    ])
+    const grouped = registry
+      .getStaticFixture('savedConnections')
+      .map((profile) => ({ ...profile, groupId: 'grp-production', color: null }))
+    registry.overrideStaticFixture('savedConnections', grouped)
+    const store = (window as unknown as Record<string, unknown>).__connectionStore__ as {
+      getState: () => { fetchSavedConnections: () => Promise<void> }
+    }
+    await store.getState().fetchSavedConnections()
+  })
+}
+
 test.describe('Connections page', () => {
   test.beforeEach(async ({ page }) => {
     await waitForApp(page)
@@ -62,6 +90,25 @@ test.describe('Connections page', () => {
 
     await page.getByRole('button', { name: 'Save changes' }).click()
     await expect(page.getByTestId('save-bar')).toBeHidden({ timeout: APP_READY_MS })
+  })
+
+  test('edits a group name and colour from its pencil', async ({ page }) => {
+    await putSampleInGroup(page)
+    const pencil = page.getByRole('button', { name: 'Edit group Production' })
+    await pencil.click()
+    const popover = page.getByTestId('group-edit-popover')
+    await expect(popover.getByLabel('Group name')).toBeFocused()
+    await expect(popover.getByText('#e0474c')).toBeVisible()
+
+    await popover.getByRole('button', { name: 'Choose color' }).click()
+    await page.getByLabel('Hex color value').fill('#22c55e')
+    await expect(popover.getByText('#22c55e')).toBeVisible()
+    await popover.getByLabel('Group name').fill('Live')
+    await popover.getByRole('button', { name: 'Done' }).click()
+
+    await expect(popover).toBeHidden()
+    await expect(page.getByText('Group saved')).toBeVisible()
+    await expect(pencil).toBeFocused()
   })
 
   test('opens over a live session from + and returns with Esc', async ({ page }) => {

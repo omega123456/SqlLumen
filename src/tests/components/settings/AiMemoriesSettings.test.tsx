@@ -128,7 +128,9 @@ describe('AiMemoriesSettings', () => {
 
   it('renders per-group sections with nested connection sub-sections', async () => {
     setupStore({
-      groups: [{ id: 'grp-1', name: 'Work DBs', parentId: null, sortOrder: 0, createdAt: '' }],
+      groups: [
+        { id: 'grp-1', name: 'Work DBs', parentId: null, sortOrder: 0, createdAt: '', color: null },
+      ],
       connections: [buildConnection({ id: 'conn-1', name: 'prod-db', groupId: 'grp-1' })],
     })
     ipc.override('list_group_memories', () => [groupMemory])
@@ -368,7 +370,9 @@ describe('AiMemoriesSettings', () => {
 
   it('highlights only the innermost section when dragging through nested sections', async () => {
     setupStore({
-      groups: [{ id: 'grp-1', name: 'Work DBs', parentId: null, sortOrder: 0, createdAt: '' }],
+      groups: [
+        { id: 'grp-1', name: 'Work DBs', parentId: null, sortOrder: 0, createdAt: '', color: null },
+      ],
       connections: [buildConnection({ id: 'conn-1', name: 'prod-db', groupId: 'grp-1' })],
     })
     render(<AiMemoriesSettings />)
@@ -598,7 +602,9 @@ describe('AiMemoriesSettings', () => {
       }
     })
     setupStore({
-      groups: [{ id: 'grp-1', name: 'Work', parentId: null, sortOrder: 0, createdAt: '' }],
+      groups: [
+        { id: 'grp-1', name: 'Work', parentId: null, sortOrder: 0, createdAt: '', color: null },
+      ],
       connections: [buildConnection({ id: 'conn-1', name: 'prod', groupId: 'grp-1' })],
       activeSessions: { 'sess-1': { profileId: 'conn-1', groupId: 'grp-1' } },
     })
@@ -630,7 +636,9 @@ describe('AiMemoriesSettings', () => {
       throw new Error('boom')
     })
     setupStore({
-      groups: [{ id: 'grp-1', name: 'Work', parentId: null, sortOrder: 0, createdAt: '' }],
+      groups: [
+        { id: 'grp-1', name: 'Work', parentId: null, sortOrder: 0, createdAt: '', color: null },
+      ],
       connections: [],
     })
     ipc.override('list_global_memories', () => [])
@@ -706,7 +714,9 @@ describe('AiMemoriesSettings', () => {
       }
     })
     setupStore({
-      groups: [{ id: 'grp-1', name: 'Work', parentId: null, sortOrder: 0, createdAt: '' }],
+      groups: [
+        { id: 'grp-1', name: 'Work', parentId: null, sortOrder: 0, createdAt: '', color: null },
+      ],
       connections: [],
     })
     ipc.override('list_global_memories', () => [])
@@ -948,7 +958,16 @@ describe('AiMemoriesSettings', () => {
 
   it('collapses a group section with more than five memories by default', async () => {
     setupStore({
-      groups: [{ id: 'grp-1', name: 'Big Group', parentId: null, sortOrder: 0, createdAt: '' }],
+      groups: [
+        {
+          id: 'grp-1',
+          name: 'Big Group',
+          parentId: null,
+          sortOrder: 0,
+          createdAt: '',
+          color: null,
+        },
+      ],
       connections: [],
     })
     const many: AiMemory[] = Array.from({ length: 6 }, (_, i) => ({

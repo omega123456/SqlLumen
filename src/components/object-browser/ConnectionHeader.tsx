@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { Database, ArrowsClockwise, Star } from '@phosphor-icons/react'
 import { useConnectionStore } from '../../stores/connection-store'
+import { useSessionColour } from '../../hooks/use-connection-colour'
 import { useSchemaStore } from '../../stores/schema-store'
 import { joinClassNames } from '../../lib/class-names'
 import { ACCENT_TILE, TILE } from '../../lib/class-names-tile'
@@ -133,6 +134,7 @@ export function ConnectionHeader({
     (state) => state.activeConnections[connectionId] ?? null
   )
   const refreshAll = useSchemaStore((state) => state.refreshAll)
+  const colour = useSessionColour(activeConnection ?? undefined)
 
   if (!activeConnection) return null
 
@@ -151,7 +153,7 @@ export function ConnectionHeader({
       className="flex shrink-0 items-center gap-2.5 px-3 pt-3 pb-1"
       data-testid="connection-header"
     >
-      <ConnectionTile color={activeConnection.profile.color} />
+      <ConnectionTile color={colour} />
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-size-body leading-4.5 font-semibold text-light-on-surface dark:text-dark-on-surface">
           {connectionName}

@@ -14,6 +14,8 @@ import { makeActiveConnection, makeSavedConnection } from '../../helpers/connect
 beforeEach(() => {
   useThemeStore.setState({ theme: 'light', resolvedTheme: 'light' })
   useConnectionStore.setState({
+    savedConnections: [],
+    connectionGroups: [],
     activeConnections: {},
     activeConnectionOrder: [],
     activeTabId: null,
@@ -217,16 +219,29 @@ describe('ConnectionTabBar', () => {
     }
   })
 
-  it('renders a 3x16 colour marker on every tab whose profile has a colour', () => {
+  it('renders a 3x16 colour marker on every tab whose profile or group has a colour', () => {
     const conn1 = makeActiveConnection({ id: 'sess-1' })
     const profile2 = makeSavedConnection({ id: 'conn-2', name: 'Staging DB', color: '#ef4444' })
     const conn2 = makeActiveConnection({ id: 'sess-2', profile: profile2 })
     const profile3 = makeSavedConnection({ id: 'conn-3', name: 'Plain DB', color: null })
     const conn3 = makeActiveConnection({ id: 'sess-3', profile: profile3 })
+    const profile4 = makeSavedConnection({ id: 'conn-4', name: 'Team DB', groupId: 'grp-team' })
+    const conn4 = makeActiveConnection({ id: 'sess-4', profile: profile4 })
 
     useConnectionStore.setState({
-      activeConnections: { 'sess-1': conn1, 'sess-2': conn2, 'sess-3': conn3 },
-      activeConnectionOrder: ['sess-1', 'sess-2', 'sess-3'],
+      savedConnections: [{ ...profile4, color: null }],
+      connectionGroups: [
+        {
+          id: 'grp-team',
+          name: 'Team',
+          parentId: null,
+          sortOrder: 0,
+          createdAt: '',
+          color: '#22c55e',
+        },
+      ],
+      activeConnections: { 'sess-1': conn1, 'sess-2': conn2, 'sess-3': conn3, 'sess-4': conn4 },
+      activeConnectionOrder: ['sess-1', 'sess-2', 'sess-3', 'sess-4'],
       activeTabId: 'sess-1',
     })
 
@@ -238,6 +253,13 @@ describe('ConnectionTabBar', () => {
       backgroundColor: '#ef4444',
     })
     expect(screen.queryByTestId('connection-color-marker-sess-3')).not.toBeInTheDocument()
+    expect(screen.getByTestId('connection-color-marker-sess-4')).toHaveStyle({
+      backgroundColor: '#22c55e',
+    })
+    expect(screen.getByTestId('connection-session-tab-sess-4')).toHaveAttribute(
+      'title',
+      expect.stringContaining('· Team group')
+    )
   })
 
   it("paints the workspace edge in the active connection's colour", () => {

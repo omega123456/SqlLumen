@@ -277,7 +277,15 @@ fn test_full_group_crud_workflow() {
     assert_eq!(record.sort_order, 0);
 
     // Update it
-    connection_groups::update_group(&conn, &id, "Prod Servers").expect("should update");
+    connection_groups::update_group(
+        &conn,
+        &id,
+        &connection_groups::GroupChanges {
+            name: "Prod Servers",
+            color: None,
+        },
+    )
+    .expect("should update");
     let updated = connection_groups::get_group(&conn, &id)
         .expect("should not error")
         .expect("should find updated group");

@@ -10,6 +10,12 @@ pub struct ConnectionGroupRecord {
     pub parent_id: Option<String>,
     pub sort_order: i64,
     pub created_at: String,
+    pub color: Option<String>,
+}
+
+pub struct GroupChanges<'a> {
+    pub name: &'a str,
+    pub color: Option<&'a str>,
 }
 
 fn row_to_group_record(row: &rusqlite::Row) -> rusqlite::Result<ConnectionGroupRecord> {
@@ -19,6 +25,7 @@ fn row_to_group_record(row: &rusqlite::Row) -> rusqlite::Result<ConnectionGroupR
         parent_id: row.get(2)?,
         sort_order: row.get(3)?,
         created_at: row.get(4)?,
+        color: row.get(5)?,
     })
 }
 
@@ -36,7 +43,7 @@ pub fn insert_group(conn: &Connection, name: &str) -> Result<String> {
 
 pub fn get_group(conn: &Connection, id: &str) -> Result<Option<ConnectionGroupRecord>> {
     conn.query_row(
-        "SELECT id, name, parent_id, sort_order, created_at
+        "SELECT id, name, parent_id, sort_order, created_at, color
          FROM connection_groups WHERE id = ?1",
         [id],
         row_to_group_record,
@@ -46,7 +53,7 @@ pub fn get_group(conn: &Connection, id: &str) -> Result<Option<ConnectionGroupRe
 
 pub fn list_groups(conn: &Connection) -> Result<Vec<ConnectionGroupRecord>> {
     let mut stmt = conn.prepare(
-        "SELECT id, name, parent_id, sort_order, created_at
+        "SELECT id, name, parent_id, sort_order, created_at, color
          FROM connection_groups ORDER BY sort_order, name COLLATE NOCASE",
     )?;
 
@@ -59,10 +66,10 @@ pub fn list_groups(conn: &Connection) -> Result<Vec<ConnectionGroupRecord>> {
     Ok(records)
 }
 
-pub fn update_group(conn: &Connection, id: &str, name: &str) -> Result<()> {
+pub fn update_group(conn: &Connection, id: &str, changes: &GroupChanges) -> Result<()> {
     let rows_affected = conn.execute(
-        "UPDATE connection_groups SET name = ?1 WHERE id = ?2",
-        params![name, id],
+        "UPDATE connection_groups SET name = ?1, color = ?2 WHERE id = ?3",
+        params![changes.name, changes.color, id],
     )?;
 
     if rows_affected == 0 {

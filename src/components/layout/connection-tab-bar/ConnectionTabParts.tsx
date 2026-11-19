@@ -6,6 +6,7 @@ import {
   LockIcon,
   MagnifyingGlassIcon,
 } from '@phosphor-icons/react'
+import { useEffectiveConnectionColour } from '../../../hooks/use-connection-colour'
 import { useCommandPaletteStore } from '../../../stores/command-palette-store'
 import { useShortcutStore } from '../../../stores/shortcut-store'
 import { shortcutLabelParts } from '../../../lib/shortcut-labels'
@@ -19,12 +20,13 @@ import { ConnectionStatusIndicator } from '../ConnectionStatusIndicator'
 import type { PendingConnectionClose } from './connection-tab-model'
 
 export function ConnectionTabPrefix({ connection }: { connection: ActiveConnection }) {
+  const colour = useEffectiveConnectionColour(connection.profile)
   return (
     <>
-      {connection.profile.color ? (
+      {colour ? (
         <span
           className="absolute top-1/2 left-1 -mt-2 h-4 w-0.75 rounded-track"
-          style={{ backgroundColor: connection.profile.color }}
+          style={{ backgroundColor: colour }}
           data-testid={`connection-color-marker-${connection.id}`}
           aria-hidden
         />

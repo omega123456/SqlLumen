@@ -29,7 +29,7 @@ fn test_list_connection_groups_impl_returns_all() {
 }
 
 #[test]
-fn test_update_connection_group_impl_modifies_name() {
+fn test_update_connection_group_impl_writes_name_and_colour() {
     let state = common::test_app_state();
     let id = create_connection_group_impl(&state, "Old Name").expect("should create");
 
@@ -38,6 +38,7 @@ fn test_update_connection_group_impl_modifies_name() {
         &sqllumen_lib::commands::connection_groups::UpdateConnectionGroupRequest {
             id: id.to_string(),
             name: "New Name".to_string(),
+            color: Some("#d13438".to_string()),
         },
     )
     .expect("should update");
@@ -45,6 +46,7 @@ fn test_update_connection_group_impl_modifies_name() {
     let list = list_connection_groups_impl(&state).expect("should list");
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].name, "New Name");
+    assert_eq!(list[0].color.as_deref(), Some("#d13438"));
 }
 
 #[test]

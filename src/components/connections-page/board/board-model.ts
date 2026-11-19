@@ -102,7 +102,7 @@ function toBoardSection(section: ConnectionSection): BoardSection {
 function groupSections(inputs: BoardSectionInputs): BoardSection[] {
   const isFiltering = inputs.query.trim() !== ''
   const isVisible = (section: ConnectionSection) =>
-    !shouldHideSection({ section: section, isFiltering: isFiltering, isRenaming: false })
+    !shouldHideSection({ section: section, isFiltering: isFiltering })
   const filtered = filterConnectionsByQuery(inputs.savedConnections, inputs.query)
   return buildConnectionSections(filtered, inputs.connectionGroups)
     .filter(isVisible)

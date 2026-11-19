@@ -964,6 +964,7 @@ describe('connection store sessions', () => {
     parentId: null,
     sortOrder: 0,
     createdAt: '2025-01-01T00:00:00Z',
+    color: null,
   }
 
   // --- Reset store between tests ---

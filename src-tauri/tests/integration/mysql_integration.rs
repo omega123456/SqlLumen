@@ -701,7 +701,12 @@ mod pool_lifecycle {
             .await
             .expect_err("login is refused");
 
-        assert_eq!(error.kind, OpenConnectionErrorKind::AccessDenied, "{}", error.message);
+        assert_eq!(
+            error.kind,
+            OpenConnectionErrorKind::AccessDenied,
+            "{}",
+            error.message
+        );
         assert!(
             error.message.starts_with("Failed to connect:"),
             "{}",

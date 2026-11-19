@@ -50,6 +50,7 @@ import type {
 } from '../ai-memory-commands'
 import type { FrontendLogLevel } from '../app-log-commands'
 import type {
+  ConnectionGroupChanges,
   ConnectionStatus,
   OpenConnectionResult,
   SaveConnectionInput,
@@ -141,7 +142,7 @@ export interface PayloadCommandMap {
   move_memory: Command<MoveMemoryRequest, AiMemory>
   search_memories: Command<SearchMemoriesRequest, AiMemory[]>
 
-  update_connection_group: Command<{ id: string; name: string }, void>
+  update_connection_group: Command<ConnectionGroupChanges, void>
   update_connection: Command<{ id: string; data: UpdateConnectionInput }, void>
   open_connection: Command<{ profileId: string; password: string | null }, OpenConnectionResult>
 

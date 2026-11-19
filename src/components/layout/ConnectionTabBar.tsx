@@ -3,6 +3,7 @@ import { PlusIcon } from '@phosphor-icons/react'
 import { joinClassNames } from '../../lib/class-names'
 import { useThemeStore } from '../../stores/theme-store'
 import { IconButton } from '../common/IconButton'
+import { useSessionColour } from '../../hooks/use-connection-colour'
 import { normalizeActiveConnectionOrder, useConnectionStore } from '../../stores/connection-store'
 import { useConnectionsPageStore } from '../../stores/connections-page-store'
 import type { Theme } from '../../stores/theme-store'
@@ -16,7 +17,6 @@ import type { ContextMenuOpenPoint } from '../../lib/context-menu-utils'
 import type { ActiveConnection } from '../../types/connection'
 import {
   CONNECTION_TAB_TEST_ID_PREFIX,
-  connectionEdgeColor,
   connectionEdgeFill,
   connectionMoveMenuItems,
   connectionTabDisplayName,
@@ -242,7 +242,7 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
     tabTestIdPrefix: CONNECTION_TAB_TEST_ID_PREFIX,
     onReorder: reorderActiveConnection,
   })
-  const edgeColor = connectionEdgeColor(activeTabId ? activeConnections[activeTabId] : undefined)
+  const edgeColor = useSessionColour(activeTabId ? activeConnections[activeTabId] : undefined)
 
   return (
     <div

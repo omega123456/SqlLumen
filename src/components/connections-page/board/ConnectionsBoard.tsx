@@ -12,7 +12,6 @@ import { ConnectionComposer } from './ConnectionComposer'
 import { ConnectionSection, SectionHeading, type SectionTileContext } from './ConnectionSection'
 import type { TileHandlers } from './ConnectionTile'
 import { GroupInlineInput } from './GroupInlineInput'
-import type { EditingGroupState } from './connection-sections'
 import { SavedConnectionsContextMenu } from './SavedConnectionsContextMenu'
 import {
   boardStateOf,
@@ -52,9 +51,10 @@ function allTileKeys(sections: BoardSection[]): string[] {
 }
 
 function SectionsBody({ sections, tiles, groups, menu }: BoardBodyProps) {
-  const { containerRef, activeKey, setActiveKey, handleKeyDown } = useTileRovingFocus(
-    tiles.handlers.onEdit
-  )
+  const { containerRef, activeKey, setActiveKey, handleKeyDown } = useTileRovingFocus({
+    onEdit: tiles.handlers.onEdit,
+    onOpenMenu: menu.openForTileKey,
+  })
   const sectionTiles: SectionTileContext = {
     ...tiles,
     focusTargetKey: resolveActiveTileKey(activeKey, allTileKeys(sections)),
@@ -114,22 +114,16 @@ function BoardHeader({ savedCount, onNewGroup, onNewConnection }: BoardHeaderPro
   )
 }
 
-function newGroupName(editing: EditingGroupState): string | null {
-  if (!editing) return null
-  if (editing.mode === 'rename') return null
-  return editing.value
-}
-
 function NewGroupHeading({ groups }: { groups: GroupEditing }) {
-  const name = newGroupName(groups.editingGroup)
+  const name = groups.newGroupName
   if (name === null) return null
   return (
     <SectionHeading>
       <GroupInlineInput
         value={name}
-        onChange={groups.changeValue}
-        onCommit={() => void groups.commitEditing()}
-        onCancel={groups.cancelEditing}
+        onChange={groups.changeNewGroupName}
+        onCommit={() => void groups.commitCreate()}
+        onCancel={groups.cancelCreate}
         placeholder="Group name"
         ariaLabel="New group name"
       />
@@ -143,13 +137,53 @@ function DeleteConnectionDialog({ tileActions }: { tileActions: TileActions }) {
     <ConfirmDialog
       isOpen={pendingDelete !== null}
       title="Delete connection?"
-      message={`“${pendingDelete?.connection.name ?? ''}” will be removed from this device.`}
+      message={`“${pendingDelete?.item.name ?? ''}” will be removed from this device.`}
       confirmLabel="Delete"
       isDestructive
       isLoading={pendingDelete?.isDeleting ?? false}
       error={pendingDelete?.error ?? null}
       onConfirm={() => void tileActions.confirmDelete()}
       onCancel={tileActions.cancelDelete}
+    />
+  )
+}
+
+function hasOpenSessionInGroup(groupId: string | undefined): boolean {
+  const { savedConnections, activeConnections } = useConnectionStore.getState()
+  const memberIds = new Set(
+    savedConnections
+      .filter((connection) => connection.groupId === groupId)
+      .map((connection) => connection.id)
+  )
+  return Object.values(activeConnections).some((session) => memberIds.has(session.profile.id))
+}
+
+function DeleteGroupMessage({ groupId }: { groupId: string | undefined }) {
+  return (
+    <>
+      <p>Its connections move to Ungrouped. No connections are deleted.</p>
+      {hasOpenSessionInGroup(groupId) && (
+        <p className="mt-2">Open sessions for these connections will lose the group colour.</p>
+      )}
+    </>
+  )
+}
+
+function DeleteGroupDialog({ groups }: { groups: GroupEditing }) {
+  const pendingDelete = groups.pendingDelete
+  return (
+    <ConfirmDialog
+      isOpen={pendingDelete !== null}
+      title={`Delete group “${pendingDelete?.item.name ?? ''}”?`}
+      message={<DeleteGroupMessage groupId={pendingDelete?.item.id} />}
+      warningText={null}
+      confirmLabel="Delete group"
+      isDestructive
+      initialFocus="cancel"
+      isLoading={pendingDelete?.isDeleting ?? false}
+      error={pendingDelete?.error ?? null}
+      onConfirm={() => void groups.confirmDelete()}
+      onCancel={groups.cancelDelete}
     />
   )
 }
@@ -196,6 +230,7 @@ function boardTiles(
       onOpenNewSession: (connection) => void tileActions.openNewSession(connection),
       onEdit: tileActions.edit,
       onMore: menu.openForConnection,
+      onContextMenu: menu.openForTileContextMenu,
       onSubmitPassword: (connection, submission) =>
         void tileActions.submitPassword(connection, submission),
     },
@@ -245,6 +280,7 @@ export function ConnectionsBoard() {
         <SavedConnectionsContextMenu menu={menu.menu} actions={menu.actions} onClose={menu.close} />
       )}
       <DeleteConnectionDialog tileActions={tileActions} />
+      <DeleteGroupDialog groups={groups} />
       <span className="sr-only" role="status" aria-live="polite">
         {tileActions.announcement}
       </span>

@@ -4,7 +4,7 @@ use crate::common;
 use sqllumen_lib::db::ssl_mode::SslMode;
 
 use sqllumen_lib::db::connection_groups::{
-    delete_group, get_group, insert_group, list_groups, update_group,
+    delete_group, get_group, insert_group, list_groups, update_group, GroupChanges,
 };
 use sqllumen_lib::db::connections::{get_connection, insert_connection, NewConnectionData};
 
@@ -59,22 +59,42 @@ fn test_list_groups_returns_all_sorted() {
 }
 
 #[test]
-fn test_update_group_modifies_name() {
+fn test_update_group_writes_name_and_colour() {
     let conn = common::test_db();
     let id = insert_group(&conn, "Old Name").expect("should insert");
+    let inserted = get_group(&conn, &id)
+        .expect("should not error")
+        .expect("should find");
+    assert!(inserted.color.is_none());
 
-    update_group(&conn, &id, "New Name").expect("should update");
-
+    let coloured = GroupChanges {
+        name: "New Name",
+        color: Some("#d13438"),
+    };
+    update_group(&conn, &id, &coloured).expect("should update");
     let record = get_group(&conn, &id)
         .expect("should not error")
         .expect("should find");
     assert_eq!(record.name, "New Name");
+    assert_eq!(record.color.as_deref(), Some("#d13438"));
+
+    let cleared = GroupChanges {
+        name: "New Name",
+        color: None,
+    };
+    update_group(&conn, &id, &cleared).expect("should clear colour");
+    let listed = list_groups(&conn).expect("should list");
+    assert!(listed[0].color.is_none());
 }
 
 #[test]
 fn test_update_group_errors_for_missing() {
     let conn = common::test_db();
-    let result = update_group(&conn, "nonexistent", "Name");
+    let changes = GroupChanges {
+        name: "Name",
+        color: None,
+    };
+    let result = update_group(&conn, "nonexistent", &changes);
     assert!(result.is_err());
 }
 

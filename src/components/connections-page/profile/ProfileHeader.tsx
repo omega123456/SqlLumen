@@ -3,6 +3,7 @@ import { Button } from '../../common/Button'
 import type { ConnectionFormData, TestConnectionResult } from '../../../types/connection'
 import { PAGE_ICON_SIZE } from '../page-icons'
 import type { ProfileEditor } from './use-profile-editor'
+import { useColourWithGroup } from '../../../hooks/use-connection-colour'
 
 const NEW_CONNECTION_TITLE = 'New connection'
 
@@ -88,11 +89,12 @@ function connectLabel(profile: ProfileEditor): string {
 export function ProfileHeader({ profile }: { profile: ProfileEditor }) {
   const { formData, testResult } = profile.form.editor
   const isBusy = profile.form.pendingAction !== null
+  const colour = useColourWithGroup(formData)
   return (
     <header className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4">
       <div className="flex min-w-0 flex-col gap-1">
         <div className="flex min-w-0 items-center gap-3">
-          <TitleDot color={formData.color} />
+          <TitleDot color={colour} />
           <h1 className="truncate font-headline text-title font-semibold text-light-on-surface dark:text-dark-on-surface">
             {profileTitle(formData)}
           </h1>

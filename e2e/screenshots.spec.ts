@@ -1095,6 +1095,7 @@ for (const theme of themes) {
     test('ColorPickerPopover — open', async ({ page }) => {
       await openBoardProfile(page, ORDERS_PROFILE_NAME)
       await page.getByRole('button', { name: 'Edit Name and behaviour' }).click()
+      await page.getByRole('checkbox', { name: /Use group colour/ }).uncheck()
       await page.getByRole('button', { name: 'Choose color' }).click()
       await expect(page.getByTestId('color-picker-popover')).toBeVisible()
       await expect(page.getByTestId('color-picker-popover')).toHaveScreenshot(

@@ -30,7 +30,14 @@ function seedProfiles(savedConnections: SavedConnection[] = [ORDERS]) {
     useConnectionStore.setState({
       savedConnections: savedConnections,
       connectionGroups: [
-        { id: 'prod', name: 'Production', parentId: null, sortOrder: 0, createdAt: '' },
+        {
+          id: 'prod',
+          name: 'Production',
+          parentId: null,
+          sortOrder: 0,
+          createdAt: '',
+          color: '#3366ff',
+        },
       ],
       activeConnections: {},
       activeTabId: null,
@@ -67,6 +74,7 @@ describe('ProfileView', () => {
     expect(within(section('Security')).getByText('rds-bundle.pem')).toBeVisible()
     expect(within(section('Name and behaviour')).getByText('Production')).toBeVisible()
     expect(within(section('Name and behaviour')).getByText('Read and write')).toBeVisible()
+    expect(within(section('Name and behaviour')).getByText('· Own colour')).toBeVisible()
     expect(screen.queryByTestId('save-bar')).toBeNull()
 
     await user.click(screen.getByRole('button', { name: 'Edit Server' }))
@@ -88,6 +96,14 @@ describe('ProfileView', () => {
     renderProfile(EXISTING)
 
     await user.click(screen.getByRole('button', { name: 'Edit Name and behaviour' }))
+    const useGroupColour = screen.getByLabelText('Use group colour (Production)')
+    expect(useGroupColour).not.toBeChecked()
+    await user.click(useGroupColour)
+    expect(screen.getByText('· From group Production')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Choose color' })).toBeDisabled()
+    await user.click(useGroupColour)
+    expect(screen.getByText('#3366ff')).toBeVisible()
+    expect(screen.getByText('· Own colour')).toBeVisible()
     await user.click(screen.getByLabelText('Read-only, block writes'))
     await user.click(screen.getByRole('button', { name: 'Edit Security' }))
     expect(useConnectionsPageStore.getState().pendingLeave).not.toBeNull()

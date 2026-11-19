@@ -1,5 +1,5 @@
 use crate::commands::helpers::lock_db;
-use crate::db::connection_groups::{self, ConnectionGroupRecord};
+use crate::db::connection_groups::{self, ConnectionGroupRecord, GroupChanges};
 use crate::state::AppState;
 use serde::Deserialize;
 #[cfg(not(coverage))]
@@ -26,6 +26,7 @@ pub fn list_connection_groups_impl(state: &AppState) -> Result<Vec<ConnectionGro
 pub struct UpdateConnectionGroupRequest {
     pub id: String,
     pub name: String,
+    pub color: Option<String>,
 }
 
 pub fn update_connection_group_impl(
@@ -33,7 +34,11 @@ pub fn update_connection_group_impl(
     request: &UpdateConnectionGroupRequest,
 ) -> Result<(), String> {
     let conn = lock_db(state)?;
-    match connection_groups::update_group(&conn, &request.id, &request.name) {
+    let changes = GroupChanges {
+        name: &request.name,
+        color: request.color.as_deref(),
+    };
+    match connection_groups::update_group(&conn, &request.id, &changes) {
         Ok(()) => Ok(()),
         Err(error) => Err(error.to_string()),
     }

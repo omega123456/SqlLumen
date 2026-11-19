@@ -160,7 +160,7 @@ fn test_run_migrations_is_idempotent() {
         second.is_empty(),
         "second run applies nothing on an up-to-date DB"
     );
-    assert_eq!(history_count(&conn), 15);
+    assert_eq!(history_count(&conn), 16);
 }
 
 // ---------------------------------------------------------------------------
@@ -170,19 +170,19 @@ fn test_run_migrations_is_idempotent() {
 /// (a) Fresh install: refinery applies everything, history is fully populated,
 /// no legacy table remains.
 #[test]
-fn test_cutover_fresh_install_applies_all_15() {
+fn test_cutover_fresh_install_applies_all_16() {
     let mut conn = test_conn();
     let applied = run_migrations(&mut conn).expect("fresh install should run all migrations");
 
-    assert_eq!(applied, (1..=15).collect::<Vec<i32>>());
-    assert_eq!(history_count(&conn), 15);
+    assert_eq!(applied, (1..=16).collect::<Vec<i32>>());
+    assert_eq!(history_count(&conn), 16);
     assert!(!table_exists(&conn, "_migrations"));
 }
 
 /// (b) Partial legacy upgrade: a real schema built up to V12 plus a legacy
 /// `_migrations` listing versions 1..12. `run_migrations` fakes 1..12 (their
-/// SQL is NOT re-executed) and really applies 13 to 15, drops `_migrations`, and
-/// returns exactly `[13, 14, 15]`.
+/// SQL is NOT re-executed) and really applies 13 to 16, drops `_migrations`, and
+/// returns exactly `[13, 14, 15, 16]`.
 #[test]
 fn test_cutover_partial_legacy_upgrade() {
     let mut conn = test_conn();
@@ -227,8 +227,12 @@ fn test_cutover_partial_legacy_upgrade() {
 
     let applied = run_migrations(&mut conn).expect("legacy upgrade should succeed");
 
-    assert_eq!(applied, vec![13, 14, 15], "only 13 to 15 applied for real");
-    assert_eq!(history_count(&conn), 15, "history fully populated");
+    assert_eq!(
+        applied,
+        vec![13, 14, 15, 16],
+        "only 13 to 16 applied for real"
+    );
+    assert_eq!(history_count(&conn), 16, "history fully populated");
     assert!(!table_exists(&conn, "_migrations"), "legacy table dropped");
 
     let sentinel: String = conn
@@ -277,8 +281,12 @@ fn test_cutover_fully_current_legacy() {
 
     let applied = run_migrations(&mut conn).expect("fully-current legacy should succeed");
 
-    assert_eq!(applied, vec![15], "only the post-legacy migration applied");
-    assert_eq!(history_count(&conn), 15);
+    assert_eq!(
+        applied,
+        vec![15, 16],
+        "only the post-legacy migrations applied"
+    );
+    assert_eq!(history_count(&conn), 16);
     assert!(!table_exists(&conn, "_migrations"));
 }
 
@@ -296,7 +304,7 @@ fn test_cutover_already_on_refinery_drops_stray_legacy() {
     let applied = run_migrations(&mut conn).expect("should succeed and drop the stray");
 
     assert!(applied.is_empty());
-    assert_eq!(history_count(&conn), 15);
+    assert_eq!(history_count(&conn), 16);
     assert!(!table_exists(&conn, "_migrations"), "stray dropped");
 }
 
@@ -319,8 +327,8 @@ fn test_cutover_empty_legacy_runs_all() {
 
     let applied = run_migrations(&mut conn).expect("empty/garbage legacy should run all");
 
-    assert_eq!(applied, (1..=15).collect::<Vec<i32>>());
-    assert_eq!(history_count(&conn), 15);
+    assert_eq!(applied, (1..=16).collect::<Vec<i32>>());
+    assert_eq!(history_count(&conn), 16);
     assert!(!table_exists(&conn, "_migrations"));
 }
 

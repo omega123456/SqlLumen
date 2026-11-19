@@ -119,7 +119,7 @@ describe('connection profile commands', () => {
     expect(await openConnection('conn-1')).toEqual({ sessionId: 'sess-1', serverVersion: '8.0.35' })
     expect(await getConnectionStatus('conn-1')).toBe('connected')
     await deleteConnection('abc')
-    await updateConnectionGroup('grp-1', 'New name')
+    await updateConnectionGroup({ id: 'grp-1', name: 'New name', color: '#3366ff' })
     await deleteConnectionGroup('grp-1')
     await closeConnection('conn-1')
 
@@ -130,7 +130,9 @@ describe('connection profile commands', () => {
     ])
     expect(ipc.calls('get_connection_status')).toEqual([{ connectionId: 'conn-1' }])
     expect(ipc.calls('delete_connection')).toEqual([{ id: 'abc' }])
-    expect(ipc.payloads('update_connection_group')).toEqual([{ id: 'grp-1', name: 'New name' }])
+    expect(ipc.payloads('update_connection_group')).toEqual([
+      { id: 'grp-1', name: 'New name', color: '#3366ff' },
+    ])
     expect(ipc.calls('delete_connection_group')).toEqual([{ id: 'grp-1' }])
     expect(ipc.calls('close_connection')).toEqual([{ connectionId: 'conn-1' }])
   })

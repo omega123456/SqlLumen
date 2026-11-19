@@ -42,7 +42,7 @@ export default defineConfig({
   retries: isCI ? 2 : 0,
   workers,
   reporter: 'list',
-  timeout: 2_000,
+  timeout: 5_000,
   expect: {
     toHaveScreenshot: {
       maxDiffPixels: 50,

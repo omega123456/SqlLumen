@@ -588,6 +588,7 @@ fn connection_group_impls_cover_success_and_missing_errors() {
         &sqllumen_lib::commands::connection_groups::UpdateConnectionGroupRequest {
             id: group_id.to_string(),
             name: "Renamed".to_string(),
+            color: None,
         },
     )
     .expect("update group should succeed");
@@ -598,6 +599,7 @@ fn connection_group_impls_cover_success_and_missing_errors() {
         &sqllumen_lib::commands::connection_groups::UpdateConnectionGroupRequest {
             id: "missing".to_string(),
             name: "Nope".to_string(),
+            color: None,
         },
     )
     .expect_err("missing update should fail");
@@ -624,7 +626,8 @@ fn connection_group_impls_surface_poisoned_lock_errors() {
         &state,
         &sqllumen_lib::commands::connection_groups::UpdateConnectionGroupRequest {
             id: "id".to_string(),
-            name: "Group".to_string()
+            name: "Group".to_string(),
+            color: None,
         }
     )
     .is_err());
@@ -1756,6 +1759,7 @@ fn connection_group_command_wrappers_work_via_ipc() {
         &sqllumen_lib::commands::connection_groups::UpdateConnectionGroupRequest {
             id: id.to_string(),
             name: "Renamed".to_string(),
+            color: None,
         },
     )
     .expect("update should succeed");

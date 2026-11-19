@@ -133,8 +133,14 @@ export async function listConnectionGroups(): Promise<ConnectionGroup[]> {
   return invokeArgumentCommand({ command: 'list_connection_groups', argument: NO_ARGUMENTS })
 }
 
-export async function updateConnectionGroup(id: string, name: string): Promise<void> {
-  return invokeCommand({ command: 'update_connection_group', payload: { id, name } })
+export interface ConnectionGroupChanges {
+  id: string
+  name: string
+  color: string | null
+}
+
+export async function updateConnectionGroup(changes: ConnectionGroupChanges): Promise<void> {
+  return invokeCommand({ command: 'update_connection_group', payload: changes })
 }
 
 export async function deleteConnectionGroup(id: string): Promise<void> {

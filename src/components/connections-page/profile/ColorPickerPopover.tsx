@@ -9,9 +9,12 @@ import { FOCUS_RING } from '../../../lib/focus-ring'
 import { FIELD_CHROME } from '../../../lib/class-names-field'
 import '../../../styles/vendor/react-colorful.css'
 
+export const COLOR_PICKER_PANEL_SELECTOR = '[data-color-picker-panel]'
+
 interface ColorPickerPopoverProps {
   color: string | null
   onChange: (color: string | null) => void
+  disabled?: boolean
 }
 
 const POPOVER_HEIGHT = 220
@@ -39,7 +42,7 @@ const SWATCH_FILL_CLASSES: Record<SwatchFill, string> = {
 function swatchClassName(color: string | null): string {
   const fill: SwatchFill = color === null ? 'unset' : 'chosen'
   return joinClassNames([
-    'size-4 shrink-0 cursor-pointer rounded-round border border-light-stroke-control p-0 transition-border-color hover:border-light-stroke-card dark:border-dark-stroke-control dark:hover:border-dark-stroke-card',
+    'size-4 shrink-0 cursor-pointer rounded-round border border-light-stroke-control p-0 transition-border-color not-disabled:hover:border-light-stroke-card disabled:cursor-default dark:border-dark-stroke-control dark:not-disabled:hover:border-dark-stroke-card',
     SWATCH_FILL_CLASSES[fill],
     FOCUS_RING,
   ])
@@ -149,7 +152,7 @@ function ColorPickerPanel({ color, onChange, panelRef, style, onClose }: ColorPi
   )
 }
 
-export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps) {
+export function ColorPickerPopover({ color, onChange, disabled = false }: ColorPickerPopoverProps) {
   const [openPopover, setOpenPopover] = useState<OpenPopover | null>(null)
   const portalRef = useRef<HTMLDivElement>(null)
   const swatchRef = useRef<HTMLButtonElement>(null)
@@ -177,6 +180,7 @@ export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps)
         style={swatchStyle(color)}
         ref={swatchRef}
         onClick={handleToggleOpen}
+        disabled={disabled}
         aria-label="Choose color"
       />
       {openPopover &&

@@ -67,6 +67,7 @@ export interface ConnectionState {
   error: string | null
 
   fetchSavedConnections: () => Promise<void>
+  previewConnectionGroup: (group: ConnectionGroup) => void
   openConnection: (id: string, options?: OpenConnectionOptions) => Promise<void>
   attachExistingConnection: (session: OpenConnectionSession) => boolean
   closeConnection: (id: string, options?: { force?: boolean }) => Promise<boolean>
@@ -89,6 +90,14 @@ const SAVED_CONNECTIONS_LOADING: SavedConnectionsLoad = { status: 'loading' }
 function loadingUnlessReady(load: SavedConnectionsLoad): SavedConnectionsLoad {
   if (load.status === 'ready') return load
   return SAVED_CONNECTIONS_LOADING
+}
+
+function previewConnectionGroup(group: ConnectionGroup): void {
+  useConnectionStore.setState((state) => ({
+    connectionGroups: state.connectionGroups.map((existing) =>
+      existing.id === group.id ? group : existing
+    ),
+  }))
 }
 
 async function fetchSavedConnections(): Promise<void> {
@@ -260,6 +269,7 @@ export const useConnectionStore = create<ConnectionState>()(() => ({
   activeTabId: null,
   error: null,
   fetchSavedConnections: fetchSavedConnections,
+  previewConnectionGroup: previewConnectionGroup,
   openConnection: openConnection,
   attachExistingConnection: attachExistingConnection,
   closeConnection: closeConnection,

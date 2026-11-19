@@ -52,14 +52,19 @@ describe('ConfirmDialog', () => {
     expect(onConfirm).toHaveBeenCalledTimes(1)
   })
 
-  it('focuses the confirm button when opened', async () => {
-    render(<ConfirmDialog {...defaultProps} />)
-
+  it('focuses the confirm button when opened, or Cancel when asked to', async () => {
+    const { unmount } = render(<ConfirmDialog {...defaultProps} />)
     await act(async () => {
       await new Promise((resolve) => requestAnimationFrame(resolve))
     })
-
     expect(screen.getByTestId('confirm-confirm-button')).toHaveFocus()
+    unmount()
+
+    render(<ConfirmDialog {...defaultProps} initialFocus="cancel" />)
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    })
+    expect(screen.getByTestId('confirm-cancel-button')).toHaveFocus()
   })
 
   it('isLoading disables confirm button and shows a spinner with loading state', () => {

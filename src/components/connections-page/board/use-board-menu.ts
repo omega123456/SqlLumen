@@ -1,4 +1,5 @@
 import { useState, type MouseEvent } from 'react'
+import { useConnectionStore } from '../../../stores/connection-store'
 import type { SavedConnection } from '../../../types/connection'
 import type { ContextMenuActions, ContextMenuState } from './SavedConnectionsContextMenu'
 import type { GroupEditing } from './use-group-editing'
@@ -9,15 +10,24 @@ interface BoardMenuSources {
   groups: GroupEditing
 }
 
+interface MenuPoint {
+  x: number
+  y: number
+}
+
 function menuActions({ tileActions, groups }: BoardMenuSources, close: () => void) {
   const actions: ContextMenuActions = {
-    onRenameGroup: (groupId) => {
+    onEditGroup: (groupId) => {
       close()
-      groups.startRename(groupId)
+      groups.openEditor(groupId)
     },
     onDeleteGroup: (groupId) => {
       close()
-      void groups.deleteGroup(groupId)
+      groups.requestDelete(groupId)
+    },
+    onMoveToGroup: (move) => {
+      close()
+      void tileActions.moveToGroup(move)
     },
     onOpenNewSession: (connection) => {
       close()
@@ -43,19 +53,42 @@ function menuActions({ tileActions, groups }: BoardMenuSources, close: () => voi
   return actions
 }
 
+function belowLeftOf(element: Element): MenuPoint {
+  const anchor = element.getBoundingClientRect()
+  return { x: anchor.left, y: anchor.bottom }
+}
+
+function savedConnectionById(profileId: string | undefined): SavedConnection | null {
+  const savedConnections = useConnectionStore.getState().savedConnections
+  return savedConnections.find((connection) => connection.id === profileId) ?? null
+}
+
 export function useBoardMenu(sources: BoardMenuSources) {
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const close = () => setMenu(null)
 
-  const openForConnection = (event: MouseEvent<HTMLButtonElement>, connection: SavedConnection) => {
-    const anchor = event.currentTarget.getBoundingClientRect()
+  const openConnectionMenu = (connection: SavedConnection, point: MenuPoint) => {
     setMenu({
       type: 'connection',
       connection: connection,
-      x: anchor.left,
-      y: anchor.bottom,
+      x: point.x,
+      y: point.y,
       portalRoot: document.body,
     })
+  }
+
+  const openForConnection = (event: MouseEvent<HTMLButtonElement>, connection: SavedConnection) =>
+    openConnectionMenu(connection, belowLeftOf(event.currentTarget))
+
+  const openForTileContextMenu = (event: MouseEvent, connection: SavedConnection) => {
+    event.preventDefault()
+    event.stopPropagation()
+    openConnectionMenu(connection, { x: event.clientX, y: event.clientY })
+  }
+
+  const openForTileKey = (tile: HTMLElement) => {
+    const connection = savedConnectionById(tile.dataset.profileId)
+    if (connection) openConnectionMenu(connection, belowLeftOf(tile))
   }
 
   const openForGroup = (event: MouseEvent, groupId: string) => {
@@ -74,6 +107,8 @@ export function useBoardMenu(sources: BoardMenuSources) {
     actions: menuActions(sources, close),
     close: close,
     openForConnection: openForConnection,
+    openForTileContextMenu: openForTileContextMenu,
+    openForTileKey: openForTileKey,
     openForGroup: openForGroup,
   }
 }

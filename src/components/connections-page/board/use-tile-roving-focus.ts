@@ -1,5 +1,6 @@
 import { useRef, useState, type KeyboardEvent } from 'react'
 import { isTileMoveKey, nextTileIndex } from '../../../lib/grid-roving-focus'
+import { isContextMenuKey } from '../../../lib/input-events'
 
 const TILE_SELECTOR = '[data-tile-key]'
 const EDIT_KEYS = new Set(['e', 'E'])
@@ -29,7 +30,12 @@ export function resolveActiveTileKey(activeKey: string | null, tileKeys: string[
   return tileKeys[0] ?? null
 }
 
-export function useTileRovingFocus(onEdit: (profileId: string) => void) {
+export interface TileKeyActions {
+  onEdit: (profileId: string) => void
+  onOpenMenu: (tile: HTMLElement) => void
+}
+
+export function useTileRovingFocus(keyActions: TileKeyActions) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [activeKey, setActiveKey] = useState<string | null>(null)
 
@@ -38,7 +44,12 @@ export function useTileRovingFocus(onEdit: (profileId: string) => void) {
     if (!tile) return
     if (EDIT_KEYS.has(event.key)) {
       event.preventDefault()
-      onEdit(tile.dataset.profileId ?? '')
+      keyActions.onEdit(tile.dataset.profileId ?? '')
+      return
+    }
+    if (isContextMenuKey(event)) {
+      event.preventDefault()
+      keyActions.onOpenMenu(tile)
       return
     }
     if (!isTileMoveKey(event.key)) return

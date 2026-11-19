@@ -24,6 +24,7 @@ const PRODUCTION: ConnectionGroup = {
   parentId: null,
   sortOrder: 0,
   createdAt: '',
+  color: '#3366ff',
 }
 
 function seedBoard(savedConnections: SavedConnection[] = [ORDERS, SAMPLE]) {
@@ -251,6 +252,18 @@ describe('ConnectionsBoard', () => {
     await waitFor(() => expect(ipc.calls('delete_connection')).toHaveLength(1))
 
     await openMenu()
+    const moveTargets = screen.getAllByRole('menuitemradio')
+    expect(moveTargets.map((target) => target.textContent)).toEqual(['Ungrouped', 'Production'])
+    expect(moveTargets[1]).toHaveAttribute('aria-checked', 'true')
+    await user.click(moveTargets[0])
+    await waitFor(() => expect(ipc.payloads('update_connection')).toHaveLength(1))
+    expect(ipc.payloads('update_connection')[0]).toMatchObject({
+      id: 'orders',
+      data: { groupId: null },
+    })
+
+    await user.pointer({ keys: '[MouseRight]', target: tileOf('Orders primary') })
+    expect(screen.queryByRole('menuitem', { name: 'Edit group…' })).toBeNull()
     await user.click(screen.getByRole('menuitem', { name: 'Duplicate' }))
     expect(useConnectionsPageStore.getState().view).toMatchObject({
       target: { kind: 'new', seed: { data: { name: 'Copy of Orders primary' } } },
@@ -263,27 +276,62 @@ describe('ConnectionsBoard', () => {
     })
   })
 
-  it('creates and renames groups', async () => {
+  it('creates a group, then edits and deletes it from its pencil and menu', async () => {
     const user = userEvent.setup()
     seedBoard()
+    act(() => {
+      useConnectionStore.setState({
+        activeConnections: { 'sess-o': makeActiveConnection({ id: 'sess-o', profile: ORDERS }) },
+      })
+    })
     render(<ConnectionsBoard />)
 
     await user.click(screen.getByRole('button', { name: 'New group' }))
     await user.type(screen.getByLabelText('New group name'), 'Staging{Enter}')
     await waitFor(() => expect(ipc.calls('create_connection_group')).toHaveLength(1))
 
+    const pencil = screen.getByRole('button', { name: 'Edit group Production' })
+    await user.click(pencil)
+    const nameField = screen.getByLabelText('Group name')
+    expect(nameField).toHaveFocus()
+    await user.clear(nameField)
+    await user.type(nameField, 'Live{Enter}')
+    await waitFor(() =>
+      expect(ipc.payloads('update_connection_group')).toEqual([
+        { id: 'prod', name: 'Live', color: '#3366ff' },
+      ])
+    )
+    expect(pencil).toHaveFocus()
+
+    await user.click(pencil)
+    await user.type(screen.getByLabelText('Group name'), ' renamed')
+    await user.click(screen.getByRole('button', { name: 'Choose color' }))
+    await user.click(screen.getByRole('button', { name: 'Clear color' }))
+    expect(within(screen.getByTestId('group-edit-popover')).getByText('None')).toBeVisible()
+    await user.click(screen.getByLabelText('Group name'))
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(ipc.payloads('update_connection_group')).toHaveLength(2))
+    expect(ipc.payloads('update_connection_group')[1]).toEqual({
+      id: 'prod',
+      name: 'Production',
+      color: null,
+    })
+    expect(screen.queryByTestId('group-edit-popover')).toBeNull()
+
     await user.pointer({
       keys: '[MouseRight]',
       target: screen.getByRole('heading', { name: 'Production' }),
     })
-    await user.click(screen.getByRole('menuitem', { name: 'Rename' }))
-    const rename = screen.getByLabelText('Group name')
-    await user.clear(rename)
-    await user.type(rename, 'Live{Enter}')
-    await waitFor(() => expect(ipc.calls('update_connection_group')).toHaveLength(1))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete group…' }))
+    await waitFor(() => expect(screen.getByTestId('confirm-cancel-button')).toHaveFocus())
+    expect(
+      screen.getByText('Open sessions for these connections will lose the group colour.')
+    ).toBeVisible()
+    await user.click(screen.getByTestId('confirm-confirm-button'))
+    await waitFor(() => expect(ipc.calls('delete_connection_group')).toEqual([{ id: 'prod' }]))
   })
 
-  it('moves between tiles with arrow keys and edits with E', async () => {
+  it('moves between tiles with arrow keys, opens the menu with Shift+F10 and edits with E', async () => {
     const user = userEvent.setup()
     seedBoard()
     render(<ConnectionsBoard />)
@@ -296,6 +344,10 @@ describe('ConnectionsBoard', () => {
     await user.keyboard('{End}')
     expect(sample).toHaveFocus()
     expect(sample).toHaveAttribute('tabindex', '0')
+    await user.keyboard('{Shift>}{F10}{/Shift}')
+    expect(screen.getByRole('menuitem', { name: 'Duplicate' })).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    act(() => sample.focus())
     await user.keyboard('e')
     expect(useConnectionsPageStore.getState().view).toMatchObject({
       target: { kind: 'existing', profileId: 'sample' },

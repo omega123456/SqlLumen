@@ -49,13 +49,14 @@ export function groupTabsByProfile(tabs: ActiveConnection[]): Map<string, Active
   return tabsByProfileId
 }
 
-export function connectionEdgeColor(activeConnection: ActiveConnection | undefined): string | null {
-  return activeConnection?.profile.color || null
-}
-
-export function connectionTabTitle(displayName: string, connection: ActiveConnection): string {
+export function connectionTabTitle(
+  displayName: string,
+  connection: ActiveConnection,
+  groupName: string | null
+): string {
+  const groupSuffix = groupName === null ? '' : ` · ${groupName} group`
   const readOnlySuffix = connection.profile.readOnly ? ' — Read-only' : ''
-  return `${displayName} (${hostPortOf(connection)})${readOnlySuffix}`
+  return `${displayName} (${hostPortOf(connection)})${groupSuffix}${readOnlySuffix}`
 }
 
 export interface ConnectionEdgeFill {

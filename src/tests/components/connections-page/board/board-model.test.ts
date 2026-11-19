@@ -15,7 +15,7 @@ const SEARCH = { kind: 'search', query: '' } as const
 const READY = { status: 'ready' } as const
 
 function group(id: string, name: string, sortOrder: number): ConnectionGroup {
-  return { id: id, name: name, parentId: null, sortOrder: sortOrder, createdAt: '' }
+  return { id: id, name: name, parentId: null, sortOrder: sortOrder, createdAt: '', color: null }
 }
 
 function profiles(count: number): SavedConnection[] {

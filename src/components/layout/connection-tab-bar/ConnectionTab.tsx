@@ -4,6 +4,7 @@ import { UnderlineTab } from '../../common/UnderlineTabs'
 import type { ContextMenuOpenPoint } from '../../../lib/context-menu-utils'
 import { isContextMenuKey, isMiddleMouseButton } from '../../../lib/input-events'
 import type { ActiveConnection } from '../../../types/connection'
+import { useLiveConnectionGroup } from '../../../hooks/use-connection-colour'
 import type { PointerTabDrag } from '../../shared/use-pointer-tab-drag'
 import {
   CONNECTION_TAB_TEST_ID_PREFIX,
@@ -47,6 +48,7 @@ function CloseTabButton({ displayName, onClose }: { displayName: string; onClose
 export function ConnectionTab({ connection, displayName, isActive, actions }: ConnectionTabProps) {
   const { drag } = actions
   const sessionId = connection.id
+  const groupName = useLiveConnectionGroup(connection.profile)?.name ?? null
   return (
     <UnderlineTab
       variant="connection"
@@ -90,7 +92,7 @@ export function ConnectionTab({ connection, displayName, isActive, actions }: Co
           hostPort: hostPortOf(connection),
         })
       }}
-      title={connectionTabTitle(displayName, connection)}
+      title={connectionTabTitle(displayName, connection, groupName)}
       prefix={<ConnectionTabPrefix connection={connection} />}
       suffix={
         <CloseTabButton displayName={displayName} onClose={() => void actions.onClose(sessionId)} />

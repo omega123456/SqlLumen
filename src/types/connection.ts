@@ -29,6 +29,7 @@ export interface ConnectionGroup {
   parentId: string | null
   sortOrder: number
   createdAt: string
+  color: string | null
 }
 
 export interface ActiveConnection {

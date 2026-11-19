@@ -66,11 +66,8 @@ export function filterConnectionsByQuery(
   return fuse.search(trimmed).map((result) => result.item)
 }
 
-export type EditingGroupState =
-  { mode: 'rename'; groupId: string; value: string } | { mode: 'create'; value: string } | null
-
 const UNGROUPED_SECTION_KEY = 'ungrouped'
-const UNGROUPED_SECTION_TITLE = 'Ungrouped'
+export const UNGROUPED_SECTION_TITLE = 'Ungrouped'
 
 export interface GroupMutation {
   run: () => Promise<unknown>
@@ -82,13 +79,11 @@ export interface GroupMutation {
 interface SectionVisibilityInputs {
   section: ConnectionSection
   isFiltering: boolean
-  isRenaming: boolean
 }
 
 export function shouldHideSection(inputs: SectionVisibilityInputs): boolean {
   const hasConnections = inputs.section.connections.length > 0
   if (hasConnections) return false
-  if (inputs.isRenaming) return false
   const isGroupSection = inputs.section.groupId !== null
   return !isGroupSection || inputs.isFiltering
 }

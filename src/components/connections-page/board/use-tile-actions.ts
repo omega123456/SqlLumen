@@ -14,6 +14,9 @@ import { toErrorMessage } from '../../../lib/error-message'
 import type { SavedConnection } from '../../../types/connection'
 import { duplicateSeedFor } from '../profile/duplicate-seed'
 import { openSessionOf } from './board-model'
+import { UNGROUPED_SECTION_TITLE } from './connection-sections'
+import type { GroupMove } from './SavedConnectionsContextMenu'
+import { useDeleteConfirmation, type DeleteConfirmationSpec } from './use-delete-confirmation'
 
 export type TileStatus =
   | { kind: 'idle' }
@@ -24,12 +27,6 @@ export type TileStatus =
 export interface PasswordSubmission {
   password: string
   savePassword: boolean
-}
-
-export interface PendingDelete {
-  connection: SavedConnection
-  isDeleting: boolean
-  error: string | null
 }
 
 const IDLE_STATUS: TileStatus = { kind: 'idle' }
@@ -60,6 +57,21 @@ async function storePassword(connection: SavedConnection, password: string): Pro
   }
 }
 
+function groupLabelOf(groupId: string | null): string {
+  const groups = useConnectionStore.getState().connectionGroups
+  return groups.find((group) => group.id === groupId)?.name ?? UNGROUPED_SECTION_TITLE
+}
+
+async function moveToGroup({ connection, groupId }: GroupMove): Promise<void> {
+  try {
+    await updateConnection(connection.id, { ...formDataFromConnection(connection), groupId })
+    await useConnectionStore.getState().fetchSavedConnections()
+    showSuccessToast('Connection moved', `${connection.name} moved to ${groupLabelOf(groupId)}`)
+  } catch (error) {
+    showErrorToast('Failed to move connection', toErrorMessage(error))
+  }
+}
+
 async function copyConnectionUrl(connection: SavedConnection): Promise<void> {
   try {
     await writeClipboardText(formatConnectionUrl(connection))
@@ -77,38 +89,17 @@ function useTileStatuses() {
   return { statusOf: statusOf, setStatus: setStatus }
 }
 
-function useDeleteConfirmation() {
-  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
-
-  const confirmDelete = async () => {
-    if (!pendingDelete) return
-    const { connection } = pendingDelete
-    setPendingDelete({ connection: connection, isDeleting: true, error: null })
-    try {
-      await deleteConnection(connection.id)
-      await useConnectionStore.getState().fetchSavedConnections()
-      setPendingDelete(null)
-      showSuccessToast('Connection deleted', connection.name)
-    } catch (error) {
-      const message = toErrorMessage(error)
-      setPendingDelete({ connection: connection, isDeleting: false, error: message })
-      showErrorToast('Failed to delete connection', message)
-    }
-  }
-
-  return {
-    pendingDelete: pendingDelete,
-    requestDelete: (connection: SavedConnection) =>
-      setPendingDelete({ connection: connection, isDeleting: false, error: null }),
-    cancelDelete: () => setPendingDelete(null),
-    confirmDelete: confirmDelete,
-  }
+const CONNECTION_DELETION: DeleteConfirmationSpec<SavedConnection> = {
+  remove: (connection) => deleteConnection(connection.id),
+  describe: (connection) => connection.name,
+  successTitle: 'Connection deleted',
+  failureTitle: 'Failed to delete connection',
 }
 
 export function useTileActions() {
   const { statusOf, setStatus } = useTileStatuses()
   const [announcement, setAnnouncement] = useState('')
-  const deletion = useDeleteConfirmation()
+  const deletion = useDeleteConfirmation(CONNECTION_DELETION)
   const showProfile = useConnectionsPageStore((state) => state.showProfile)
 
   const openWithStatus = async (connection: SavedConnection, password?: string) => {
@@ -163,6 +154,7 @@ export function useTileActions() {
     duplicate: (connection: SavedConnection) =>
       showProfile({ kind: 'new', seed: duplicateSeedFor(connection) }),
     copyUrl: copyConnectionUrl,
+    moveToGroup: moveToGroup,
     ...deletion,
   }
 }

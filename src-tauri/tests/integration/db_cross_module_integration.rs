@@ -46,7 +46,14 @@ fn test_get_all_settings_errors_on_malformed_json() {
 fn test_connection_group_reports_missing_rows_for_update_and_delete() {
     let conn = common::test_db();
 
-    let update_result = connection_groups::update_group(&conn, "missing-group", "Renamed");
+    let update_result = connection_groups::update_group(
+        &conn,
+        "missing-group",
+        &connection_groups::GroupChanges {
+            name: "Renamed",
+            color: None,
+        },
+    );
     let delete_result = connection_groups::delete_group(&conn, "missing-group");
 
     assert!(matches!(
