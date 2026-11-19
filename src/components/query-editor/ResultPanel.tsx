@@ -1,13 +1,10 @@
 import { useQueryStore } from '../../stores/query-store'
-import { ExpiredResultState } from './result-panel/ResultStatusViews'
-import { ResultPanelDialogs } from './result-panel/ResultPanelDialogs'
-import { ResultStatusView } from './result-panel/ResultBodies'
+import { ExpiredResultState, ResultStatusView } from './result-panel/ResultStatusViews'
 import {
   hasVisibleSubTabs,
   resolveDisplayStatus,
   shouldShowExpiredState,
 } from './result-panel/result-panel-model'
-import { buildResultBodyProps } from './result-panel/result-body-props'
 import {
   useResultPanelControllers,
   useRetryExpiredResult,
@@ -39,21 +36,12 @@ export function ResultPanel({
     rowResidencyStatus: activeResult.view.residency.rows.status,
     resultStatus: activeResult.resultStatus,
   })
-  const showsSubTabs = hasVisibleSubTabs(hideSubTabs, results.length)
-  const body = buildResultBodyProps(
-    {
-      location: {
-        tabId: tabId,
-        connectionId: connectionId,
-        isActive: isActive,
-        hideSubTabs: hideSubTabs,
-      },
-      controllers: controllers,
-      displayStatus: displayStatus,
-      isTabRunning: tabStatus === 'running',
-    },
-    showsSubTabs
-  )
+  const location = {
+    tabId: tabId,
+    connectionId: connectionId,
+    hideSubTabs: hideSubTabs,
+    showsSubTabs: hasVisibleSubTabs(hideSubTabs, results.length),
+  }
 
   return (
     <div
@@ -71,15 +59,13 @@ export function ResultPanel({
       </div>
 
       {!activeResult.view.residency.isExpired && (
-        <ResultStatusView showsSubTabs={showsSubTabs} body={body} />
+        <ResultStatusView
+          location={location}
+          controllers={controllers}
+          displayStatus={displayStatus}
+          isTabRunning={tabStatus === 'running'}
+        />
       )}
-
-      <ResultPanelDialogs
-        surfaceRef={controllers.surfaceRef}
-        connectionId={connectionId}
-        result={activeResult}
-        filter={controllers.filter}
-      />
     </div>
   )
 }

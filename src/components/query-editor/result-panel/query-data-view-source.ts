@@ -9,6 +9,8 @@ const QUERY_RESULT_TEST_IDS: DataViewTestIds = {
   form: 'result-form-view',
   text: 'result-text-view',
   toolbar: 'result-toolbar',
+  restoreOverlay: 'query-result-restore-overlay',
+  busyOverlay: 'query-result-sort-overlay',
 }
 
 export interface QueryDataViewSourceInputs {

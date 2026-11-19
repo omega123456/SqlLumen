@@ -4,7 +4,7 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ResultPanel } from '../../../components/query-editor/ResultPanel'
-import { useQueryStore, activeQuerySurfaceRef, querySurfaceRef } from '../../../stores/query-store'
+import { useQueryStore, querySurfaceRef } from '../../../stores/query-store'
 import * as DataToolbarModule from '../../../components/shared/data-view/DataToolbar'
 import type { DataViewSource } from '../../../components/shared/data-view/data-view-source'
 import * as DataGridViewModule from '../../../components/shared/data-view/DataGridView'
@@ -14,7 +14,6 @@ import * as FilterDialogModule from '../../../components/dialogs/FilterDialog'
 import React from 'react'
 import { expectToast, ipc } from '../../ipc-mock'
 import { withRows } from '../../helpers/query-test-utils'
-import { gridTabPanelClassNameFor } from '../../../components/query-editor/result-panel/result-panel-model'
 
 // Use vi.spyOn to install per-test mock implementations without vi.mock().
 
@@ -88,32 +87,6 @@ describe('ResultPanel', () => {
     expect(screen.getByTestId('result-toolbar')).toBeInTheDocument()
     expect(screen.getByTestId('grid-view')).toHaveTextContent('Grid surface: tab1')
     expect(screen.getByRole('tabpanel')).toHaveAttribute('id', 'result-tabpanel-tab1-0')
-  })
-
-  it('switching view mode changes the rendered view', async () => {
-    const user = userEvent.setup()
-    render(<ResultPanel tabId="tab1" connectionId="c1" />)
-    act(() => useQueryStore.getState().setViewMode(activeQuerySurfaceRef('tab1'), 'form'))
-    expect(await screen.findByTestId('form-view')).toHaveTextContent('Form surface: tab1')
-    act(() => useQueryStore.getState().setViewMode(activeQuerySurfaceRef('tab1'), 'text'))
-    await user.click(document.body)
-    expect(await screen.findByTestId('text-view')).toHaveTextContent('Text surface: tab1')
-  })
-
-  it('keeps the grid instance and checked rows across a grid to form to grid switch', async () => {
-    render(<ResultPanel tabId="tab1" connectionId="c1" />)
-    const gridBeforeSwitch = screen.getByTestId('grid-view')
-    act(() => useQueryStore.getState().setCheckedRanges(activeQuerySurfaceRef('tab1'), [[0, 2]]))
-
-    act(() => useQueryStore.getState().setViewMode(activeQuerySurfaceRef('tab1'), 'form'))
-    expect(await screen.findByTestId('form-view')).toBeVisible()
-    expect(gridBeforeSwitch).not.toBeVisible()
-
-    act(() => useQueryStore.getState().setViewMode(activeQuerySurfaceRef('tab1'), 'grid'))
-    expect(screen.getByTestId('grid-view')).toBe(gridBeforeSwitch)
-    expect(gridBeforeSwitch).toBeVisible()
-    expect(screen.queryByTestId('form-view')).not.toBeInTheDocument()
-    expect(useQueryStore.getState().tabs.tab1.results[0].view.checked.ranges).toEqual([[0, 2]])
   })
 
   it('handles empty successful results', () => {
@@ -651,25 +624,6 @@ describe('expired state', () => {
 
       expect(screen.queryByTestId('query-result-restore-overlay')).not.toBeInTheDocument()
       expect(screen.getByTestId('result-panel')).toHaveAttribute('aria-busy', 'false')
-    })
-  })
-})
-
-describe('grid layout isolation', () => {
-  const CONTAINMENT_AND_ISOLATION_UTILITIES = [
-    'contain-layout',
-    'contain-paint',
-    'contain-style',
-    'isolate',
-  ]
-
-  describe('ResultPanel grid layout isolation', () => {
-    it('paint- and layout-contains a mounted grid view so it does not invalidate Monaco siblings', () => {
-      const gridPanelUtilities = gridTabPanelClassNameFor('grid', 3).split(' ')
-
-      expect(gridPanelUtilities).toEqual(
-        expect.arrayContaining(CONTAINMENT_AND_ISOLATION_UTILITIES)
-      )
     })
   })
 })

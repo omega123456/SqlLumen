@@ -1,7 +1,22 @@
-import type { ComponentPropsWithoutRef, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { Play, ClockCountdown } from '@phosphor-icons/react'
 import { Button } from '../../common/Button'
-import type { DisplayStatus } from './result-panel-model'
+import { InfoBar } from '../../common/InfoBar'
+import { ResultSubTabs } from '../ResultSubTabs'
+import { EditModeDropdown } from '../EditModeDropdown'
+import { DataViewBody, type DataViewSlots } from '../../shared/data-view/DataViewBody'
+import { DataViewSpinner } from '../../shared/data-view/body/DataViewOverlay'
+import type { SingleResultState } from '../../../stores/query-store'
+import { ResultBands } from './ResultBands'
+import { ResultExportDialog } from './ResultExportDialog'
+import {
+  dmlSuccessMessage,
+  queryToolbarReadiness,
+  resultTabPanelAttributes,
+  subTabLabelledBy,
+  type DisplayStatus,
+} from './result-panel-model'
+import type { ResultPanelControllers } from './use-result-panel-controllers'
 
 function EmptyState({ children }: { children: ReactNode }) {
   return (
@@ -11,20 +26,11 @@ function EmptyState({ children }: { children: ReactNode }) {
   )
 }
 
-function ResultSpinner(attributes: ComponentPropsWithoutRef<'div'>) {
-  return (
-    <div
-      className="size-6 animate-spin-800ms rounded-round border-2 border-transparent border-t-light-primary window-blurred:animate-spin-800ms-paused dark:border-t-dark-primary"
-      {...attributes}
-    />
-  )
-}
-
 export function EmptyResultState({ isRunning }: { isRunning: boolean }) {
   if (isRunning) {
     return (
       <EmptyState>
-        <ResultSpinner />
+        <DataViewSpinner />
         <span>Executing query...</span>
       </EmptyState>
     )
@@ -35,40 +41,6 @@ export function EmptyResultState({ isRunning }: { isRunning: boolean }) {
       <span>Run a query to see results</span>
     </EmptyState>
   )
-}
-
-function ResultStatusOverlay({ testId, label }: { testId: string; label: string }) {
-  return (
-    <div
-      className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-light-surface-container-lowest text-size-row text-light-on-surface-variant opacity-85 dark:bg-dark-surface-container-lowest dark:text-dark-on-surface-variant"
-      role="status"
-      aria-live="polite"
-      aria-atomic="true"
-      data-testid={testId}
-    >
-      <ResultSpinner aria-hidden="true" />
-      <span>{label}</span>
-    </div>
-  )
-}
-
-export function ResultActivityOverlay({
-  displayStatus,
-  isSorting,
-}: {
-  displayStatus: DisplayStatus
-  isSorting: boolean
-}) {
-  if (displayStatus === 'restoring') {
-    return (
-      <ResultStatusOverlay
-        testId="query-result-restore-overlay"
-        label="Restoring cached results…"
-      />
-    )
-  }
-  if (!isSorting) return null
-  return <ResultStatusOverlay testId="query-result-sort-overlay" label="Sorting…" />
 }
 
 export function ExpiredResultState({
@@ -103,5 +75,89 @@ export function ExpiredResultState({
         Re-run query
       </Button>
     </EmptyState>
+  )
+}
+
+export interface ResultPanelLocation {
+  tabId: string
+  connectionId: string
+  hideSubTabs: boolean
+  showsSubTabs: boolean
+}
+
+export interface ResultStatusViewProps {
+  location: ResultPanelLocation
+  controllers: ResultPanelControllers
+  displayStatus: DisplayStatus
+  isTabRunning: boolean
+}
+
+function resultMessage(result: SingleResultState): ReactNode {
+  if (result.resultStatus === 'error') {
+    return (
+      <InfoBar
+        severity="error"
+        title="Query failed"
+        message={result.errorMessage}
+        data-testid="result-error"
+      />
+    )
+  }
+  const hasColumns = result.view.slot.columns.length > 0
+  if (hasColumns) return null
+  return (
+    <InfoBar
+      severity="success"
+      title="Query OK"
+      message={dmlSuccessMessage(result.affectedRows)}
+      data-testid="dml-success"
+    />
+  )
+}
+
+function resultPanelAttributes(location: ResultPanelLocation, resultIndex: number) {
+  const { tabId, hideSubTabs, showsSubTabs } = location
+  const panelId = `result-tabpanel-${tabId}-${resultIndex}`
+  const labelledBy = subTabLabelledBy(showsSubTabs, tabId, resultIndex)
+  return resultTabPanelAttributes(hideSubTabs, panelId, labelledBy)
+}
+
+function resultSlots({
+  location,
+  controllers,
+  isTabRunning,
+}: ResultStatusViewProps): DataViewSlots {
+  const { surfaceRef, activeResult } = controllers
+  return {
+    editTarget: <EditModeDropdown surfaceRef={surfaceRef} connectionId={location.connectionId} />,
+    bands: (
+      <ResultBands surfaceRef={surfaceRef} result={activeResult} isTabRunning={isTabRunning} />
+    ),
+    exportDialog: (
+      <ResultExportDialog
+        surfaceRef={surfaceRef}
+        connectionId={location.connectionId}
+        isOpen={activeResult.view.prompts.isExportOpen}
+      />
+    ),
+  }
+}
+
+export function ResultStatusView(props: ResultStatusViewProps) {
+  const { location, controllers, displayStatus } = props
+  if (displayStatus === 'idle') return <EmptyResultState isRunning={false} />
+  if (displayStatus === 'running') return <EmptyResultState isRunning={true} />
+  const { activeResult, activeResultIndex } = controllers
+  return (
+    <>
+      {location.showsSubTabs && <ResultSubTabs tabId={location.tabId} />}
+      <DataViewBody
+        source={controllers.source}
+        slots={resultSlots(props)}
+        readiness={queryToolbarReadiness(activeResult, displayStatus)}
+        panelAttributes={resultPanelAttributes(location, activeResultIndex)}
+        message={resultMessage(activeResult)}
+      />
+    </>
   )
 }

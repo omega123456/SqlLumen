@@ -1,7 +1,7 @@
 import type { SingleResultState } from '../../../stores/query-store'
 import type { FullExportBlockedReason } from '../../../types/schema'
 import type { DataToolbarReadiness } from '../../shared/data-view/toolbar/data-toolbar-model'
-import { RESULT_GRID_TAB_PANEL, RESULT_TAB_PANEL } from './result-panel-classes'
+import type { DataViewPanelAttributes } from '../../shared/data-view/body/data-view-body-model'
 
 export const TRUNCATION_MESSAGES: Record<FullExportBlockedReason | 'none', string> = {
   none: 'Result truncated. This query returned more rows than the maximum rows kept per result.',
@@ -38,23 +38,11 @@ export function queryToolbarReadiness(
   }
 }
 
-export function gridTabPanelClassNameFor(viewMode: string, columnCount: number): string {
-  const isGridWithColumns = viewMode === 'grid' && columnCount > 0
-  if (isGridWithColumns) return RESULT_GRID_TAB_PANEL
-  return RESULT_TAB_PANEL
-}
-
-export interface TabPanelAttributes {
-  role?: string
-  id?: string
-  'aria-labelledby'?: string
-}
-
 export function resultTabPanelAttributes(
   hideSubTabs: boolean,
   panelId: string,
   labelledBy: string | undefined
-): TabPanelAttributes {
+): DataViewPanelAttributes {
   if (hideSubTabs) return {}
   return { role: 'tabpanel', id: panelId, 'aria-labelledby': labelledBy }
 }

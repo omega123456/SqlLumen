@@ -7,7 +7,6 @@ import {
   type SingleResultState,
 } from '../../../stores/query-store'
 import type { DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
-import { useDataFilter, type DataViewFilter } from '../../shared/data-view/toolbar/use-data-filter'
 import type { DataViewSource } from '../../shared/data-view/data-view-source'
 import { queryDataViewSource } from './query-data-view-source'
 
@@ -16,26 +15,25 @@ export interface ResultPanelControllers {
   activeResultIndex: number
   surfaceRef: DataViewSurfaceRef
   source: DataViewSource
-  filter: DataViewFilter
 }
 
-interface InactiveOverlayCloser {
+interface InactiveExportCloser {
   surfaceRef: DataViewSurfaceRef
   isActive: boolean
   exportDialogOpen: boolean
-  closeFilterDialog: () => void
 }
 
-function useCloseOverlaysWhenInactive(inputs: InactiveOverlayCloser) {
-  const { surfaceRef, isActive, exportDialogOpen, closeFilterDialog } = inputs
+function useCloseExportWhenInactive({
+  surfaceRef,
+  isActive,
+  exportDialogOpen,
+}: InactiveExportCloser) {
   const closeExportDialog = useQueryStore((state) => state.closeExportDialog)
   useEffect(() => {
-    if (isActive) return
-    queueMicrotask(() => {
-      if (exportDialogOpen) closeExportDialog(surfaceRef)
-      closeFilterDialog()
-    })
-  }, [closeExportDialog, exportDialogOpen, isActive, surfaceRef, closeFilterDialog])
+    const isOpenWhileInactive = exportDialogOpen && !isActive
+    if (!isOpenWhileInactive) return
+    queueMicrotask(() => closeExportDialog(surfaceRef))
+  }, [closeExportDialog, exportDialogOpen, isActive, surfaceRef])
 }
 
 export function useResultPanelControllers(
@@ -60,14 +58,12 @@ export function useResultPanelControllers(
       }),
     [surfaceRef, isActive, isTruncated, canEdit]
   )
-  const filter = useDataFilter(surfaceRef)
-  useCloseOverlaysWhenInactive({
+  useCloseExportWhenInactive({
     surfaceRef: surfaceRef,
     isActive: isActive,
     exportDialogOpen: activeResult.view.prompts.isExportOpen,
-    closeFilterDialog: filter.closeFilterDialog,
   })
-  return { activeResult, activeResultIndex, surfaceRef, source, filter }
+  return { activeResult, activeResultIndex, surfaceRef, source }
 }
 
 export function useRetryExpiredResult(tabId: string): () => void {

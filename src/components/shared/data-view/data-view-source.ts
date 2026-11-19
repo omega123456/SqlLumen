@@ -6,6 +6,8 @@ export interface DataViewTestIds {
   form: string
   text: string
   toolbar: string
+  restoreOverlay: string
+  busyOverlay: string
 }
 
 export type PageEdgeSelection = 'first' | 'last'
