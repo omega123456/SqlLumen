@@ -8,6 +8,8 @@ import type {
 import { type CachedRow, type ViewRange } from '../../lib/result-window-cache'
 import { type ResultExportProgress, type ResultExportStatus } from '../../lib/export-commands'
 import type { RunExportProgress } from '../../types/run-export'
+import type { RowActionHandle, RowActionStart } from '../data-view/row-action-progress'
+import type { ColumnSortChange, ScrollCell } from '../data-view/view-actions'
 import type {
   DataViewPatch,
   DataViewState,
@@ -20,6 +22,8 @@ import type {
 export type ExecutionStatus = 'idle' | 'running' | 'success' | 'error'
 
 export type { ExportRowScope, RowActionVerb, RowActionProgress }
+export type { RowActionHandle, RowActionStart } from '../data-view/row-action-progress'
+export type { ColumnSortChange, ScrollCell } from '../data-view/view-actions'
 
 export interface FullExportRequest {
   connectionId: string
@@ -40,23 +44,7 @@ export interface ResultExportJob extends FullExportRequest {
   startToken: number
 }
 
-export interface RowActionStart {
-  verb: RowActionVerb
-  total: number
-  onCancel?: () => void
-}
-
 export type TabStatus = ExecutionStatus | 'ai-pending' | 'ai-reviewing' | 'restoring'
-
-export interface ScrollCell {
-  scrollRow: number
-  scrollColumn: number
-}
-
-export interface ColumnSortChange {
-  column: string
-  direction: 'asc' | 'desc' | null
-}
 
 export type ActiveBottomPanelItem = { type: 'result' } | { type: 'table-data'; tabId: string }
 
@@ -118,11 +106,6 @@ export interface RunTarget {
 }
 
 export type FlatTabView = TabQueryState & SingleResultState
-
-export interface RowActionHandle {
-  update: (done: number) => void
-  finish: () => boolean
-}
 
 export interface QueryState {
   tabs: Record<string, TabQueryState>
@@ -201,7 +184,7 @@ export interface QueryState {
 
   startEditingRow: (ref: DataViewSurfaceRef, rowIndex: number, row?: CachedRow) => void
 
-  cloneSelectedRow: (ref: DataViewSurfaceRef) => void
+  cloneSelectedRow: (ref: DataViewSurfaceRef) => Promise<void>
 
   insertDraftRow: (ref: DataViewSurfaceRef) => void
 

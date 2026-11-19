@@ -1,4 +1,5 @@
 import type { DataViewSurfaceRef } from '../data-view/data-view-types'
+import { openExportDialog } from '../data-view/view-actions'
 import { isResultsExpiredError } from '../../lib/result-window-cache'
 import { formatCount } from '../../lib/format-row-count'
 import {
@@ -18,7 +19,7 @@ import {
   removeExportJob,
 } from './query-tab-reducers'
 import { RESULT_EXPORT_POLL_MS } from './query-state-defaults'
-import type { ExportRowScope, FullExportRequest, ResultExportJob } from './query-state-types'
+import type { FullExportRequest, ResultExportJob } from './query-state-types'
 import { patchSurface, resultAt, getQueryState, setQueryState } from './query-store-access'
 
 const exportPollTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -159,10 +160,6 @@ function handleExportStartFailure(tabId: string, message: string, isStillThisJob
   }
   showErrorToast('Export failed', message)
   patchExportJob(tabId, { status: 'failed', error: message })
-}
-
-export function openExportDialog(ref: DataViewSurfaceRef, scope: ExportRowScope = 'currentView') {
-  patchSurface(ref, { view: { prompts: { isExportOpen: true, exportScope: scope } } })
 }
 
 export function closeExportDialog(ref: DataViewSurfaceRef) {

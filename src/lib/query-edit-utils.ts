@@ -1,5 +1,4 @@
 import type { ColumnMeta, TableDataColumnMeta, RowEditState } from '../types/schema'
-import { coerceValueForColumn } from '../stores/table-data-store'
 import { isSameTextIgnoringCase } from './value-checks'
 import { isInlineEditableColumn } from './column-capabilities'
 export {
@@ -153,66 +152,4 @@ export function buildRowEditState({
     modifiedColumns: new Set<string>(),
     isNewRow: false,
   }
-}
-
-export function buildUpdatePayload(
-  editState: RowEditState,
-  primaryKeyColumnNames: string[],
-  columns?: TableDataColumnMeta[]
-): {
-  pkColumns: string[]
-  originalPkValues: Record<string, unknown>
-  updatedValues: Record<string, unknown>
-} {
-  const columnsByName = columns
-    ? new Map(columns.map((column) => [column.name, column]))
-    : undefined
-
-  const originalPrimaryKeyValues: Record<string, unknown> = {}
-  for (const primaryKey of primaryKeyColumnNames) {
-    originalPrimaryKeyValues[primaryKey] = editState.rowKey[primaryKey]
-  }
-
-  const updatedValues: Record<string, unknown> = {}
-  for (const column of editState.modifiedColumns) {
-    const rawValue = editState.currentValues[column]
-    const columnMeta = columnsByName?.get(column)
-    updatedValues[column] = columnMeta
-      ? coerceValueForColumn(rawValue, columnMeta.dataType)
-      : rawValue
-  }
-
-  return {
-    pkColumns: primaryKeyColumnNames,
-    originalPkValues: originalPrimaryKeyValues,
-    updatedValues: updatedValues,
-  }
-}
-
-export function buildInsertPayload(
-  editState: RowEditState,
-  tableColumns: TableDataColumnMeta[]
-): Record<string, unknown> {
-  const values: Record<string, unknown> = {}
-  const insertEligibleColumns = editState.insertEligibleColumns
-
-  for (const column of tableColumns) {
-    if (column.isAutoIncrement) {
-      continue
-    }
-
-    const isModified = editState.modifiedColumns.has(column.name)
-    const isInsertEligible = insertEligibleColumns?.has(column.name) ?? false
-    const isPayloadColumn = isModified || isInsertEligible
-    if (!isPayloadColumn) {
-      continue
-    }
-
-    const currentValue = editState.currentValues[column.name]
-    if (currentValue !== undefined) {
-      values[column.name] = coerceValueForColumn(currentValue, column.dataType)
-    }
-  }
-
-  return values
 }

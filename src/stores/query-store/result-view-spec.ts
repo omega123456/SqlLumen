@@ -7,7 +7,7 @@ import type {
 } from '../../types/schema'
 import { EMPTY_WINDOW } from './query-state-defaults'
 import type { DataViewSlot, DataViewSpecState } from '../data-view/data-view-types'
-import type { SingleResultState, ResultPatch } from './query-state-types'
+import type { SingleResultState } from './query-state-types'
 
 export function getResultViewSpec(result: SingleResultState): ResultViewSpec {
   return { sort: result.view.spec.sort, filters: result.view.spec.filters }
@@ -101,22 +101,6 @@ export interface LocatedResult extends ResultLocation {
 
 interface ViewSpecTarget extends ResultLocation {
   spec: ResultViewSpec
-}
-
-interface PaintedViewMetrics {
-  viewVersion: number
-  viewRowCount: number
-  totalRows: number
-  window?: ResultWindow
-}
-
-export interface ViewPaint extends ViewSpecTarget {
-  view: PaintedViewMetrics
-  extra?: ResultPatch
-}
-
-export interface ViewChangeRequest extends ViewSpecTarget {
-  kind: 'sort' | 'filter'
 }
 
 export interface ViewRequestIssue extends ViewSpecTarget {

@@ -16,7 +16,7 @@ import { showErrorToast, showWarningToast } from '../toast-store'
 import { useTableDataStore } from '../table-data-store'
 import { appendDraftRow } from './cell-edit-actions'
 import { cloneSourceRowKey, findRowIndexByKey, isDraftRowKey } from './row-keys'
-import { buildCurrentValuesFromRow } from './row-payloads'
+import { buildCurrentValuesFromRow } from './row-edit-transitions'
 
 interface TableCloneSource {
   tab: TableDataTabState

@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react'
-import { countRanges, useQueryStore, type QueryState } from '../../../stores/query-store'
+import { useQueryStore, type QueryState } from '../../../stores/query-store'
+import { countRanges } from '../../../lib/view-ranges'
 import type { DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
 import type { RowRange } from '../../shared/glide/grid-row-source'
 import { useSelectionResetKey } from '../../shared/use-selection-reset-key'

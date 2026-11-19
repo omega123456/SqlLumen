@@ -38,6 +38,7 @@ export function LegacyResultGridView({
 }: LegacyResultGridViewProps) {
   useLayoutEffect(() => {
     seedResultWindow({
+      route: 'query',
       connectionId: 'conn-1',
       tabId: props.tabId,
       resultIndex: 0,

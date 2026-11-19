@@ -333,6 +333,7 @@ export function seedResultRows(
   connectionId = 'conn-1'
 ): void {
   seedResultWindow({
+    route: 'query',
     connectionId,
     tabId,
     resultIndex,

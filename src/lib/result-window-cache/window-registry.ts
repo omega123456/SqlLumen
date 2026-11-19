@@ -1,6 +1,7 @@
 import { type ResultSlotRef } from '../query-commands'
 import { normalizeTinyIntRows } from '../table-data-commands'
 import type { ColumnMeta, ResultWindow } from '../../types/schema'
+import type { DataViewRouteKind, DataViewSurfaceRef } from '../../stores/data-view/data-view-types'
 import {
   MAX_CONCURRENT_PAGE_FETCHES,
   RESULT_MAX_PAGES,
@@ -40,17 +41,17 @@ export interface WindowStatusPatch {
 }
 
 export interface WindowStatusUpdate {
-  tabId: string
-  resultIndex: number
+  surface: DataViewSurfaceRef
   patch: WindowStatusPatch
   failure?: { message: string }
 }
 
 export type WindowStatusHandler = (update: WindowStatusUpdate) => void
 
-export type WindowExpiredHandler = (tabId: string) => void
+export type WindowExpiredHandler = (surface: DataViewSurfaceRef) => void
 
 export interface SeedResultWindowParams {
+  route: DataViewRouteKind
   connectionId: string
   tabId: string
   resultIndex: number
@@ -68,6 +69,7 @@ interface Page {
 }
 
 export interface Surface {
+  route: DataViewRouteKind
   slot: ResultSlotRef
   columns: ColumnMeta[]
   viewVersion: number
@@ -136,11 +138,18 @@ export function reportStatus(
   failure?: { message: string }
 ): void {
   statusHandler?.({
-    tabId: surface.slot.tabId,
-    resultIndex: surface.slot.resultIndex,
+    surface: surfaceRefOf(surface),
     patch: patch,
     failure: failure,
   })
+}
+
+export function surfaceRefOf(surface: Surface): DataViewSurfaceRef {
+  return {
+    route: surface.route,
+    tabId: surface.slot.tabId,
+    resultIndex: surface.slot.resultIndex,
+  }
 }
 
 export function pageRange(surface: Surface, pageIndex: number): ViewRange {
@@ -216,6 +225,7 @@ export function settlePending(surface: Surface): void {
 
 export function freshSurface(params: SeedResultWindowParams): Surface {
   return {
+    route: params.route,
     slot: {
       connectionId: params.connectionId,
       tabId: params.tabId,

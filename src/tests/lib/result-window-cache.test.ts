@@ -28,6 +28,8 @@ import {
 import type { ColumnMeta } from '../../types/schema'
 
 const TAB = 'tab-w'
+
+const TAB_SURFACE = { route: 'query', tabId: TAB, resultIndex: 0 }
 const COLUMNS: ColumnMeta[] = [{ name: 'id', dataType: 'INT' }]
 
 /** A virtual result of `total` rows: row i is [i], base index = i. */
@@ -50,6 +52,7 @@ function serveWindows(total: number, viewVersion = 1) {
 function seed(total: number, firstRows = Math.min(total, 1000), viewVersion = 1) {
   const rows = Array.from({ length: firstRows }, (_, i) => [i])
   seedResultWindow({
+    route: 'query',
     connectionId: 'conn-1',
     tabId: TAB,
     resultIndex: 0,
@@ -224,7 +227,7 @@ describe('visible-range loading', () => {
     await vi.waitFor(() => expect(windowCalls()).toHaveLength(3))
     await Promise.resolve()
     expect(status).not.toHaveBeenCalledWith(
-      expect.objectContaining({ tabId: TAB, resultIndex: 0, failure: expect.anything() })
+      expect.objectContaining({ surface: TAB_SURFACE, failure: expect.anything() })
     )
     await vi.waitFor(() =>
       expect(ipc.payloads('log_frontend')).toContainEqual({
@@ -281,7 +284,7 @@ describe('visible-range loading', () => {
     })
     seed(3000)
     requestVisibleRange(TAB, 0, [2000, 2010])
-    await vi.waitFor(() => expect(expired).toHaveBeenCalledWith(TAB))
+    await vi.waitFor(() => expect(expired).toHaveBeenCalledWith(TAB_SURFACE))
   })
 
   it('records a failed range for the Retry band and refetches on retry', async () => {
@@ -294,8 +297,7 @@ describe('visible-range loading', () => {
     requestVisibleRange(TAB, 0, [2100, 2120])
     await vi.waitFor(() =>
       expect(status).toHaveBeenCalledWith({
-        tabId: TAB,
-        resultIndex: 0,
+        surface: TAB_SURFACE,
         patch: { failedRange: [2100, 2120] },
         failure: { message: 'connection reset' },
       })
@@ -304,8 +306,7 @@ describe('visible-range loading', () => {
     serveWindows(3000)
     retryFailedWindow(TAB, 0)
     expect(status).toHaveBeenCalledWith({
-      tabId: TAB,
-      resultIndex: 0,
+      surface: TAB_SURFACE,
       patch: { failedRange: null },
       failure: undefined,
     })
@@ -339,16 +340,14 @@ describe('visible-range loading', () => {
     expect(status).not.toHaveBeenCalled()
     vi.advanceTimersByTime(1)
     expect(status).toHaveBeenCalledWith({
-      tabId: TAB,
-      resultIndex: 0,
+      surface: TAB_SURFACE,
       patch: { pendingRange: [2100, 2110] },
       failure: undefined,
     })
     releases.forEach((release) => release())
     await vi.waitFor(() =>
       expect(status).toHaveBeenCalledWith({
-        tabId: TAB,
-        resultIndex: 0,
+        surface: TAB_SURFACE,
         patch: { pendingRange: null },
         failure: undefined,
       })
@@ -375,6 +374,7 @@ describe('eviction and teardown', () => {
   it('dropTabResultWindows and clearAllResultWindows forget surfaces', () => {
     seed(10)
     seedResultWindow({
+      route: 'query',
       connectionId: 'conn-1',
       tabId: 'other',
       resultIndex: 0,

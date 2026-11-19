@@ -1040,7 +1040,11 @@ describe('useWorkspaceStore — closeTab', () => {
             resultState({
               resultStatus: 'success',
               view: {
-                slot: { queryId: 'query-restore-on-close', viewRowCount: 1 },
+                slot: {
+                  connectionId: 'conn-1',
+                  queryId: 'query-restore-on-close',
+                  viewRowCount: 1,
+                },
                 residency: {
                   rows: {
                     status: 'evicted',
@@ -1649,7 +1653,11 @@ describe('useWorkspaceStore — forceCloseTab', () => {
             resultState({
               resultStatus: 'success',
               view: {
-                slot: { queryId: 'query-restore-on-force-close', viewRowCount: 1 },
+                slot: {
+                  connectionId: 'conn-1',
+                  queryId: 'query-restore-on-force-close',
+                  viewRowCount: 1,
+                },
                 residency: {
                   rows: {
                     status: 'evicted',

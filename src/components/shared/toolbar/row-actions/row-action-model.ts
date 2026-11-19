@@ -1,5 +1,5 @@
 import { formatCount } from '../../../../lib/format-row-count'
-import { BULK_DELETE_WARNING_ROWS, MAX_BULK_DELETE_ROWS } from '../../../../stores/query-store'
+import { BULK_DELETE_WARNING_ROWS, MAX_BULK_DELETE_ROWS } from '../../../../lib/data-view-limits'
 
 export interface RowActionAvailability {
   canAdd: boolean

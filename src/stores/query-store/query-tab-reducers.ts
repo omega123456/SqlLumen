@@ -8,7 +8,7 @@ import type {
 } from './query-state-types'
 import { applyViewPatch, mergeViewPatches } from '../data-view/data-view-reducers'
 import { hasOpenExportDialog, hasResultAt, hasResults, isSameResultList } from './result-lists'
-import { canEvictInactiveResult } from './result-residency'
+import { canEvictInactiveView, evictedViewPatch } from '../data-view/residency'
 import { withoutKey } from '../../lib/record-utils'
 
 type QueryTabs = Pick<QueryState, 'tabs'>
@@ -125,17 +125,8 @@ export function patchQueryResultResidency(
 }
 
 function evictedResult(result: SingleResultState, evictedAt: number): SingleResultState {
-  if (!canEvictInactiveResult(result)) return result
-  return patchedResult(result, {
-    view: {
-      edit: { rowIndex: null, baseIndex: null, state: null },
-      window: { pendingRange: null },
-      residency: {
-        evictedAt: evictedAt,
-        rows: { ...result.view.residency.rows, status: 'evicted' },
-      },
-    },
-  })
+  if (!canEvictInactiveView(result.view)) return result
+  return patchedResult(result, { view: evictedViewPatch(result.view, evictedAt) })
 }
 
 export function evictQueryResultRows(
@@ -144,7 +135,7 @@ export function evictQueryResultRows(
 ): QueryTabs {
   const tab = state.tabs[tabId]
   if (!hasResultAt(tab, resultIndex)) return state
-  if (!canEvictInactiveResult(tab.results[resultIndex])) return state
+  if (!canEvictInactiveView(tab.results[resultIndex].view)) return state
   return withResultUpdated(state, { tabId: tabId, resultIndex: resultIndex }, (result) =>
     evictedResult(result, evictedAt)
   )

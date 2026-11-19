@@ -21,8 +21,9 @@ import {
   resultAt,
   getQueryState,
 } from './query-store-access'
-import { residentRowResidency } from './query-tab-selectors'
-import { freshResultFields, residentRows, seedResultFromResponse } from './result-seeding'
+import { residentRows, residentRowsAfterReload } from '../data-view/residency'
+import { DEFAULT_DATA_VIEW_STATE } from '../data-view/data-view-defaults'
+import { freshResultFields, seedResultFromResponse } from './result-seeding'
 import { mergeResultPatches, patchedResult } from './query-tab-reducers'
 import { rerunViewSpec } from './result-view-spec'
 import type { ResultTarget } from './result-view-spec'
@@ -74,9 +75,10 @@ export async function reexecuteAndPatchResult({
     resultStatus: 'success',
     errorMessage: reResult.error ?? null,
   })
+  const previousRows = postResult?.view.residency.rows ?? DEFAULT_DATA_VIEW_STATE.residency.rows
   const residencyPatch: ResultPatch = {
     view: {
-      residency: { isExpired: false, evictedAt: null, rows: residentRowResidency(postResult) },
+      residency: { isExpired: false, evictedAt: null, rows: residentRowsAfterReload(previousRows) },
     },
   }
   patchResultByIndex(

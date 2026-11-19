@@ -1,0 +1,7 @@
+export const MAX_BULK_DELETE_ROWS = 10_000
+
+export const BULK_DELETE_WARNING_ROWS = 1_000
+
+export const TEXT_VIEW_ROW_CAP = 5_000
+
+export const VIEW_REFRESH_WINDOW_ROWS = 1000

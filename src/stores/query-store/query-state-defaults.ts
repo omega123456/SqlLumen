@@ -20,15 +20,7 @@ export function getDefaultRowLimit(): number {
 
 export const RESULT_EXPORT_POLL_MS = 500
 
-export const MAX_BULK_DELETE_ROWS = 10_000
-
-export const VIEW_REFRESH_WINDOW_ROWS = 1000
-
 export const EDIT_ANALYSIS_ERROR_TOAST_DURATION_MS = 10_000
-
-export const BULK_DELETE_WARNING_ROWS = 1_000
-
-export const TEXT_VIEW_ROW_CAP = 5_000
 
 export const EMPTY_OBJECT = Object.freeze({}) as Record<string, QueryTableEditInfo>
 
@@ -69,12 +61,6 @@ export const DEFAULT_TAB_STATE: TabQueryState = {
   isCancelling: false,
   wasCancelled: false,
   runExport: null,
-}
-
-export const ROW_EDIT_STATE_RESET: ResultPatch = {
-  view: {
-    edit: { state: null, rowIndex: null, baseIndex: null, draftRow: null, saveError: null },
-  },
 }
 
 export const EDIT_STATE_DEFAULTS: ResultPatch = {

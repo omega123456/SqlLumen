@@ -1,6 +1,7 @@
 import type { DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
 import { useCallback } from 'react'
-import { countRanges, useQueryStore, type RowActionHandle } from '../../../stores/query-store'
+import { useQueryStore, type RowActionHandle } from '../../../stores/query-store'
+import { countRanges } from '../../../lib/view-ranges'
 import { showErrorToast, useToastStore } from '../../../stores/toast-store'
 import { serializeCsv } from '../../../lib/csv-utils'
 import { writeClipboardText } from '../../../lib/context-menu-utils'

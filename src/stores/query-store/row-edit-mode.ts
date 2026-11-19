@@ -1,6 +1,5 @@
 import type { QueryTableEditInfo } from '../../types/schema'
 import { mergeResultPatches } from './query-tab-reducers'
-import { type CachedRow } from '../../lib/result-window-cache'
 import { showErrorToast } from '../toast-store'
 import {
   findAmbiguousColumns,
@@ -13,53 +12,11 @@ import { toErrorMessage } from '../../lib/error-message'
 import { hasResultAt } from './result-lists'
 import { runEditAnalysis } from './edit-analysis'
 import { EDIT_STATE_DEFAULTS, EMPTY_OBJECT } from './query-state-defaults'
-import type { ResultPatch, SingleResultState } from './query-state-types'
-import {
-  patchResultByIndex,
-  patchSurface,
-  resultAt,
-  resultOf,
-  rowAt,
-  getQueryState,
-} from './query-store-access'
+import type { SingleResultState } from './query-state-types'
+import { patchResultByIndex, patchSurface, resultOf, getQueryState } from './query-store-access'
 import type { DataViewSurfaceRef } from '../data-view/data-view-types'
-import { buildEditBindingContext, buildSeededRowEditState } from './result-seeding'
-import type { LocatedResult } from './result-view-spec'
+import { buildEditBindingContext } from './result-seeding'
 import { editMetadataWithTable, warnAboutAmbiguousEditColumns } from './row-edit-builders'
-
-export function ensureResultEditState(
-  located: LocatedResult,
-  rowIndex: number
-): SingleResultState | null {
-  const { tabId, resultIndex, result } = located
-  if (!result.view.editTarget.tableName) return null
-
-  const tableInfo = result.view.editTarget.tables[result.view.editTarget.tableName]
-  const cached = rowAt(located, rowIndex)
-  if (!tableInfo) return null
-  if (!cached) return null
-  const row = cached.row
-  if (!row) return null
-
-  const isAlreadyEditingRow =
-    Boolean(result.view.edit.state) && result.view.edit.rowIndex === rowIndex
-  if (isAlreadyEditingRow) {
-    return result
-  }
-
-  patchResultByIndex(tabId, resultIndex, {
-    view: {
-      edit: {
-        state: buildSeededRowEditState(result, tableInfo, row),
-        rowIndex: rowIndex,
-        baseIndex: cached.baseIndex >= 0 ? cached.baseIndex : null,
-        saveError: null,
-      },
-    },
-  })
-
-  return resultAt(tabId, resultIndex) ?? null
-}
 
 interface EditModeRequest {
   connectionId: string
@@ -213,44 +170,6 @@ export async function setEditMode(ref: DataViewSurfaceRef, tableName: string | n
   })
 }
 
-export function startEditingRow(ref: DataViewSurfaceRef, rowIndex: number, cachedRow?: CachedRow) {
-  const { tabId, resultIndex } = ref
-  const result = resultOf(ref)
-  if (!result?.view.editTarget.tableName) return
-  if (!result.view.editTarget.tables[result.view.editTarget.tableName]) return
-
-  const cached =
-    cachedRow ?? rowAt({ tabId: tabId, resultIndex: resultIndex, result: result }, rowIndex)
-  if (!cached) return
-  const row = cached.row
-
-  const tableInfo = result.view.editTarget.tables[result.view.editTarget.tableName]
-  patchSurface(ref, {
-    view: {
-      edit: {
-        state: buildSeededRowEditState(result, tableInfo, row),
-        rowIndex: rowIndex,
-        baseIndex: cached.baseIndex >= 0 ? cached.baseIndex : null,
-        saveError: null,
-      },
-    },
-  })
-}
-
-export function discardCurrentRow(ref: DataViewSurfaceRef) {
-  const result = resultOf(ref)
-  if (!result?.view.edit.state) return
-
-  const editReset: ResultPatch = {
-    view: { edit: { state: null, rowIndex: null, baseIndex: null, saveError: null } },
-  }
-  const draftReset: ResultPatch = {
-    view: { edit: { draftRow: null }, selection: { rowIndex: null } },
-  }
-  const isDiscardingDraft = result.view.edit.state.isNewRow
-  patchSurface(ref, isDiscardingDraft ? mergeResultPatches(editReset, draftReset) : editReset)
-}
-
 export function clearEditState(ref: DataViewSurfaceRef) {
   const tab = getQueryState().tabs[ref.tabId]
   if (!hasResultAt(tab, ref.resultIndex)) return
@@ -258,5 +177,5 @@ export function clearEditState(ref: DataViewSurfaceRef) {
 }
 
 export function rowEditModeActions() {
-  return { setEditMode, startEditingRow, discardCurrentRow, clearEditState }
+  return { setEditMode, clearEditState }
 }

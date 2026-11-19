@@ -1,8 +1,5 @@
-import {
-  cloneSourceRowIndex,
-  copiedBoundColumnNames,
-  type SingleResultState,
-} from '../../../stores/query-store'
+import type { SingleResultState } from '../../../stores/query-store'
+import { cloneSourceRowIndex, copiedBoundColumnNames } from '../../../stores/data-view/row-clone'
 import type { DataViewLocation } from '../../../types/shared-data-view'
 import type {
   FullExportBlockedReason,
@@ -77,14 +74,14 @@ function canAddResultRow(inputs: RowInsertionInputs): boolean {
 
 function hasCopiedBoundColumns(inputs: RowInsertionInputs): boolean {
   const cloneTable = { columns: inputs.editTableColumns, primaryKey: inputs.primaryKey }
-  return copiedBoundColumnNames(inputs.result, cloneTable).size > 0
+  return copiedBoundColumnNames(inputs.result.view, cloneTable).size > 0
 }
 
 function canCloneResultRow(inputs: RowInsertionInputs): boolean {
   const { result } = inputs
   if (isRowInsertionBlocked(inputs)) return false
   if (isCloneBlockedByEditing(result)) return false
-  const hasCloneSource = cloneSourceRowIndex(result) !== null
+  const hasCloneSource = cloneSourceRowIndex(result.view) !== null
   if (!hasCloneSource) return false
   return hasCopiedBoundColumns(inputs)
 }

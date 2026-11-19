@@ -7,8 +7,11 @@ import {
 } from '../../lib/result-window-cache'
 import { logFrontend } from '../../lib/app-log-commands'
 import { toErrorMessage } from '../../lib/error-message'
-import type { ResultPatch, SingleResultState } from './query-state-types'
-import { mergeResultPatches } from './query-tab-reducers'
+import type { SingleResultState } from './query-state-types'
+import type { DataViewSurfaceRef } from '../data-view/data-view-types'
+import type { ViewPaintRequest, ViewSpecRequest } from '../data-view/route-registry'
+import { paintedViewPatch } from '../data-view/view-actions'
+import { querySurfaceRef } from './query-surface'
 import {
   markTabResultsExpired,
   patchResultByIndex,
@@ -18,7 +21,7 @@ import {
 } from './query-store-access'
 import { repaintLatestKnownView, settleFailedView } from './result-view-failure'
 import { getResultViewSpec } from './result-view-spec'
-import type { ViewChangeRequest, ViewPaint, ViewRequestIssue } from './result-view-spec'
+import type { ViewRequestIssue } from './result-view-spec'
 
 export interface ViewTracker {
   queryId: string
@@ -60,24 +63,14 @@ export function dropViewTrackers(tabId: string) {
   }
 }
 
-export function paintView({ tabId, resultIndex, spec, view, extra = {} }: ViewPaint) {
-  applyResultView(tabId, resultIndex, view)
-  const result = resultAt(tabId, resultIndex)
-  const paintPatch: ResultPatch = {
-    latestKnownViewVersion: Math.max(result?.latestKnownViewVersion ?? 0, view.viewVersion),
-    view: {
-      slot: {
-        viewVersion: view.viewVersion,
-        viewRowCount: view.viewRowCount,
-        totalRows: view.totalRows,
-      },
-      selection: { rowIndex: null, cell: null },
-      checked: { ranges: [], viewVersion: view.viewVersion },
-      spec: { sort: spec.sort, filters: spec.filters, applying: null, error: null },
-      window: { pendingRange: null, failedRange: null },
-    },
-  }
-  patchResultByIndex(tabId, resultIndex, mergeResultPatches(paintPatch, extra))
+export function paintView(ref: DataViewSurfaceRef, request: ViewPaintRequest) {
+  const { tabId, resultIndex } = ref
+  applyResultView(tabId, resultIndex, request.view)
+  const latestKnownViewVersion = resultAt(tabId, resultIndex)?.latestKnownViewVersion ?? 0
+  patchResultByIndex(tabId, resultIndex, {
+    latestKnownViewVersion: Math.max(latestKnownViewVersion, request.view.viewVersion),
+    view: paintedViewPatch(request),
+  })
 }
 
 interface IssuedViewRequest {
@@ -111,9 +104,7 @@ async function applyViewResponse(
     await repaintLatestKnownView(tabId, resultIndex, spec)
     return
   }
-  paintView({
-    tabId: tabId,
-    resultIndex: resultIndex,
+  paintView(querySurfaceRef(tabId, resultIndex), {
     spec: spec,
     view: {
       viewVersion: response.viewVersion,
@@ -212,7 +203,11 @@ export async function settleViewFailure(tabId: string, resultIndex: number, erro
   await settleFailedView(tabId, resultIndex, error)
 }
 
-export function requestView({ tabId, resultIndex, spec, kind }: ViewChangeRequest): Promise<void> {
+export function requestView(
+  ref: DataViewSurfaceRef,
+  { spec, kind }: ViewSpecRequest
+): Promise<void> {
+  const { tabId, resultIndex } = ref
   const result = resultAt(tabId, resultIndex)
   if (!result) return Promise.resolve()
   const tracker = trackerFor(tabId, resultIndex, result)
@@ -233,8 +228,17 @@ export function requestView({ tabId, resultIndex, spec, kind }: ViewChangeReques
   })
 }
 
-export function latestRequestedSpec(tabId: string, resultIndex: number): ResultViewSpec | null {
-  const result = resultAt(tabId, resultIndex)
+export function latestRequestedSpec(ref: DataViewSurfaceRef): ResultViewSpec | null {
+  const result = resultAt(ref.tabId, ref.resultIndex)
   if (!result) return null
-  return trackerFor(tabId, resultIndex, result).spec
+  return trackerFor(ref.tabId, ref.resultIndex, result).spec
+}
+
+export function retryRequestedView(ref: DataViewSurfaceRef) {
+  const result = resultAt(ref.tabId, ref.resultIndex)
+  if (!result) return
+  const tracker = trackerFor(ref.tabId, ref.resultIndex, result)
+  const spec = tracker.retrySpec ?? tracker.spec
+  const hasFilters = spec.filters.length > 0
+  void requestView(ref, { spec: spec, kind: hasFilters ? 'filter' : 'sort' })
 }

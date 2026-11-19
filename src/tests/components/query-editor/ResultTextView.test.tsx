@@ -37,6 +37,7 @@ const TAB = 'tab-text'
 
 function seedRows(viewRowCount = rows.length, loaded: unknown[][] = rows) {
   seedResultWindow({
+    route: 'query',
     connectionId: 'conn-1',
     tabId: TAB,
     resultIndex: 0,

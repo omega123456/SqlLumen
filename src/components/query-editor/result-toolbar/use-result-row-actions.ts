@@ -1,7 +1,8 @@
 import { useCallback } from 'react'
 import { hasPendingRowChanges } from '../../../lib/row-edit-state'
 import { useConnectionStore } from '../../../stores/connection-store'
-import { isSelectedRowInView, useQueryStore } from '../../../stores/query-store'
+import { useQueryStore } from '../../../stores/query-store'
+import { isSelectedRowInView } from '../../../stores/data-view/data-view-selectors'
 import {
   deleteButtonCopyFor,
   deleteTargetCountFor,
@@ -52,7 +53,10 @@ export function useResultRowActions(inputs: ResultRowActionInputs) {
   const isConnectionReadOnly = useConnectionStore(
     (state) => state.activeConnections[inputs.connectionId]?.profile?.readOnly ?? false
   )
-  const deleteTargetCount = deleteTargetCountFor(inputs.checkedCount, isSelectedRowInView(result))
+  const deleteTargetCount = deleteTargetCountFor(
+    inputs.checkedCount,
+    isSelectedRowInView(result.view)
+  )
   const rowEdits = useResultRowEdits(inputs.surfaceRef)
   const deletion = useResultRowDeletion(inputs, deleteTargetCount)
   const availability = rowActionAvailability({

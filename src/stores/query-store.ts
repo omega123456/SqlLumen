@@ -7,13 +7,10 @@ import { expiredResultActions } from './query-store/expired-results'
 import { resultResidencyActions } from './query-store/result-residency-actions'
 import { resultViewActions } from './query-store/result-view-actions'
 import { fullExportActions } from './query-store/full-export'
-import { rowDeletionActions } from './query-store/row-deletion'
-import { rowActionProgressActions } from './query-store/row-action-progress'
 import { rowEditModeActions } from './query-store/row-edit-mode'
-import { rowEditCellActions } from './query-store/row-edit-cells'
-import { rowSaveActions } from './query-store/row-save'
-import { navigationGuardActions } from './query-store/navigation-guard'
-import { registerResultWindowHandlers } from './query-store/query-store-access'
+import { queryDataViewActions } from './query-store/query-data-view-actions'
+import { registerQueryDataViewRoute } from './query-store/query-data-view-route'
+import { registerDataViewWindowHandlers } from './data-view/window-handlers'
 import type { QueryState } from './query-store/query-state-types'
 
 export { stripLeadingSqlComments } from '../lib/sql-utils'
@@ -21,9 +18,6 @@ export {
   FALLBACK_ROW_LIMIT,
   getDefaultRowLimit,
   RESULT_EXPORT_POLL_MS,
-  MAX_BULK_DELETE_ROWS,
-  BULK_DELETE_WARNING_ROWS,
-  TEXT_VIEW_ROW_CAP,
   DEFAULT_RESULT_STATE,
 } from './query-store/query-state-defaults'
 export {
@@ -32,15 +26,10 @@ export {
   isTableDataInBottomPanel,
   activeResultIndexOf,
   getActiveResult,
-  hasUnsavedModifications,
   hasAnyUnsavedEdits,
   getFlatTabState,
-  countRanges,
-  isSelectedRowInView,
-  cloneSourceRowIndex,
   isExecutionLocked,
 } from './query-store/query-tab-selectors'
-export { copiedBoundColumnNames } from './query-store/row-edit-builders'
 export type {
   ExecutionStatus,
   ExportRowScope,
@@ -74,12 +63,9 @@ export const useQueryStore = create<QueryState>()(() => ({
   ...resultResidencyActions(),
   ...resultViewActions(),
   ...fullExportActions(),
-  ...rowDeletionActions(),
-  ...rowActionProgressActions(),
   ...rowEditModeActions(),
-  ...rowEditCellActions(),
-  ...rowSaveActions(),
-  ...navigationGuardActions(),
+  ...queryDataViewActions(),
 }))
 
-registerResultWindowHandlers()
+registerQueryDataViewRoute()
+registerDataViewWindowHandlers()

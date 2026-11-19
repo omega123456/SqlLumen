@@ -8,7 +8,7 @@ import {
   rowKeyAfterCellChange,
 } from './row-keys'
 import type { RowKeyRename } from './row-keys'
-import { buildCurrentValuesFromRow } from './row-payloads'
+import { buildCurrentValuesFromRow } from './row-edit-transitions'
 import { getInitialValueForNewRow, isSeededFromColumnDefault } from '../../lib/new-row-values'
 import { patchTab } from './table-data-access'
 import { useTableDataStore } from '../table-data-store'

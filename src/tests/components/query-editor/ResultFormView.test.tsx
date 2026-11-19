@@ -38,6 +38,7 @@ function ResultFormView({ rows, totalRows, ...props }: LegacyFormProps) {
 function seedFormRows(element: React.ReactElement<LegacyFormProps>) {
   const { rows, columns, tabId } = element.props
   seedResultWindow({
+    route: 'query',
     connectionId: 'conn-1',
     tabId,
     resultIndex: 0,
@@ -482,6 +483,7 @@ describe('ResultFormView — Edit Mode', () => {
 
   it('fetches a row outside the loaded pages when navigating to it', async () => {
     seedResultWindow({
+      route: 'query',
       connectionId: 'conn-1',
       tabId: 'tab-1',
       resultIndex: 0,
@@ -517,6 +519,7 @@ describe('ResultFormView — Edit Mode', () => {
 
   it('shows a saved edit of a fetched row outside the loaded pages', async () => {
     seedResultWindow({
+      route: 'query',
       connectionId: 'conn-1',
       tabId: 'tab-1',
       resultIndex: 0,
@@ -572,6 +575,7 @@ describe('ResultFormView — Edit Mode', () => {
 
   it('routes results_expired while fetching the row to the expired block', async () => {
     seedResultWindow({
+      route: 'query',
       connectionId: 'conn-1',
       tabId: 'tab-1',
       resultIndex: 0,
@@ -601,6 +605,7 @@ describe('ResultFormView — Edit Mode', () => {
 
   it('logs and keeps the form empty when the row cannot be fetched', async () => {
     seedResultWindow({
+      route: 'query',
       connectionId: 'conn-1',
       tabId: 'tab-1',
       resultIndex: 0,

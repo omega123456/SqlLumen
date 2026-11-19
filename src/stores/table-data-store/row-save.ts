@@ -19,7 +19,7 @@ import {
   isSelectedDraftRow,
   restoredSelectedRowKey,
 } from './row-keys'
-import { buildInsertPayload, buildUpdatePayload } from './row-payloads'
+import { buildInsertPayload, buildUpdatePayload } from '../../lib/row-write-payloads'
 import { markTableDataResident, patchTab, recordSaveError } from './table-data-access'
 import { SYNC_TABLE_DATA_CACHE_COMMANDS, evictTableDataWithWarning } from './table-data-tab-state'
 import { useTableDataStore } from '../table-data-store'
@@ -85,7 +85,7 @@ async function insertDraftRowUnsafe(
     connectionId: tab.connectionId,
     database: tab.database,
     table: tab.table,
-    values: buildInsertPayload(columns, editState),
+    values: buildInsertPayload(editState, columns),
     primaryKeyInfo: primaryKey,
   })
   if (!useTableDataStore.getState().tabs[tabId]) return true
@@ -126,10 +126,15 @@ async function updateEditedRowUnsafe(
   const { columns, primaryKey } = tab
   if (!primaryKey) throw new Error('No primary key info available')
 
-  const payload = buildUpdatePayload(editState, primaryKey.keyColumns, columns)
-  if (!payload.ok) {
-    showErrorToast('Could not save row', payload.error)
-    patchTab(tabId, { saveError: payload.error })
+  const built = buildUpdatePayload({
+    editState: editState,
+    keyColumns: primaryKey.keyColumns,
+    tableColumns: columns,
+    projection: 'blobPlaceholders',
+  })
+  if (!built.ok) {
+    showErrorToast('Could not save row', built.error)
+    patchTab(tabId, { saveError: built.error })
     return false
   }
 
@@ -137,9 +142,9 @@ async function updateEditedRowUnsafe(
     connectionId: tab.connectionId,
     database: tab.database,
     table: tab.table,
-    primaryKeyColumns: primaryKey.keyColumns,
-    originalPrimaryKeyValues: payload.originalPkValues,
-    updatedValues: payload.updatedValues,
+    primaryKeyColumns: built.payload.primaryKeyColumns,
+    originalPrimaryKeyValues: built.payload.originalPrimaryKeyValues,
+    updatedValues: built.payload.updatedValues,
   })
   if (!useTableDataStore.getState().tabs[tabId]) return true
 

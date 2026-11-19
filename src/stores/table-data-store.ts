@@ -17,13 +17,6 @@ export {
   isEditingRowKey,
   cloneSourceRowKey,
 } from './table-data-store/row-keys'
-export {
-  coerceValueForColumn,
-  buildInsertPayload,
-  buildUpdatePayload,
-} from './table-data-store/row-payloads'
-
-export type { BuildUpdatePayloadResult } from './table-data-store/row-payloads'
 export { applyInsertedRow, applyUpdatedRow } from './table-data-store/row-edit-transitions'
 export type { TableCellValueSync } from './table-data-store/row-edit-transitions'
 

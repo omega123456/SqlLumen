@@ -1,4 +1,9 @@
-import type { DataViewEditSession, DataViewEditTarget, DataViewState } from './data-view-types'
+import type {
+  DataViewEditSession,
+  DataViewEditTarget,
+  DataViewPatch,
+  DataViewState,
+} from './data-view-types'
 
 const EMPTY_MAP = Object.freeze(new Map()) as Map<never, never>
 
@@ -48,4 +53,29 @@ export const DEFAULT_DATA_VIEW_STATE: DataViewState = {
   },
   prompts: { isExportOpen: false, exportScope: 'currentView', pendingNavigation: null },
   rowAction: null,
+}
+
+export const CLOSED_EDIT_PATCH: DataViewPatch = {
+  edit: { state: null, rowIndex: null, baseIndex: null, saveError: null },
+}
+
+export const DISCARDED_DRAFT_PATCH: DataViewPatch = {
+  edit: { state: null, rowIndex: null, baseIndex: null, saveError: null, draftRow: null },
+  selection: { rowIndex: null },
+}
+
+export const SAVED_EDIT_PATCH: DataViewPatch = {
+  edit: { state: null, rowIndex: null, baseIndex: null, saveError: null, isStale: false },
+}
+
+export const SAVED_DRAFT_PATCH: DataViewPatch = {
+  edit: {
+    state: null,
+    rowIndex: null,
+    baseIndex: null,
+    saveError: null,
+    isStale: false,
+    draftRow: null,
+  },
+  selection: { rowIndex: null },
 }

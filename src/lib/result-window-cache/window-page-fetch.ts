@@ -24,6 +24,7 @@ import {
   resultSurfaceKey,
   settlePending,
   storeWindow,
+  surfaceRefOf,
   surfaces,
 } from './window-registry'
 import type { Surface, ViewRange } from './window-registry'
@@ -62,7 +63,7 @@ function handleWindowFetchFailure(surface: Surface, failure: WindowFetchFailure)
     return
   }
   if (isResultsExpiredError(failure.error)) {
-    expiredHandler?.(surface.slot.tabId)
+    expiredHandler?.(surfaceRefOf(surface))
     return
   }
   const message = toErrorMessage(failure.error)

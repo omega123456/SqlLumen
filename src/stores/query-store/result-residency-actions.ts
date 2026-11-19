@@ -1,108 +1,29 @@
 import { querySurfaceRef } from './query-surface'
-import {
-  fetchResultWindow as fetchResultWindowCmd,
-  touchResults as touchResultsCmd,
-} from '../../lib/query-commands'
-import { clearResultWindowPages, seedResultWindow } from '../../lib/result-window-cache'
+import { clearResultWindowPages } from '../../lib/result-window-cache'
 import { useTableDataStore } from '../table-data-store'
-import { logFrontend } from '../../lib/app-log-commands'
 import { frontendCacheLifecycle } from '../../lib/frontend-cache-lifecycle'
-import { toErrorMessage } from '../../lib/error-message'
-import { canEvictInactiveResult, shouldScheduleResultEviction } from './result-residency'
+import {
+  canEvictInactiveView,
+  isRestorableEvictedView,
+  restoreEvictedRows,
+  shouldScheduleEviction,
+} from '../data-view/residency'
+import { hasUnsavedModifications } from '../data-view/data-view-selectors'
 import { evictQueryResultRows } from './query-tab-reducers'
 import { launchDeferredAnalysisIfNeeded } from './edit-analysis'
-import { VIEW_REFRESH_WINDOW_ROWS } from './query-state-defaults'
-import type {
-  ActiveBottomPanelItem,
-  SingleResultState,
-  TabQueryState,
-  TabStatus,
-} from './query-state-types'
+import type { ActiveBottomPanelItem, TabQueryState, TabStatus } from './query-state-types'
 import {
   cancelResultLifecycleTimer,
   getActiveIndex,
   getResultSurfaceKey,
-  markTabResultsExpired,
   patchResultByIndex,
   patchResultResidency,
   patchTab,
   resultAt,
-  slotFor,
   getQueryState,
   setQueryState,
 } from './query-store-access'
-import {
-  hasUnsavedModifications,
-  isQueryTabVisibleInWorkspace,
-  isRestorableEvictedResult,
-  residentRowResidency,
-  restoreWindowStart,
-} from './query-tab-selectors'
-
-interface EvictedResultRestore {
-  connectionId: string
-  tabId: string
-  resultIndex: number
-  result: SingleResultState
-}
-
-async function reloadEvictedResultWindow(restore: EvictedResultRestore): Promise<void> {
-  const { connectionId, tabId, resultIndex, result } = restore
-  const touchResponse = await touchResultsCmd(connectionId, tabId)
-  if (!getQueryState().tabs[tabId]) return
-
-  if (touchResponse.status !== 'available') {
-    markTabResultsExpired(tabId)
-    patchResultResidency(tabId, resultIndex, { status: 'evicted' })
-    return
-  }
-
-  const slot = slotFor(tabId, resultIndex)
-  if (!slot) {
-    markTabResultsExpired(tabId)
-    return
-  }
-  const window = await fetchResultWindowCmd({
-    ...slot,
-    viewVersion: result.view.slot.viewVersion,
-    offset: restoreWindowStart(result),
-    limit: VIEW_REFRESH_WINDOW_ROWS,
-  })
-
-  if (!getQueryState().tabs[tabId]) return
-  const latestResult = resultAt(tabId, resultIndex) ?? result
-  const latestQueryId = latestResult.view.slot.queryId
-  if (latestQueryId !== slot.queryId) return
-
-  seedResultWindow({
-    ...slot,
-    viewVersion: window.viewVersion,
-    viewRowCount: window.viewRowCount,
-    columns: latestResult.view.slot.columns,
-    window: window,
-  })
-  patchResultByIndex(tabId, resultIndex, {
-    view: {
-      slot: { viewVersion: window.viewVersion, viewRowCount: window.viewRowCount },
-      residency: { isExpired: false, evictedAt: null, rows: residentRowResidency(latestResult) },
-    },
-  })
-}
-
-function handleEvictedResultRestoreFailure(tabId: string, resultIndex: number, error: unknown) {
-  const errorMessage = toErrorMessage(error)
-  if (getQueryState().tabs[tabId]) {
-    patchResultResidency(tabId, resultIndex, { status: 'evicted' })
-  }
-  if (errorMessage.includes('results_expired')) {
-    markTabResultsExpired(tabId)
-    return
-  }
-  logFrontend(
-    'warn',
-    `[query-store] restoreEvictedResultRows failed for ${tabId}/${resultIndex}: ${errorMessage}`
-  )
-}
+import { isQueryTabVisibleInWorkspace } from './query-tab-selectors'
 
 function restoreTabStatusAfterRestore(tabId: string, previousTabStatus: TabStatus) {
   if (!getQueryState().tabs[tabId]) return
@@ -151,7 +72,7 @@ export async function markResultSurfaceActive(tabId: string, resultIndex?: numbe
     inactiveSince: null,
   })
 
-  if (isRestorableEvictedResult(result)) {
+  if (isRestorableEvictedView(result.view)) {
     await getQueryState().restoreEvictedResultRows(tabId, targetIndex)
   }
 }
@@ -169,7 +90,7 @@ export function markResultSurfaceInactive(tabId: string, resultIndex?: number) {
     inactiveSince: Date.now(),
   })
 
-  if (!shouldScheduleResultEviction(result)) return
+  if (!shouldScheduleEviction(result.view)) return
 
   frontendCacheLifecycle.scheduleInactive(getResultSurfaceKey(tabId, targetIndex), () => {
     getQueryState().evictInactiveResultRows(tabId, targetIndex)
@@ -180,7 +101,7 @@ export function evictInactiveResultRows(tabId: string, resultIndex: number) {
   cancelResultLifecycleTimer(tabId, resultIndex)
   const result = resultAt(tabId, resultIndex)
   if (!result) return
-  if (!canEvictInactiveResult(result)) return
+  if (!canEvictInactiveView(result.view)) return
 
   clearResultWindowPages(tabId, resultIndex)
   const eviction = { tabId: tabId, resultIndex: resultIndex, evictedAt: Date.now() }
@@ -193,27 +114,12 @@ export async function restoreEvictedResultRows(tabId: string, resultIndex?: numb
 
   const targetIndex = resultIndex ?? getActiveIndex(tabId)
   const result = tab.results[targetIndex]
-  if (!isRestorableEvictedResult(result)) return
-
-  const hasRestoreSource = Boolean(tab.connectionId) && Boolean(result.view.slot.queryId)
-  if (!hasRestoreSource) {
-    markTabResultsExpired(tabId)
-    return
-  }
+  if (!isRestorableEvictedView(result?.view)) return
 
   const previousTabStatus = tab.tabStatus
   patchTab(tabId, { tabStatus: 'restoring' })
-  patchResultResidency(tabId, targetIndex, { status: 'restoring' })
-
   try {
-    await reloadEvictedResultWindow({
-      connectionId: tab.connectionId,
-      tabId: tabId,
-      resultIndex: targetIndex,
-      result: result,
-    })
-  } catch (error) {
-    handleEvictedResultRestoreFailure(tabId, targetIndex, error)
+    await restoreEvictedRows(querySurfaceRef(tabId, targetIndex))
   } finally {
     restoreTabStatusAfterRestore(tabId, previousTabStatus)
   }
@@ -227,7 +133,7 @@ export function setActiveResultIndex(tabId: string, index: number) {
   if (!isValidIndex) return
 
   const currentResult = tab.results[tab.activeResultIndex]
-  if (hasUnsavedModifications(currentResult)) {
+  if (hasUnsavedModifications(currentResult?.view)) {
     getQueryState().requestNavigationAction(querySurfaceRef(tabId, tab.activeResultIndex), () => {
       const previousIndex = getQueryState().tabs[tabId]?.activeResultIndex ?? tab.activeResultIndex
       switchActiveResult(tabId, previousIndex, index)

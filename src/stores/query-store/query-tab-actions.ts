@@ -14,7 +14,7 @@ import {
   setQueryState,
 } from './query-store-access'
 import { dropViewTrackers } from './result-view-requests'
-import { dropRowActionCancels } from './row-action-progress'
+import { dropRowActionCancels } from '../data-view/row-action-progress'
 
 export function getTabState(tabId: string) {
   return getQueryState().tabs[tabId] ?? { ...DEFAULT_TAB_STATE }
@@ -48,7 +48,7 @@ export function cleanupTab(connectionId: string, tabId: string) {
   cancelAllResultLifecycleTimers(tabId, getQueryState().tabs[tabId]?.results.length ?? 0)
   dropTabResultWindows(tabId)
   dropViewTrackers(tabId)
-  dropRowActionCancels(tabId)
+  dropRowActionCancels({ route: 'query', tabId: tabId })
   evictResultsCmd(connectionId, tabId).catch((error) => {
     logFrontendError('[query-store] evictResults failed (cleanupTab):', error)
   })
@@ -62,7 +62,7 @@ export function cleanupConnection(connectionId: string, tabIds: string[]) {
     cancelAllResultLifecycleTimers(id, getQueryState().tabs[id]?.results.length ?? 0)
     dropTabResultWindows(id)
     dropViewTrackers(id)
-    dropRowActionCancels(id)
+    dropRowActionCancels({ route: 'query', tabId: id })
     evictResultsCmd(connectionId, id).catch((error) => {
       logFrontendError('[query-store] evictResults failed (cleanupConnection):', error)
     })

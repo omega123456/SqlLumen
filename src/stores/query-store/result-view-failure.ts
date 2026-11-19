@@ -3,8 +3,10 @@ import { fetchResultWindow as fetchResultWindowCmd } from '../../lib/query-comma
 import { showErrorToast } from '../toast-store'
 import { logFrontend } from '../../lib/app-log-commands'
 import { toErrorMessage } from '../../lib/error-message'
-import { VIEW_REFRESH_WINDOW_ROWS } from './query-state-defaults'
-import type { SingleResultState, ResultPatch } from './query-state-types'
+import { VIEW_REFRESH_WINDOW_ROWS } from '../../lib/data-view-limits'
+import type { SingleResultState } from './query-state-types'
+import type { DataViewPatch } from '../data-view/data-view-types'
+import { querySurfaceRef } from './query-surface'
 import { patchResultByIndex, resultAt, slotFor } from './query-store-access'
 import { paintView, settleViewFailure, trackerFor } from './result-view-requests'
 import type { ViewTracker } from './result-view-requests'
@@ -32,9 +34,7 @@ export async function repaintLatestKnownView(
       limit: VIEW_REFRESH_WINDOW_ROWS,
     })
     if (isReplacedSlot(tabId, resultIndex, slot.queryId)) return
-    paintView({
-      tabId: tabId,
-      resultIndex: resultIndex,
+    paintView(querySurfaceRef(tabId, resultIndex), {
       spec: spec,
       view: {
         viewVersion: window.viewVersion,
@@ -54,7 +54,7 @@ interface FailedViewSettlement {
   resultIndex: number
   result: SingleResultState
   tracker: ViewTracker
-  errorPatch: ResultPatch
+  errorPatch: DataViewPatch
 }
 
 function repaintLastSuccessfulView(
@@ -62,9 +62,7 @@ function repaintLastSuccessfulView(
   success: NonNullable<ViewTracker['lastSuccess']>
 ) {
   failure.tracker.spec = success.spec
-  paintView({
-    tabId: failure.tabId,
-    resultIndex: failure.resultIndex,
+  paintView(querySurfaceRef(failure.tabId, failure.resultIndex), {
     spec: success.spec,
     view: {
       viewVersion: success.response.viewVersion,
@@ -90,9 +88,7 @@ async function refetchServerViewAfterFailure(failure: FailedViewSettlement): Pro
       limit: VIEW_REFRESH_WINDOW_ROWS,
     })
     if (isReplacedSlot(tabId, resultIndex, slot.queryId)) return false
-    paintView({
-      tabId: tabId,
-      resultIndex: resultIndex,
+    paintView(querySurfaceRef(tabId, resultIndex), {
       spec: fallbackSpec,
       view: {
         viewVersion: window.viewVersion,
@@ -107,7 +103,7 @@ async function refetchServerViewAfterFailure(failure: FailedViewSettlement): Pro
       'warn',
       `[query-store] could not refetch the current view after a failed view change: ${String(refetchError)}`
     )
-    patchResultByIndex(tabId, resultIndex, errorPatch)
+    patchResultByIndex(tabId, resultIndex, { view: errorPatch })
   }
   return true
 }
@@ -126,7 +122,7 @@ async function revertFailedView(failure: FailedViewSettlement): Promise<boolean>
     return refetchServerViewAfterFailure(failure)
   }
   failure.tracker.spec = getResultViewSpec(failure.result)
-  patchResultByIndex(failure.tabId, failure.resultIndex, failure.errorPatch)
+  patchResultByIndex(failure.tabId, failure.resultIndex, { view: failure.errorPatch })
   return true
 }
 
@@ -145,7 +141,7 @@ export async function settleFailedView(tabId: string, resultIndex: number, error
     resultIndex: resultIndex,
     result: result,
     tracker: tracker,
-    errorPatch: { view: { spec: { applying: null, error: message } } },
+    errorPatch: { spec: { applying: null, error: message } },
   })
   if (!isStillCurrent) return
   showErrorToast("Couldn't apply sort or filter", message)

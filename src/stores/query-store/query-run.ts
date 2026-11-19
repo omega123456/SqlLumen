@@ -1,3 +1,4 @@
+import { residentRows } from '../data-view/residency'
 import { activeQuerySurfaceRef } from './query-surface'
 import type { MultiQueryResult, MultiQueryResultItem, ResultViewSpec } from '../../types/schema'
 import {
@@ -30,7 +31,6 @@ import { isExecutionLocked, isQueryTabVisibleInWorkspace } from './query-tab-sel
 import {
   buildSingleResultFromItem,
   freshResultFields,
-  residentRows,
   seedResultFromResponse,
 } from './result-seeding'
 import { patchedResult } from './query-tab-reducers'

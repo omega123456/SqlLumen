@@ -1,4 +1,4 @@
-import { RESULT_PAGE_SIZE, type ViewRange } from '../../lib/result-window-cache'
+import { hasUnsavedModifications } from '../data-view/data-view-selectors'
 import { getFirstSqlKeyword } from '../../lib/sql-utils'
 import { useWorkspaceStore } from '../workspace-store'
 import { isEditorLockStatus } from '../../lib/query-tab-status'
@@ -52,14 +52,9 @@ export function getActiveResult(tab: TabQueryState | undefined): SingleResultSta
   return tab?.results[activeResultIndexOf(tab)] ?? DEFAULT_RESULT_STATE
 }
 
-export function hasUnsavedModifications(result: SingleResultState | undefined): boolean {
-  const modifiedColumnCount = result?.view.edit.state?.modifiedColumns.size ?? 0
-  return modifiedColumnCount > 0
-}
-
 export function hasAnyUnsavedEdits(tab: TabQueryState | undefined): boolean {
   if (!tab) return false
-  return tab.results.some(hasUnsavedModifications)
+  return tab.results.some((result) => hasUnsavedModifications(result.view))
 }
 
 export function getFlatTabState(tab: TabQueryState | undefined): FlatTabView {
@@ -70,54 +65,8 @@ export function getFlatTabState(tab: TabQueryState | undefined): FlatTabView {
   }
 }
 
-export function countRanges(ranges: readonly ViewRange[]): number {
-  return ranges.reduce((sum, [start, end]) => sum + Math.max(0, end - start), 0)
-}
-
-export function isSelectedRowInView(result: SingleResultState): boolean {
-  const selectedRowIndex = result.view.selection.rowIndex
-  if (selectedRowIndex === null) return false
-  const isAtOrAfterFirstRow = selectedRowIndex >= 0
-  const isBeforeLastRow = selectedRowIndex < result.view.slot.viewRowCount
-  return isAtOrAfterFirstRow && isBeforeLastRow
-}
-
-function firstCheckedRowIndex(checkedRanges: readonly ViewRange[]): number | null {
-  const firstCheckedRange = checkedRanges.find(([start, end]) => end > start)
-  return firstCheckedRange ? firstCheckedRange[0] : null
-}
-
-export function cloneSourceRowIndex(result: SingleResultState): number | null {
-  const checkedCount = countRanges(result.view.checked.ranges)
-  if (checkedCount === 1) return firstCheckedRowIndex(result.view.checked.ranges)
-  if (checkedCount > 1) return null
-  if (!isSelectedRowInView(result)) return null
-  return result.view.selection.rowIndex
-}
-
 export function isExecutionLocked(tab: TabQueryState | undefined): boolean {
   return tab !== undefined && isEditorLockStatus(tab.tabStatus)
-}
-
-export function residentRowResidency(
-  previous: SingleResultState | undefined
-): SingleResultState['view']['residency']['rows'] {
-  const residency = previous?.view.residency.rows ?? DEFAULT_RESULT_STATE.view.residency.rows
-  return {
-    ...residency,
-    status: 'resident',
-    inactiveSince: residency.isActive ? null : residency.inactiveSince,
-  }
-}
-
-export function isRestorableEvictedResult(
-  result: SingleResultState | undefined
-): result is SingleResultState {
-  return (
-    result !== undefined &&
-    result.view.residency.rows.status === 'evicted' &&
-    !result.view.residency.isExpired
-  )
 }
 
 export function needsDeferredAnalysis(
@@ -129,12 +78,4 @@ export function needsDeferredAnalysis(
     result.reExecutable &&
     Boolean(result.lastExecutedSql)
   )
-}
-
-export function restoreWindowStart(result: SingleResultState): number {
-  const anchorRow = Math.min(
-    result.view.layout.scrollRow,
-    Math.max(0, result.view.slot.viewRowCount - 1)
-  )
-  return Math.floor(anchorRow / RESULT_PAGE_SIZE) * RESULT_PAGE_SIZE
 }

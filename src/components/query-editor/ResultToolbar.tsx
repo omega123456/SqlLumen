@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react'
-import { countRanges, useQueryStore } from '../../stores/query-store'
+import { useQueryStore } from '../../stores/query-store'
+import { countRanges } from '../../lib/view-ranges'
 import { useQuerySurfaceResult } from './use-query-surface-result'
 import type { DataViewSurfaceRef } from '../../stores/data-view/data-view-types'
 import { EditModeDropdown } from './EditModeDropdown'

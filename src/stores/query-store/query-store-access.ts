@@ -1,14 +1,6 @@
 import type { FrontendRowResidencyState } from '../../types/schema'
 import { type ResultSlotRef } from '../../lib/query-commands'
-import {
-  getLoadedRow,
-  getResultSurface,
-  setWindowExpiredHandler,
-  setWindowStatusHandler,
-  type CachedRow,
-} from '../../lib/result-window-cache'
-import { formatRowRange } from '../../lib/format-row-count'
-import { showErrorToast } from '../toast-store'
+import { getResultSurface } from '../../lib/result-window-cache'
 import { frontendCacheLifecycle } from '../../lib/frontend-cache-lifecycle'
 import { activeResultIndexOf } from './query-tab-selectors'
 import {
@@ -19,7 +11,6 @@ import {
 } from './query-tab-reducers'
 import { DEFAULT_TAB_STATE } from './query-state-defaults'
 import type { ResultPatch, SingleResultState, TabQueryState, QueryState } from './query-state-types'
-import type { LocatedResult } from './result-view-spec'
 import type { DataViewSurfaceRef } from '../data-view/data-view-types'
 import { useQueryStore } from '../query-store'
 
@@ -96,18 +87,6 @@ export function slotFor(tabId: string, resultIndex: number): ResultSlotRef | nul
   }
 }
 
-export function rowAt(
-  { tabId, resultIndex, result }: LocatedResult,
-  position: number
-): CachedRow | null {
-  const draftRow = result.view.edit.draftRow
-  const isDraftRowPosition = position === result.view.slot.viewRowCount
-  if (draftRow && isDraftRowPosition) {
-    return { row: draftRow, baseIndex: -1 }
-  }
-  return getLoadedRow(tabId, resultIndex, position) ?? null
-}
-
 export function beginExecution(tabId: string) {
   patchTab(tabId, {
     tabStatus: 'running',
@@ -130,21 +109,5 @@ export function finalizeExecution(tabId: string) {
     executionStartedAt: null,
     isCancelling: false,
     wasCancelled: false,
-  })
-}
-
-export function registerResultWindowHandlers() {
-  setWindowStatusHandler(({ tabId, resultIndex, patch, failure }) => {
-    const result = resultAt(tabId, resultIndex)
-    if (!result) return
-    patchResultByIndex(tabId, resultIndex, { view: { window: patch } })
-    if (failure && patch.failedRange) {
-      const [start, end] = patch.failedRange
-      showErrorToast(`Couldn't load rows ${formatRowRange(start + 1, end)}`, failure.message)
-    }
-  })
-
-  setWindowExpiredHandler((tabId) => {
-    if (getQueryState().tabs[tabId]) markTabResultsExpired(tabId)
   })
 }

@@ -3,7 +3,18 @@ import { normalizeTinyIntRows } from '../../lib/table-data-commands'
 import type { CellValueSync } from '../../components/shared/editor-callbacks-context'
 import { findRowIndexByKey, isDraftRowKey } from './row-keys'
 import type { RowKey } from './row-keys'
-import { reconcileSavedBlobValue } from './row-payloads'
+import { projectSavedCellValue } from '../../lib/row-write-payloads'
+
+export function buildCurrentValuesFromRow(
+  columns: TableDataColumnMeta[],
+  rowValues: unknown[]
+): Record<string, unknown> {
+  const currentValues: Record<string, unknown> = {}
+  for (let index = 0; index < columns.length; index += 1) {
+    currentValues[columns[index].name] = rowValues[index]
+  }
+  return currentValues
+}
 
 export function applyInsertedRow(
   rows: unknown[][],
@@ -12,7 +23,9 @@ export function applyInsertedRow(
 ): unknown[][] {
   const returnedMap = Object.fromEntries(insertedData)
   const newRow = normalizeTinyIntRows(columns, [
-    columns.map((column) => reconcileSavedBlobValue(returnedMap[column.name] ?? null)),
+    columns.map((column) =>
+      projectSavedCellValue(returnedMap[column.name] ?? null, 'blobPlaceholders')
+    ),
   ])[0]
   const newRows = [...rows]
   newRows[newRows.length - 1] = newRow
@@ -32,7 +45,7 @@ export function applyUpdatedRow(
   for (const [columnName, value] of Object.entries(editState.currentValues)) {
     const columnIndex = columns.findIndex((column) => column.name === columnName)
     if (columnIndex !== -1) {
-      updatedRow[columnIndex] = reconcileSavedBlobValue(value)
+      updatedRow[columnIndex] = projectSavedCellValue(value, 'blobPlaceholders')
     }
   }
   newRows[rowIndex] = updatedRow

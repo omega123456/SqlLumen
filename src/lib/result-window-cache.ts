@@ -1,6 +1,7 @@
 import { type ResultSlotRef } from './query-commands'
 import { HALF_DIVISOR } from './units'
 import type { ResultWindow } from '../types/schema'
+import type { DataViewRouteKind } from '../stores/data-view/data-view-types'
 import { toErrorMessage } from './error-message'
 import { isIndexInBounds } from './value-checks'
 import { isSurfaceForQuery, requestVisibleRange } from './result-window-cache/window-page-fetch'
@@ -111,6 +112,7 @@ export function applyResultView(
   if (!surface) return
   seedResultWindow({
     ...surface.slot,
+    route: surface.route,
     columns: surface.columns,
     viewVersion: view.viewVersion,
     viewRowCount: view.viewRowCount,
@@ -148,10 +150,13 @@ export function getLoadedRow(
   return { row: row, baseIndex: page.baseIndices[offset] }
 }
 
+const UNSEEDED_SURFACE_ROUTE: DataViewRouteKind = 'query'
+
 function surfaceForSubscription(key: string, tabId: string, resultIndex: number): Surface {
   let surface = surfaces.get(key)
   if (!surface) {
     surface = {
+      route: UNSEEDED_SURFACE_ROUTE,
       slot: { connectionId: '', tabId: tabId, resultIndex: resultIndex, queryId: '' },
       columns: [],
       viewVersion: 0,
