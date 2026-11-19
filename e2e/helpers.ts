@@ -122,14 +122,14 @@ export async function getColumnIndexByName(grid: Locator, columnName: string) {
         window as unknown as {
           __tableDataStore__?: {
             getState?: () => {
-              tabs?: Record<string, { columns?: Array<{ name?: string }> }>
+              tabs?: Record<string, { meta?: { columns?: Array<{ name?: string }> } }>
             }
           }
         }
       ).__tableDataStore__
 
       const tabs = store?.getState?.().tabs ?? {}
-      return Object.values(tabs).flatMap((tab) => tab?.columns ?? [])
+      return Object.values(tabs).flatMap((tab) => tab?.meta?.columns ?? [])
     }
 
     const readQueryColumns = () => {

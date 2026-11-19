@@ -1,5 +1,7 @@
 import type { ExecuteQueryRequest } from '../query-commands'
 import {
+  appendResultRowFixture,
+  fetchTablePageFixture,
   getAiModelsFixture,
   getAnalyzeQueryForEditFixture,
   getBlobValueFixture,
@@ -98,6 +100,7 @@ export const QUERY_PAYLOAD_HANDLERS = {
   set_result_view: (payload) => setResultViewFixture(payload),
   fetch_result_window: (payload) => fetchResultWindowFixture(payload),
   remove_result_rows: (payload) => removeResultRowsFixture(payload),
+  append_result_row: (payload) => appendResultRowFixture(payload),
   evict_results: returnNull,
   cancel_query: cancelMockQuery,
   analyze_query_for_edit: (payload) => getAnalyzeQueryForEditFixture(payload.sql),
@@ -121,6 +124,7 @@ function syncMockTableDataCache({ table }: { table: string }): { status: string 
 
 export const TABLE_DATA_PAYLOAD_HANDLERS = {
   fetch_table_data: (payload) => getTableDataFixture(payload.table),
+  fetch_table_page: (payload) => fetchTablePageFixture(payload),
   touch_table_data: returnAvailableStatus,
   evict_table_data: returnNull,
   restore_table_data_cache: (payload) => ({

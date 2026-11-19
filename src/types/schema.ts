@@ -27,6 +27,7 @@ export type {
   SetResultViewResult,
   FetchResultWindowResult,
   RemoveResultRowsResult,
+  AppendResultRowResult,
   FrontendRowResidencyStatus,
   FrontendRowResidencyState,
   ViewMode,
@@ -46,12 +47,11 @@ export type {
   TableDataColumnMeta,
   PrimaryKeyInfo,
   TableDataResponse,
+  TablePageResult,
   TableDataCacheRestoreStatus,
   TableDataCacheRestoreResult,
   TableDataCacheSyncStatus,
   TableDataCacheSyncResult,
-  TableDataSortInfo,
-  TableDataTabState,
 } from './schema/table-data'
 export type {
   DefaultValueModel,

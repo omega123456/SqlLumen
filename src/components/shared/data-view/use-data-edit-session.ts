@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react'
 import { columnIndexFromKey, columnKey } from '../../../lib/col-key-utils'
+import { isBlobPlaceholderText } from '../../../lib/blob-utils'
 import { toCachedRow } from '../../../lib/result-row-materializer'
 import type { DataViewState, DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
 import { editTableOf } from '../../../stores/data-view/data-view-selectors'
@@ -12,6 +13,8 @@ import {
 import { saveCurrentRow } from '../../../stores/data-view/row-save'
 import { setSelectedCell, setSelectedRow } from '../../../stores/data-view/view-actions'
 import { currentView, useDataView } from '../../../stores/data-view/use-data-view'
+import { storedBlobLoadOf } from '../../../stores/data-view/stored-blobs'
+import { showErrorToast } from '../../../stores/toast-store'
 import { reportInvalidTemporalValue } from '../row-save-feedback'
 import type {
   BlobContent,
@@ -129,8 +132,28 @@ function selectDataCell({ ref, lastSelectionRef, target }: CellSelection) {
   setSelectedCell(ref, { columnKey: column.name, value: selection.value })
 }
 
-function inlineBlobContent(target: CellTarget<DataRowIdentity>): BlobContent {
+function storedBlobContent(
+  ref: DataViewSurfaceRef,
+  target: CellTarget<DataRowIdentity>
+): BlobContent | null {
+  const stored = storedBlobLoadOf(ref, {
+    columnIndex: columnIndexFromKey(target.columnKey),
+    valueAt: (columnIndex) => target.rowData[columnKey(columnIndex)],
+  })
+  if (!stored) return null
+  if (!stored.ok) {
+    showErrorToast('Could not open BLOB viewer', stored.error)
+    return null
+  }
+  return { loader: stored.load }
+}
+
+function dataBlobContent(
+  ref: DataViewSurfaceRef,
+  target: CellTarget<DataRowIdentity>
+): BlobContent | null {
   const cellValue = target.rowData[target.columnKey]
+  if (isBlobPlaceholderText(cellValue)) return storedBlobContent(ref, target)
   return { initialBase64: typeof cellValue === 'string' ? cellValue : null }
 }
 
@@ -182,7 +205,7 @@ export function useDataEditSession(ref: DataViewSurfaceRef): RowEditSession<Data
         selectDataCell({ ref: ref, lastSelectionRef: lastSelectionRef, target: target }),
       saveEditingRow: () => saveDataRow(ref),
       discardEditingRow: () => discardCurrentRow(ref),
-      blobContentFor: inlineBlobContent,
+      blobContentFor: (target) => dataBlobContent(ref, target),
     }),
     [ref, canEditRows]
   )

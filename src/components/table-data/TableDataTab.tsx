@@ -1,22 +1,19 @@
-import { useTableDataStore } from '../../stores/table-data-store'
+import type { ReactNode } from 'react'
+import { useTableDataStore, type TableDataTabState } from '../../stores/table-data-store'
 import { useIsConnectionReadOnly } from '../../stores/connection-store'
-import { TableDataToolbar } from './TableDataToolbar'
-import { TableDataGrid } from './TableDataGrid'
-import { TableDataFormView } from './TableDataFormView'
-import type {
-  PrimaryKeyInfo,
-  TableDataColumnMeta,
-  TableDataTabState,
-  WorkspaceTab,
-  TableDataTab as TableDataTabType,
-} from '../../types/schema'
+import { useDataView } from '../../stores/data-view/use-data-view'
+import type { WorkspaceTab, TableDataTab as TableDataTabType } from '../../types/schema'
 import { InfoBar } from '../common/InfoBar'
 import { Button } from '../common/Button'
-import { DataViewModeSwitch } from '../shared/data-view/DataViewModeSwitch'
+import { DataViewBody, type DataViewSlots } from '../shared/data-view/DataViewBody'
+import type { DataToolbarReadiness } from '../shared/data-view/toolbar/data-toolbar-model'
+import type { DataViewSource } from '../shared/data-view/data-view-source'
 import { FOCUS_RING } from '../../lib/focus-ring'
 import { joinClassNames } from '../../lib/class-names'
 import { useTableDataTabLifecycle } from './table-data-tab/use-table-data-tab-lifecycle'
-import { TableDataTabDialogs } from './table-data-tab/TableDataTabDialogs'
+import { useTableDataViewSource } from './table-data-tab/table-data-view-source'
+import { TableExportDialog } from './table-data-tab/TableExportDialog'
+import { TableDataBadges } from './TableDataBadges'
 
 interface TableDataTabProps {
   tab: WorkspaceTab
@@ -24,57 +21,37 @@ interface TableDataTabProps {
   renderMode?: 'standalone' | 'bottom-panel'
 }
 
-interface TableDataTabView {
-  isLoading: boolean
+type TableLoadPhase = 'initial' | 'error' | 'loaded'
+
+interface TableDataTabStatus {
+  phase: TableLoadPhase
   error: string | null
-  primaryKey: PrimaryKeyInfo | null
-  viewMode: TableDataTabState['viewMode']
-  isExportDialogOpen: boolean
-  pendingNavigationAction: TableDataTabState['pendingNavigationAction']
-  saveError: string | null
-  columns: TableDataColumnMeta[]
-  isRestoring: boolean
+  hasPrimaryKey: boolean
+  isLoading: boolean
 }
 
-const EMPTY_TABLE_DATA_TAB_VIEW: TableDataTabView = {
-  isLoading: true,
-  error: null,
-  primaryKey: null,
-  viewMode: 'grid',
-  isExportDialogOpen: false,
-  pendingNavigationAction: null,
-  saveError: null,
-  columns: [],
-  isRestoring: false,
+function loadPhaseOf(tabState: TableDataTabState | undefined): TableLoadPhase {
+  if (!tabState) return 'initial'
+  if (tabState.page.error) return 'error'
+  const hasNoPage = tabState.view.slot.queryId === null
+  if (hasNoPage) return 'initial'
+  return 'loaded'
 }
 
-function tableDataTabView(tabState: TableDataTabState | undefined): TableDataTabView {
-  if (!tabState) return EMPTY_TABLE_DATA_TAB_VIEW
+function useTableDataTabStatus(tabId: string): TableDataTabStatus {
   return {
-    isLoading: tabState.isLoading,
-    error: tabState.error,
-    primaryKey: tabState.primaryKey,
-    viewMode: tabState.viewMode,
-    isExportDialogOpen: tabState.isExportDialogOpen,
-    pendingNavigationAction: tabState.pendingNavigationAction,
-    saveError: tabState.saveError,
-    columns: tabState.columns,
-    isRestoring: tabState.rowResidency?.status === 'restoring',
+    phase: useTableDataStore((state) => loadPhaseOf(state.tabs[tabId])),
+    error: useTableDataStore((state) => state.tabs[tabId]?.page.error ?? null),
+    hasPrimaryKey: useTableDataStore((state) => Boolean(state.tabs[tabId]?.meta.primaryKey)),
+    isLoading: useTableDataStore((state) => state.tabs[tabId]?.page.isLoading ?? true),
   }
 }
 
-function hasLoadedColumns(view: TableDataTabView): boolean {
-  return !view.error && view.columns.length > 0
-}
-
-function isInitialLoad(view: TableDataTabView): boolean {
-  return view.isLoading && !view.error && view.columns.length === 0
-}
-
-function shouldShowNoPrimaryKeyWarning(view: TableDataTabView, isViewObject: boolean): boolean {
+function isNoKeyVisible(status: TableDataTabStatus, isViewObject: boolean): boolean {
   if (isViewObject) return false
-  if (view.primaryKey !== null) return false
-  return !view.isLoading && hasLoadedColumns(view)
+  if (status.hasPrimaryKey) return false
+  if (status.isLoading) return false
+  return status.phase === 'loaded'
 }
 
 function NoPrimaryKeyWarning() {
@@ -137,64 +114,41 @@ function TableDataErrorState({ error, onRetry }: TableDataErrorStateProps) {
   )
 }
 
-interface BusyOverlayProps {
-  label: string
-  testId: string
+function useTableMessage(tabId: string, status: TableDataTabStatus): ReactNode {
+  const loadTableData = useTableDataStore((state) => state.loadTableData)
+  if (status.error) {
+    return <TableDataErrorState error={status.error} onRetry={() => void loadTableData(tabId)} />
+  }
+  if (status.phase === 'initial') return <TableDataLoadingState />
+  return null
 }
 
-function BusyOverlay({ label, testId }: BusyOverlayProps) {
-  return (
-    <div
-      className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-light-surface-container-lowest text-size-row text-light-on-surface-variant opacity-85 dark:bg-dark-surface-container-lowest dark:text-dark-on-surface-variant"
-      role="status"
-      aria-live="polite"
-      aria-atomic="true"
-      data-testid={testId}
-    >
-      <TableDataSpinner />
-      <span>{label}</span>
-    </div>
-  )
+interface TableSlotInputs {
+  tab: TableDataTabType
+  status: TableDataTabStatus
+  isExportOpen: boolean
 }
 
-interface TableDataContentProps {
-  tabId: string
-  view: TableDataTabView
-  isReadOnly: boolean
-  isViewObject: boolean
-  isActive: boolean
-}
-
-function TableDataContent({
-  tabId,
-  view,
-  isReadOnly,
-  isViewObject,
-  isActive,
-}: TableDataContentProps) {
-  return (
-    <div
-      className="relative flex-1 overflow-hidden"
-      aria-busy={view.isRestoring}
-      data-testid="table-data-content"
-    >
-      <DataViewModeSwitch
-        mode={view.viewMode}
-        grid={
-          <TableDataGrid
-            tabId={tabId}
-            isReadOnly={isReadOnly || !view.primaryKey}
-            isActive={isActive}
-          />
-        }
-        form={<TableDataFormView tabId={tabId} isView={isViewObject} isActive={isActive} />}
+function useTableSlots({ tab, status, isExportOpen }: TableSlotInputs): DataViewSlots {
+  const isConnectionReadOnly = useIsConnectionReadOnly(tab.connectionId)
+  const isViewObject = tab.objectType === 'view'
+  const showsNoKey = isNoKeyVisible(status, isViewObject)
+  return {
+    editTarget: (
+      <TableDataBadges
+        isView={isViewObject}
+        isConnectionReadOnly={isConnectionReadOnly}
+        showNoKeyBadge={showsNoKey}
       />
-      {view.isLoading && <BusyOverlay label="Loading…" testId="table-data-sort-overlay" />}
-      {view.isRestoring && (
-        <BusyOverlay label="Restoring cached table data..." testId="table-data-restore-overlay" />
-      )}
-    </div>
-  )
+    ),
+    bands: showsNoKey ? <NoPrimaryKeyWarning /> : null,
+    exportDialog: <TableExportDialog tab={tab} isOpen={isExportOpen} />,
+  }
+}
+
+function tableReadiness(source: DataViewSource, status: TableDataTabStatus): DataToolbarReadiness {
+  const hasData = status.phase === 'loaded' && !status.isLoading
+  return { hasData: hasData, canInsertRows: hasData && source.capabilities.rowActions }
 }
 
 type RenderMode = NonNullable<TableDataTabProps['renderMode']>
@@ -209,6 +163,8 @@ const CONTAINER_CLASSES: Record<RenderMode, string> = {
   ]),
 }
 
+const NO_PANEL_ATTRIBUTES = {}
+
 export function TableDataTab({
   tab,
   isActive = true,
@@ -216,16 +172,24 @@ export function TableDataTab({
 }: TableDataTabProps) {
   const tableDataTab = tab as TableDataTabType
   const tabId = tableDataTab.id
-  const tabState = useTableDataStore((state) => state.tabs[tabId])
-  const loadTableData = useTableDataStore((state) => state.loadTableData)
-  const isConnectionReadOnly = useIsConnectionReadOnly(tableDataTab.connectionId)
-  const isViewObject = tableDataTab.objectType === 'view'
-  const view = tableDataTabView(tabState)
+  const status = useTableDataTabStatus(tabId)
+  const source = useTableDataViewSource({
+    tabId: tabId,
+    isActive: isActive,
+    isView: tableDataTab.objectType === 'view',
+  })
+  const hasPendingNavigation = useDataView(
+    source.ref,
+    (view) => view.prompts.pendingNavigation !== null
+  )
+  const isExportOpen = useDataView(source.ref, (view) => view.prompts.isExportOpen)
+  const slots = useTableSlots({ tab: tableDataTab, status: status, isExportOpen: isExportOpen })
+  const message = useTableMessage(tabId, status)
   useTableDataTabLifecycle({
     tab: tableDataTab,
     isActive: isActive,
-    hasPendingNavigation: view.pendingNavigationAction !== null,
-    isExportDialogOpen: view.isExportDialogOpen,
+    hasPendingNavigation: hasPendingNavigation,
+    isExportDialogOpen: isExportOpen,
   })
 
   return (
@@ -234,28 +198,12 @@ export function TableDataTab({
       data-testid="table-data-tab"
       data-render-mode={renderMode}
     >
-      <TableDataToolbar tabId={tabId} isView={isViewObject} />
-      {shouldShowNoPrimaryKeyWarning(view, isViewObject) && <NoPrimaryKeyWarning />}
-      {isInitialLoad(view) && <TableDataLoadingState />}
-      {view.error && (
-        <TableDataErrorState error={view.error} onRetry={() => loadTableData(tabId)} />
-      )}
-      {hasLoadedColumns(view) && (
-        <TableDataContent
-          tabId={tabId}
-          view={view}
-          isReadOnly={isConnectionReadOnly || isViewObject}
-          isViewObject={isViewObject}
-          isActive={isActive}
-        />
-      )}
-      <TableDataTabDialogs
-        tab={tableDataTab}
-        tabState={tabState}
-        isViewObject={isViewObject}
-        saveError={view.saveError}
-        isExportDialogOpen={view.isExportDialogOpen}
-        hasPendingNavigation={view.pendingNavigationAction !== null}
+      <DataViewBody
+        source={source}
+        slots={slots}
+        readiness={tableReadiness(source, status)}
+        panelAttributes={NO_PANEL_ATTRIBUTES}
+        message={message}
       />
     </div>
   )

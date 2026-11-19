@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { useTableDataStore } from '../../../stores/table-data-store'
 import type { TableDataColumnMeta } from '../../../types/schema'
 import { useCellEditor } from '../../../components/shared/useCellEditor'
 import type { CellEditorParams } from '../../../components/shared/useCellEditor'
@@ -51,72 +50,40 @@ function getEditorValue(): string | null {
 
 /** Test wrapper component that exposes hook state via the DOM. */
 function TestEditor(props: { params: CellEditorParams }) {
-  const store = useTableDataStore.getState()
-  const callbacks: EditorCallbacksContextType = {
-    tabId: 'tab-1',
-    updateCellValue: store.updateCellValue,
-    syncCellValue: store.syncCellValue,
-  }
-  const editor = useCellEditor(props.params, callbacks)
+  const { inputRef, isNull, value, handleChange, handleToggleNull, restoreOriginalValue } =
+    useCellEditor(props.params, TEST_EDITOR_CALLBACKS)
   return (
     <div>
       <input
-        ref={editor.inputRef}
-        value={editor.isNull ? '' : (editor.value ?? '')}
-        onChange={(e) => editor.handleChange(e.target.value)}
+        ref={inputRef}
+        value={isNull ? '' : (value ?? '')}
+        onChange={(e) => handleChange(e.target.value)}
         data-testid="test-input"
       />
-      <button onClick={editor.handleToggleNull} data-testid="toggle-null">
+      <button onClick={handleToggleNull} data-testid="toggle-null">
         NULL
       </button>
-      <button onClick={editor.restoreOriginalValue} data-testid="restore">
+      <button onClick={restoreOriginalValue} data-testid="restore">
         Restore
       </button>
-      <span data-testid="is-null">{String(editor.isNull)}</span>
-      <span data-testid="value">{String(editor.value)}</span>
+      <span data-testid="is-null">{String(isNull)}</span>
+      <span data-testid="value">{String(value)}</span>
     </div>
   )
 }
 
-function setupStore() {
-  useTableDataStore.setState({
-    tabs: {
-      'tab-1': {
-        columns: [
-          makeColumnMeta('id', 'BIGINT', { isPrimaryKey: true }),
-          makeColumnMeta('created_at', 'DATETIME', { isNullable: true }),
-        ],
-        rows: [[1, '2023-11-24 14:30:00']],
-        currentPage: 1,
-        pageSize: 1000,
-        primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
-        executionTimeMs: 10,
-        rowsEvictedAt: null,
-        connectionId: 'conn-1',
-        database: 'mydb',
-        table: 'users',
-        editState: {
-          rowKey: { id: 1 },
-          originalValues: { id: 1, created_at: '2023-11-24' },
-          currentValues: { id: 1, created_at: '2023-11-24' },
-          modifiedColumns: new Set(),
-          isNewRow: false,
-        },
-        viewMode: 'grid',
-        selectedRowKey: null,
-        selectedCell: null,
-        filterModel: [],
-        sort: null,
-        isLoading: false,
-        error: null,
-        saveError: null,
-        isExportDialogOpen: false,
-        pendingNavigationAction: null,
-        scrollRow: 0,
-        scrollCol: 0,
-      },
-    },
-  })
+const editedCellValues: Record<string, unknown> = {}
+
+function recordEditedCellValue(_tabId: string, column: string, value: unknown) {
+  editedCellValues[column] = value
+}
+
+function ignoreCellSync() {}
+
+const TEST_EDITOR_CALLBACKS: EditorCallbacksContextType = {
+  tabId: 'tab-1',
+  updateCellValue: recordEditedCellValue,
+  syncCellValue: ignoreCellSync,
 }
 
 // ---------------------------------------------------------------------------
@@ -127,7 +94,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2025-06-15T10:00:00Z'))
-  useTableDataStore.setState({ tabs: {} })
+  for (const column of Object.keys(editedCellValues)) delete editedCellValues[column]
 })
 
 afterEach(() => {
@@ -136,7 +103,6 @@ afterEach(() => {
 
 describe('useCellEditor', () => {
   it('initializes with the provided value', () => {
-    setupStore()
     const params = makeMockParams()
     render(<TestEditor params={params} />)
 
@@ -145,7 +111,6 @@ describe('useCellEditor', () => {
   })
 
   it('initializes as null when row value is null', () => {
-    setupStore()
     const params = makeMockParams({ row: { id: 1, created_at: null } })
     render(<TestEditor params={params} />)
 
@@ -154,13 +119,11 @@ describe('useCellEditor', () => {
   })
 
   it('auto-focuses input on mount', () => {
-    setupStore()
     render(<TestEditor params={makeMockParams()} />)
     expect(screen.getByTestId('test-input')).toHaveFocus()
   })
 
   it('handleChange updates value and syncs to store', () => {
-    setupStore()
     render(<TestEditor params={makeMockParams()} />)
 
     const input = screen.getByTestId('test-input')
@@ -168,12 +131,10 @@ describe('useCellEditor', () => {
 
     expect(getEditorValue()).toBe('2024-01-01 12:00:00')
 
-    const state = useTableDataStore.getState().tabs['tab-1']
-    expect(state?.editState?.currentValues.created_at).toBe('2024-01-01 12:00:00')
+    expect(editedCellValues.created_at).toBe('2024-01-01 12:00:00')
   })
 
   it('handleChange calls onRowChange to preview value in grid', () => {
-    setupStore()
     const params = makeMockParams()
     render(<TestEditor params={params} />)
 
@@ -184,7 +145,6 @@ describe('useCellEditor', () => {
   })
 
   it('handleChange clears null state when typing', () => {
-    setupStore()
     const params = makeMockParams({ row: { id: 1, created_at: null } })
     render(<TestEditor params={params} />)
 
@@ -198,7 +158,6 @@ describe('useCellEditor', () => {
   })
 
   it('handleToggleNull: toggle on sets value to null', () => {
-    setupStore()
     render(<TestEditor params={makeMockParams()} />)
 
     fireEvent.click(screen.getByTestId('toggle-null'))
@@ -208,7 +167,6 @@ describe('useCellEditor', () => {
   })
 
   it('handleToggleNull: toggle off prefills temporal with today', () => {
-    setupStore()
     const params = makeMockParams({ row: { id: 1, created_at: null } })
     render(<TestEditor params={params} />)
 
@@ -219,7 +177,6 @@ describe('useCellEditor', () => {
   })
 
   it('handleToggleNull: toggle off for non-temporal sets empty string', () => {
-    setupStore()
     const params = makeMockParams({
       row: { id: 1, name: null },
       column: { key: 'name' },
@@ -233,7 +190,6 @@ describe('useCellEditor', () => {
   })
 
   it('restoreOriginalValue restores to initial state', () => {
-    setupStore()
     render(<TestEditor params={makeMockParams()} />)
 
     // Change value
@@ -248,7 +204,6 @@ describe('useCellEditor', () => {
   })
 
   it('restoreOriginalValue restores null state when initially null', () => {
-    setupStore()
     const params = makeMockParams({ row: { id: 1, created_at: null } })
     render(<TestEditor params={params} />)
 

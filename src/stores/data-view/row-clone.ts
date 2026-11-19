@@ -4,13 +4,8 @@ import type {
   QueryTableEditInfo,
   TableDataColumnMeta,
 } from '../../types/schema'
-import {
-  buildEnvelopedPrimaryKeyPairs,
-  envelopeForBase64,
-  isBlobPlaceholderText,
-} from '../../lib/blob-utils'
+import { envelopeForBase64, isBlobPlaceholderText } from '../../lib/blob-utils'
 import { isCopiedIntoClone } from '../../lib/new-row-values'
-import { fetchBlobValue } from '../../lib/table-data-commands'
 import { toErrorMessage } from '../../lib/error-message'
 import { countRanges, firstRangeStart } from '../../lib/view-ranges'
 import type { CellProjection } from '../../lib/row-write-payloads'
@@ -24,6 +19,7 @@ import {
 } from './data-view-selectors'
 import { boundTableColumnAt, isBoundColumn, openDraftRow, type DraftRow } from './edit-actions'
 import { readView, routeOf } from './route-registry'
+import { storedBlobLoadOf } from './stored-blobs'
 
 export function cloneSourceRowIndex(view: DataViewState): number | null {
   const checkedCount = countRanges(view.checked.ranges)
@@ -48,6 +44,7 @@ export function copiedBoundColumnNames(
 }
 
 interface CloneSource {
+  ref: DataViewSurfaceRef
   view: DataViewState
   tableInfo: QueryTableEditInfo
   keyColumns: string[]
@@ -86,6 +83,7 @@ function resolveCloneSource(ref: DataViewSurfaceRef, view: DataViewState): Clone
   const sourceRow = rowAt(ref, view, sourceRowIndex)?.row
   if (!sourceRow) return null
   return {
+    ref: ref,
     view: view,
     tableInfo: tableInfo,
     keyColumns: tableInfo.primaryKey.keyColumns,
@@ -115,15 +113,6 @@ function storedBlobCellsOf(source: CloneSource, copiedColumnNames: Set<string>):
   return cells
 }
 
-function sourceKeyValues(source: CloneSource): Record<string, unknown> {
-  const keyValues: Record<string, unknown> = {}
-  for (const keyColumn of source.keyColumns) {
-    const columnIndex = source.view.editTarget.boundIndexByName.get(keyColumn.toLowerCase())
-    keyValues[keyColumn] = columnIndex === undefined ? undefined : source.sourceRow[columnIndex]
-  }
-  return keyValues
-}
-
 function clonedBlobOf(response: BlobValueResponse): ClonedBlob {
   if (response.base64 !== null) {
     return { value: envelopeForBase64(response.base64), isTooLarge: false }
@@ -131,27 +120,25 @@ function clonedBlobOf(response: BlobValueResponse): ClonedBlob {
   return { value: null, isTooLarge: response.tooLarge }
 }
 
+const MISSING_KEY_MESSAGE = 'The row has no primary key to read its BLOB values by.'
+
+async function fetchStoredBlob(source: CloneSource, cell: StoredBlobCell): Promise<ClonedBlob> {
+  const stored = storedBlobLoadOf(source.ref, {
+    columnIndex: cell.columnIndex,
+    valueAt: (columnIndex) => source.sourceRow[columnIndex],
+  })
+  if (!stored) throw new Error(MISSING_KEY_MESSAGE)
+  if (!stored.ok) throw new Error(stored.error)
+  return clonedBlobOf(await stored.load())
+}
+
 async function fetchStoredBlobs(
   source: CloneSource,
   cells: StoredBlobCell[]
 ): Promise<Map<number, ClonedBlob>> {
-  const primaryKey = buildEnvelopedPrimaryKeyPairs(
-    source.keyColumns,
-    source.tableInfo.columns,
-    sourceKeyValues(source)
-  )
-  if (!primaryKey.ok) throw new Error(primaryKey.error)
-
   const clonedBlobs = new Map<number, ClonedBlob>()
   for (const cell of cells) {
-    const response = await fetchBlobValue({
-      connectionId: source.view.slot.connectionId,
-      database: source.tableInfo.database,
-      table: source.tableInfo.table,
-      column: cell.tableColumn.name,
-      primaryKeyPairs: primaryKey.pairs,
-    })
-    clonedBlobs.set(cell.columnIndex, clonedBlobOf(response))
+    clonedBlobs.set(cell.columnIndex, await fetchStoredBlob(source, cell))
   }
   return clonedBlobs
 }

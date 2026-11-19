@@ -25,7 +25,7 @@ function isDirtyDesignerTab(tabId: string): boolean {
 
 const UNSAVED_TAB_CHECKS: Partial<Record<WorkspaceTabType, (tabId: string) => boolean>> = {
   'table-data': (tabId) =>
-    hasPendingRowChanges(useTableDataStore.getState().tabs[tabId]?.editState),
+    hasPendingRowChanges(useTableDataStore.getState().tabs[tabId]?.view.edit.state),
   'table-designer': isDirtyDesignerTab,
   'object-editor': (tabId) => useObjectEditorStore.getState().isDirty(tabId),
 }

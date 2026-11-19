@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildColumnDescriptors } from '../../../components/table-data/table-data-grid-columns'
-import type { TableDataColumnMeta } from '../../../types/schema'
+import { buildColumnDescriptors } from '../../../../components/shared/fk-lookup-dialog/fk-lookup-columns'
+import type { TableDataColumnMeta } from '../../../../types/schema'
 
 function makeColumn(overrides: Partial<TableDataColumnMeta> = {}): TableDataColumnMeta {
   return {

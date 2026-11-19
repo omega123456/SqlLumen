@@ -124,6 +124,42 @@ function makeQueryTabState(overrides: Partial<TabQueryState> = {}): TabQueryStat
   }
 }
 
+function evictedTableTabState() {
+  return makeTableDataTabState({
+    view: {
+      slot: { queryId: 'table-page-1', viewRowCount: 1 },
+      residency: { rows: { status: 'evicted', isActive: false, inactiveSince: Date.now() } },
+    },
+  })
+}
+
+function dirtyTableTabState() {
+  return makeTableDataTabState({
+    view: {
+      edit: {
+        rowIndex: 0,
+        state: {
+          rowKey: { id: 1 },
+          originalValues: { name: 'Alice' },
+          currentValues: { name: 'Bob' },
+          modifiedColumns: new Set(['name']),
+          isNewRow: false,
+        },
+      },
+    },
+  })
+}
+
+function serveRestoredTableRow(row: unknown[]) {
+  ipc.override('fetch_result_window', () => ({
+    offset: 0,
+    rows: [row],
+    baseIndices: [0],
+    viewRowCount: 1,
+    viewVersion: 0,
+  }))
+}
+
 describe('useWorkspaceStore — openTab', () => {
   it('creates a new tab and sets it active', () => {
     useWorkspaceStore.getState().openTab(makeTab())
@@ -332,11 +368,9 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
     useTableDataStore.setState({
       tabs: {
         [tableTab.id]: makeTableDataTabState({
-          rows: [[1, 'alice']],
-          rowResidency: {
-            status: 'resident',
-            isActive: false,
-            inactiveSince: 123,
+          view: {
+            slot: { queryId: 'table-page-1', viewRowCount: 1 },
+            residency: { rows: { status: 'resident', isActive: false, inactiveSince: 123 } },
           },
         }),
       },
@@ -345,7 +379,7 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
     useWorkspaceStore.getState().openTab(makeTab())
 
     await vi.waitFor(() => {
-      expect(useTableDataStore.getState().tabs[tableTab.id]!.rowResidency).toEqual({
+      expect(useTableDataStore.getState().tabs[tableTab.id]!.view.residency.rows).toEqual({
         status: 'resident',
         isActive: true,
         inactiveSince: null,
@@ -415,36 +449,19 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
 
     useTableDataStore.setState({
       tabs: {
-        [tableTab.id]: makeTableDataTabState({
-          rows: [],
-          rowResidency: {
-            status: 'evicted',
-            isActive: false,
-            inactiveSince: Date.now(),
-          },
-        }),
+        [tableTab.id]: evictedTableTabState(),
       },
     })
 
-    ipc.override('restore_table_data_cache', () => ({
-      status: 'available',
-      data: {
-        columns: [],
-        rows: [[1, 'alice']],
-        currentPage: 1,
-        pageSize: 1000,
-        primaryKey: null,
-        executionTimeMs: 5,
-      },
-    }))
+    serveRestoredTableRow([1, 'alice'])
 
     useWorkspaceStore.getState().setActiveTab('conn-1', tableTab.id)
     useWorkspaceStore.getState().setActiveTab('conn-1', schemaTabId)
     useWorkspaceStore.getState().setActiveTab('conn-1', tableTab.id)
 
     await vi.waitFor(() => {
-      expect(useTableDataStore.getState().tabs[tableTab.id].rows).toEqual([[1, 'alice']])
-      expect(useTableDataStore.getState().tabs[tableTab.id].rowResidency).toMatchObject({
+      expect(rowsOf(tableTab.id, 0)).toEqual([[1, 'alice']])
+      expect(useTableDataStore.getState().tabs[tableTab.id].view.residency.rows).toMatchObject({
         status: 'resident',
         isActive: true,
         inactiveSince: null,
@@ -489,27 +506,10 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
     })
     useTableDataStore.setState({
       tabs: {
-        [tableTab.id]: makeTableDataTabState({
-          rows: [],
-          rowResidency: {
-            status: 'evicted',
-            isActive: false,
-            inactiveSince: Date.now(),
-          },
-        }),
+        [tableTab.id]: evictedTableTabState(),
       },
     })
-    ipc.override('restore_table_data_cache', () => ({
-      status: 'available',
-      data: {
-        columns: [],
-        rows: [[7, 'restored']],
-        currentPage: 1,
-        pageSize: 1000,
-        primaryKey: null,
-        executionTimeMs: 5,
-      },
-    }))
+    serveRestoredTableRow([7, 'restored'])
 
     useQueryStore.getState().setActiveBottomPanelItem(queryTabId, {
       type: 'table-data',
@@ -520,14 +520,18 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
       expect(
         useQueryStore.getState().tabs[queryTabId]!.results[0]!.view.residency.rows.isActive
       ).toBe(false)
-      expect(useTableDataStore.getState().tabs[tableTab.id]!.rows).toEqual([[7, 'restored']])
-      expect(useTableDataStore.getState().tabs[tableTab.id]!.rowResidency!.isActive).toBe(true)
+      expect(rowsOf(tableTab.id, 0)).toEqual([[7, 'restored']])
+      expect(useTableDataStore.getState().tabs[tableTab.id]!.view.residency.rows.isActive).toBe(
+        true
+      )
     })
 
     useQueryStore.getState().setActiveBottomPanelItem(queryTabId, { type: 'result' })
 
     await vi.waitFor(() => {
-      expect(useTableDataStore.getState().tabs[tableTab.id]!.rowResidency!.isActive).toBe(false)
+      expect(useTableDataStore.getState().tabs[tableTab.id]!.view.residency.rows.isActive).toBe(
+        false
+      )
       expect(
         useQueryStore.getState().tabs[queryTabId]!.results[0]!.view.residency.rows.isActive
       ).toBe(true)
@@ -765,34 +769,17 @@ describe('useWorkspaceStore — setVisibleConnectionSession', () => {
 
     useTableDataStore.setState({
       tabs: {
-        [tableTab.id]: makeTableDataTabState({
-          rows: [],
-          rowResidency: {
-            status: 'evicted',
-            isActive: false,
-            inactiveSince: Date.now(),
-          },
-        }),
+        [tableTab.id]: evictedTableTabState(),
       },
     })
 
-    ipc.override('restore_table_data_cache', () => ({
-      status: 'available',
-      data: {
-        columns: [],
-        rows: [[42, 'visible']],
-        currentPage: 1,
-        pageSize: 1000,
-        primaryKey: null,
-        executionTimeMs: 5,
-      },
-    }))
+    serveRestoredTableRow([42, 'visible'])
 
     useWorkspaceStore.getState().setVisibleConnectionSession('conn-bg')
 
     await vi.waitFor(() => {
-      expect(useTableDataStore.getState().tabs[tableTab.id].rows).toEqual([[42, 'visible']])
-      expect(useTableDataStore.getState().tabs[tableTab.id].rowResidency).toMatchObject({
+      expect(rowsOf(tableTab.id, 0)).toEqual([[42, 'visible']])
+      expect(useTableDataStore.getState().tabs[tableTab.id].view.residency.rows).toMatchObject({
         status: 'resident',
         isActive: true,
         inactiveSince: null,
@@ -1219,9 +1206,7 @@ describe('useWorkspaceStore — closeTab', () => {
     })
     useTableDataStore.setState({
       tabs: {
-        [tableTabId]: {
-          editState: { modifiedColumns: new Set(['name']) },
-        } as never,
+        [tableTabId]: dirtyTableTabState(),
       },
     })
 
@@ -1248,9 +1233,7 @@ describe('useWorkspaceStore — closeTab', () => {
 
     useTableDataStore.setState({
       tabs: {
-        [tableTabId]: {
-          editState: { modifiedColumns: new Set(['name']) },
-        } as never,
+        [tableTabId]: dirtyTableTabState(),
       },
     })
 
@@ -2272,9 +2255,7 @@ describe('useWorkspaceStore — max tabs per group', () => {
     const dirty = tabIds()[0]
     useTableDataStore.setState({
       tabs: {
-        [dirty]: makeTableDataTabState({
-          editState: { modifiedColumns: new Set(['name']) } as never,
-        }),
+        [dirty]: dirtyTableTabState(),
       },
     })
 

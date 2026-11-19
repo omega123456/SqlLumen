@@ -328,7 +328,7 @@ describe('object-activation', () => {
       label: 'orders',
     })
     expect(useTableDataStore.getState().columnJumpRequests).toEqual({
-      'orders-tab': { columnKey: 'shipping_amount', nonce: 1 },
+      'orders-tab': { columnName: 'shipping_amount', nonce: 1 },
     })
   })
 

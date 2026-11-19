@@ -3,8 +3,9 @@ import { CheckCircle, WarningCircle } from '@phosphor-icons/react'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
 import { useQueryStore, type SingleResultState } from '../../../stores/query-store'
 import type { ConnectionIndexState } from '../../../stores/schema-index-store'
+import type { TableDataTabState } from '../../../stores/table-data-store'
 import { formatRowCountParts } from '../../../lib/format-row-count'
-import type { TableDataTabState, WorkspaceTab } from '../../../types/schema'
+import type { WorkspaceTab } from '../../../types/schema'
 import {
   resolveResultPendingWork,
   resolveTablePendingWork,
@@ -180,7 +181,7 @@ export function hasLoadedTableData(
   tableData: TableDataTabState | null
 ): tableData is TableDataTabState {
   if (!tableData) return false
-  return tableData.columns.length > 0 && tableData.error === null
+  return tableData.meta.columns.length > 0 && tableData.page.error === null
 }
 
 export function queryRowCountOf(result: SingleResultState) {
@@ -277,8 +278,8 @@ export function resolveTableDataInfo(
 ): TableDataInfoState | null {
   if (!hasLoadedTableData(tableData)) return null
   return {
-    visibleRows: tableData.rows.length,
-    executionTimeMs: positiveOrNull(tableData.executionTimeMs),
+    visibleRows: tableData.view.slot.viewRowCount,
+    executionTimeMs: positiveOrNull(tableData.page.executionTimeMs),
   }
 }
 

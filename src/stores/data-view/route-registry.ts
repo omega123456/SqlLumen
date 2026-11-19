@@ -1,4 +1,4 @@
-import type { ResultViewSpec, ResultWindow } from '../../types/schema'
+import type { QueryTableEditInfo, ResultViewSpec, ResultWindow } from '../../types/schema'
 import type { InsertedColumnValue } from '../../lib/table-data-commands'
 import type { CellProjection } from '../../lib/row-write-payloads'
 import type {
@@ -52,12 +52,24 @@ export interface DataViewLifecycle {
   onExpired: (ref: DataViewSurfaceRef) => void
 }
 
+export interface StoredBlobTable {
+  connectionId: string
+  tableInfo: QueryTableEditInfo
+  boundNameOf: (columnIndex: number) => string | undefined
+  columnIndexOf: (columnName: string) => number | undefined
+}
+
+export interface DataViewBlobs {
+  storedTable: (ref: DataViewSurfaceRef) => StoredBlobTable | null
+}
+
 export interface DataViewRoute {
   kind: DataViewRouteKind
   binding: DataViewBinding
   viewRequests: DataViewViewRequests
   writes: DataViewWrites
   lifecycle: DataViewLifecycle
+  blobs: DataViewBlobs
 }
 
 const routes = new Map<DataViewRouteKind, DataViewRoute>()

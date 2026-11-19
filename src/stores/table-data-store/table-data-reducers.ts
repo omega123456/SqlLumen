@@ -1,39 +1,25 @@
-import type { FrontendRowResidencyState, TableDataTabState } from '../../types/schema'
 import type { TableDataStore } from '../table-data-store'
-import {
-  canEvictInactiveTableDataTab,
-  createResidentRowState,
-  tabRowResidency,
-} from './table-data-residency'
+import { applyViewPatch } from '../data-view/data-view-reducers'
 import { withoutKey } from '../../lib/record-utils'
+import type { TableDataTabPatch, TableDataTabState } from './table-data-tab-state'
 
 type TableDataTabs = Pick<TableDataStore, 'tabs'>
 type ColumnJumpState = Pick<TableDataStore, 'columnJumpRequests' | 'highlightedColumnByTab'>
 type TableDataStoreState = TableDataTabs & ColumnJumpState
-
-export interface TableDataTabPatch {
-  tabId: string
-  partial: Partial<TableDataTabState>
-}
-
-export interface TableDataResidencyPatch {
-  tabId: string
-  partial: Partial<FrontendRowResidencyState>
-}
 
 export interface TableDataTabEntry {
   tabId: string
   tab: TableDataTabState
 }
 
-export interface TableDataEviction {
+export interface TableDataTabUpdate {
   tabId: string
-  evictedAt: number
+  patch: TableDataTabPatch
 }
 
 export interface ColumnJumpRequest {
   tabId: string
-  columnKey: string
+  columnName: string
 }
 
 function withTab(state: TableDataTabs, tabId: string, tab: TableDataTabState): TableDataTabs {
@@ -44,26 +30,25 @@ export function putTableDataTab(state: TableDataTabs, { tabId, tab }: TableDataT
   return withTab(state, tabId, tab)
 }
 
-export function patchTableDataTab(
-  state: TableDataTabs,
-  { tabId, partial }: TableDataTabPatch
-): TableDataTabs {
-  const existing = state.tabs[tabId]
-  if (!existing) return state
-  return withTab(state, tabId, { ...existing, ...partial })
+export function patchedTableDataTab(
+  tab: TableDataTabState,
+  patch: TableDataTabPatch
+): TableDataTabState {
+  return {
+    table: tab.table,
+    page: patch.page ? { ...tab.page, ...patch.page } : tab.page,
+    meta: patch.meta ? { ...tab.meta, ...patch.meta } : tab.meta,
+    view: patch.view ? applyViewPatch(tab.view, patch.view) : tab.view,
+  }
 }
 
-export function patchTableDataResidency(
+export function patchTableDataTab(
   state: TableDataTabs,
-  { tabId, partial }: TableDataResidencyPatch
+  { tabId, patch }: TableDataTabUpdate
 ): TableDataTabs {
   const existing = state.tabs[tabId]
   if (!existing) return state
-  const rowResidency = {
-    ...(existing.rowResidency ?? createResidentRowState(false)),
-    ...partial,
-  }
-  return withTab(state, tabId, { ...existing, rowResidency: rowResidency })
+  return withTab(state, tabId, patchedTableDataTab(existing, patch))
 }
 
 export function removeTableDataTab(state: TableDataStoreState, tabId: string): TableDataStoreState {
@@ -74,36 +59,15 @@ export function removeTableDataTab(state: TableDataStoreState, tabId: string): T
   }
 }
 
-export function evictTableDataRows(
-  state: TableDataTabs,
-  { tabId, evictedAt }: TableDataEviction
-): TableDataTabs {
-  const tab = state.tabs[tabId]
-  if (!tab) return state
-  if (!canEvictInactiveTableDataTab(tab)) return state
-
-  return withTab(state, tabId, {
-    ...tab,
-    rows: [],
-    rowsEvictedAt: evictedAt,
-    selectedRowKey: null,
-    checkedRowKeys: [],
-    selectedCell: null,
-    editState: null,
-    saveError: null,
-    rowResidency: { ...tabRowResidency(tab), status: 'evicted' },
-  })
-}
-
 export function requestTableDataColumnJump(
   state: ColumnJumpState,
-  { tabId, columnKey }: ColumnJumpRequest
+  { tabId, columnName }: ColumnJumpRequest
 ): Pick<ColumnJumpState, 'columnJumpRequests'> {
   const nextNonce = (state.columnJumpRequests[tabId]?.nonce ?? 0) + 1
   return {
     columnJumpRequests: {
       ...state.columnJumpRequests,
-      [tabId]: { columnKey: columnKey, nonce: nextNonce },
+      [tabId]: { columnName: columnName, nonce: nextNonce },
     },
   }
 }
@@ -113,7 +77,7 @@ export function consumeTableDataColumnJump(state: ColumnJumpState, tabId: string
   if (!request) return state
   return {
     columnJumpRequests: withoutKey(state.columnJumpRequests, tabId),
-    highlightedColumnByTab: { ...state.highlightedColumnByTab, [tabId]: request.columnKey },
+    highlightedColumnByTab: { ...state.highlightedColumnByTab, [tabId]: request.columnName },
   }
 }
 

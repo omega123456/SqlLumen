@@ -9,6 +9,7 @@ import {
   retryRequestedView,
 } from './result-view-requests'
 import { rerunResultAfterInsert } from './row-save-rerun'
+import { editTargetBlobTable } from '../data-view/stored-blobs'
 
 function useQueryView<Selected>(
   ref: DataViewSurfaceRef,
@@ -42,6 +43,9 @@ export function registerQueryDataViewRoute() {
     },
     lifecycle: {
       onExpired: (ref) => markTabResultsExpired(ref.tabId),
+    },
+    blobs: {
+      storedTable: (ref) => editTargetBlobTable(resultOf(ref)?.view),
     },
   })
 }

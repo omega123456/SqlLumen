@@ -13,7 +13,10 @@ import { useUpdateStore } from '../../../stores/update-store'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import userEvent from '@testing-library/user-event'
 import { ipc } from '../../ipc-mock'
-import type { TableDataTabState, WorkspaceTab } from '../../../types/schema'
+import type { WorkspaceTab } from '../../../types/schema'
+import type { TableDataTabState } from '../../../stores/table-data-store'
+import type { TableDataTabPatch } from '../../../stores/table-data-store/table-data-tab-state'
+import { makeTableColumnMeta } from '../../helpers/column-meta-fixtures'
 import { makeTabState } from '../../helpers/query-test-utils'
 import { makeTableDataTabState } from '../../helpers/table-data-test-utils'
 import { makeActiveConnection } from '../../helpers/connection-test-utils'
@@ -47,41 +50,27 @@ function setupStandaloneTableTab() {
   seedVisibleConnection('conn-1')
 }
 
-function makeStatusBarTableState(overrides: Partial<TableDataTabState> = {}): TableDataTabState {
+const STATUS_BAR_TABLE_COLUMNS = [
+  makeTableColumnMeta({
+    name: 'id',
+    dataType: 'bigint',
+    isPrimaryKey: true,
+    isNullable: false,
+    isAutoIncrement: true,
+  }),
+  makeTableColumnMeta({ name: 'name', dataType: 'varchar', isNullable: true }),
+]
+
+const STATUS_BAR_TABLE_ROW_COUNT = 3
+
+function makeStatusBarTableState(patch: TableDataTabPatch = {}): TableDataTabState {
   return makeTableDataTabState({
-    columns: [
-      {
-        name: 'id',
-        dataType: 'bigint',
-        isNullable: false,
-        isPrimaryKey: true,
-        isUniqueKey: false,
-        hasDefault: false,
-        columnDefault: null,
-        isBinary: false,
-        isBooleanAlias: false,
-        isAutoIncrement: true,
-      },
-      {
-        name: 'name',
-        dataType: 'varchar',
-        isNullable: true,
-        isPrimaryKey: false,
-        isUniqueKey: false,
-        hasDefault: false,
-        columnDefault: null,
-        isBinary: false,
-        isBooleanAlias: false,
-        isAutoIncrement: false,
-      },
-    ],
-    rows: [
-      [1, 'Alice'],
-      [2, 'Bob'],
-      [3, 'Cara'],
-    ],
-    viewMode: 'grid',
-    ...overrides,
+    ...patch,
+    meta: { columns: STATUS_BAR_TABLE_COLUMNS, ...patch.meta },
+    view: {
+      ...patch.view,
+      slot: { viewRowCount: STATUS_BAR_TABLE_ROW_COUNT, ...patch.view?.slot },
+    },
   })
 }
 
@@ -496,9 +485,7 @@ describe('StatusBar', () => {
       })
       useTableDataStore.setState({
         tabs: {
-          'table-1': makeStatusBarTableState({
-            rows: [[1, 'Alice']],
-          }),
+          'table-1': makeStatusBarTableState({ view: { slot: { viewRowCount: 1 } } }),
         },
       })
 
@@ -513,7 +500,10 @@ describe('StatusBar', () => {
       setupStandaloneTableTab()
       useTableDataStore.setState({
         tabs: {
-          'table-1': makeStatusBarTableState({ viewMode: 'form', executionTimeMs: 42 }),
+          'table-1': makeStatusBarTableState({
+            view: { mode: 'form' },
+            page: { executionTimeMs: 42 },
+          }),
         },
       })
 
@@ -526,7 +516,7 @@ describe('StatusBar', () => {
     it('omits the exec time when the table load reported none', () => {
       setupStandaloneTableTab()
       useTableDataStore.setState({
-        tabs: { 'table-1': makeStatusBarTableState({ executionTimeMs: 0 }) },
+        tabs: { 'table-1': makeStatusBarTableState({ page: { executionTimeMs: 0 } }) },
       })
 
       render(<StatusBar />)
@@ -535,10 +525,10 @@ describe('StatusBar', () => {
       expect(screen.queryByTestId('table-data-time')).not.toBeInTheDocument()
     })
 
-    it('shows the loading and restoring states as pending work', () => {
+    it('shows the loading, restoring and row-action states as pending work', () => {
       setupStandaloneTableTab()
       useTableDataStore.setState({
-        tabs: { 'table-1': makeStatusBarTableState({ isLoading: true }) },
+        tabs: { 'table-1': makeStatusBarTableState({ page: { isLoading: true } }) },
       })
       const { unmount } = render(<StatusBar />)
       expect(screen.getByTestId('status-pending-work-label')).toHaveTextContent('Loading...')
@@ -549,16 +539,35 @@ describe('StatusBar', () => {
         useTableDataStore.setState({
           tabs: {
             'table-1': makeStatusBarTableState({
-              isLoading: true,
-              rowResidency: { status: 'restoring', isActive: true, inactiveSince: null },
+              page: { isLoading: true },
+              view: {
+                residency: {
+                  rows: { status: 'restoring', isActive: true, inactiveSince: null },
+                },
+              },
+            }),
+          },
+        })
+      })
+      const restoring = render(<StatusBar />)
+      expect(screen.getByTestId('status-pending-work-label')).toHaveTextContent(
+        'Restoring cached rows...'
+      )
+      restoring.unmount()
+
+      act(() => {
+        useTableDataStore.setState({
+          tabs: {
+            'table-1': makeStatusBarTableState({
+              view: {
+                rowAction: { verb: 'Copying', done: 2, total: 5, cancellable: true, visible: true },
+              },
             }),
           },
         })
       })
       render(<StatusBar />)
-      expect(screen.getByTestId('status-pending-work-label')).toHaveTextContent(
-        'Restoring cached rows...'
-      )
+      expect(screen.getByTestId('status-pending-work-label')).toHaveTextContent('Copying… 2 of 5')
     })
   })
 

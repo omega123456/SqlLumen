@@ -1,4 +1,5 @@
 import type {
+  AppendResultRowResult,
   FetchResultWindowResult,
   MultiQueryResult,
   MultiQueryResultItem,
@@ -67,6 +68,11 @@ export interface RemoveResultRowsRequest extends ResultSlotRequest {
   baseIndices: number[]
 }
 
+export interface AppendResultRowRequest extends ResultSlotRequest {
+  baseViewVersion: number
+  row: unknown[]
+}
+
 export interface UpdateResultCellRequest {
   connectionId: string
   tabId: string
@@ -116,6 +122,12 @@ export async function removeResultRows(
   request: RemoveResultRowsRequest
 ): Promise<RemoveResultRowsResult> {
   return invokeCommand({ command: 'remove_result_rows', payload: request })
+}
+
+export async function appendResultRow(
+  request: AppendResultRowRequest
+): Promise<AppendResultRowResult> {
+  return invokeCommand({ command: 'append_result_row', payload: request })
 }
 
 export async function evictResults(connectionId: string, tabId: string): Promise<void> {

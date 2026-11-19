@@ -13,6 +13,15 @@ import type {
 import { makeTabState } from '../../../helpers/query-test-utils'
 import { dataViewResult, seedDataView } from '../../../helpers/data-view-test-utils'
 import { ipc } from '../../../ipc-mock'
+import {
+  loadTablePage,
+  setupTestConnection,
+  tablePageResponse,
+  type TablePageFixture,
+} from '../../../helpers/table-data-test-utils'
+import { makeTableColumnMeta } from '../../../helpers/column-meta-fixtures'
+import { useTableDataViewSource } from '../../../../components/table-data/table-data-tab/table-data-view-source'
+import { useTableDataStore } from '../../../../stores/table-data-store'
 
 interface FormFixtureProps {
   columns: ColumnMeta[]
@@ -1059,5 +1068,60 @@ describe('DataFormView — Temporal Fields', () => {
     fireEvent.blur(input)
     // No crash; the ref is reset — verify component is still rendered
     expect(screen.getByTestId('form-input-created_at')).toBeInTheDocument()
+  })
+})
+
+describe('DataFormView paging on the table route', () => {
+  const PAGED_TAB_ID = 'table-tab-1'
+  const FULL_PAGE: TablePageFixture = {
+    columns: [
+      makeTableColumnMeta({ name: 'id', dataType: 'INT', isPrimaryKey: true }),
+      makeTableColumnMeta({ name: 'name', dataType: 'VARCHAR' }),
+    ],
+    rows: [
+      [1, 'Alice'],
+      [2, 'Bob'],
+    ],
+    primaryKey: { keyColumns: ['id'], hasAutoIncrement: false, isUniqueKeyFallback: false },
+    pageSize: 2,
+  }
+
+  function PagedTableForm() {
+    const source = useTableDataViewSource({ tabId: PAGED_TAB_ID, isActive: true, isView: false })
+    return <DataFormView source={source} />
+  }
+
+  function pagedView() {
+    return useTableDataStore.getState().tabs[PAGED_TAB_ID]!
+  }
+
+  beforeEach(async () => {
+    useTableDataStore.setState({ tabs: {} })
+    setupTestConnection()
+    ipc.override('get_table_foreign_keys', () => [])
+    await act(async () => {
+      await loadTablePage(PAGED_TAB_ID, FULL_PAGE)
+    })
+    ipc.overridePayload('fetch_table_page', (request) =>
+      tablePageResponse({ ...FULL_PAGE, currentPage: Number(request.page) })
+    )
+  })
+
+  it('crosses page edges, selecting the first row of the next page and the last row of the previous one', async () => {
+    const user = userEvent.setup()
+    await act(async () => {
+      await useTableDataStore.getState().fetchPage(PAGED_TAB_ID, { page: 1, select: 'last' })
+    })
+    render(<PagedTableForm />)
+
+    await user.click(await screen.findByTestId('btn-form-next'))
+
+    await waitFor(() => expect(pagedView().page.currentPage).toBe(2))
+    expect(pagedView().view.selection.rowIndex).toBe(0)
+
+    await user.click(screen.getByTestId('btn-form-previous'))
+
+    await waitFor(() => expect(pagedView().page.currentPage).toBe(1))
+    expect(pagedView().view.selection.rowIndex).toBe(1)
   })
 })

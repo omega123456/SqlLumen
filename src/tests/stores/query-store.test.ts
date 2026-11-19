@@ -88,11 +88,14 @@ describe('useQueryStore — activeBottomPanelItem', () => {
     useTableDataStore.setState({
       tabs: {
         'table-tab-1': makeTableDataTabState({
-          connectionId: 'conn-1',
-          rowResidency: {
-            status: 'resident',
-            isActive: false,
-            inactiveSince: 123,
+          view: {
+            residency: {
+              rows: {
+                status: 'resident',
+                isActive: false,
+                inactiveSince: 123,
+              },
+            },
           },
         }),
       },
@@ -106,7 +109,7 @@ describe('useQueryStore — activeBottomPanelItem', () => {
       type: 'table-data',
       tabId: 'table-tab-1',
     })
-    expect(useTableDataStore.getState().tabs['table-tab-1']?.rowResidency).toEqual({
+    expect(useTableDataStore.getState().tabs['table-tab-1']?.view.residency.rows).toEqual({
       status: 'resident',
       isActive: true,
       inactiveSince: null,
@@ -184,11 +187,14 @@ describe('useQueryStore — activeBottomPanelItem', () => {
     useTableDataStore.setState({
       tabs: {
         'table-tab-1': makeTableDataTabState({
-          connectionId: 'conn-1',
-          rowResidency: {
-            status: 'resident',
-            isActive: false,
-            inactiveSince: 123,
+          view: {
+            residency: {
+              rows: {
+                status: 'resident',
+                isActive: false,
+                inactiveSince: 123,
+              },
+            },
           },
         }),
       },
@@ -198,7 +204,7 @@ describe('useQueryStore — activeBottomPanelItem', () => {
       .getState()
       .setActiveBottomPanelItem('tab-bottom-panel', { type: 'table-data', tabId: 'table-tab-1' })
 
-    expect(useTableDataStore.getState().tabs['table-tab-1']?.rowResidency).toEqual({
+    expect(useTableDataStore.getState().tabs['table-tab-1']?.view.residency.rows).toEqual({
       status: 'resident',
       isActive: false,
       inactiveSince: 123,
@@ -236,20 +242,23 @@ describe('useQueryStore — activeBottomPanelItem', () => {
     useTableDataStore.setState({
       tabs: {
         'table-tab-1': makeTableDataTabState({
-          connectionId: 'conn-1',
-          rowResidency: {
-            status: 'resident',
-            isActive: true,
-            inactiveSince: null,
+          view: {
+            residency: {
+              rows: {
+                status: 'resident',
+                isActive: true,
+                inactiveSince: null,
+              },
+            },
+            slot: { viewRowCount: 1 },
           },
-          rows: [[1]],
         }),
       },
     })
 
     useQueryStore.getState().setActiveBottomPanelItem('tab-bottom-panel', { type: 'result' })
 
-    expect(useTableDataStore.getState().tabs['table-tab-1']?.rowResidency).toEqual({
+    expect(useTableDataStore.getState().tabs['table-tab-1']?.view.residency.rows).toEqual({
       status: 'resident',
       isActive: false,
       inactiveSince: expect.any(Number),

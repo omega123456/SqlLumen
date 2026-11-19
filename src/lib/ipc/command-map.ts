@@ -1,4 +1,5 @@
 import type {
+  AppendResultRowResult,
   AppInfo,
   BlobValueResponse,
   CharsetInfo,
@@ -25,6 +26,7 @@ import type {
   TableDataCacheRestoreResult,
   TableDataCacheSyncResult,
   TableDataResponse,
+  TablePageResult,
   TableDesignerSchema,
   UpdateFavoriteInput,
 } from '../../types/schema'
@@ -81,6 +83,7 @@ import type {
   FetchResultWindowRequest,
   ReexecuteSingleResultRequest,
   RemoveResultRowsRequest,
+  AppendResultRowRequest,
   ResultCacheTouchResult,
   SetResultViewRequest,
   UpdateResultCellRequest,
@@ -177,6 +180,7 @@ export interface PayloadCommandMap {
   set_result_view: Command<SetResultViewRequest, SetResultViewResult>
   fetch_result_window: Command<FetchResultWindowRequest, FetchResultWindowResult>
   remove_result_rows: Command<RemoveResultRowsRequest, RemoveResultRowsResult>
+  append_result_row: Command<AppendResultRowRequest, AppendResultRowResult>
   update_result_cell: Command<UpdateResultCellRequest, void>
   evict_results: Command<ConnectionTabRequest, void>
   touch_results: Command<ConnectionTabRequest, ResultCacheTouchResult>
@@ -213,6 +217,7 @@ export interface PayloadCommandMap {
   cancel_dump: Command<{ jobId: string; connectionId: string }, void>
 
   fetch_table_data: Command<FetchTableDataRequest, TableDataResponse>
+  fetch_table_page: Command<FetchTableDataRequest, TablePageResult>
   touch_table_data: Command<ConnectionTabRequest, TableDataTouchResult>
   evict_table_data: Command<ConnectionTabRequest, void>
   restore_table_data_cache: Command<RestoreTableDataCacheRequest, TableDataCacheRestoreResult>

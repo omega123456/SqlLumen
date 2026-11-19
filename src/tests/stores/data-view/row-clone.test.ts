@@ -5,6 +5,12 @@ import { useQueryStore, activeQuerySurfaceRef } from '../../../stores/query-stor
 import { useToastStore } from '../../../stores/toast-store'
 import type { QueryTableEditInfo } from '../../../types/schema'
 import { flat, firstWindowFor } from '../../helpers/query-test-utils'
+import { loadTablePage } from '../../helpers/table-data-test-utils'
+import { makeTableColumnMeta } from '../../helpers/column-meta-fixtures'
+import { tableSurfaceRef, useTableDataStore } from '../../../stores/table-data-store'
+import { setSelectedRow } from '../../../stores/data-view/view-actions'
+import { cloneSelectedRow } from '../../../stores/data-view/row-clone'
+import { saveCurrentRow } from '../../../stores/data-view/row-save'
 import {
   QUERY_STORE_EDIT_COMMANDS,
   executeAndAnalyze,
@@ -311,6 +317,80 @@ describe('cloneSelectedRow', () => {
 
       expect(flat('tab-1').draftRow).toBeNull()
       await expectToast('error', 'Clone failed')
+    })
+  })
+
+  describe('stored BLOB cells on the table route', () => {
+    const BLOB_TAB_ID = 'tab-blob'
+    const BLOB_REF = tableSurfaceRef(BLOB_TAB_ID)
+
+    async function setupTabWithStoredBlob() {
+      ipc.override('get_table_foreign_keys', () => [])
+      await loadTablePage(BLOB_TAB_ID, {
+        columns: [
+          makeTableColumnMeta({
+            name: 'id',
+            dataType: 'bigint',
+            isPrimaryKey: true,
+            isAutoIncrement: true,
+          }),
+          makeTableColumnMeta({ name: 'photo', dataType: 'blob', isBinary: true }),
+          makeTableColumnMeta({ name: 'total', dataType: 'decimal', isGenerated: true }),
+          makeTableColumnMeta({ name: 'caption', dataType: 'varchar' }),
+        ],
+        rows: [[1, '[BLOB - 3 B]', '9.50', 'beach']],
+        primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
+      })
+      setSelectedRow(BLOB_REF, 0)
+    }
+
+    function blobTabEdit() {
+      return useTableDataStore.getState().tabs[BLOB_TAB_ID]?.view.edit
+    }
+
+    it('copies the stored BLOB bytes into the clone so saving writes the real bytes', async () => {
+      await setupTabWithStoredBlob()
+      ipc.override('fetch_blob_value', () => ({ base64: 'AQID', byteLength: 3, tooLarge: false }))
+
+      await cloneSelectedRow(BLOB_REF)
+
+      expect(ipc.payloads('fetch_blob_value')).toEqual([
+        expect.objectContaining({ column: 'photo', primaryKeyPairs: [['id', 1]] }),
+      ])
+      expect(blobTabEdit()?.draftRow).toEqual([null, bytesEnvelope('AQID'), null, 'beach'])
+
+      await saveCurrentRow(BLOB_REF)
+
+      expect(ipc.payloads('insert_table_row')).toEqual([
+        expect.objectContaining({ values: { photo: bytesEnvelope('AQID'), caption: 'beach' } }),
+      ])
+    })
+
+    it('leaves a BLOB over the fetch limit out of the clone and warns about it', async () => {
+      await setupTabWithStoredBlob()
+      ipc.override('fetch_blob_value', () => ({
+        base64: null,
+        byteLength: 20_000_000,
+        tooLarge: true,
+      }))
+
+      await cloneSelectedRow(BLOB_REF)
+
+      expect(blobTabEdit()?.draftRow).toEqual([null, null, null, 'beach'])
+      expect(blobTabEdit()?.state?.modifiedColumns.has('photo')).toBe(false)
+      await expectToast('warning', 'photo')
+    })
+
+    it('creates no draft and reports the failure when the BLOB cannot be fetched', async () => {
+      await setupTabWithStoredBlob()
+      ipc.override('fetch_blob_value', () => {
+        throw new Error('connection lost')
+      })
+
+      await cloneSelectedRow(BLOB_REF)
+
+      expect(blobTabEdit()?.state).toBeNull()
+      await expectToast('error', 'connection lost')
     })
   })
 })

@@ -234,6 +234,39 @@ export function applySavedRowValues({
   for (const listener of surface.rowPatchListeners) listener(baseIndex, apply)
 }
 
+export interface AppendedWindowRow {
+  tabId: string
+  resultIndex: number
+  viewVersion: number
+  viewRowCount: number
+  window: ResultWindow
+}
+
+function appendToPage(surface: Surface, window: ResultWindow): void {
+  const rows = normalizeRows(surface.columns, window.rows)
+  const pageIndex = Math.floor(window.offset / RESULT_PAGE_SIZE)
+  const offsetInPage = window.offset % RESULT_PAGE_SIZE
+  const page = surface.pages.get(pageIndex)
+  if (!page) {
+    if (offsetInPage === 0) storeWindow(surface, window)
+    return
+  }
+  const isContiguous = page.rows.length === offsetInPage
+  if (!isContiguous) return
+  page.rows = [...page.rows, ...rows]
+  page.baseIndices = [...page.baseIndices, ...window.baseIndices]
+}
+
+export function appendResultWindowRow(appended: AppendedWindowRow): void {
+  const surface = surfaces.get(resultSurfaceKey(appended.tabId, appended.resultIndex))
+  if (!surface) return
+  surface.viewVersion = appended.viewVersion
+  surface.viewRowCount = appended.viewRowCount
+  appendToPage(surface, appended.window)
+  const position = appended.window.offset
+  notify(surface, [position, position + appended.window.rows.length])
+}
+
 export function clearResultWindowPages(tabId: string, resultIndex: number): void {
   const surface = surfaces.get(resultSurfaceKey(tabId, resultIndex))
   if (!surface) return

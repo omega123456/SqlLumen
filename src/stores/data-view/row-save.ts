@@ -101,6 +101,7 @@ function handleSlotSyncFailure(save: RowSave, cacheError: unknown): boolean {
   logFrontendWarning('[data-view] Result cache sync failed:', cacheError)
   if (isResultsExpiredError(cacheError)) {
     save.route.lifecycle.onExpired(save.ref)
+    return false
   }
   showWarningToast(
     'Cache sync warning',

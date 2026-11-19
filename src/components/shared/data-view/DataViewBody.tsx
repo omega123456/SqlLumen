@@ -31,7 +31,7 @@ export interface DataViewBodyProps {
   message?: ReactNode
 }
 
-function DataViewMessage({ children }: { children: ReactNode }) {
+export function DataViewMessage({ children }: { children: ReactNode }) {
   return (
     <div
       className={joinClassNames([
@@ -76,13 +76,13 @@ export function DataViewBody({
   useCloseFilterWhenInactive(source.isActive, filter.closeFilterDialog)
   const mode = useDataView(source.ref, (view) => view.mode)
   const columnCount = useDataView(source.ref, (view) => view.slot.columns.length)
-  const activity = useDataView(source.ref, activityOf)
-  const content = message ? (
-    <DataViewMessage>{message}</DataViewMessage>
-  ) : (
+  const isReloading = source.capabilities.reload?.isLoading ?? false
+  const activity = useDataView(source.ref, (view) => activityOf(view, isReloading))
+  const content = message ?? (
     <>
       {slots.bands}
       <DataViewModes source={source} />
+      <DataViewOverlay activity={activity} testIds={source.testIds} />
     </>
   )
 
@@ -101,7 +101,6 @@ export function DataViewBody({
         />
         {content}
       </div>
-      <DataViewOverlay activity={activity} testIds={source.testIds} />
       <DataViewDialogs surfaceRef={source.ref} filter={filter} exportDialog={slots.exportDialog} />
     </>
   )

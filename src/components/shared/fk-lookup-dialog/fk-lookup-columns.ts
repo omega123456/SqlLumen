@@ -1,8 +1,8 @@
-import type { GridColumnDescriptor } from '../../types/shared-data-view'
-import type { ForeignKeyColumnInfo, TableDataColumnMeta } from '../../types/schema'
-import { buildForeignKeyLookup } from '../../lib/foreign-key-utils'
-import { isInlineEditableColumn } from '../../lib/column-capabilities'
-import { buildGridColumnDescriptor } from '../shared/data-view/grid-column-descriptor'
+import type { GridColumnDescriptor } from '../../../types/shared-data-view'
+import type { ForeignKeyColumnInfo, TableDataColumnMeta } from '../../../types/schema'
+import { buildForeignKeyLookup } from '../../../lib/foreign-key-utils'
+import { isInlineEditableColumn } from '../../../lib/column-capabilities'
+import { buildGridColumnDescriptor } from '../data-view/grid-column-descriptor'
 
 export interface ColumnDescriptorInputs {
   columns: TableDataColumnMeta[]

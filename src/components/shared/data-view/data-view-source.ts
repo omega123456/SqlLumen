@@ -1,4 +1,4 @@
-import type { DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
+import type { DataViewSurfaceRef, PageRequest } from '../../../stores/data-view/data-view-types'
 import type { ViewMode } from '../../../types/schema'
 
 export interface DataViewTestIds {
@@ -8,13 +8,6 @@ export interface DataViewTestIds {
   toolbar: string
   restoreOverlay: string
   busyOverlay: string
-}
-
-export type PageEdgeSelection = 'first' | 'last'
-
-export interface PageRequest {
-  page: number
-  select: PageEdgeSelection
 }
 
 export interface DataViewPaging {
@@ -32,15 +25,23 @@ export interface DataViewReload {
   onCancel: () => void
 }
 
-export interface DataViewColumnJump {
-  columnKey: string | null
+export interface ColumnJumpTarget {
+  columnName: string
   nonce: number
-  onConsumed: () => void
+}
+
+export interface DataViewColumnJump {
+  target: ColumnJumpTarget | null
+  highlightedColumn: string | null
+  consume: () => void
+  clearHighlight: () => void
 }
 
 export interface DataViewCapabilities {
   modes: readonly ViewMode[]
   canEdit: boolean
+  rowActions: boolean
+  blobViewDisabledReason: string | null
   paging: DataViewPaging | null
   reload: DataViewReload | null
   columnJump: DataViewColumnJump | null

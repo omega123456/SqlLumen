@@ -34,6 +34,7 @@ import {
   createTruncatedCallQueryResults,
   createTruncatedQueryResult,
   DEFAULT_CALL_QUERY_RESULTS,
+  DEFAULT_ROW_CEILING,
   DEFAULT_EXECUTE_QUERY_RESULT,
   DEFAULT_MULTI_QUERY_RESULTS,
   FIRST_WINDOW_ROWS,
@@ -576,6 +577,8 @@ interface ResultSlotState {
   spec: PlaywrightViewSpec | null
 }
 
+const TABLE_PAGE_RESULT_INDEX = 0
+
 const resultSlots = new Map<string, ResultSlotState>()
 let resultWindowRequests: ResultWindowRequest[] = []
 
@@ -709,6 +712,70 @@ export function removeResultRowsFixture(
     viewVersion: state.viewVersion,
     viewRowCount: state.view.length,
     totalRows: liveRowCount(state),
+  }
+}
+
+interface FetchTablePageFixtureArgs {
+  tabId: string
+  table: string
+  page: number
+}
+
+interface AppendResultRowFixtureArgs extends ResultSlotArgs {
+  baseViewVersion: number
+  row: unknown[]
+}
+
+let tablePageFetchCount = 0
+
+function tablePageFixture(table: PlaywrightTableDataResult): PlaywrightQueryResultFixture {
+  tablePageFetchCount += 1
+  return {
+    queryId: `table-page-${tablePageFetchCount}`,
+    columns: table.columns,
+    executionTimeMs: table.executionTimeMs,
+    totalTimeMs: table.executionTimeMs,
+    affectedRows: 0,
+    rows: table.rows.slice(),
+    autoLimitApplied: false,
+  }
+}
+
+export function fetchTablePageFixture(args: FetchTablePageFixtureArgs) {
+  const table = getTableDataFixture(args.table)
+  const fixture = tablePageFixture(table)
+  const stored = storeResult(args.tabId, TABLE_PAGE_RESULT_INDEX, fixture, null)
+  return {
+    queryId: fixture.queryId,
+    columns: table.columns,
+    primaryKey: table.primaryKey,
+    currentPage: args.page,
+    pageSize: table.pageSize,
+    executionTimeMs: table.executionTimeMs,
+    viewRowCount: stored.viewRowCount,
+    viewVersion: stored.viewVersion,
+    totalRows: stored.totalRows,
+    rowCeiling: DEFAULT_ROW_CEILING,
+    firstWindow: stored.firstWindow,
+  }
+}
+
+export function appendResultRowFixture(args: AppendResultRowFixtureArgs) {
+  const state = requireSlot(args)
+  if (args.baseViewVersion !== state.viewVersion) {
+    throw new Error(`view_superseded: current=${state.viewVersion}`)
+  }
+  const baseIndex = state.fixture.rows.length
+  state.fixture.rows.push(args.row)
+  state.view.push(baseIndex)
+  state.viewVersion += 1
+  const lastViewIndex = state.view.length - 1
+  return {
+    baseIndex: baseIndex,
+    viewVersion: state.viewVersion,
+    viewRowCount: state.view.length,
+    totalRows: liveRowCount(state),
+    window: sliceResultWindow(state.fixture, state.view, lastViewIndex, 1),
   }
 }
 
@@ -968,6 +1035,7 @@ export function overrideFixture<TDomain extends FixtureOverrideDomain>(
 export function resetFixtureOverrides(): void {
   overrides = createEmptyFixtureOverrides()
   resultSlots.clear()
+  tablePageFetchCount = 0
   resultWindowRequests = []
 }
 

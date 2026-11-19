@@ -38,6 +38,7 @@ declare global {
     __connectionStore__?: unknown
     __queryStore__?: unknown
     __tableDataStore__?: unknown
+    __resultWindowCache__?: unknown
     __tableDesignerStore__?: unknown
     __objectEditorStore__?: unknown
     __importDialogStore__?: unknown

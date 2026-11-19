@@ -22,6 +22,11 @@ import * as DataFormViewModule from '../../../../components/shared/data-view/Dat
 import * as DataTextViewModule from '../../../../components/shared/data-view/DataTextView'
 import * as FilterDialogModule from '../../../../components/dialogs/FilterDialog'
 import { useToastStore } from '../../../../stores/toast-store'
+import { tableSurfaceRef, useTableDataStore } from '../../../../stores/table-data-store'
+import { setViewMode } from '../../../../stores/data-view/view-actions'
+import { useTableDataViewSource } from '../../../../components/table-data/table-data-tab/table-data-view-source'
+import { loadTablePage, setupTestConnection } from '../../../helpers/table-data-test-utils'
+import { makeTableColumnMeta } from '../../../helpers/column-meta-fixtures'
 import type { SingleResultState, TabQueryState } from '../../../../stores/query-store'
 
 const BODY_TAB_ID = 'tab-1'
@@ -433,5 +438,63 @@ describe('filter button and dialog', () => {
       expect(screen.getByTestId('filter-dialog')).toBeInTheDocument()
       expect(screen.getByTestId('filter-empty-state')).toBeInTheDocument()
     })
+  })
+})
+
+describe('DataViewBody on the table route', () => {
+  const TABLE_TAB_ID = 'table-tab-1'
+
+  function TableBody() {
+    const source = useTableDataViewSource({ tabId: TABLE_TAB_ID, isActive: true, isView: false })
+    return (
+      <DataViewBody
+        source={source}
+        slots={NO_SLOTS}
+        readiness={{ hasData: true, canInsertRows: true }}
+        panelAttributes={{}}
+      />
+    )
+  }
+
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    useTableDataStore.setState({ tabs: {} })
+    setupTestConnection()
+    ipc.override('get_table_foreign_keys', () => [])
+  })
+
+  it('keeps the grid mounted and hidden while the form view is shown, and unmounts the form', async () => {
+    await act(async () => {
+      await loadTablePage(TABLE_TAB_ID, {
+        columns: [
+          makeTableColumnMeta({ name: 'id', dataType: 'bigint', isPrimaryKey: true }),
+          makeTableColumnMeta({ name: 'name', dataType: 'varchar' }),
+        ],
+        rows: [
+          [1, 'Alice'],
+          [2, 'Bob'],
+        ],
+        primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
+      })
+    })
+    render(<TableBody />)
+    const gridBeforeSwitch = await screen.findByTestId('table-data-grid')
+
+    await act(async () => {
+      setViewMode(tableSurfaceRef(TABLE_TAB_ID), 'form')
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('table-data-form-view')).toBeVisible()
+    })
+    expect(gridBeforeSwitch).not.toBeVisible()
+
+    await act(async () => {
+      setViewMode(tableSurfaceRef(TABLE_TAB_ID), 'grid')
+    })
+
+    expect(screen.getByTestId('table-data-grid')).toBe(gridBeforeSwitch)
+    expect(gridBeforeSwitch).toBeVisible()
+    expect(screen.queryByTestId('table-data-form-view')).not.toBeInTheDocument()
   })
 })

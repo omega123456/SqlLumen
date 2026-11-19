@@ -75,6 +75,14 @@ export interface RemoveResultRowsResult {
   totalRows: number
 }
 
+export interface AppendResultRowResult {
+  baseIndex: number
+  viewVersion: number
+  viewRowCount: number
+  totalRows: number
+  window: ResultWindow
+}
+
 export type FrontendRowResidencyStatus = 'resident' | 'evicted' | 'restoring'
 
 export interface FrontendRowResidencyState {

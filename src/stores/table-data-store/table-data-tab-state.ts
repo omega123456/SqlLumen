@@ -1,36 +1,82 @@
-import type { TableDataTabState, FrontendRowResidencyState } from '../../types/schema'
-import {
-  fetchTableData as fetchTableDataCmd,
-  evictTableData as evictTableDataCmd,
-  syncTableDataCacheAfterDelete as syncTableDataCacheAfterDeleteCmd,
-  syncTableDataCacheAfterInsert as syncTableDataCacheAfterInsertCmd,
-  syncTableDataCacheAfterUpdate as syncTableDataCacheAfterUpdateCmd,
-} from '../../lib/table-data-commands'
+import type { ForeignKeyColumnInfo, PrimaryKeyInfo, TableDataColumnMeta } from '../../types/schema'
+import type { TableRequest } from '../../lib/ipc/requests'
 import { getDefaultRowLimit, isTableDataInBottomPanel, useQueryStore } from '../query-store'
 import { useWorkspaceStore } from '../workspace-store'
-import { logFrontend } from '../../lib/app-log-commands'
-import type { TableRequest } from '../../lib/ipc/requests'
-import { toErrorMessage } from '../../lib/error-message'
-import { createResidentRowState } from './table-data-residency'
+import { DEFAULT_DATA_VIEW_STATE } from '../data-view/data-view-defaults'
+import type { DataViewPatch, DataViewState, DataViewSurfaceRef } from '../data-view/data-view-types'
 
-export const RESET_SCROLL_CELL = { scrollRow: 0 as const, scrollCol: 0 as const }
+export const TABLE_PAGE_RESULT_INDEX = 0
 
-export function evictTableDataWithWarning(
-  connectionId: string,
-  tabId: string,
-  failureContext?: string
-): void {
-  evictTableDataCmd({
-    connectionId,
-    tabId,
-  }).catch((error: unknown) => {
-    const errorMessage = toErrorMessage(error)
-    const contextSuffix = failureContext ? ` ${failureContext}` : ''
-    logFrontend(
-      'warn',
-      `Table data cache eviction failed${contextSuffix} for tab ${tabId}: ${errorMessage}`
-    )
-  })
+export const FIRST_TABLE_PAGE = 1
+
+export interface TableDataSource extends TableRequest {
+  isView: boolean
+}
+
+export interface TableDataPage {
+  currentPage: number
+  pageSize: number
+  fetchedRowCount: number
+  isLoading: boolean
+  isCancelling: boolean
+  error: string | null
+  executionTimeMs: number
+}
+
+export interface TableDataMeta {
+  columns: TableDataColumnMeta[]
+  primaryKey: PrimaryKeyInfo | null
+  foreignKeys: ForeignKeyColumnInfo[]
+}
+
+export interface TableDataTabState {
+  table: TableDataSource
+  page: TableDataPage
+  meta: TableDataMeta
+  view: DataViewState
+}
+
+export interface TableDataTabPatch {
+  page?: Partial<TableDataPage>
+  meta?: Partial<TableDataMeta>
+  view?: DataViewPatch
+}
+
+export function tableSurfaceRef(tabId: string): DataViewSurfaceRef {
+  return { route: 'table', tabId: tabId, resultIndex: TABLE_PAGE_RESULT_INDEX }
+}
+
+export function getTableDataSurfaceKey(tabId: string): string {
+  return `table-data:${tabId}`
+}
+
+export function createDefaultTabState(table: TableDataSource): TableDataTabState {
+  return {
+    table: table,
+    page: {
+      currentPage: FIRST_TABLE_PAGE,
+      pageSize: getDefaultRowLimit(),
+      fetchedRowCount: 0,
+      isLoading: false,
+      isCancelling: false,
+      error: null,
+      executionTimeMs: 0,
+    },
+    meta: { columns: [], primaryKey: null, foreignKeys: [] },
+    view: {
+      ...DEFAULT_DATA_VIEW_STATE,
+      slot: { ...DEFAULT_DATA_VIEW_STATE.slot, connectionId: table.connectionId },
+    },
+  }
+}
+
+export function hasNextTablePage(page: TableDataPage): boolean {
+  return page.fetchedRowCount >= page.pageSize
+}
+
+function isShownInParentBottomPanel(tabId: string, parentQueryTabId: string): boolean {
+  const parentQueryTab = useQueryStore.getState().tabs[parentQueryTabId]
+  return isTableDataInBottomPanel(parentQueryTab, tabId)
 }
 
 export function isTableDataTabVisibleInWorkspace(tabId: string): boolean {
@@ -38,112 +84,16 @@ export function isTableDataTabVisibleInWorkspace(tabId: string): boolean {
 
   for (const [connectionId, tabs] of Object.entries(workspaceState.tabsByConnection)) {
     const targetTab = tabs.find((tab) => tab.id === tabId)
-    if (!targetTab) {
-      continue
-    }
-
-    if (workspaceState.visibleConnectionSessionId !== connectionId) {
-      return false
-    }
+    if (!targetTab) continue
+    if (workspaceState.visibleConnectionSessionId !== connectionId) return false
 
     const activeTabId = workspaceState.activeTabByConnection[connectionId]
-    if (activeTabId === tabId) {
-      return true
-    }
-
-    if (targetTab.type !== 'table-data') {
-      return false
-    }
-
-    if (!targetTab.parentQueryTabId) {
-      return false
-    }
-
-    if (activeTabId !== targetTab.parentQueryTabId) {
-      return false
-    }
-
-    const parentQueryTab = useQueryStore.getState().tabs[targetTab.parentQueryTabId]
-    return isTableDataInBottomPanel(parentQueryTab, tabId)
+    if (activeTabId === tabId) return true
+    if (targetTab.type !== 'table-data') return false
+    if (!targetTab.parentQueryTabId) return false
+    if (activeTabId !== targetTab.parentQueryTabId) return false
+    return isShownInParentBottomPanel(tabId, targetTab.parentQueryTabId)
   }
 
   return false
-}
-
-export function getTableDataSurfaceKey(tabId: string): string {
-  return `table-data:${tabId}`
-}
-
-export function createDefaultTabState({
-  connectionId,
-  database,
-  table,
-}: TableRequest): TableDataTabState {
-  return {
-    columns: [],
-    rows: [],
-    currentPage: 1,
-    pageSize: getDefaultRowLimit(),
-    primaryKey: null,
-    executionTimeMs: 0,
-    rowResidency: createResidentRowState(false),
-    rowsEvictedAt: null,
-    connectionId: connectionId,
-    database: database,
-    table: table,
-    editState: null,
-    viewMode: 'grid',
-    selectedRowKey: null,
-    columnWidths: {},
-    selectedCell: null,
-    filterModel: [],
-    sort: null,
-    foreignKeys: [],
-    isLoading: false,
-    isCancelling: false,
-    error: null,
-    saveError: null,
-    isExportDialogOpen: false,
-    ...RESET_SCROLL_CELL,
-    pendingNavigationAction: null,
-  }
-}
-
-export const SYNC_TABLE_DATA_CACHE_COMMANDS = {
-  insert: syncTableDataCacheAfterInsertCmd,
-  update: syncTableDataCacheAfterUpdateCmd,
-  delete: syncTableDataCacheAfterDeleteCmd,
-}
-
-export function buildFetchTableDataRequest(
-  tab: TableDataTabState,
-  tabId: string,
-  page: number
-): Parameters<typeof fetchTableDataCmd>[0] {
-  const hasFilters = tab.filterModel.length > 0
-  return {
-    connectionId: tab.connectionId,
-    tabId: tabId,
-    database: tab.database,
-    table: tab.table,
-    page: page,
-    pageSize: tab.pageSize,
-    sortColumn: tab.sort?.column,
-    sortDirection: tab.sort?.direction,
-    filterModel: hasFilters ? tab.filterModel : undefined,
-  }
-}
-
-export function residencyAfterFetch(
-  isStillVisible: boolean,
-  previous: FrontendRowResidencyState | undefined
-): FrontendRowResidencyState {
-  if (isStillVisible) {
-    return { status: 'resident', isActive: true, inactiveSince: null }
-  }
-  return {
-    status: 'resident',
-    isActive: false,
-    inactiveSince: previous?.inactiveSince ?? Date.now(),
-  }
 }

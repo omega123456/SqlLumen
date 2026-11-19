@@ -13,14 +13,19 @@ interface TableDataTabLifecycle {
 function useInitialTableLoad(tab: TableDataTab, isActive: boolean) {
   const initTab = useTableDataStore((state) => state.initTab)
   const loadTableData = useTableDataStore((state) => state.loadTableData)
-  const { id: tabId, connectionId, databaseName: database, objectName: table } = tab
+  const { id: tabId, connectionId, databaseName: database, objectName: table, objectType } = tab
   useEffect(() => {
     const existing = useTableDataStore.getState().tabs[tabId]
     const needsInitialLoad = isActive && !existing
     if (!needsInitialLoad) return
-    initTab(tabId, { connectionId: connectionId, database: database, table: table })
-    loadTableData(tabId)
-  }, [tabId, connectionId, database, table, isActive, initTab, loadTableData])
+    initTab(tabId, {
+      connectionId: connectionId,
+      database: database,
+      table: table,
+      isView: objectType === 'view',
+    })
+    void loadTableData(tabId)
+  }, [tabId, connectionId, database, table, objectType, isActive, initTab, loadTableData])
 }
 
 export function useTableDataTabLifecycle(lifecycle: TableDataTabLifecycle) {

@@ -1,8 +1,9 @@
 import type { SingleResultState } from '../../../stores/query-store'
+import type { TableDataTabState } from '../../../stores/table-data-store'
+import type { DataViewState } from '../../../stores/data-view/data-view-types'
 import { formatCount, formatRowRange } from '../../../lib/format-row-count'
-import type { TableDataTabState } from '../../../types/schema'
 
-type RowActionProgress = NonNullable<SingleResultState['view']['rowAction']>
+type RowActionProgress = NonNullable<DataViewState['rowAction']>
 
 const FILTERING_LABEL = 'Filtering…'
 const TABLE_RESTORING_LABEL = 'Restoring cached rows...'
@@ -22,9 +23,7 @@ export function rowActionAnnouncement(progress: RowActionProgress): string {
   return `${progress.verb}… ${formatCount(progress.total)} rows`
 }
 
-export function windowLoadingLabel(
-  range: SingleResultState['view']['window']['pendingRange']
-): string | null {
+export function windowLoadingLabel(range: DataViewState['window']['pendingRange']): string | null {
   if (!range) return null
   return `Loading rows ${formatRowRange(range[0] + 1, range[1])}…`
 }
@@ -33,15 +32,14 @@ function silentWork(label: string): PendingWork {
   return { label: label, announcement: '', isCancellable: false }
 }
 
-function visibleRowActionProgress(result: SingleResultState): RowActionProgress | null {
-  const progress = result.view.rowAction
+function visibleRowActionProgress(view: DataViewState): RowActionProgress | null {
+  const progress = view.rowAction
   if (progress?.visible !== true) return null
   return progress
 }
 
-export function resolveResultPendingWork(result: SingleResultState | null): PendingWork | null {
-  if (!result) return null
-  const progress = visibleRowActionProgress(result)
+function resolveViewPendingWork(view: DataViewState): PendingWork | null {
+  const progress = visibleRowActionProgress(view)
   if (progress) {
     return {
       label: rowActionLabel(progress),
@@ -49,20 +47,25 @@ export function resolveResultPendingWork(result: SingleResultState | null): Pend
       isCancellable: progress.cancellable,
     }
   }
-  const isFiltering = result.view.spec.applying === 'filter'
+  const isFiltering = view.spec.applying === 'filter'
   if (isFiltering) return silentWork(FILTERING_LABEL)
-  const windowLabel = windowLoadingLabel(result.view.window.pendingRange)
+  const windowLabel = windowLoadingLabel(view.window.pendingRange)
   if (!windowLabel) return null
   return { label: windowLabel, announcement: windowLabel, isCancellable: false }
 }
 
+export function resolveResultPendingWork(result: SingleResultState | null): PendingWork | null {
+  if (!result) return null
+  return resolveViewPendingWork(result.view)
+}
+
 function isRestoringRows(tableData: TableDataTabState): boolean {
-  return tableData.rowResidency?.status === 'restoring'
+  return tableData.view.residency.rows.status === 'restoring'
 }
 
 export function resolveTablePendingWork(tableData: TableDataTabState | null): PendingWork | null {
   if (!tableData) return null
   if (isRestoringRows(tableData)) return silentWork(TABLE_RESTORING_LABEL)
-  if (tableData.isLoading) return silentWork(TABLE_LOADING_LABEL)
-  return null
+  if (tableData.page.isLoading) return silentWork(TABLE_LOADING_LABEL)
+  return resolveViewPendingWork(tableData.view)
 }

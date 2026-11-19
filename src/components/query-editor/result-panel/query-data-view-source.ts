@@ -34,6 +34,8 @@ export function queryDataViewSource({
     capabilities: {
       modes: QUERY_RESULT_MODES,
       canEdit: canEdit,
+      rowActions: true,
+      blobViewDisabledReason: null,
       paging: null,
       reload: null,
       columnJump: null,

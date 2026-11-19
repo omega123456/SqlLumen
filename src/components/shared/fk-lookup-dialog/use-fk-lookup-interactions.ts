@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { AutoSizeConfig, GridColumnDescriptor } from '../../../types/shared-data-view'
-import { buildColumnDescriptors } from '../../table-data/table-data-grid-columns'
+import { buildColumnDescriptors } from './fk-lookup-columns'
 import { isInteractiveElement } from '../../../lib/input-events'
 import type { LookupGridProps } from './LookupBody'
 import type { FilterCondition, TableDataColumnMeta } from '../../../types/schema'

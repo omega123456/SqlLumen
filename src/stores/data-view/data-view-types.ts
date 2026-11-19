@@ -19,6 +19,13 @@ export interface DataViewSurfaceRef {
   resultIndex: number
 }
 
+export type PageEdgeSelection = 'first' | 'last'
+
+export interface PageRequest {
+  page: number
+  select: PageEdgeSelection | null
+}
+
 export interface DataViewSlot {
   connectionId: string
   queryId: string | null

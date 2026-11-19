@@ -1,8 +1,5 @@
 import type { ReactNode } from 'react'
-import { ArrowsClockwise, Stop } from '@phosphor-icons/react'
-import { Button } from '../../common/Button'
-import type { ToolbarTabView } from './toolbar-model'
-import { joinClassNames } from '../../../lib/class-names'
+import { joinClassNames } from '../../lib/class-names'
 
 type ToolbarBadgeKind = 'view' | 'readOnly' | 'noKey'
 
@@ -34,17 +31,17 @@ function ToolbarBadge({ kind, testId, children }: ToolbarBadgeProps) {
   )
 }
 
-interface ToolbarBadgesProps {
+interface TableDataBadgesProps {
   isView: boolean
   isConnectionReadOnly: boolean
   showNoKeyBadge: boolean
 }
 
-export function ToolbarBadges({
+export function TableDataBadges({
   isView,
   isConnectionReadOnly,
   showNoKeyBadge,
-}: ToolbarBadgesProps) {
+}: TableDataBadgesProps) {
   return (
     <>
       {isView && (
@@ -65,51 +62,5 @@ export function ToolbarBadges({
         </ToolbarBadge>
       )}
     </>
-  )
-}
-
-interface LoadControlButtonProps {
-  view: Pick<ToolbarTabView, 'isLoading' | 'isRestoring' | 'isCancelling'>
-  isBusy: boolean
-  onCancelLoad: () => void
-  onRefresh: () => void
-}
-
-export function LoadControlButton({
-  view,
-  isBusy,
-  onCancelLoad,
-  onRefresh,
-}: LoadControlButtonProps) {
-  const isCancellableLoad = view.isLoading && !view.isRestoring
-  if (isCancellableLoad) {
-    return (
-      <Button
-        variant="subtle"
-        size="toolbar"
-        className="shrink-0 disabled:opacity-60"
-        onClick={onCancelLoad}
-        disabled={view.isCancelling}
-        title="Cancel the running query"
-        data-testid="btn-cancel-load"
-      >
-        <Stop size={14} weight="fill" />
-        <span>{view.isCancelling ? 'Cancelling...' : 'Cancel'}</span>
-      </Button>
-    )
-  }
-  return (
-    <Button
-      variant="subtle"
-      size="toolbar"
-      iconOnly
-      className="shrink-0"
-      onClick={onRefresh}
-      disabled={isBusy}
-      title="Refresh data"
-      data-testid="btn-refresh"
-    >
-      <ArrowsClockwise size={16} weight="regular" />
-    </Button>
   )
 }

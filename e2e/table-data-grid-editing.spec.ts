@@ -17,184 +17,114 @@ function activePanel(page: Page) {
   return page.locator('[data-testid="workspace-panel"][data-active="true"]')
 }
 
-interface GridCellAddress {
-  gridTestId: 'table-data-grid' | 'result-grid'
+type GridTestId = 'table-data-grid' | 'result-grid'
+
+interface TableCellAddress {
   columnName: string
   rowIndex: number
 }
 
-function readCellValue(page: Page, cell: GridCellAddress): Promise<unknown> {
-  return page.evaluate(
-    ({ grid, column, row }) => {
-      if (grid === 'table-data-grid') {
-        const store = (
-          window as unknown as {
-            __tableDataStore__?: {
-              getState?: () => {
-                tabs?: Record<string, { columns?: Array<{ name: string }>; rows?: unknown[][] }>
+interface TableCellWrite extends TableCellAddress {
+  value: unknown
+}
+
+function readTableCellValue(page: Page, cell: TableCellAddress): Promise<unknown> {
+  return page.evaluate(({ columnName, rowIndex }) => {
+    const tableStore = (window as unknown as Record<string, unknown>).__tableDataStore__ as {
+      getState: () => {
+        tabs: Record<
+          string,
+          {
+            view: {
+              slot: { columns: Array<{ name: string }> }
+              edit: {
+                rowIndex: number | null
+                state: {
+                  currentValues: Record<string, unknown>
+                  modifiedColumns: Set<string>
+                } | null
               }
             }
           }
-        ).__tableDataStore__
-
-        const tabs = Object.values(store?.getState?.().tabs ?? {})
-        for (const tab of tabs) {
-          const columnIndex =
-            tab?.columns?.findIndex((candidate) => candidate?.name === column) ?? -1
-          if (columnIndex >= 0) {
-            return tab?.rows?.[row]?.[columnIndex]
-          }
-        }
-        return undefined
+        >
       }
-
-      const store = (
-        window as unknown as {
-          __queryStore__?: {
-            getState?: () => {
-              tabs?: Record<
-                string,
-                {
-                  activeResultIndex?: number
-                  results?: Array<{ columns?: Array<{ name: string }>; rows?: unknown[][] }>
-                }
-              >
-            }
-          }
-        }
-      ).__queryStore__
-
-      const tabs = Object.values(store?.getState?.().tabs ?? {})
-      for (const tab of tabs) {
-        const resultIndex = tab?.activeResultIndex ?? 0
-        const result = tab?.results?.[resultIndex]
-        const columnIndex =
-          result?.columns?.findIndex((candidate) => candidate?.name === column) ?? -1
-        if (columnIndex >= 0) {
-          return result?.rows?.[row]?.[columnIndex]
-        }
-      }
-      return undefined
-    },
-    { grid: cell.gridTestId, column: cell.columnName, row: cell.rowIndex }
-  )
+    }
+    const windowCache = (window as unknown as Record<string, unknown>).__resultWindowCache__ as {
+      getLoadedRow: (tabId: string, resultIndex: number, position: number) => { row: unknown[] }
+    }
+    for (const [tabId, tab] of Object.entries(tableStore.getState().tabs)) {
+      const columnIndex = tab.view.slot.columns.findIndex((column) => column.name === columnName)
+      if (columnIndex < 0) continue
+      const edit = tab.view.edit
+      const isEditedRow = edit.rowIndex === rowIndex
+      const isModifiedCell = isEditedRow && edit.state?.modifiedColumns.has(columnName)
+      if (isModifiedCell) return edit.state?.currentValues[columnName]
+      return windowCache.getLoadedRow(tabId, 0, rowIndex)?.row[columnIndex]
+    }
+    return undefined
+  }, cell)
 }
 
-async function expectCellValue(
-  page: Page,
-  gridTestId: GridCellAddress['gridTestId'],
-  columnName: string,
-  rowIndex: number,
-  expectedValue: unknown
-) {
-  const cell = { gridTestId: gridTestId, columnName: columnName, rowIndex: rowIndex }
+async function expectTableCellValue(page: Page, cell: TableCellAddress, expectedValue: unknown) {
   await expect
-    .poll(() => readCellValue(page, cell), { timeout: APP_READY_MS, intervals: [100, 200, 300] })
+    .poll(() => readTableCellValue(page, cell), {
+      timeout: APP_READY_MS,
+      intervals: [100, 200, 300],
+    })
     .toBe(expectedValue)
 }
 
-async function setCellValueForTest(
-  page: Page,
-  gridTestId: 'table-data-grid' | 'result-grid',
-  columnName: string,
-  rowIndex: number,
-  value: unknown
-) {
-  await page.evaluate(
-    ({ grid, column, row, nextValue }) => {
-      if (grid === 'table-data-grid') {
-        const store = (window as unknown as Record<string, unknown>).__tableDataStore__ as {
-          setState: (
-            updater: (state: { tabs: Record<string, unknown> }) => { tabs: Record<string, unknown> }
-          ) => void
-        }
-        store.setState((state) => ({
-          tabs: Object.fromEntries(
-            Object.entries(state.tabs).map(([id, tab]) => {
-              const typedTab = tab as { columns?: Array<{ name: string }>; rows?: unknown[][] }
-              const columnIndex =
-                typedTab.columns?.findIndex((candidate) => candidate.name === column) ?? -1
-              if (columnIndex < 0 || !typedTab.rows?.[row]) return [id, tab]
-              const rows = typedTab.rows.map((candidateRow, index) =>
-                index === row
-                  ? candidateRow.map((cellValue, cellIndex) =>
-                      cellIndex === columnIndex ? nextValue : cellValue
-                    )
-                  : candidateRow
-              )
-              return [id, { ...typedTab, rows }]
-            })
-          ),
-        }))
-        return
+async function setTableCellValueForTest(page: Page, write: TableCellWrite) {
+  await page.evaluate(({ columnName, rowIndex, value }) => {
+    const tableStore = (window as unknown as Record<string, unknown>).__tableDataStore__ as {
+      getState: () => {
+        tabs: Record<string, { view: { slot: { columns: Array<{ name: string }> } } }>
       }
-
-      const store = (window as unknown as Record<string, unknown>).__queryStore__ as {
-        setState: (
-          updater: (state: { tabs: Record<string, unknown> }) => { tabs: Record<string, unknown> }
-        ) => void
-      }
-      store.setState((state) => ({
-        tabs: Object.fromEntries(
-          Object.entries(state.tabs).map(([id, tab]) => {
-            const typedTab = tab as {
-              activeResultIndex?: number
-              results?: Array<{ columns?: Array<{ name: string }>; rows?: unknown[][] }>
-            }
-            const resultIndex = typedTab.activeResultIndex ?? 0
-            const result = typedTab.results?.[resultIndex]
-            const columnIndex =
-              result?.columns?.findIndex((candidate) => candidate.name === column) ?? -1
-            if (columnIndex < 0 || !result?.rows?.[row]) return [id, tab]
-            const rows = result.rows.map((candidateRow, index) =>
-              index === row
-                ? candidateRow.map((cellValue, cellIndex) =>
-                    cellIndex === columnIndex ? nextValue : cellValue
-                  )
-                : candidateRow
-            )
-            const results = typedTab.results?.map((candidateResult, index) =>
-              index === resultIndex ? { ...candidateResult, rows } : candidateResult
-            )
-            return [id, { ...typedTab, results }]
-          })
-        ),
-      }))
-    },
-    { grid: gridTestId, column: columnName, row: rowIndex, nextValue: value }
-  )
+    }
+    const windowCache = (window as unknown as Record<string, unknown>).__resultWindowCache__ as {
+      getLoadedRow: (tabId: string, resultIndex: number, position: number) => { baseIndex: number }
+      getResultSurface: (tabId: string, resultIndex: number) => { slot: { queryId: string } }
+      applySavedRowValues: (values: {
+        tabId: string
+        resultIndex: number
+        queryId: string
+        baseIndex: number
+        updates: Record<number, unknown>
+      }) => void
+    }
+    for (const [tabId, tab] of Object.entries(tableStore.getState().tabs)) {
+      const columnIndex = tab.view.slot.columns.findIndex((column) => column.name === columnName)
+      if (columnIndex < 0) continue
+      windowCache.applySavedRowValues({
+        tabId: tabId,
+        resultIndex: 0,
+        queryId: windowCache.getResultSurface(tabId, 0).slot.queryId,
+        baseIndex: windowCache.getLoadedRow(tabId, 0, rowIndex).baseIndex,
+        updates: { [columnIndex]: value },
+      })
+      return
+    }
+  }, write)
 }
 
-function selectedColumnOf(page: Page, gridTestId: GridCellAddress['gridTestId']) {
+function selectedColumnOf(page: Page, gridTestId: GridTestId) {
   return page.evaluate((grid) => {
-    if (grid === 'table-data-grid') {
-      const tableStore = (
-        window as unknown as {
-          __tableDataStore__?: {
-            getState?: () => {
-              tabs?: Record<string, { selectedCell?: { columnKey?: string } | null }>
-            }
-          }
-        }
-      ).__tableDataStore__
-      const tabs = Object.values(tableStore?.getState?.().tabs ?? {})
-      return tabs.find((tab) => tab?.selectedCell?.columnKey)?.selectedCell?.columnKey ?? null
+    interface SelectionView {
+      view?: { selection?: { cell?: { columnKey?: string } | null } }
     }
-    const queryStore = (
-      window as unknown as {
-        __queryStore__?: {
-          getState?: () => {
-            tabs?: Record<
-              string,
-              {
-                activeResultIndex?: number
-                results?: Array<{ view?: { selection?: { cell?: { columnKey?: string } | null } } }>
-              }
-            >
-          }
-        }
+    if (grid === 'table-data-grid') {
+      const tableStore = (window as unknown as Record<string, unknown>).__tableDataStore__ as {
+        getState?: () => { tabs?: Record<string, SelectionView> }
       }
-    ).__queryStore__
+      const tabs = Object.values(tableStore?.getState?.().tabs ?? {})
+      const selectedTab = tabs.find((tab) => tab?.view?.selection?.cell?.columnKey)
+      return selectedTab?.view?.selection?.cell?.columnKey ?? null
+    }
+    const queryStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+      getState?: () => {
+        tabs?: Record<string, { activeResultIndex?: number; results?: SelectionView[] }>
+      }
+    }
     const tabs = Object.values(queryStore?.getState?.().tabs ?? {})
     const selectedCells = tabs.map(
       (tab) => tab?.results?.[tab?.activeResultIndex ?? 0]?.view?.selection?.cell?.columnKey
@@ -203,11 +133,7 @@ function selectedColumnOf(page: Page, gridTestId: GridCellAddress['gridTestId'])
   }, gridTestId)
 }
 
-async function expectSelectedColumn(
-  page: Page,
-  gridTestId: GridCellAddress['gridTestId'],
-  columnName: string
-) {
+async function expectSelectedColumn(page: Page, gridTestId: GridTestId, columnName: string) {
   await expect
     .poll(() => selectedColumnOf(page, gridTestId), {
       timeout: APP_READY_MS,
@@ -535,8 +461,8 @@ test('table data grid Escape after typing activation restores the original cell 
 
   const grid = page.getByTestId('table-data-grid')
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-  await setCellValueForTest(page, 'table-data-grid', 'name', 0, 'Original Value')
-  await expectCellValue(page, 'table-data-grid', 'name', 0, 'Original Value')
+  await setTableCellValueForTest(page, { columnName: 'name', rowIndex: 0, value: 'Original Value' })
+  await expectTableCellValue(page, { columnName: 'name', rowIndex: 0 }, 'Original Value')
 
   await clickCellByColumnName(grid, 0, 'name')
   await page.keyboard.type('N')
@@ -551,7 +477,7 @@ test('table data grid Escape after typing activation restores the original cell 
   await page.keyboard.press('Escape')
 
   await expect(editor).not.toBeVisible({ timeout: APP_READY_MS })
-  await expectCellValue(page, 'table-data-grid', 'name', 0, 'Original Value')
+  await expectTableCellValue(page, { columnName: 'name', rowIndex: 0 }, 'Original Value')
 })
 
 test('table data grid typing into a NULL text cell uses the normal editor text color', async ({
@@ -707,7 +633,7 @@ test('table data datetime editor applies a clicked calendar date', async ({ page
     .click()
 
   await expect(popup).toBeHidden({ timeout: APP_READY_MS })
-  await expectCellValue(page, 'table-data-grid', 'created_at', 0, '2023-11-15 14:30:00')
+  await expectTableCellValue(page, { columnName: 'created_at', rowIndex: 0 }, '2023-11-15 14:30:00')
 })
 
 test('table data calendar opens from the NULL date cell of a blank new row and applies the picked day', async ({
@@ -736,13 +662,9 @@ test('table data calendar opens from the NULL date cell of a blank new row and a
     .click()
 
   await expect(popup).toBeHidden({ timeout: APP_READY_MS })
-  const newRowCreatedAt = {
-    gridTestId: 'table-data-grid',
-    columnName: 'created_at',
-    rowIndex: newRowIndex,
-  } as const
+  const newRowCreatedAt = { columnName: 'created_at', rowIndex: newRowIndex }
   await expect
-    .poll(() => readCellValue(page, newRowCreatedAt), { timeout: APP_READY_MS })
+    .poll(() => readTableCellValue(page, newRowCreatedAt), { timeout: APP_READY_MS })
     .toMatch(/^\d{4}-\d{2}-15 \d{2}:\d{2}:\d{2}$/)
 })
 
@@ -874,9 +796,9 @@ test('table data enum editor applies the clicked dropdown option', async ({ page
 
   const enumEditor = glideDropdownEditor(page)
   await expect(enumEditor).toBeVisible({ timeout: APP_READY_MS })
-  await setCellValueForTest(page, 'table-data-grid', 'status', 0, 'inactive')
+  await setTableCellValueForTest(page, { columnName: 'status', rowIndex: 0, value: 'inactive' })
 
-  await expectCellValue(page, 'table-data-grid', 'status', 0, 'inactive')
+  await expectTableCellValue(page, { columnName: 'status', rowIndex: 0 }, 'inactive')
 })
 
 test('table data enum editor opens when an already-selected enum cell is clicked', async ({

@@ -632,7 +632,7 @@ async function openScopedTableDataBottomPanel(page: Page) {
       }
       const tableDataStore = (window as unknown as Record<string, unknown>).__tableDataStore__ as {
         getState: () => {
-          tabs: Record<string, { isLoading: boolean; columns: Array<unknown> }>
+          tabs: Record<string, { page: { isLoading: boolean }; meta: { columns: Array<unknown> } }>
         }
       }
 
@@ -643,7 +643,8 @@ async function openScopedTableDataBottomPanel(page: Page) {
       if (!activeBottomPanelItem || activeBottomPanelItem.type !== 'table-data') return false
 
       const tableTabState = tableDataStore.getState().tabs[activeBottomPanelItem.tabId]
-      return Boolean(tableTabState && !tableTabState.isLoading && tableTabState.columns.length > 0)
+      const isLoaded = tableTabState && !tableTabState.page.isLoading
+      return Boolean(isLoaded && tableTabState.meta.columns.length > 0)
     },
     null,
     {
@@ -1529,11 +1530,14 @@ for (const theme of themes) {
           (
             (window as unknown as Record<string, unknown>).__tableDataStore__ as {
               getState: () => {
-                tabs: Record<string, { table: string; foreignKeys: Array<unknown> }>
+                tabs: Record<
+                  string,
+                  { table: { table: string }; meta: { foreignKeys: Array<unknown> } }
+                >
               }
             }
           ).getState().tabs
-        ).some((tab) => tab.table === 'orders' && tab.foreignKeys.length > 0)
+        ).some((tab) => tab.table.table === 'orders' && tab.meta.foreignKeys.length > 0)
       )
       const userIdColumn = await getColumnIndexByName(grid, 'user_id')
       const geometry = await getGlideGridGeometry(page, 'table-data-grid')

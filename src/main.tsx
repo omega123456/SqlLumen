@@ -103,6 +103,8 @@ async function exposeStoresForPlaywright(): Promise<void> {
   const { useProcessListStore } = await import('./stores/processlist-store')
   const { useAiMemoryStore } = await import('./stores/ai-memory-store')
   const { useUpdateStore } = await import('./stores/update-store')
+  const { getLoadedRow, getResultSurface, applySavedRowValues } =
+    await import('./lib/result-window-cache')
   window.__workspaceStore__ = useWorkspaceStore
   window.__toastStore__ = useToastStore
   window.__connectionStore__ = useConnectionStore
@@ -117,6 +119,7 @@ async function exposeStoresForPlaywright(): Promise<void> {
   window.__settingsStore__ = useSettingsStore
   window.__aiMemoryStore__ = useAiMemoryStore
   window.__updateStore__ = useUpdateStore
+  window.__resultWindowCache__ = { getLoadedRow, getResultSurface, applySavedRowValues }
 }
 
 async function exposeQueryPlanRunnerForPlaywright(): Promise<void> {

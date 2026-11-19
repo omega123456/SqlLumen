@@ -151,6 +151,11 @@ function showsLockIcon(inputs: AutoSizeInputs, index: number): boolean {
   return !isBlobViewerEditable(inputs, index)
 }
 
+function showsHeaderIcon(inputs: AutoSizeInputs, column: GridColumnDescriptor): boolean {
+  if (column.foreignKey) return true
+  return showsLockIcon(inputs, columnIndexFromKey(column.key))
+}
+
 export function computeDataColumnWidth(
   inputs: AutoSizeInputs,
   column: GridColumnDescriptor,
@@ -164,6 +169,6 @@ export function computeDataColumnWidth(
     columnIndex: 0,
     rows: sampleColumnRows(gridRows, index),
     displayName: column.displayName,
-    headerIconWidthPx: showsLockIcon(inputs, index) ? HEADER_ICON_WIDTH_PX : 0,
+    headerIconWidthPx: showsHeaderIcon(inputs, column) ? HEADER_ICON_WIDTH_PX : 0,
   })
 }

@@ -14,6 +14,9 @@ import { ipc, expectToast } from '../ipc-mock'
 import type { ActiveConnection, SavedConnection, ConnectionGroup } from '../../types/connection'
 import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
 import { makeTabState } from '../helpers/query-test-utils'
+import { makeTableDataTabState } from '../helpers/table-data-test-utils'
+import { makeTableColumnMeta } from '../helpers/column-meta-fixtures'
+import { tableEditTargetOf } from '../../stores/table-data-store/table-data-edit-target'
 
 /**
  * Tests for connection-store: close-connection guard with dirty non-active query results.
@@ -836,16 +839,21 @@ describe('useConnectionStore — connectionsWithUnsavedEdits', () => {
     })
     useTableDataStore.setState({
       tabs: {
-        [tabId]: {
-          editState: {
-            rowKey: { id: 1 },
-            originalValues: { name: 'Alice' },
-            currentValues: { name: 'Bob' },
-            modifiedColumns: new Set(['name']),
-            isNewRow: false,
+        [tabId]: makeTableDataTabState({
+          view: {
+            edit: {
+              rowIndex: 0,
+              state: {
+                rowKey: { id: 1 },
+                originalValues: { name: 'Alice' },
+                currentValues: { name: 'Bob' },
+                modifiedColumns: new Set(['name']),
+                isNewRow: false,
+              },
+            },
           },
-        },
-      } as never,
+        }),
+      },
     })
 
     expect(useConnectionStore.getState().connectionsWithUnsavedEdits()).toEqual(['session-1'])
@@ -1754,40 +1762,39 @@ describe('connection store sessions', () => {
         },
       })
 
-      // Set up table data store with pending edits — no PK so save will fail
+      ipc.override('update_table_row', () => {
+        throw new Error('Lost connection to MySQL server')
+      })
+      const table = { connectionId: 'sess-1', database: 'testdb', table: 'users', isView: false }
+      const meta = {
+        columns: [
+          makeTableColumnMeta({ name: 'id', dataType: 'INT', isPrimaryKey: true }),
+          makeTableColumnMeta({ name: 'name', dataType: 'VARCHAR' }),
+        ],
+        primaryKey: { keyColumns: ['id'], hasAutoIncrement: false, isUniqueKeyFallback: false },
+        foreignKeys: [],
+      }
       useTableDataStore.setState({
         tabs: {
-          'td-1': {
-            connectionId: 'sess-1',
-            database: 'testdb',
-            table: 'users',
-            columns: [],
-            rows: [],
-            currentPage: 1,
-            pageSize: 100,
-            executionTimeMs: 0,
-            primaryKey: null, // No PK → save will fail
-            rowsEvictedAt: null,
-            viewMode: 'grid',
-            selectedRowKey: null,
-            selectedCell: null,
-            isExportDialogOpen: false,
-            filterModel: [],
-            sort: null,
-            isLoading: false,
-            error: null,
-            pendingNavigationAction: null,
-            editState: {
-              rowKey: { id: 1 },
-              originalValues: { id: 1, name: 'Alice' },
-              currentValues: { id: 1, name: 'Changed' },
-              modifiedColumns: new Set(['name']),
-              isNewRow: false,
+          'td-1': makeTableDataTabState(
+            {
+              meta: meta,
+              view: {
+                editTarget: tableEditTargetOf(table, meta),
+                edit: {
+                  rowIndex: 0,
+                  state: {
+                    rowKey: { id: 1 },
+                    originalValues: { id: 1, name: 'Alice' },
+                    currentValues: { id: 1, name: 'Changed' },
+                    modifiedColumns: new Set(['name']),
+                    isNewRow: false,
+                  },
+                },
+              },
             },
-            saveError: null,
-            scrollRow: 0,
-            scrollCol: 0,
-          },
+            table
+          ),
         },
       })
 

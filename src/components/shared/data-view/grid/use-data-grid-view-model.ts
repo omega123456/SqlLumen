@@ -7,7 +7,7 @@ import { beginRowAction } from '../../../../stores/data-view/row-action-progress
 import { useDataView } from '../../../../stores/data-view/use-data-view'
 import { editableColumnKeysOf } from '../grid-column-descriptor'
 import { useBlobViewer } from '../use-blob-viewer'
-import { useForeignKeyLookup } from '../use-foreign-key-lookup'
+import { useForeignKeyLookup, type GridFocusTarget } from '../use-foreign-key-lookup'
 import { useGridEditHandlers, type GridEditHandlers } from '../use-grid-edit-handlers'
 import { useDataEditSession } from '../use-data-edit-session'
 import type { DataViewSource } from '../data-view-source'
@@ -25,6 +25,7 @@ import { useDataGridSort } from './use-data-grid-sort'
 import { useDataGridLayout } from './use-data-grid-layout'
 import { useDataRowSource } from './use-data-row-source'
 import { useDeferredSelection } from './use-deferred-selection'
+import { useDataColumnJump } from './use-data-column-jump'
 
 type CanvasGridProps = ComponentProps<typeof CanvasBaseGridView>
 
@@ -105,7 +106,7 @@ interface DataGridParts {
   rowActions: GridRowActions
   cellActions: Pick<
     CanvasGridProps,
-    'onFkCellAction' | 'onCellDoubleClick' | 'onCellSelectionChange'
+    'onFkCellAction' | 'onCellDoubleClick' | 'onCellSelectionChange' | 'highlightColumnKey'
   >
 }
 
@@ -162,10 +163,45 @@ function useRowLookup(
   return { rowSource, rowAt }
 }
 
+interface GridCellInteractionInputs {
+  source: DataViewSource
+  view: GridView
+  session: ReturnType<typeof useDataEditSession>
+  gridColumns: ReturnType<typeof useDataGridColumns>['gridColumns']
+  gridFocus: GridFocusTarget
+}
+
+function useGridCellInteractions(inputs: GridCellInteractionInputs) {
+  const { source, view, session, gridColumns, gridFocus } = inputs
+  const ref = source.ref
+  const isEditMode = view.editTarget.tableName !== null
+  const foreignKeyLookup = useForeignKeyLookup({
+    session: session,
+    columns: gridColumns,
+    isActive: source.isActive,
+    gridFocus: gridFocus,
+  })
+  const blobViewer = useBlobViewer({ session: session, columns: gridColumns })
+  const deferredSelection = useDeferredSelection(ref, view.slot)
+  const columnJump = useDataColumnJump({
+    ref: ref,
+    gridRef: gridFocus.gridRef,
+    columns: view.slot.columns,
+    columnJump: source.capabilities.columnJump,
+    onCellSelectionChange: isEditMode ? undefined : deferredSelection,
+  })
+  const cellActions: DataGridParts['cellActions'] = {
+    onFkCellAction: foreignKeyLookup.onFkCellAction,
+    onCellDoubleClick: blobViewer.openBlobViewer,
+    onCellSelectionChange: columnJump.handleCellSelectionChange,
+    highlightColumnKey: columnJump.highlightColumnKey,
+  }
+  return { foreignKeyLookup, blobViewer, cellActions }
+}
+
 export function useDataGridViewModel(source: DataViewSource) {
   const ref = source.ref
   const view = useGridView(ref)
-  const isEditMode = view.editTarget.tableName !== null
   const gridRef = useRef<GridHandle | null>(null)
   const layout = useDataGridLayout(ref, view.slot.viewRowCount)
   const boundColumnIndexLookup = useBoundColumnIndexLookup(view)
@@ -186,14 +222,13 @@ export function useDataGridViewModel(source: DataViewSource) {
     boundColumnIndexLookup: boundColumnIndexLookup,
     selectedCell: layout.selectedCell,
   })
-  const foreignKeyLookup = useForeignKeyLookup({
+  const { foreignKeyLookup, blobViewer, cellActions } = useGridCellInteractions({
+    source: source,
+    view: view,
     session: session,
-    columns: gridColumns,
-    isActive: source.isActive,
+    gridColumns: gridColumns,
     gridFocus: { gridRef: gridRef, selectedCellPosition: derived.selectedCellPosition },
   })
-  const blobViewer = useBlobViewer({ session: session, columns: gridColumns })
-  const deferredSelection = useDeferredSelection(ref, view.slot)
   const sort = useDataGridSort({ ref: ref, columns: view.slot.columns, sort: view.sort })
   const rowActions = useGridRowActions(ref)
   const editLocation = useEditLocation(view)
@@ -207,11 +242,7 @@ export function useDataGridViewModel(source: DataViewSource) {
     editHandlers: editHandlers,
     derived: derived,
     rowActions: rowActions,
-    cellActions: {
-      onFkCellAction: foreignKeyLookup.onFkCellAction,
-      onCellDoubleClick: blobViewer.openBlobViewer,
-      onCellSelectionChange: isEditMode ? undefined : deferredSelection,
-    },
+    cellActions: cellActions,
   })
 
   return {

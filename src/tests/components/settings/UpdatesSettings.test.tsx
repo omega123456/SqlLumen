@@ -12,6 +12,7 @@ import { useTableDesignerStore } from '../../../stores/table-designer-store'
 import { useUpdateStore } from '../../../stores/update-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
 import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
+import { makeTableDataTabState } from '../../helpers/table-data-test-utils'
 import type { ObjectEditorTab, TableDataTab, TableDesignerTab } from '../../../types/schema'
 import type { ActiveConnection } from '../../../types/connection'
 import { ipc } from '../../ipc-mock'
@@ -458,37 +459,23 @@ describe('UpdatesSettings', () => {
 
     useTableDataStore.setState({
       tabs: {
-        'table-tab': {
-          columns: [],
-          rows: [],
-          currentPage: 1,
-          pageSize: 100,
-          primaryKey: null,
-          executionTimeMs: 0,
-          rowsEvictedAt: null,
-          connectionId: 'conn-1',
-          database: 'db',
-          table: 'users',
-          editState: {
-            rowKey: { id: 1 },
-            originalValues: { id: 1 },
-            currentValues: { id: 1, name: 'Changed' },
-            modifiedColumns: new Set(['name']),
-            isNewRow: false,
+        'table-tab': makeTableDataTabState(
+          {
+            view: {
+              edit: {
+                rowIndex: 0,
+                state: {
+                  rowKey: { id: 1 },
+                  originalValues: { id: 1 },
+                  currentValues: { id: 1, name: 'Changed' },
+                  modifiedColumns: new Set(['name']),
+                  isNewRow: false,
+                },
+              },
+            },
           },
-          viewMode: 'grid',
-          selectedRowKey: null,
-          selectedCell: null,
-          filterModel: [],
-          sort: null,
-          isLoading: false,
-          error: null,
-          saveError: null,
-          isExportDialogOpen: false,
-          scrollRow: 0,
-          scrollCol: 0,
-          pendingNavigationAction: null,
-        },
+          { connectionId: 'conn-1', database: 'db', table: 'users', isView: false }
+        ),
       },
     })
 

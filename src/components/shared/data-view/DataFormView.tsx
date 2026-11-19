@@ -16,10 +16,11 @@ import {
 } from './use-form-edit-handlers'
 import { useDataColumnDescriptors } from './data-column-descriptors'
 import { useDataEditSession } from './use-data-edit-session'
-import type { DataViewSource } from './data-view-source'
+import type { DataViewPaging, DataViewSource } from './data-view-source'
 import { editLocationOf, invertColumnBindings, toSharedEditState } from './grid/data-grid-model'
 import { buildFormRowData, isEditingFormRow, resolveFormRowPosition } from './form/data-form-model'
 import { useFormCurrentRow } from './form/use-form-current-row'
+import { formPageEdgeRequest, formRecordCounterOf } from './form/data-form-paging'
 
 export interface DataFormViewProps {
   source: DataViewSource
@@ -32,10 +33,39 @@ function formRowCountOf(ref: DataViewSurfaceRef): number {
   return view.slot.viewRowCount + (view.edit.draftRow ? 1 : 0)
 }
 
-function navigateForm(ref: DataViewSurfaceRef, direction: FormNavigationDirection) {
+interface FormNavigation {
+  ref: DataViewSurfaceRef
+  paging: DataViewPaging | null
+}
+
+interface FormRowCursor {
+  currentIndex: number
+  rowCount: number
+}
+
+function goToPageEdge(
+  paging: DataViewPaging | null,
+  direction: FormNavigationDirection,
+  { currentIndex, rowCount }: FormRowCursor
+): boolean {
+  if (!paging) return false
+  const pageRequest = formPageEdgeRequest(direction, {
+    paging: paging,
+    currentIndex: currentIndex,
+    rowCount: rowCount,
+  })
+  if (!pageRequest) return false
+  paging.goToPage(pageRequest)
+  return true
+}
+
+function navigateForm({ ref, paging }: FormNavigation, direction: FormNavigationDirection) {
   const currentIndex = currentView(ref).selection.rowIndex ?? 0
+  const rowCount = formRowCountOf(ref)
+  const cursor = { currentIndex: currentIndex, rowCount: rowCount }
+  if (goToPageEdge(paging, direction, cursor)) return
   const nextIndex = currentIndex + NAVIGATION_STEP[direction]
-  if (!isIndexInBounds(nextIndex, formRowCountOf(ref))) return
+  if (!isIndexInBounds(nextIndex, rowCount)) return
   setSelectedRow(ref, nextIndex)
 }
 
@@ -105,9 +135,10 @@ function useFormInteractions({ source, formView, currentRowData }: FormInteracti
     currentRowData: currentRowData,
     columns: gridColumns,
   })
+  const paging = source.capabilities.paging
   const navigate = useCallback(
-    (direction: FormNavigationDirection) => navigateForm(ref, direction),
-    [ref]
+    (direction: FormNavigationDirection) => navigateForm({ ref: ref, paging: paging }, direction),
+    [ref, paging]
   )
   const navigation = useFormRecordNavigation(session, navigate)
   const foreignKeyLookup = useForeignKeyLookup({
@@ -132,9 +163,15 @@ export function DataFormView({ source }: DataFormViewProps) {
     ref,
     formView
   )
-  const { totalRows, currentIndex } = position
   const { gridColumns, editHandlers, navigation, foreignKeyLookup, blobViewer, editLocation } =
     useFormInteractions({ source: source, formView: formView, currentRowData: currentRowData })
+  const { paging, reload, blobViewDisabledReason } = source.capabilities
+  const isLoading = reload?.isLoading ?? false
+  const recordCounter = formRecordCounterOf({
+    paging: paging,
+    position: position,
+    isLoading: isLoading,
+  })
 
   return (
     <FkLookupProvider onFkLookup={foreignKeyLookup.openLookup}>
@@ -142,10 +179,8 @@ export function DataFormView({ source }: DataFormViewProps) {
         columns={gridColumns}
         currentRow={currentCached?.row ?? null}
         currentRowData={currentRowData}
-        totalRows={totalRows}
-        currentAbsoluteIndex={currentIndex}
-        isFirstRecord={currentIndex <= 0}
-        isLastRecord={currentIndex >= totalRows - 1}
+        {...recordCounter}
+        isLoading={isLoading}
         onNavigatePrev={navigation.onNavigatePrevious}
         onNavigateNext={navigation.onNavigateNext}
         editState={sharedEditState}
@@ -157,6 +192,8 @@ export function DataFormView({ source }: DataFormViewProps) {
         testId={source.testIds.form}
         workspaceTabId={ref.tabId}
         onBlobView={blobViewer.openFormFieldBlob}
+        blobViewDisabled={blobViewDisabledReason !== null}
+        blobViewDisabledReason={blobViewDisabledReason ?? undefined}
       />
       <ForeignKeyLookupTargetDialog lookup={foreignKeyLookup} location={editLocation} />
       <BlobViewerTargetDialog viewer={blobViewer} />

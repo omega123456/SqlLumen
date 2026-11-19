@@ -1,7 +1,8 @@
 import type { WorkspaceTab } from '../../types/schema'
 import { useWorkspaceStore } from '../workspace-store'
 import { useQueryStore, type SingleResultState, querySurfaceRef } from '../query-store'
-import { useTableDataStore } from '../table-data-store'
+import { tableSurfaceRef, useTableDataStore } from '../table-data-store'
+import { saveCurrentRow } from '../data-view/row-save'
 import { useObjectEditorStore } from '../object-editor-store'
 import { showErrorToast } from '../toast-store'
 import { hasModifiedColumns } from '../../lib/row-edit-state'
@@ -43,8 +44,8 @@ async function settleQueryEditorTabBeforeClose(tabId: string): Promise<boolean> 
 
 async function settleTableDataTabBeforeClose(tabId: string): Promise<boolean> {
   const tableDataTabState = useTableDataStore.getState().tabs[tabId]
-  if (!hasModifiedColumns(tableDataTabState?.editState)) return true
-  return saveRowBeforeClose(() => useTableDataStore.getState().saveCurrentRow(tabId))
+  if (!hasModifiedColumns(tableDataTabState?.view.edit.state)) return true
+  return saveRowBeforeClose(() => saveCurrentRow(tableSurfaceRef(tabId)))
 }
 
 const SETTLE_TAB_BEFORE_CLOSE: Partial<
@@ -95,7 +96,7 @@ export function connectionsWithUnsavedEdits(): string[] {
       }
       if (tab.type === 'table-data') {
         const tableDataTabState = tableDataTabs[tab.id]
-        return hasModifiedColumns(tableDataTabState?.editState)
+        return hasModifiedColumns(tableDataTabState?.view.edit.state)
       }
       if (tab.type === 'object-editor') {
         return objectEditorState.isDirty(tab.id)

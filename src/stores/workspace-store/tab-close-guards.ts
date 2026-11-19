@@ -1,6 +1,7 @@
 import type { WorkspaceTab, TableDataTab } from '../../types/schema'
 import { useQueryStore, type SingleResultState } from '../query-store'
-import { useTableDataStore } from '../table-data-store'
+import { tableSurfaceRef, useTableDataStore } from '../table-data-store'
+import { requestNavigationAction } from '../data-view/navigation-guard'
 import { useTableDesignerStore } from '../table-designer-store'
 import { useObjectEditorStore } from '../object-editor-store'
 import { useAiStore } from '../ai-store'
@@ -17,8 +18,7 @@ import {
 import { useWorkspaceStore } from '../workspace-store'
 
 const UNSAVED_CHANGE_CHECKS: Partial<Record<WorkspaceTab['type'], (tabId: string) => boolean>> = {
-  'table-data': (tabId) =>
-    (useTableDataStore.getState().tabs[tabId]?.editState?.modifiedColumns.size ?? 0) > 0,
+  'table-data': hasModifiedTableDataRow,
   'table-designer': (tabId) => useTableDesignerStore.getState().tabs[tabId]?.isDirty ?? false,
   'object-editor': (tabId) => useObjectEditorStore.getState().isDirty(tabId),
 }
@@ -80,9 +80,8 @@ function forceCloseWorkspaceTab(connectionId: string, tabId: string): void {
 }
 
 function hasModifiedTableDataRow(tabId: string): boolean {
-  const modifiedColumnCount =
-    useTableDataStore.getState().tabs[tabId]?.editState?.modifiedColumns.size ?? 0
-  return modifiedColumnCount > 0
+  const editState = useTableDataStore.getState().tabs[tabId]?.view.edit.state
+  return (editState?.modifiedColumns.size ?? 0) > 0
 }
 
 function hasModifiedResultRow(result: SingleResultState): boolean {
@@ -99,7 +98,8 @@ function tableDataGuard(): GuardedTabStore {
   const store = useTableDataStore.getState()
   return {
     isDirty: hasModifiedTableDataRow,
-    requestNavigationAction: store.requestNavigationAction,
+    requestNavigationAction: (tabId, action) =>
+      requestNavigationAction(tableSurfaceRef(tabId), action),
     cleanupTab: store.cleanupTab,
   }
 }

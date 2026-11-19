@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { useTableDataStore } from '../../../stores/table-data-store'
 import type { TableDataColumnMeta } from '../../../types/schema'
 import type { CellEditorParams } from '../../../components/shared/useCellEditor'
 import type { EditorCallbacksContextType } from '../../../components/shared/editor-callbacks-context'
@@ -34,7 +33,6 @@ function makeColumnMeta(
 }
 
 function makeMockProps(overrides: Record<string, unknown> = {}) {
-  const store = useTableDataStore.getState()
   return {
     row: { id: 1, created_at: '2023-11-24' } as Record<string, unknown>,
     column: { key: 'created_at' },
@@ -43,52 +41,19 @@ function makeMockProps(overrides: Record<string, unknown> = {}) {
     isNullable: true,
     columnMeta: makeColumnMeta('created_at', 'DATETIME', { isNullable: true }),
     tabId: 'tab-1',
-    updateCellValue: store.updateCellValue,
-    syncCellValue: store.syncCellValue,
+    updateCellValue: recordEditedCellValue,
+    syncCellValue: ignoreCellSync,
     ...overrides,
   } satisfies DateTimeCellEditorProps
 }
 
-function setupStore() {
-  useTableDataStore.setState({
-    tabs: {
-      'tab-1': {
-        columns: [
-          makeColumnMeta('id', 'BIGINT', { isPrimaryKey: true }),
-          makeColumnMeta('created_at', 'DATETIME', { isNullable: true }),
-        ],
-        rows: [[1, '2023-11-24 14:30:00']],
-        currentPage: 1,
-        pageSize: 1000,
-        primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
-        executionTimeMs: 10,
-        rowsEvictedAt: null,
-        connectionId: 'conn-1',
-        database: 'mydb',
-        table: 'users',
-        editState: {
-          rowKey: { id: 1 },
-          originalValues: { id: 1, created_at: '2023-11-24' },
-          currentValues: { id: 1, created_at: '2023-11-24' },
-          modifiedColumns: new Set(),
-          isNewRow: false,
-        },
-        viewMode: 'grid',
-        selectedRowKey: null,
-        selectedCell: null,
-        filterModel: [],
-        sort: null,
-        isLoading: false,
-        error: null,
-        saveError: null,
-        isExportDialogOpen: false,
-        pendingNavigationAction: null,
-        scrollRow: 0,
-        scrollCol: 0,
-      },
-    },
-  })
+const editedCellValues: Record<string, unknown> = {}
+
+function recordEditedCellValue(_tabId: string, column: string, value: unknown) {
+  editedCellValues[column] = value
 }
+
+function ignoreCellSync() {}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -98,7 +63,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2025-06-15T10:00:00Z'))
-  useTableDataStore.setState({ tabs: {} })
+  for (const column of Object.keys(editedCellValues)) delete editedCellValues[column]
 })
 
 afterEach(() => {
@@ -107,7 +72,6 @@ afterEach(() => {
 
 describe('DateTimeCellEditor', () => {
   it('renders text input with calendar button', () => {
-    setupStore()
     const props = makeMockProps()
     render(<DateTimeCellEditor {...props} />)
 
@@ -117,7 +81,6 @@ describe('DateTimeCellEditor', () => {
   })
 
   it('shows the calendar adornment next to the input', () => {
-    setupStore()
     const props = makeMockProps()
     render(<DateTimeCellEditor {...props} />)
 
@@ -126,7 +89,6 @@ describe('DateTimeCellEditor', () => {
   })
 
   it('displays Clock icon for TIME columns', () => {
-    setupStore()
     const props = makeMockProps({
       row: { id: 1, login_time: '14:30:00' },
       column: { key: 'login_time' },
@@ -138,7 +100,6 @@ describe('DateTimeCellEditor', () => {
   })
 
   it('displays the initial value in the input', () => {
-    setupStore()
     const props = makeMockProps()
     render(<DateTimeCellEditor {...props} />)
 
@@ -147,7 +108,6 @@ describe('DateTimeCellEditor', () => {
   })
 
   it('prefers initialInputValue when typing activation opens the editor', () => {
-    setupStore()
     const props = makeMockProps({ initialInputValue: '2', selectAllOnFocus: false })
     render(<DateTimeCellEditor {...props} />)
 
@@ -156,7 +116,6 @@ describe('DateTimeCellEditor', () => {
   })
 
   it('clicking calendar button shows picker (renders mock DateTimePicker)', () => {
-    setupStore()
     const props = makeMockProps()
     render(<DateTimeCellEditor {...props} />)
 
@@ -171,7 +130,6 @@ describe('DateTimeCellEditor', () => {
   })
 
   it('picker onApply updates value and closes picker; calls updateCellValue', () => {
-    setupStore()
     const props = makeMockProps()
     render(<DateTimeCellEditor {...props} />)
 
@@ -190,12 +148,10 @@ describe('DateTimeCellEditor', () => {
     expect(props.onRowChange).toHaveBeenCalledWith(
       expect.objectContaining({ created_at: '2025-06-15 16:45:00' })
     )
-    const state = useTableDataStore.getState().tabs['tab-1']
-    expect(state?.editState?.currentValues.created_at).toBe('2025-06-15 16:45:00')
+    expect(editedCellValues.created_at).toBe('2025-06-15 16:45:00')
   })
 
   it('picker onApply commits the active grid editor so the grid persists the selected date', () => {
-    setupStore()
     const props = makeMockProps()
     render(<DateTimeCellEditor {...props} />)
 
@@ -207,7 +163,6 @@ describe('DateTimeCellEditor', () => {
   })
 
   it('picker onCancel closes picker without updating value', () => {
-    setupStore()
     const props = makeMockProps()
     render(<DateTimeCellEditor {...props} />)
 
@@ -226,7 +181,6 @@ describe('DateTimeCellEditor', () => {
   })
 
   it('toggling NULL on while picker is open closes the picker', () => {
-    setupStore()
     const props = makeMockProps()
     render(<DateTimeCellEditor {...props} />)
 
@@ -245,7 +199,6 @@ describe('DateTimeCellEditor', () => {
   })
 
   it('NULL toggle behavior: toggling null on sets value to null', () => {
-    setupStore()
     const props = makeMockProps()
     render(<DateTimeCellEditor {...props} />)
 
@@ -262,7 +215,6 @@ describe('DateTimeCellEditor', () => {
   })
 
   it('NULL toggle off prefills temporal values from the current clock', () => {
-    setupStore()
     const props = makeMockProps({ row: { id: 1, created_at: null } })
     render(<DateTimeCellEditor {...props} />)
 
@@ -278,7 +230,6 @@ describe('DateTimeCellEditor', () => {
   })
 
   it('does NOT show NULL toggle when isNullable is false', () => {
-    setupStore()
     const props = makeMockProps({
       isNullable: false,
       columnMeta: makeColumnMeta('created_at', 'DATETIME', { isNullable: false }),
@@ -289,7 +240,6 @@ describe('DateTimeCellEditor', () => {
   })
 
   it('Escape key calls onClose(false, false) when picker is NOT open', () => {
-    setupStore()
     const props = makeMockProps()
     render(<DateTimeCellEditor {...props} />)
 
@@ -300,7 +250,6 @@ describe('DateTimeCellEditor', () => {
   })
 
   it('first Escape when picker is open closes only the picker (not the cell edit)', () => {
-    setupStore()
     const props = makeMockProps()
     render(<DateTimeCellEditor {...props} />)
 
@@ -320,7 +269,6 @@ describe('DateTimeCellEditor', () => {
   })
 
   it('second Escape (after picker closed) cancels the cell edit', () => {
-    setupStore()
     const props = makeMockProps()
     render(<DateTimeCellEditor {...props} />)
 
@@ -341,7 +289,6 @@ describe('DateTimeCellEditor', () => {
   })
 
   it('direct typing in text input works', () => {
-    setupStore()
     const props = makeMockProps()
     render(<DateTimeCellEditor {...props} />)
 
@@ -357,7 +304,6 @@ describe('DateTimeCellEditor', () => {
   })
 
   it('input shows empty string when row value is null', () => {
-    setupStore()
     const props = makeMockProps({ row: { id: 1, created_at: null } })
     render(<DateTimeCellEditor {...props} />)
 
@@ -366,7 +312,6 @@ describe('DateTimeCellEditor', () => {
   })
 
   it('auto-focuses input on mount', () => {
-    setupStore()
     const props = makeMockProps()
     render(<DateTimeCellEditor {...props} />)
 
@@ -375,7 +320,6 @@ describe('DateTimeCellEditor', () => {
   })
 
   it('typing in input when null clears null state', () => {
-    setupStore()
     const props = makeMockProps({ row: { id: 1, created_at: null } })
     render(<DateTimeCellEditor {...props} />)
 
@@ -389,7 +333,6 @@ describe('DateTimeCellEditor', () => {
   })
 
   it('opens the picker on a blank new-row date cell and applying a date fills the cell', () => {
-    setupStore()
     const props = makeMockProps({
       row: { id: 1, created_at: null },
       isNullable: false,
@@ -414,7 +357,6 @@ describe('DateTimeCellEditor', () => {
   })
 
   it('Escape key restores original value', () => {
-    setupStore()
     const props = makeMockProps({ row: { id: 1, created_at: '2023-11-24' } })
     render(<DateTimeCellEditor {...props} />)
 
@@ -430,7 +372,6 @@ describe('DateTimeCellEditor', () => {
   })
 
   it('Tab key commits the current value', () => {
-    setupStore()
     const props = makeMockProps()
     render(<DateTimeCellEditor {...props} />)
 
@@ -444,7 +385,6 @@ describe('DateTimeCellEditor', () => {
   })
 
   it('Enter key commits the current value', () => {
-    setupStore()
     const props = makeMockProps()
     render(<DateTimeCellEditor {...props} />)
 
@@ -458,7 +398,6 @@ describe('DateTimeCellEditor', () => {
   })
 
   it('double-update guard: onRowChange receives already-applied picker value', () => {
-    setupStore()
     const props = makeMockProps()
     render(<DateTimeCellEditor {...props} />)
 
@@ -472,7 +411,6 @@ describe('DateTimeCellEditor', () => {
     expect(input.value).toBe('2025-06-15 11:00:00')
 
     // The store was already updated by the picker's Apply (via editor.handleChange).
-    const state = useTableDataStore.getState().tabs['tab-1']
-    expect(state?.editState?.currentValues.created_at).toBe('2025-06-15 11:00:00')
+    expect(editedCellValues.created_at).toBe('2025-06-15 11:00:00')
   })
 })

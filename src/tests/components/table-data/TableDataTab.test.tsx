@@ -1,19 +1,24 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useTableDataStore } from '../../../stores/table-data-store'
+import { tableSurfaceRef, useTableDataStore } from '../../../stores/table-data-store'
 import { useConnectionStore } from '../../../stores/connection-store'
-import type { TableDataTabState } from '../../../types/schema'
+import { openExportDialog } from '../../../stores/data-view/view-actions'
 import { ipc } from '../../ipc-mock'
-import { makeTableDataTabState, setupTestConnection } from '../../helpers/table-data-test-utils'
-
-// Import after mocks
+import {
+  setupTestConnection,
+  tablePageResponse,
+  type TablePageFixture,
+} from '../../helpers/table-data-test-utils'
+import { makeTableColumnMeta } from '../../helpers/column-meta-fixtures'
 import { TableDataTab } from '../../../components/table-data/TableDataTab'
 import type { TableDataTab as TableDataTabType } from '../../../types/schema'
 
+const TAB_ID = 'tab-1'
+
 function makeTab(overrides: Partial<TableDataTabType> = {}): TableDataTabType {
   return {
-    id: 'tab-1',
+    id: TAB_ID,
     type: 'table-data',
     label: 'users',
     connectionId: 'conn-1',
@@ -24,637 +29,160 @@ function makeTab(overrides: Partial<TableDataTabType> = {}): TableDataTabType {
   }
 }
 
-const setupConnection = setupTestConnection
+const KEYED_PAGE: TablePageFixture = {
+  columns: [
+    makeTableColumnMeta({
+      name: 'id',
+      dataType: 'bigint',
+      isPrimaryKey: true,
+      isNullable: false,
+      isAutoIncrement: true,
+    }),
+    makeTableColumnMeta({ name: 'name', dataType: 'varchar', isNullable: true }),
+  ],
+  rows: [
+    [1, 'Alice'],
+    [2, 'Bob'],
+  ],
+  primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
+}
 
-function makeTabState(overrides: Partial<TableDataTabState> = {}): TableDataTabState {
-  return makeTableDataTabState({
-    columns: [
-      {
-        name: 'id',
-        dataType: 'bigint',
-        isNullable: false,
-        isPrimaryKey: true,
-        isUniqueKey: false,
-        hasDefault: false,
-        columnDefault: null,
-        isBinary: false,
-        isBooleanAlias: false,
-        isAutoIncrement: true,
-      },
-      {
-        name: 'name',
-        dataType: 'varchar',
-        isNullable: true,
-        isPrimaryKey: false,
-        isUniqueKey: false,
-        hasDefault: false,
-        columnDefault: null,
-        isBinary: false,
-        isBooleanAlias: false,
-        isAutoIncrement: false,
-      },
-    ],
-    rows: [
-      [1, 'Alice'],
-      [2, 'Bob'],
-    ],
-    primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
-    executionTimeMs: 15,
-    ...overrides,
-  })
+const KEYLESS_PAGE: TablePageFixture = {
+  columns: [makeTableColumnMeta({ name: 'id', dataType: 'bigint', isNullable: false })],
+  rows: [[1]],
+  primaryKey: null,
+}
+
+function servePage(page: TablePageFixture) {
+  ipc.overridePayload('fetch_table_page', (request) =>
+    tablePageResponse({ ...page, currentPage: Number(request.page) })
+  )
 }
 
 beforeEach(() => {
   useTableDataStore.setState({ tabs: {} })
-  useConnectionStore.setState({
-    activeConnections: {},
-    activeTabId: null,
-  })
-  ipc.override('fetch_table_data', () => ({
-    columns: makeTabState().columns,
-    rows: makeTabState().rows,
-    currentPage: 1,
-    pageSize: 1000,
-    primaryKey: makeTabState().primaryKey,
-    executionTimeMs: 15,
-  }))
+  useConnectionStore.setState({ activeConnections: {}, activeTabId: null })
+  servePage(KEYED_PAGE)
+  ipc.override('get_table_foreign_keys', () => [])
   ipc.override('export_table_data', () => undefined)
 })
 
-/** Drain async loadTableData so follow-up assertions and test teardown do not warn on act(). */
 async function waitForTableDataLoaded() {
   await waitFor(() => {
     expect(screen.getByTestId('table-data-grid')).toBeInTheDocument()
   })
   await waitFor(() => {
-    expect(useTableDataStore.getState().tabs['tab-1']?.isLoading).toBe(false)
+    expect(useTableDataStore.getState().tabs[TAB_ID]?.page.isLoading).toBe(false)
   })
 }
 
 describe('TableDataTab', () => {
-  it('renders with data-testid="table-data-tab"', async () => {
-    setupConnection()
-    render(<TableDataTab tab={makeTab()} />)
-    expect(screen.getByTestId('table-data-tab')).toBeInTheDocument()
-    await waitForTableDataLoaded()
-  })
-
-  it('uses bottom-panel render mode when requested', async () => {
-    setupConnection()
-    render(<TableDataTab tab={makeTab()} renderMode="bottom-panel" />)
+  it('opens the table in the store, shows the loading state, then the grid in bottom-panel mode', async () => {
+    setupTestConnection()
+    const tab = makeTab({ databaseName: 'testdb', objectName: 'orders' })
+    render(<TableDataTab tab={tab} renderMode="bottom-panel" />)
 
     expect(screen.getByTestId('table-data-tab')).toHaveAttribute('data-render-mode', 'bottom-panel')
-    await waitForTableDataLoaded()
-  })
-
-  it('renders loading state initially', async () => {
-    setupConnection()
-    // Don't pre-populate store — the component will init on mount
-    render(<TableDataTab tab={makeTab()} />)
-    // The toolbar should be visible
     expect(screen.getByTestId('table-data-toolbar')).toBeInTheDocument()
-    // Loading text or spinner should be present
     expect(screen.getByText('Loading table data...')).toBeInTheDocument()
+    expect(useTableDataStore.getState().tabs[TAB_ID]?.table).toEqual({
+      connectionId: 'conn-1',
+      database: 'testdb',
+      table: 'orders',
+      isView: false,
+    })
+
     await waitForTableDataLoaded()
+    expect(screen.queryByTestId('no-pk-warning')).not.toBeInTheDocument()
+    expect(screen.getByTestId('btn-add-row')).toBeInTheDocument()
+    expect(screen.queryByTestId('view-badge')).not.toBeInTheDocument()
   })
 
-  it('renders grid after data loads', async () => {
-    setupConnection()
-    render(<TableDataTab tab={makeTab()} />)
+  it('shows the no-key warning for a keyless table but not for a view', async () => {
+    setupTestConnection()
+    servePage(KEYLESS_PAGE)
+    const { unmount } = render(<TableDataTab tab={makeTab()} />)
 
-    // Wait for the fetchTableData mock to resolve and grid to appear
-    await waitFor(() => {
-      expect(screen.getByTestId('table-data-grid')).toBeInTheDocument()
-    })
-  })
-
-  it('shows no-PK warning banner when primaryKey is null', async () => {
-    setupConnection()
-
-    ipc.override('fetch_table_data', () => ({
-      columns: [
-        {
-          name: 'id',
-          dataType: 'bigint',
-          isNullable: false,
-          isPrimaryKey: false,
-          isUniqueKey: false,
-          hasDefault: false,
-          columnDefault: null,
-          isBinary: false,
-          isBooleanAlias: false,
-          isAutoIncrement: false,
-        },
-      ],
-      rows: [[1]],
-      currentPage: 1,
-      pageSize: 1000,
-      primaryKey: null,
-      executionTimeMs: 10,
-    }))
-
-    render(<TableDataTab tab={makeTab()} />)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('no-pk-warning')).toBeInTheDocument()
-    })
+    expect(await screen.findByTestId('no-pk-warning')).toBeInTheDocument()
     expect(screen.getByText(/no primary key or unique key/i)).toBeInTheDocument()
-  })
+    unmount()
 
-  it('does not show no-PK warning when primaryKey exists', async () => {
-    setupConnection()
-    render(<TableDataTab tab={makeTab()} />)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('table-data-grid')).toBeInTheDocument()
-    })
-    expect(screen.queryByTestId('no-pk-warning')).not.toBeInTheDocument()
-  })
-
-  it('shows error state with retry button', async () => {
-    setupConnection()
-
-    ipc.override('fetch_table_data', () => {
-      throw new Error('Connection lost')
-    })
-
-    render(<TableDataTab tab={makeTab()} />)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('table-data-error')).toBeInTheDocument()
-    })
-    expect(screen.getByText('Connection lost')).toBeInTheDocument()
-    expect(screen.getByTestId('btn-retry')).toBeInTheDocument()
-  })
-
-  it('retry button calls loadTableData', async () => {
-    const user = userEvent.setup()
-    setupConnection()
-
-    let attempt = 0
-    ipc.override('fetch_table_data', () => {
-      attempt += 1
-      if (attempt === 1) {
-        throw new Error('Some error')
-      }
-      return {
-        columns: makeTabState().columns,
-        rows: makeTabState().rows,
-        currentPage: 1,
-        pageSize: 1000,
-        primaryKey: makeTabState().primaryKey,
-        executionTimeMs: 15,
-      }
-    })
-
-    render(<TableDataTab tab={makeTab()} />)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('btn-retry')).toBeInTheDocument()
-    })
-
-    expect(ipc.calls('fetch_table_data')).toHaveLength(1)
-
-    await user.click(screen.getByTestId('btn-retry'))
-
-    await waitFor(() => {
-      expect(ipc.calls('fetch_table_data')).toHaveLength(2)
-      expect(screen.getByTestId('table-data-grid')).toBeInTheDocument()
-    })
-
-    expect(screen.queryByTestId('table-data-error')).not.toBeInTheDocument()
-  })
-
-  it('renders a blocking restore overlay over loaded content without showing the retry error state', async () => {
-    setupConnection()
-
-    useTableDataStore.setState({
-      tabs: {
-        'tab-1': makeTabState({
-          isLoading: true,
-          error: null,
-          rowResidency: {
-            status: 'restoring',
-            isActive: true,
-            inactiveSince: null,
-          },
-        }),
-      },
-    })
-
-    render(<TableDataTab tab={makeTab()} />)
-
-    expect(screen.getByTestId('table-data-grid')).toBeInTheDocument()
-    expect(screen.getByTestId('table-data-content')).toHaveAttribute('aria-busy', 'true')
-    expect(screen.getByTestId('table-data-restore-overlay')).toHaveAttribute('role', 'status')
-    expect(screen.getByTestId('table-data-restore-overlay')).toHaveAttribute('aria-live', 'polite')
-    expect(screen.getByText('Restoring cached table data...')).toBeInTheDocument()
-    expect(screen.queryByTestId('table-data-error')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('btn-retry')).not.toBeInTheDocument()
-  })
-
-  it('keeps row-dependent toolbar actions disabled while restore is in flight', async () => {
-    setupConnection()
-
-    useTableDataStore.setState({
-      tabs: {
-        'tab-1': makeTabState({
-          isLoading: true,
-          selectedRowKey: { id: 1 },
-          rowResidency: {
-            status: 'restoring',
-            isActive: true,
-            inactiveSince: null,
-          },
-        }),
-      },
-    })
-
-    render(<TableDataTab tab={makeTab()} />)
-
-    expect(screen.getByTestId('btn-add-row')).toBeDisabled()
-    expect(screen.getByTestId('btn-clone-row')).toBeDisabled()
-    expect(screen.getByTestId('btn-delete-row')).toBeDisabled()
-    expect(screen.getByTestId('btn-refresh')).toBeDisabled()
-  })
-
-  it('keeps retryable restore failure separate from restoring overlay state', async () => {
-    setupConnection()
-
-    useTableDataStore.setState({
-      tabs: {
-        'tab-1': makeTabState({
-          isLoading: false,
-          error: 'Cached table data could not be restored. Reload the table data to continue.',
-          rows: [],
-          rowResidency: {
-            status: 'evicted',
-            isActive: true,
-            inactiveSince: null,
-          },
-        }),
-      },
-    })
-
-    render(<TableDataTab tab={makeTab()} />)
-
-    expect(screen.getByTestId('table-data-error')).toBeInTheDocument()
-    expect(screen.getByTestId('btn-retry')).toBeInTheDocument()
-    expect(screen.queryByTestId('table-data-restore-overlay')).not.toBeInTheDocument()
-  })
-
-  it('passes correct tab context to store initTab', async () => {
-    setupConnection()
-    const tab = makeTab({ connectionId: 'conn-1', databaseName: 'testdb', objectName: 'orders' })
-    render(<TableDataTab tab={tab} />)
-
-    // initTab should have been called, creating the tab state
-    const state = useTableDataStore.getState().tabs['tab-1']
-    expect(state).toBeDefined()
-    expect(state?.connectionId).toBe('conn-1')
-    expect(state?.database).toBe('testdb')
-    expect(state?.table).toBe('orders')
-    await waitForTableDataLoaded()
-  })
-
-  it('keeps the grid mounted and hidden while the form view is shown, and unmounts the form', async () => {
-    setupConnection()
-    render(<TableDataTab tab={makeTab()} />)
-
-    await waitForTableDataLoaded()
-    const gridBeforeSwitch = screen.getByTestId('table-data-grid')
-
-    await act(async () => {
-      useTableDataStore.getState().setViewMode('tab-1', 'form')
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('table-data-form-view')).toBeVisible()
-    })
-    expect(gridBeforeSwitch).not.toBeVisible()
-
-    await act(async () => {
-      useTableDataStore.getState().setViewMode('tab-1', 'grid')
-    })
-
-    expect(screen.getByTestId('table-data-grid')).toBe(gridBeforeSwitch)
-    expect(gridBeforeSwitch).toBeVisible()
-    expect(screen.queryByTestId('table-data-form-view')).not.toBeInTheDocument()
-  })
-
-  it('shows export dialog when isExportDialogOpen is true', async () => {
-    setupConnection()
-    render(<TableDataTab tab={makeTab()} />)
-
-    await waitForTableDataLoaded()
-
-    // Open export dialog via the store
-    await act(async () => {
-      useTableDataStore.getState().openExportDialog('tab-1')
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('export-dialog')).toBeInTheDocument()
-    })
-  })
-
-  it('does not pass authoritative totalRows into export dialog', async () => {
-    setupConnection()
-    render(<TableDataTab tab={makeTab()} />)
-
-    await waitForTableDataLoaded()
-
-    await act(async () => {
-      useTableDataStore.getState().openExportDialog('tab-1')
-    })
-
-    const dialog = await screen.findByTestId('export-dialog')
-    expect(dialog).toBeInTheDocument()
-    expect(screen.queryByText(/total rows/i)).not.toBeInTheDocument()
-  })
-
-  it('shows unsaved changes dialog when pendingNavigationAction is set', async () => {
-    setupConnection()
-    render(<TableDataTab tab={makeTab()} />)
-
-    await waitForTableDataLoaded()
-
-    // Set unsaved changes dialog state
-    await act(async () => {
-      useTableDataStore.setState((state) => ({
-        tabs: {
-          ...state.tabs,
-          'tab-1': {
-            ...state.tabs['tab-1'],
-            editState: {
-              rowKey: { id: 1 },
-              originalValues: { id: 1, name: 'Alice' },
-              currentValues: { id: 1, name: 'Changed' },
-              modifiedColumns: new Set(['name']),
-              isNewRow: false,
-            },
-            pendingNavigationAction: () => {},
-          },
-        },
-      }))
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('unsaved-changes-dialog')).toBeInTheDocument()
-    })
-  })
-
-  it('handleExport submits the export dialog, calls exportTableData, and closes dialog', async () => {
-    const user = userEvent.setup()
-    setupConnection()
-    render(<TableDataTab tab={makeTab()} />)
-
-    await waitForTableDataLoaded()
-
-    // Open export dialog
-    await act(async () => {
-      useTableDataStore.getState().openExportDialog('tab-1')
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('export-dialog')).toBeInTheDocument()
-    })
-
-    fireEvent.change(screen.getByTestId('export-file-path-input'), {
-      target: { value: '/tmp/export-users.csv' },
-    })
-    await user.click(screen.getByTestId('export-submit-button'))
-
-    await waitFor(() => {
-      expect(ipc.calls('export_table_data')).toContainEqual(
-        expect.objectContaining({
-          payload: expect.objectContaining({
-            connectionId: 'conn-1',
-            database: 'mydb',
-            table: 'users',
-            format: 'csv',
-            filePath: '/tmp/export-users.csv',
-            includeHeaders: true,
-            tableNameForSql: 'users',
-            page: 1,
-            pageSize: 1000,
-          }),
-        })
-      )
-    })
-
-    await waitFor(() => {
-      expect(screen.queryByTestId('export-dialog')).not.toBeInTheDocument()
-    })
-  })
-
-  it('handleExport passes page and pageSize to exportTableData', async () => {
-    const user = userEvent.setup()
-    setupConnection()
-    render(<TableDataTab tab={makeTab()} />)
-
-    await waitForTableDataLoaded()
-
-    // Set specific page/pageSize state
-    await act(async () => {
-      useTableDataStore.setState((state) => ({
-        tabs: {
-          ...state.tabs,
-          'tab-1': {
-            ...state.tabs['tab-1'],
-            currentPage: 3,
-            pageSize: 50,
-          },
-        },
-      }))
-    })
-
-    // Open export dialog
-    await act(async () => {
-      useTableDataStore.getState().openExportDialog('tab-1')
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('export-dialog')).toBeInTheDocument()
-    })
-
-    fireEvent.change(screen.getByTestId('export-file-path-input'), {
-      target: { value: '/tmp/test.csv' },
-    })
-    await user.click(screen.getByTestId('export-submit-button'))
-
-    await waitFor(() => {
-      expect(ipc.calls('export_table_data')).toContainEqual(
-        expect.objectContaining({
-          payload: expect.objectContaining({
-            connectionId: 'conn-1',
-            database: 'mydb',
-            table: 'users',
-            format: 'csv',
-            filePath: '/tmp/test.csv',
-            includeHeaders: true,
-            tableNameForSql: 'users',
-            page: 3,
-            pageSize: 50,
-          }),
-        })
-      )
-    })
-  })
-
-  it('handleDiscardNavigation closes unsaved dialog', async () => {
-    const user = userEvent.setup()
-    setupConnection()
-    render(<TableDataTab tab={makeTab()} />)
-
-    await waitForTableDataLoaded()
-
-    // Set up pending navigation
-    await act(async () => {
-      useTableDataStore.setState((state) => ({
-        tabs: {
-          ...state.tabs,
-          'tab-1': {
-            ...state.tabs['tab-1'],
-            editState: {
-              rowKey: { id: 1 },
-              originalValues: { id: 1, name: 'Alice' },
-              currentValues: { id: 1, name: 'Changed' },
-              modifiedColumns: new Set(['name']),
-              isNewRow: false,
-            },
-            pendingNavigationAction: () => {},
-          },
-        },
-      }))
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('unsaved-changes-dialog')).toBeInTheDocument()
-    })
-
-    // Click discard in the dialog
-    const discardBtn = screen.getByTestId('btn-discard-changes')
-    await user.click(discardBtn)
-
-    await waitFor(() => {
-      expect(screen.queryByTestId('unsaved-changes-dialog')).not.toBeInTheDocument()
-    })
-  })
-
-  it('handleCancelNavigation closes unsaved dialog', async () => {
-    const user = userEvent.setup()
-    setupConnection()
-    render(<TableDataTab tab={makeTab()} />)
-
-    await waitForTableDataLoaded()
-
-    // Set up pending navigation
-    await act(async () => {
-      useTableDataStore.setState((state) => ({
-        tabs: {
-          ...state.tabs,
-          'tab-1': {
-            ...state.tabs['tab-1'],
-            editState: {
-              rowKey: { id: 1 },
-              originalValues: { id: 1, name: 'Alice' },
-              currentValues: { id: 1, name: 'Changed' },
-              modifiedColumns: new Set(['name']),
-              isNewRow: false,
-            },
-            pendingNavigationAction: () => {},
-          },
-        },
-      }))
-    })
-
-    await waitFor(() => {
-      expect(screen.getByTestId('unsaved-changes-dialog')).toBeInTheDocument()
-    })
-
-    // Click cancel
-    const cancelBtn = screen.getByTestId('btn-cancel-changes')
-    await user.click(cancelBtn)
-
-    await waitFor(() => {
-      expect(screen.queryByTestId('unsaved-changes-dialog')).not.toBeInTheDocument()
-    })
-  })
-
-  it('renders with read-only connection', async () => {
-    setupConnection(true) // readOnly
-    render(<TableDataTab tab={makeTab()} />)
-
-    await waitForTableDataLoaded()
-
-    // Read-only badge should appear in toolbar
-    expect(screen.getByTestId('readonly-badge')).toBeInTheDocument()
-  })
-
-  // ---------------------------------------------------------------------------
-  // View objectType tests (Phase 3 — View Data mode)
-  // ---------------------------------------------------------------------------
-
-  it('view objectType shows VIEW badge in toolbar', async () => {
-    setupConnection()
+    act(() => useTableDataStore.setState({ tabs: {} }))
     render(<TableDataTab tab={makeTab({ objectType: 'view', objectName: 'my_view' })} />)
     await waitForTableDataLoaded()
+
+    expect(screen.queryByTestId('no-pk-warning')).not.toBeInTheDocument()
     expect(screen.getByTestId('view-badge')).toBeInTheDocument()
-  })
-
-  it('view objectType suppresses no-PK warning even without primaryKey', async () => {
-    setupConnection()
-
-    ipc.override('fetch_table_data', () => ({
-      columns: [
-        {
-          name: 'user_id',
-          dataType: 'bigint',
-          isNullable: false,
-          isPrimaryKey: false,
-          isUniqueKey: false,
-          hasDefault: false,
-          columnDefault: null,
-          isBinary: false,
-          isBooleanAlias: false,
-          isAutoIncrement: false,
-        },
-      ],
-      rows: [[1]],
-      currentPage: 1,
-      pageSize: 1000,
-      primaryKey: null,
-      executionTimeMs: 10,
-    }))
-
-    render(<TableDataTab tab={makeTab({ objectType: 'view', objectName: 'my_view' })} />)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('table-data-grid')).toBeInTheDocument()
-    })
-    await waitFor(() => {
-      expect(useTableDataStore.getState().tabs['tab-1']?.isLoading).toBe(false)
-    })
-
-    expect(screen.queryByTestId('no-pk-warning')).not.toBeInTheDocument()
-  })
-
-  it('view objectType hides mutation buttons', async () => {
-    setupConnection()
-    render(<TableDataTab tab={makeTab({ objectType: 'view', objectName: 'my_view' })} />)
-    await waitForTableDataLoaded()
     expect(screen.queryByTestId('btn-add-row')).not.toBeInTheDocument()
     expect(screen.queryByTestId('btn-delete-row')).not.toBeInTheDocument()
     expect(screen.queryByTestId('btn-save')).not.toBeInTheDocument()
     expect(screen.queryByTestId('btn-discard')).not.toBeInTheDocument()
   })
 
-  it('table objectType still shows mutation buttons', async () => {
-    setupConnection()
-    render(<TableDataTab tab={makeTab({ objectType: 'table', objectName: 'users' })} />)
+  it('shows the read-only badge on a read-only connection', async () => {
+    setupTestConnection(true)
+    render(<TableDataTab tab={makeTab()} />)
+
     await waitForTableDataLoaded()
-    expect(screen.getByTestId('btn-add-row')).toBeInTheDocument()
-    expect(screen.queryByTestId('view-badge')).not.toBeInTheDocument()
+
+    expect(screen.getByTestId('readonly-badge')).toBeInTheDocument()
+  })
+
+  it('shows the load error with a retry that reloads the table', async () => {
+    const user = userEvent.setup()
+    setupTestConnection()
+    let attempt = 0
+    ipc.override('fetch_table_page', () => {
+      attempt += 1
+      if (attempt === 1) throw new Error('Connection lost')
+      return tablePageResponse(KEYED_PAGE)
+    })
+    render(<TableDataTab tab={makeTab()} />)
+
+    expect(await screen.findByTestId('table-data-error')).toHaveTextContent('Connection lost')
+
+    await user.click(screen.getByTestId('btn-retry'))
+
+    await waitForTableDataLoaded()
+    expect(ipc.calls('fetch_table_page')).toHaveLength(2)
+    expect(screen.queryByTestId('table-data-error')).not.toBeInTheDocument()
+  })
+
+  it('exports the whole filtered table with the current page scope and closes the dialog', async () => {
+    const user = userEvent.setup()
+    setupTestConnection()
+    render(<TableDataTab tab={makeTab()} />)
+    await waitForTableDataLoaded()
+    await act(async () => {
+      await useTableDataStore.getState().fetchPage(TAB_ID, { page: 3, select: null })
+    })
+
+    act(() => openExportDialog(tableSurfaceRef(TAB_ID)))
+
+    expect(await screen.findByTestId('export-dialog')).toBeInTheDocument()
+    expect(screen.queryByText(/total rows/i)).not.toBeInTheDocument()
+    fireEvent.change(screen.getByTestId('export-file-path-input'), {
+      target: { value: '/tmp/export-users.csv' },
+    })
+    await user.click(screen.getByTestId('export-submit-button'))
+
+    await waitFor(() => {
+      expect(ipc.payloads('export_table_data')).toContainEqual(
+        expect.objectContaining({
+          connectionId: 'conn-1',
+          database: 'mydb',
+          table: 'users',
+          format: 'csv',
+          filePath: '/tmp/export-users.csv',
+          includeHeaders: true,
+          tableNameForSql: 'users',
+          page: 3,
+          pageSize: 1000,
+        })
+      )
+    })
+    await waitFor(() => {
+      expect(screen.queryByTestId('export-dialog')).not.toBeInTheDocument()
+    })
   })
 })

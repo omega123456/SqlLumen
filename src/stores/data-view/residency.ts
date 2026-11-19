@@ -91,8 +91,8 @@ function setRowsStatus(ref: DataViewSurfaceRef, status: FrontendRowResidencyStat
 }
 
 function expireEvictedSurface(ref: DataViewSurfaceRef) {
-  routeOf(ref).lifecycle.onExpired(ref)
   setRowsStatus(ref, 'evicted')
+  routeOf(ref).lifecycle.onExpired(ref)
 }
 
 async function reloadEvictedWindow(ref: DataViewSurfaceRef, view: DataViewState) {

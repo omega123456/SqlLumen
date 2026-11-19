@@ -9,7 +9,16 @@ import { useQueryStore, querySurfaceRef, getActiveResult } from '../../../../sto
 import { useToastStore } from '../../../../stores/toast-store'
 import { useConnectionStore } from '../../../../stores/connection-store'
 import { makeTabState, flat } from '../../../helpers/query-test-utils'
-import { setupTestConnection } from '../../../helpers/table-data-test-utils'
+import {
+  loadTablePage,
+  setupTestConnection,
+  tablePageResponse,
+  type TablePageFixture,
+} from '../../../helpers/table-data-test-utils'
+import { makeTableColumnMeta } from '../../../helpers/column-meta-fixtures'
+import { useTableDataViewSource } from '../../../../components/table-data/table-data-tab/table-data-view-source'
+import { tableSurfaceRef, useTableDataStore } from '../../../../stores/table-data-store'
+import { insertDraftRow, updateCellValue } from '../../../../stores/data-view/edit-actions'
 import { expectToast, ipc } from '../../../ipc-mock'
 
 const TOOLBAR_TAB_ID = 'tab-1'
@@ -757,5 +766,85 @@ describe('DataToolbar', () => {
       renderToolbar()
       expect(screen.getByTestId('btn-copy-selected-rows')).toBeDisabled()
     })
+  })
+})
+
+describe('DataToolbar paging on the table route', () => {
+  const PAGED_TAB_ID = 'table-tab-1'
+  const PAGED_REF = tableSurfaceRef(PAGED_TAB_ID)
+  const FULL_PAGE_SIZE = 2
+  const FULL_PAGE: TablePageFixture = {
+    columns: [
+      makeTableColumnMeta({ name: 'id', dataType: 'INT', isPrimaryKey: true }),
+      makeTableColumnMeta({ name: 'name', dataType: 'VARCHAR' }),
+    ],
+    rows: [
+      [1, 'Alice'],
+      [2, 'Bob'],
+    ],
+    primaryKey: { keyColumns: ['id'], hasAutoIncrement: false, isUniqueKeyFallback: false },
+    pageSize: FULL_PAGE_SIZE,
+  }
+
+  function PagedTableToolbar() {
+    const source = useTableDataViewSource({ tabId: PAGED_TAB_ID, isActive: true, isView: false })
+    return (
+      <DataToolbar
+        source={source}
+        editTarget={null}
+        filter={CLOSED_FILTER}
+        readiness={{ hasData: true, canInsertRows: true }}
+      />
+    )
+  }
+
+  function lastRequestedPage() {
+    const requests = ipc.payloads('fetch_table_page') as { page: number; pageSize: number }[]
+    return requests[requests.length - 1]
+  }
+
+  beforeEach(async () => {
+    useTableDataStore.setState({ tabs: {} })
+    setupTestConnection()
+    ipc.override('get_table_foreign_keys', () => [])
+    await act(async () => {
+      await loadTablePage(PAGED_TAB_ID, FULL_PAGE)
+    })
+    ipc.overridePayload('fetch_table_page', (request) =>
+      tablePageResponse({
+        ...FULL_PAGE,
+        currentPage: Number(request.page),
+        pageSize: Number(request.pageSize),
+      })
+    )
+  })
+
+  it('pages forward and back, changes the page size, and holds paging behind unsaved edits', async () => {
+    const user = userEvent.setup()
+    render(<PagedTableToolbar />)
+    expect(screen.getByTestId('pagination-prev')).toBeDisabled()
+
+    await user.click(screen.getByTestId('pagination-next'))
+    await waitFor(() => expect(lastRequestedPage()).toMatchObject({ page: 2 }))
+    await waitFor(() => expect(screen.getByTestId('pagination-prev')).not.toBeDisabled())
+
+    await user.click(screen.getByTestId('pagination-prev'))
+    await waitFor(() => expect(lastRequestedPage()).toMatchObject({ page: 1 }))
+
+    await user.click(screen.getByTestId('page-size-select'))
+    await user.click(screen.getByRole('option', { name: '500' }))
+    await waitFor(() => expect(lastRequestedPage()).toMatchObject({ page: 1, pageSize: 500 }))
+
+    const requestCountBeforeEdit = ipc.payloads('fetch_table_page').length
+    act(() => {
+      insertDraftRow(PAGED_REF)
+      updateCellValue(PAGED_REF, 1, 'Draft')
+    })
+    await user.click(screen.getByTestId('pagination-next'))
+
+    expect(ipc.payloads('fetch_table_page')).toHaveLength(requestCountBeforeEdit)
+    expect(
+      useTableDataStore.getState().tabs[PAGED_TAB_ID]?.view.prompts.pendingNavigation
+    ).not.toBeNull()
   })
 })

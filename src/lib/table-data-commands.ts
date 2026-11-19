@@ -7,6 +7,7 @@ import type {
   TableDataCacheRestoreResult,
   TableDataCacheSyncResult,
   BlobValueResponse,
+  TablePageResult,
 } from '../types/schema'
 import type { ConnectionTabRequest, TableRequest } from './ipc/requests'
 
@@ -221,6 +222,10 @@ export async function fetchTableData(params: FetchTableDataParams): Promise<Tabl
     payload: toFetchTableDataRequest(params),
   })
   return { ...response, rows: normalizeTinyIntRows(response.columns, response.rows) }
+}
+
+export async function fetchTablePage(params: FetchTableDataParams): Promise<TablePageResult> {
+  return invokeCommand({ command: 'fetch_table_page', payload: toFetchTableDataRequest(params) })
 }
 
 export async function touchTableData(request: ConnectionTabRequest): Promise<TableDataTouchResult> {

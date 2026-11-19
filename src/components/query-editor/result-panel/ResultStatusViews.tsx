@@ -4,7 +4,11 @@ import { Button } from '../../common/Button'
 import { InfoBar } from '../../common/InfoBar'
 import { ResultSubTabs } from '../ResultSubTabs'
 import { EditModeDropdown } from '../EditModeDropdown'
-import { DataViewBody, type DataViewSlots } from '../../shared/data-view/DataViewBody'
+import {
+  DataViewBody,
+  DataViewMessage,
+  type DataViewSlots,
+} from '../../shared/data-view/DataViewBody'
 import { DataViewSpinner } from '../../shared/data-view/body/DataViewOverlay'
 import type { SingleResultState } from '../../../stores/query-store'
 import { ResultBands } from './ResultBands'
@@ -95,23 +99,27 @@ export interface ResultStatusViewProps {
 function resultMessage(result: SingleResultState): ReactNode {
   if (result.resultStatus === 'error') {
     return (
-      <InfoBar
-        severity="error"
-        title="Query failed"
-        message={result.errorMessage}
-        data-testid="result-error"
-      />
+      <DataViewMessage>
+        <InfoBar
+          severity="error"
+          title="Query failed"
+          message={result.errorMessage}
+          data-testid="result-error"
+        />
+      </DataViewMessage>
     )
   }
   const hasColumns = result.view.slot.columns.length > 0
   if (hasColumns) return null
   return (
-    <InfoBar
-      severity="success"
-      title="Query OK"
-      message={dmlSuccessMessage(result.affectedRows)}
-      data-testid="dml-success"
-    />
+    <DataViewMessage>
+      <InfoBar
+        severity="success"
+        title="Query OK"
+        message={dmlSuccessMessage(result.affectedRows)}
+        data-testid="dml-success"
+      />
+    </DataViewMessage>
   )
 }
 
