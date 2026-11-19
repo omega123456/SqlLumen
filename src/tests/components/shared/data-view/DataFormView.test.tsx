@@ -1,58 +1,52 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import {
-  ResultFormView as WindowedResultFormView,
-  type ResultFormViewProps,
-} from '../../../components/query-editor/ResultFormView'
-import { applySavedRowValues, seedResultWindow } from '../../../lib/result-window-cache'
-import { useQueryStore } from '../../../stores/query-store'
-import type { ColumnMeta, TableDataColumnMeta, RowEditState } from '../../../types/schema'
-import { makeTabState } from '../../helpers/query-test-utils'
-import { ipc } from '../../ipc-mock'
+import { DataFormView } from '../../../../components/shared/data-view/DataFormView'
+import { applySavedRowValues } from '../../../../lib/result-window-cache'
+import { useQueryStore } from '../../../../stores/query-store'
+import type {
+  ColumnMeta,
+  ForeignKeyColumnInfo,
+  TableDataColumnMeta,
+  RowEditState,
+} from '../../../../types/schema'
+import { makeTabState } from '../../../helpers/query-test-utils'
+import { dataViewResult, seedDataView } from '../../../helpers/data-view-test-utils'
+import { ipc } from '../../../ipc-mock'
 
-/**
- * Test adapter: the form view reads windowed rows from the page cache. These
- * tests describe a result by its `rows`, so the adapter seeds the real page
- * cache (identity view, base indices 0..n-1) and renders the windowed props.
- * Seeding happens in `renderForm`, outside React's render phase.
- */
-type LegacyFormProps = Omit<
-  ResultFormViewProps,
-  'resultIndex' | 'queryId' | 'viewVersion' | 'viewRowCount'
-> & { rows: unknown[][]; totalRows?: number }
-
-function ResultFormView({ rows, totalRows, ...props }: LegacyFormProps) {
-  void rows
-  return (
-    <WindowedResultFormView
-      {...props}
-      resultIndex={0}
-      queryId="q-form"
-      viewVersion={1}
-      viewRowCount={totalRows ?? rows.length}
-    />
-  )
+interface FormFixtureProps {
+  columns: ColumnMeta[]
+  rows: unknown[][]
+  totalRows?: number
+  selectedRowIndex: number | null
+  tabId?: string
+  draftRow?: unknown[] | null
+  editMode?: string | null
+  editableColumnMap?: Map<number, boolean>
+  editState?: RowEditState | null
+  editingRowIndex?: number | null
+  editingBaseIndex?: number | null
+  editTableColumns?: TableDataColumnMeta[]
+  editForeignKeys?: ForeignKeyColumnInfo[]
+  editColumnBindings?: Map<number, string>
 }
 
-function seedFormRows(element: React.ReactElement<LegacyFormProps>) {
-  const { rows, columns, tabId } = element.props
-  seedResultWindow({
-    route: 'query',
-    connectionId: 'conn-1',
-    tabId,
-    resultIndex: 0,
-    queryId: 'q-form',
-    viewVersion: 1,
-    viewRowCount: element.props.totalRows ?? rows.length,
-    columns,
-    window: { offset: 0, rows, baseIndices: rows.map((_, index) => index) },
-  })
+/** Fixture element: renderForm reads its props, seeds the store and renders the shared form. */
+function ResultFormView(props: FormFixtureProps) {
+  void props
+  return null
 }
 
-function renderForm(element: React.ReactElement<LegacyFormProps>) {
-  seedFormRows(element)
-  return render(element)
+function editedCell(columnIndex: number): unknown {
+  const view = dataViewResult()
+  const columnName = view.editTarget.bindings.get(columnIndex) ?? ''
+  return view.edit.state?.currentValues[columnName]
+}
+
+function renderForm(element: React.ReactElement<FormFixtureProps>) {
+  const { rows, totalRows, ...fixture } = element.props
+  const source = seedDataView({ ...fixture, rows: rows, viewRowCount: totalRows ?? rows.length })
+  return render(<DataFormView source={source} />)
 }
 
 // Mock navigator.clipboard for BaseFormView's copy handler
@@ -82,7 +76,6 @@ const defaultProps = {
   rows,
   selectedRowIndex: 0 as number | null,
   totalRows: 5,
-  onNavigate: vi.fn(),
   tabId: 'tab-1',
 }
 
@@ -118,7 +111,7 @@ beforeEach(() => {
   })
 })
 
-describe('ResultFormView', () => {
+describe('DataFormView', () => {
   it('shows the record label and values of the selected row, with NULL as text and the first row as fallback', () => {
     const selectedRow = renderForm(<ResultFormView {...defaultProps} selectedRowIndex={2} />)
     expect(screen.getByTestId('result-form-view')).toBeInTheDocument()
@@ -138,19 +131,15 @@ describe('ResultFormView', () => {
     expect(screen.getByTestId('form-input-name')).toHaveTextContent('Alice')
   })
 
-  it('navigates through onNavigate with labelled buttons and disables Next on the last record', () => {
-    const onNavigate = vi.fn()
-    const middleRecord = renderForm(
-      <ResultFormView {...defaultProps} selectedRowIndex={2} onNavigate={onNavigate} />
-    )
+  it('navigates with labelled buttons and disables Next on the last record', () => {
+    const middleRecord = renderForm(<ResultFormView {...defaultProps} selectedRowIndex={2} />)
     expect(screen.getByLabelText('Previous record')).not.toBeDisabled()
     expect(screen.getByLabelText('Next record')).not.toBeDisabled()
 
     fireEvent.click(screen.getByTestId('btn-form-previous'))
+    expect(dataViewResult().selection.rowIndex).toBe(1)
     fireEvent.click(screen.getByTestId('btn-form-next'))
-
-    expect(onNavigate).toHaveBeenNthCalledWith(1, 'prev')
-    expect(onNavigate).toHaveBeenNthCalledWith(2, 'next')
+    expect(dataViewResult().selection.rowIndex).toBe(2)
     middleRecord.unmount()
 
     renderForm(<ResultFormView {...defaultProps} selectedRowIndex={4} />)
@@ -237,15 +226,11 @@ function buildEditProps(overrides: Record<string, unknown> = {}) {
     editState: baseEditState as RowEditState | null,
     editingRowIndex: 0 as number | null,
     editTableColumns,
-    onStartEdit: vi.fn(),
-    onUpdateCell: vi.fn(),
-    onSaveRow: vi.fn().mockResolvedValue(true),
-    onDiscardRow: vi.fn(),
     ...overrides,
   }
 }
 
-describe('ResultFormView — Edit Mode', () => {
+describe('DataFormView — Edit Mode', () => {
   it('renders lock icon on non-editable columns', () => {
     renderForm(<ResultFormView {...defaultProps} {...buildEditProps()} />)
     expect(screen.getByTestId('lock-icon-id')).toBeInTheDocument()
@@ -361,10 +346,9 @@ describe('ResultFormView — Edit Mode', () => {
   })
 
   it('calls onUpdateCell when input value changes', () => {
-    const onUpdateCell = vi.fn()
-    renderForm(<ResultFormView {...defaultProps} {...buildEditProps({ onUpdateCell })} />)
+    renderForm(<ResultFormView {...defaultProps} {...buildEditProps()} />)
     fireEvent.change(screen.getByTestId('form-input-name'), { target: { value: 'Bob' } })
-    expect(onUpdateCell).toHaveBeenCalledWith(1, 'Bob')
+    expect(editedCell(1)).toEqual('Bob')
   })
 
   it('renders FK lookup trigger for editable FK fields when row data is available', () => {
@@ -468,31 +452,19 @@ describe('ResultFormView — Edit Mode', () => {
     expect((screen.getByTestId('form-input-user_id') as HTMLInputElement).value).toBe('5')
   })
 
-  it('calls onStartEdit when editable input receives focus', () => {
-    const onStartEdit = vi.fn()
+  it('starts editing the shown row when an editable input receives focus', () => {
     renderForm(
       <ResultFormView
         {...defaultProps}
-        {...buildEditProps({ onStartEdit, editState: null, editingRowIndex: null })}
+        {...buildEditProps({ editState: null, editingRowIndex: null })}
       />
     )
     fireEvent.focus(screen.getByTestId('form-input-name'))
-    // The view position plus the cached row (with its base index) it edits.
-    expect(onStartEdit).toHaveBeenCalledWith(0, { row: rows[0], baseIndex: 0 })
+    expect(dataViewResult().edit).toMatchObject({ rowIndex: 0, baseIndex: 0 })
+    expect(dataViewResult().edit.state?.currentValues.name).toBe('Alice')
   })
 
   it('fetches a row outside the loaded pages when navigating to it', async () => {
-    seedResultWindow({
-      route: 'query',
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      resultIndex: 0,
-      queryId: 'q-form',
-      viewVersion: 1,
-      viewRowCount: 4000,
-      columns,
-      window: { offset: 0, rows, baseIndices: rows.map((_, index) => index) },
-    })
     ipc.overridePayload('fetch_result_window', (args) => ({
       offset: args?.offset,
       rows: [[3500, 'Far', 'far@example.com']],
@@ -500,16 +472,7 @@ describe('ResultFormView — Edit Mode', () => {
       viewRowCount: 4000,
       viewVersion: 1,
     }))
-    render(
-      <WindowedResultFormView
-        {...defaultProps}
-        resultIndex={0}
-        queryId="q-form"
-        viewVersion={1}
-        viewRowCount={4000}
-        selectedRowIndex={3499}
-      />
-    )
+    renderForm(<ResultFormView {...defaultProps} totalRows={4000} selectedRowIndex={3499} />)
     expect(await screen.findByTestId('form-record-label')).toHaveTextContent(
       /^Record 3,?500 of 4,?000$/
     )
@@ -518,17 +481,6 @@ describe('ResultFormView — Edit Mode', () => {
   })
 
   it('shows a saved edit of a fetched row outside the loaded pages', async () => {
-    seedResultWindow({
-      route: 'query',
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      resultIndex: 0,
-      queryId: 'q-form',
-      viewVersion: 1,
-      viewRowCount: 4000,
-      columns,
-      window: { offset: 0, rows, baseIndices: rows.map((_, index) => index) },
-    })
     ipc.overridePayload('fetch_result_window', (args) => ({
       offset: args?.offset,
       rows: [[3500, 'Far', 'far@example.com']],
@@ -536,16 +488,7 @@ describe('ResultFormView — Edit Mode', () => {
       viewRowCount: 4000,
       viewVersion: 1,
     }))
-    render(
-      <WindowedResultFormView
-        {...defaultProps}
-        resultIndex={0}
-        queryId="q-form"
-        viewVersion={1}
-        viewRowCount={4000}
-        selectedRowIndex={3499}
-      />
-    )
+    renderForm(<ResultFormView {...defaultProps} totalRows={4000} selectedRowIndex={3499} />)
     await waitFor(() => expect(screen.getByTestId('form-input-name')).toHaveTextContent('Far'))
 
     // The store saved the row: base index 3499, column 1 changed.
@@ -553,7 +496,7 @@ describe('ResultFormView — Edit Mode', () => {
       applySavedRowValues({
         tabId: 'tab-1',
         resultIndex: 0,
-        queryId: 'q-form',
+        queryId: 'q-grid',
         baseIndex: 3499,
         updates: { 1: 'Farther' },
       })
@@ -564,7 +507,7 @@ describe('ResultFormView — Edit Mode', () => {
       applySavedRowValues({
         tabId: 'tab-1',
         resultIndex: 0,
-        queryId: 'q-form',
+        queryId: 'q-grid',
         baseIndex: 12,
         updates: { 1: 'Other' },
       })
@@ -574,29 +517,11 @@ describe('ResultFormView — Edit Mode', () => {
   })
 
   it('routes results_expired while fetching the row to the expired block', async () => {
-    seedResultWindow({
-      route: 'query',
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      resultIndex: 0,
-      queryId: 'q-form',
-      viewVersion: 1,
-      viewRowCount: 4000,
-      columns,
-      window: { offset: 0, rows: [], baseIndices: [] },
-    })
     ipc.override('fetch_result_window', () => {
       throw new Error('results_expired: gone')
     })
-    render(
-      <WindowedResultFormView
-        {...defaultProps}
-        resultIndex={0}
-        queryId="q-form"
-        viewVersion={1}
-        viewRowCount={4000}
-        selectedRowIndex={3000}
-      />
+    renderForm(
+      <ResultFormView {...defaultProps} rows={[]} totalRows={4000} selectedRowIndex={3000} />
     )
     await waitFor(() =>
       expect(useQueryStore.getState().tabs['tab-1']!.results[0].view.residency.isExpired).toBe(true)
@@ -604,29 +529,11 @@ describe('ResultFormView — Edit Mode', () => {
   })
 
   it('logs and keeps the form empty when the row cannot be fetched', async () => {
-    seedResultWindow({
-      route: 'query',
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      resultIndex: 0,
-      queryId: 'q-form',
-      viewVersion: 1,
-      viewRowCount: 4000,
-      columns,
-      window: { offset: 0, rows: [], baseIndices: [] },
-    })
     ipc.override('fetch_result_window', () => {
       throw new Error('offline')
     })
-    render(
-      <WindowedResultFormView
-        {...defaultProps}
-        resultIndex={0}
-        queryId="q-form"
-        viewVersion={1}
-        viewRowCount={4000}
-        selectedRowIndex={3000}
-      />
+    renderForm(
+      <ResultFormView {...defaultProps} rows={[]} totalRows={4000} selectedRowIndex={3000} />
     )
     await waitFor(() => expect(ipc.payloads('log_frontend').length).toBeGreaterThan(0))
   })
@@ -644,24 +551,20 @@ describe('ResultFormView — Edit Mode', () => {
   })
 
   it('NULL toggle calls onUpdateCell with null when value is non-null', () => {
-    const onUpdateCell = vi.fn()
-    renderForm(<ResultFormView {...defaultProps} {...buildEditProps({ onUpdateCell })} />)
+    renderForm(<ResultFormView {...defaultProps} {...buildEditProps()} />)
     fireEvent.click(screen.getByTestId('btn-null-name'))
-    expect(onUpdateCell).toHaveBeenCalledWith(1, null)
+    expect(editedCell(1)).toEqual(null)
   })
 
   it('NULL toggle calls onUpdateCell with empty string when value is null', () => {
-    const onUpdateCell = vi.fn()
     const editState: RowEditState = {
       ...baseEditState,
       currentValues: { name: null, email: 'alice@example.com' },
     }
-    renderForm(
-      <ResultFormView {...defaultProps} {...buildEditProps({ editState, onUpdateCell })} />
-    )
+    renderForm(<ResultFormView {...defaultProps} {...buildEditProps({ editState })} />)
     fireEvent.click(screen.getByTestId('btn-null-name'))
     // Toggling NULL off should set to empty string
-    expect(onUpdateCell).toHaveBeenCalledWith(1, '')
+    expect(editedCell(1)).toEqual('')
   })
 
   it('shows modified indicator when a column is modified', () => {
@@ -689,109 +592,68 @@ describe('ResultFormView — Edit Mode', () => {
     expect(screen.getByTestId('btn-form-discard')).toBeInTheDocument()
   })
 
-  it('calls onSaveRow when Save button is clicked', async () => {
-    const onSaveRow = vi.fn().mockResolvedValue(true)
+  it('saves the row when Save button is clicked', async () => {
     const editState: RowEditState = {
       ...baseEditState,
       currentValues: { name: 'Modified', email: 'alice@example.com' },
       modifiedColumns: new Set(['name']),
     }
-    renderForm(<ResultFormView {...defaultProps} {...buildEditProps({ editState, onSaveRow })} />)
+    renderForm(<ResultFormView {...defaultProps} {...buildEditProps({ editState })} />)
     fireEvent.click(screen.getByTestId('btn-form-save'))
-    await waitFor(() => {
-      expect(onSaveRow).toHaveBeenCalled()
-    })
+    await waitFor(() => expect(dataViewResult().edit.state).toBeNull())
+    expect(ipc.payloads('update_table_row')).toEqual([
+      expect.objectContaining({ updatedValues: { name: 'Modified' } }),
+    ])
   })
 
-  it('calls onDiscardRow when Discard button is clicked', () => {
-    const onDiscardRow = vi.fn()
+  it('discards the row when Discard button is clicked', () => {
     // Need modifications so Discard button is enabled
     const editState: RowEditState = {
       ...baseEditState,
       currentValues: { name: 'Modified', email: 'alice@example.com' },
       modifiedColumns: new Set(['name']),
     }
-    renderForm(
-      <ResultFormView {...defaultProps} {...buildEditProps({ onDiscardRow, editState })} />
-    )
+    renderForm(<ResultFormView {...defaultProps} {...buildEditProps({ editState })} />)
     fireEvent.click(screen.getByTestId('btn-form-discard'))
-    expect(onDiscardRow).toHaveBeenCalled()
+    expect(dataViewResult().edit.state).toBeNull()
   })
 
   it('auto-saves modifications and navigates in edit mode (not prompt)', async () => {
-    const onSaveRow = vi.fn().mockResolvedValue(true)
-    const onNavigate = vi.fn()
     const editState: RowEditState = {
       ...baseEditState,
       currentValues: { name: 'Modified', email: 'alice@example.com' },
       modifiedColumns: new Set(['name']),
     }
     renderForm(
-      <ResultFormView
-        {...defaultProps}
-        selectedRowIndex={2}
-        onNavigate={onNavigate}
-        {...buildEditProps({ onSaveRow, editState })}
-      />
+      <ResultFormView {...defaultProps} selectedRowIndex={2} {...buildEditProps({ editState })} />
     )
     fireEvent.click(screen.getByTestId('btn-form-next'))
-    // Should auto-save first
-    await waitFor(() => expect(onSaveRow).toHaveBeenCalled())
-    // Then navigate
-    expect(onNavigate).toHaveBeenCalledWith('next')
+    await waitFor(() => expect(dataViewResult().selection.rowIndex).toBe(3))
+    expect(ipc.calls('update_table_row')).toHaveLength(1)
   })
 
   it('discards unmodified edit state and navigates directly in edit mode', () => {
-    const onDiscardRow = vi.fn()
-    const onNavigate = vi.fn()
-    renderForm(
-      <ResultFormView
-        {...defaultProps}
-        selectedRowIndex={2}
-        onNavigate={onNavigate}
-        {...buildEditProps({ onDiscardRow })}
-      />
-    )
-    // editState exists but no modifications — should discard and navigate
+    renderForm(<ResultFormView {...defaultProps} selectedRowIndex={2} {...buildEditProps()} />)
     fireEvent.click(screen.getByTestId('btn-form-next'))
-    expect(onDiscardRow).toHaveBeenCalled()
-    expect(onNavigate).toHaveBeenCalledWith('next')
+    expect(dataViewResult().edit.state).toBeNull()
+    expect(dataViewResult().selection.rowIndex).toBe(3)
   })
 
   it('stays on record when auto-save fails during navigation', async () => {
-    const onSaveRow = vi.fn().mockResolvedValue(false)
-    const onNavigate = vi.fn()
+    ipc.override('update_table_row', () => {
+      throw new Error('save failed')
+    })
     const editState: RowEditState = {
       ...baseEditState,
       currentValues: { name: 'Modified', email: 'alice@example.com' },
       modifiedColumns: new Set(['name']),
     }
     renderForm(
-      <ResultFormView
-        {...defaultProps}
-        selectedRowIndex={2}
-        onNavigate={onNavigate}
-        {...buildEditProps({ onSaveRow, editState })}
-      />
+      <ResultFormView {...defaultProps} selectedRowIndex={2} {...buildEditProps({ editState })} />
     )
     fireEvent.click(screen.getByTestId('btn-form-next'))
-    await waitFor(() => expect(onSaveRow).toHaveBeenCalled())
-    // Navigation should NOT happen because save failed
-    expect(onNavigate).not.toHaveBeenCalled()
-  })
-
-  it('navigates directly without guard when not in edit mode', () => {
-    const onNavigate = vi.fn()
-    renderForm(
-      <ResultFormView
-        {...defaultProps}
-        selectedRowIndex={2}
-        onNavigate={onNavigate}
-        editMode={null}
-      />
-    )
-    fireEvent.click(screen.getByTestId('btn-form-next'))
-    expect(onNavigate).toHaveBeenCalledWith('next')
+    await waitFor(() => expect(dataViewResult().edit.saveError).toBe('save failed'))
+    expect(dataViewResult().selection.rowIndex).toBe(2)
   })
 
   it('uses edit state values when actively editing the current row', () => {
@@ -833,7 +695,6 @@ describe('ResultFormView — Edit Mode', () => {
 
   it('enum select onChange fires onUpdateCell with selected value', async () => {
     const user = userEvent.setup()
-    const onUpdateCell = vi.fn()
     const enumTableColumns: TableDataColumnMeta[] = [
       ...editTableColumns.slice(0, 2),
       {
@@ -853,17 +714,16 @@ describe('ResultFormView — Edit Mode', () => {
     renderForm(
       <ResultFormView
         {...defaultProps}
-        {...buildEditProps({ editTableColumns: enumTableColumns, onUpdateCell })}
+        {...buildEditProps({ editTableColumns: enumTableColumns })}
       />
     )
     await user.click(screen.getByTestId('form-input-email'))
     await user.click(screen.getByRole('option', { name: 'bob@example.com' }))
-    expect(onUpdateCell).toHaveBeenCalledWith(2, 'bob@example.com')
+    expect(editedCell(2)).toEqual('bob@example.com')
   })
 
   it('enum select onChange sends null when NULL sentinel is selected', async () => {
     const user = userEvent.setup()
-    const onUpdateCell = vi.fn()
     const enumTableColumns: TableDataColumnMeta[] = [
       ...editTableColumns.slice(0, 2),
       {
@@ -883,16 +743,15 @@ describe('ResultFormView — Edit Mode', () => {
     renderForm(
       <ResultFormView
         {...defaultProps}
-        {...buildEditProps({ editTableColumns: enumTableColumns, onUpdateCell })}
+        {...buildEditProps({ editTableColumns: enumTableColumns })}
       />
     )
     await user.click(screen.getByTestId('form-input-email'))
     await user.click(screen.getByRole('option', { name: 'NULL' }))
-    expect(onUpdateCell).toHaveBeenCalledWith(2, null)
+    expect(editedCell(2)).toEqual(null)
   })
 
   it('NULL toggle on enum column restores enum fallback value', () => {
-    const onUpdateCell = vi.fn()
     const enumTableColumns: TableDataColumnMeta[] = [
       ...editTableColumns.slice(0, 2),
       {
@@ -919,7 +778,6 @@ describe('ResultFormView — Edit Mode', () => {
         {...defaultProps}
         {...buildEditProps({
           editTableColumns: enumTableColumns,
-          onUpdateCell,
           editState,
         })}
       />
@@ -927,7 +785,7 @@ describe('ResultFormView — Edit Mode', () => {
     // Toggle NULL off for email
     fireEvent.click(screen.getByTestId('btn-null-email'))
     // Should restore with first enum value
-    expect(onUpdateCell).toHaveBeenCalledWith(2, 'alice@example.com')
+    expect(editedCell(2)).toEqual('alice@example.com')
   })
 
   it('handles object values in editable input', () => {
@@ -1065,7 +923,6 @@ const temporalDefaultProps = {
   rows: temporalRows,
   selectedRowIndex: 0 as number | null,
   totalRows: 1,
-  onNavigate: vi.fn(),
   tabId: 'tab-1',
 }
 
@@ -1082,15 +939,11 @@ function buildTemporalEditProps(overrides: Record<string, unknown> = {}) {
     editState: temporalEditState as RowEditState | null,
     editingRowIndex: 0 as number | null,
     editTableColumns: temporalTableColumns,
-    onStartEdit: vi.fn(),
-    onUpdateCell: vi.fn(),
-    onSaveRow: vi.fn().mockResolvedValue(true),
-    onDiscardRow: vi.fn(),
     ...overrides,
   }
 }
 
-describe('ResultFormView — Temporal Fields', () => {
+describe('DataFormView — Temporal Fields', () => {
   beforeEach(() => {
     useQueryStore.setState({
       tabs: {
@@ -1130,7 +983,6 @@ describe('ResultFormView — Temporal Fields', () => {
   })
 
   it('toggles NULL off with today date for temporal columns', () => {
-    const onUpdateCell = vi.fn()
     const nullEditState: RowEditState = {
       ...temporalEditState,
       currentValues: {
@@ -1144,17 +996,13 @@ describe('ResultFormView — Temporal Fields', () => {
         {...temporalDefaultProps}
         {...buildTemporalEditProps({
           editState: nullEditState,
-          onUpdateCell,
         })}
       />
     )
     // Toggle NULL off for created_at (DATETIME column)
     fireEvent.click(screen.getByTestId('btn-null-created_at'))
     // Should be called with a date string (not empty string)
-    expect(onUpdateCell).toHaveBeenCalledWith(
-      1,
-      expect.stringMatching(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)
-    )
+    expect(editedCell(1)).toEqual(expect.stringMatching(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/))
   })
 
   it('clicking calendar button opens date picker for non-null temporal field', () => {
@@ -1168,26 +1016,20 @@ describe('ResultFormView — Temporal Fields', () => {
   })
 
   it('applying date picker value calls onUpdateCell and closes picker', () => {
-    const onUpdateCell = vi.fn()
-    renderForm(
-      <ResultFormView {...temporalDefaultProps} {...buildTemporalEditProps({ onUpdateCell })} />
-    )
+    renderForm(<ResultFormView {...temporalDefaultProps} {...buildTemporalEditProps()} />)
     // Open picker for created_at (DATETIME)
     fireEvent.click(screen.getByTestId('calendar-btn-created_at'))
     expect(screen.getByText('Apply')).toBeInTheDocument()
     // Click Apply to close the picker with the current value
     fireEvent.click(screen.getByText('Apply'))
     // onUpdateCell should have been called with the value
-    expect(onUpdateCell).toHaveBeenCalledWith(1, expect.any(String))
+    expect(editedCell(1)).toEqual(expect.any(String))
     // Picker should be dismissed
     expect(screen.queryByText('Apply')).not.toBeInTheDocument()
   })
 
   it('toggling NULL on closes open picker for that field', () => {
-    const onUpdateCell = vi.fn()
-    renderForm(
-      <ResultFormView {...temporalDefaultProps} {...buildTemporalEditProps({ onUpdateCell })} />
-    )
+    renderForm(<ResultFormView {...temporalDefaultProps} {...buildTemporalEditProps()} />)
     // Open picker for created_at
     fireEvent.click(screen.getByTestId('calendar-btn-created_at'))
     expect(screen.getByText('Apply')).toBeInTheDocument()
@@ -1196,7 +1038,7 @@ describe('ResultFormView — Temporal Fields', () => {
     // Picker should be dismissed (toggling NULL closes open picker)
     expect(screen.queryByText('Apply')).not.toBeInTheDocument()
     // Should have set value to null
-    expect(onUpdateCell).toHaveBeenCalledWith(1, null)
+    expect(editedCell(1)).toEqual(null)
   })
 
   it('clicking temporal input opens picker on first focus (first-click-open)', () => {

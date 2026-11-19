@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { renderHook } from '@testing-library/react'
-import { useResultColumnDescriptors } from '../../../components/query-editor/result-column-descriptors'
-import type { ColumnMeta } from '../../../types/schema'
-import { makeForeignKeyColumn, makeTableColumnMeta } from '../../helpers/column-meta-fixtures'
+import { useDataColumnDescriptors } from '../../../../components/shared/data-view/data-column-descriptors'
+import { DEFAULT_EDIT_TARGET } from '../../../../stores/data-view/data-view-defaults'
+import type { ColumnMeta } from '../../../../types/schema'
+import { makeForeignKeyColumn, makeTableColumnMeta } from '../../../helpers/column-meta-fixtures'
 
 const resultColumns: ColumnMeta[] = [
   { name: 'id', dataType: 'INT' },
@@ -25,24 +26,37 @@ const bindings = new Map([
 
 function renderDescriptors(editMode: string | null) {
   return renderHook(() =>
-    useResultColumnDescriptors({
+    useDataColumnDescriptors({
       columns: resultColumns,
-      editMode: editMode,
-      editableColumnMap: new Map([
-        [0, false],
-        [1, true],
-        [2, true],
-        [3, false],
-      ]),
-      editTableColumns: tableColumns,
-      editForeignKeys: [makeForeignKeyColumn({ columnName: 'owner_id' })],
-      editColumnBindings: bindings,
+      editTarget: {
+        ...DEFAULT_EDIT_TARGET,
+        tableName: editMode,
+        tables: editMode
+          ? {
+              [editMode]: {
+                database: 'db',
+                table: editMode,
+                columns: tableColumns,
+                primaryKey: null,
+                foreignKeys: [],
+              },
+            }
+          : {},
+        editableColumns: new Map([
+          [0, false],
+          [1, true],
+          [2, true],
+          [3, false],
+        ]),
+        foreignKeys: [makeForeignKeyColumn({ columnName: 'owner_id' })],
+        bindings: bindings,
+      },
       columnWidths: { col_1: 180 },
     })
   ).result.current.descriptors
 }
 
-describe('useResultColumnDescriptors', () => {
+describe('useDataColumnDescriptors', () => {
   it('uses the same editor types as table data for bound columns in edit mode', () => {
     const descriptors = renderDescriptors('orders')
 

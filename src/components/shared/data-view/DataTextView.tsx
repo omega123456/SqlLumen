@@ -1,28 +1,23 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { CopySimple, WarningCircle } from '@phosphor-icons/react'
-import { Button } from '../common/Button'
-import { writeClipboardText } from '../../lib/context-menu-utils'
-import { CLIPBOARD_ACTION_FAILURES } from '../../lib/clipboard-action-failures'
-import { formatCount } from '../../lib/format-row-count'
-import { logFrontend } from '../../lib/app-log-commands'
-import { isResultsExpiredError, readViewRange } from '../../lib/result-window-cache'
-import { useQueryStore } from '../../stores/query-store'
-import { TEXT_VIEW_ROW_CAP } from '../../lib/data-view-limits'
-import { showErrorToast } from '../../stores/toast-store'
-import type { ColumnMeta } from '../../types/schema'
-import { formatTextOutput } from './result-text-format'
-import { toErrorMessage } from '../../lib/error-message'
-import { joinClassNames, SCROLLBAR } from '../../lib/class-names'
+import { Button } from '../../common/Button'
+import { writeClipboardText } from '../../../lib/context-menu-utils'
+import { CLIPBOARD_ACTION_FAILURES } from '../../../lib/clipboard-action-failures'
+import { formatCount } from '../../../lib/format-row-count'
+import { logFrontend } from '../../../lib/app-log-commands'
+import { isResultsExpiredError, readViewRange } from '../../../lib/result-window-cache'
+import { TEXT_VIEW_ROW_CAP } from '../../../lib/data-view-limits'
+import { showErrorToast } from '../../../stores/toast-store'
+import type { DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
+import { routeOf } from '../../../stores/data-view/route-registry'
+import { useDataView } from '../../../stores/data-view/use-data-view'
+import type { DataViewSource } from './data-view-source'
+import { formatTextOutput } from './text-format'
+import { toErrorMessage } from '../../../lib/error-message'
+import { joinClassNames, SCROLLBAR } from '../../../lib/class-names'
 
-export interface ResultTextViewProps {
-  columns: ColumnMeta[]
-  tabId: string
-  resultIndex: number
-  queryId: string | null
-  viewVersion: number
-  viewRowCount: number
-  truncated?: boolean
-  isFiltered?: boolean
+export interface DataTextViewProps {
+  source: DataViewSource
 }
 
 const EMPTY_ROWS: unknown[][] = []
@@ -92,14 +87,14 @@ function CopyAllButton({ isCapped, disabled, onCopy }: CopyAllButtonProps) {
   )
 }
 
-interface ResultTextHeaderProps {
+interface TextHeaderProps {
   isCapped: boolean
   showTruncatedCopy: boolean
   viewRowCount: number
   copyButton: ReactNode
 }
 
-function ResultTextHeader(props: ResultTextHeaderProps) {
+function TextHeader(props: TextHeaderProps) {
   if (!props.isCapped) {
     return <div className="absolute top-2 right-2 z-1">{props.copyButton}</div>
   }
@@ -120,8 +115,7 @@ function ResultTextHeader(props: ResultTextHeaderProps) {
 }
 
 interface TextRowsRequest {
-  tabId: string
-  resultIndex: number
+  ref: DataViewSurfaceRef
   loadKey: string
   shownCount: number
 }
@@ -132,12 +126,12 @@ function reportTextRowsFailure(error: unknown, onExpired: () => void): void {
     return
   }
   const message = toErrorMessage(error)
-  logFrontend('warn', `[result-text-view] could not load rows: ${message}`)
+  logFrontend('warn', `[data-text-view] could not load rows: ${message}`)
   showErrorToast("Couldn't load rows", message)
 }
 
-function useTextViewRows({ tabId, resultIndex, loadKey, shownCount }: TextRowsRequest) {
-  const markResultsExpired = useQueryStore((state) => state.markResultsExpired)
+function useTextViewRows({ ref, loadKey, shownCount }: TextRowsRequest) {
+  const { tabId, resultIndex } = ref
   const [loaded, setLoaded] = useState<LoadedRows | null>(null)
 
   useEffect(() => {
@@ -150,12 +144,12 @@ function useTextViewRows({ tabId, resultIndex, loadKey, shownCount }: TextRowsRe
       })
       .catch((error: unknown) => {
         if (cancelled) return
-        reportTextRowsFailure(error, () => markResultsExpired(tabId))
+        reportTextRowsFailure(error, () => routeOf(ref).lifecycle.onExpired(ref))
       })
     return () => {
       cancelled = true
     }
-  }, [loadKey, loaded, markResultsExpired, resultIndex, shownCount, tabId])
+  }, [loadKey, loaded, ref, resultIndex, shownCount, tabId])
 
   return visibleTextRows(shownCount, loaded, loadKey)
 }
@@ -166,28 +160,22 @@ function useCopyText(formattedText: string) {
       await writeClipboardText(formattedText)
     } catch (error) {
       const message = toErrorMessage(error)
-      logFrontend('warn', `[result-text-view] clipboard write failed: ${message}`)
+      logFrontend('warn', `[data-text-view] clipboard write failed: ${message}`)
       showErrorToast(CLIPBOARD_ACTION_FAILURES.copy.title, CLIPBOARD_ACTION_FAILURES.copy.message)
     }
   }, [formattedText])
 }
 
-export function ResultTextView({
-  columns,
-  tabId,
-  resultIndex,
-  queryId,
-  viewVersion,
-  viewRowCount,
-  truncated = false,
-  isFiltered = false,
-}: ResultTextViewProps) {
+export function DataTextView({ source }: DataTextViewProps) {
+  const ref = source.ref
+  const slot = useDataView(ref, (view) => view.slot)
+  const isFiltered = useDataView(ref, (view) => view.spec.filters.length > 0)
+  const { columns, queryId, viewVersion, viewRowCount } = slot
   const shownCount = Math.min(viewRowCount, TEXT_VIEW_ROW_CAP)
   const isCapped = viewRowCount > TEXT_VIEW_ROW_CAP
   const loadKey = `${queryId ?? ''}:${viewVersion}:${shownCount}`
   const rows = useTextViewRows({
-    tabId: tabId,
-    resultIndex: resultIndex,
+    ref: ref,
     loadKey: loadKey,
     shownCount: shownCount,
   })
@@ -205,14 +193,14 @@ export function ResultTextView({
     />
   )
 
-  const showTruncatedCopy = truncated && !isFiltered
+  const showTruncatedCopy = source.isTruncated && !isFiltered
 
   return (
     <div
       className="relative flex h-full flex-col bg-light-surface-container-low dark:bg-dark-surface-container-low"
-      data-testid="result-text-view"
+      data-testid={source.testIds.text}
     >
-      <ResultTextHeader
+      <TextHeader
         isCapped={isCapped}
         showTruncatedCopy={showTruncatedCopy}
         viewRowCount={viewRowCount}

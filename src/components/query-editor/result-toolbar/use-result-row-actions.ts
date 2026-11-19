@@ -11,7 +11,7 @@ import {
 } from '../../shared/toolbar/row-actions/row-action-model'
 import { useRowDeletionConfirm } from '../../shared/toolbar/row-actions/use-row-deletion-confirm'
 import type { ResultRowInsertion } from '../result-panel/result-panel-model'
-import { saveResultRow } from '../result-edit-session'
+import { saveDataRow } from '../../shared/data-view/use-data-edit-session'
 import type { DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
 import { canMutateResultRows, editTableNameOf, type ActiveResult } from './result-toolbar-model'
 
@@ -30,7 +30,7 @@ function useResultRowEdits(surfaceRef: DataViewSurfaceRef): Omit<RowActionHandle
   return {
     onAdd: useCallback(() => insertDraftRow(surfaceRef), [insertDraftRow, surfaceRef]),
     onClone: useCallback(() => cloneSelectedRow(surfaceRef), [cloneSelectedRow, surfaceRef]),
-    onSave: useCallback(() => void saveResultRow(surfaceRef), [surfaceRef]),
+    onSave: useCallback(() => void saveDataRow(surfaceRef), [surfaceRef]),
     onDiscard: useCallback(() => discardCurrentRow(surfaceRef), [discardCurrentRow, surfaceRef]),
   }
 }

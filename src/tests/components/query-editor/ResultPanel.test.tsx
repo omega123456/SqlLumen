@@ -6,9 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ResultPanel } from '../../../components/query-editor/ResultPanel'
 import { useQueryStore, activeQuerySurfaceRef, querySurfaceRef } from '../../../stores/query-store'
 import * as ResultToolbarModule from '../../../components/query-editor/ResultToolbar'
-import * as ResultGridViewModule from '../../../components/query-editor/ResultGridView'
-import * as ResultFormViewModule from '../../../components/query-editor/ResultFormView'
-import * as ResultTextViewModule from '../../../components/query-editor/ResultTextView'
+import type { DataViewSource } from '../../../components/shared/data-view/data-view-source'
+import * as DataGridViewModule from '../../../components/shared/data-view/DataGridView'
+import * as DataFormViewModule from '../../../components/shared/data-view/DataFormView'
+import * as DataTextViewModule from '../../../components/shared/data-view/DataTextView'
 import * as FilterDialogModule from '../../../components/dialogs/FilterDialog'
 import React from 'react'
 import { expectToast, ipc } from '../../ipc-mock'
@@ -36,22 +37,22 @@ describe('ResultPanel', () => {
           <div data-testid="result-toolbar">{surfaceRef.tabId}</div>
         ) as unknown as React.ReactElement
     )
-    vi.spyOn(ResultGridViewModule.ResultGridView, 'type').mockImplementation(
-      ({ viewRowCount }: { viewRowCount: number }) =>
+    vi.spyOn(DataGridViewModule.DataGridView, 'type').mockImplementation(
+      ({ source }: { source: DataViewSource }) =>
         (
-          <div data-testid="grid-view">Grid rows: {viewRowCount}</div>
+          <div data-testid="grid-view">Grid surface: {source.ref.tabId}</div>
         ) as unknown as React.ReactElement
     )
-    vi.spyOn(ResultFormViewModule, 'ResultFormView').mockImplementation(
-      ({ viewRowCount }: { viewRowCount: number }) =>
+    vi.spyOn(DataFormViewModule, 'DataFormView').mockImplementation(
+      ({ source }: { source: DataViewSource }) =>
         (
-          <div data-testid="form-view">Form rows: {viewRowCount}</div>
+          <div data-testid="form-view">Form surface: {source.ref.tabId}</div>
         ) as unknown as React.ReactElement
     )
-    vi.spyOn(ResultTextViewModule, 'ResultTextView').mockImplementation(
-      ({ viewRowCount }: { viewRowCount: number }) =>
+    vi.spyOn(DataTextViewModule, 'DataTextView').mockImplementation(
+      ({ source }: { source: DataViewSource }) =>
         (
-          <div data-testid="text-view">Text rows: {viewRowCount}</div>
+          <div data-testid="text-view">Text surface: {source.ref.tabId}</div>
         ) as unknown as React.ReactElement
     )
     vi.spyOn(FilterDialogModule, 'FilterDialog').mockImplementation(
@@ -85,7 +86,7 @@ describe('ResultPanel', () => {
   it('renders the grid result view and row count', () => {
     render(<ResultPanel tabId="tab1" connectionId="c1" />)
     expect(screen.getByTestId('result-toolbar')).toBeInTheDocument()
-    expect(screen.getByTestId('grid-view')).toHaveTextContent('Grid rows: 2')
+    expect(screen.getByTestId('grid-view')).toHaveTextContent('Grid surface: tab1')
     expect(screen.getByRole('tabpanel')).toHaveAttribute('id', 'result-tabpanel-tab1-0')
   })
 
@@ -93,10 +94,10 @@ describe('ResultPanel', () => {
     const user = userEvent.setup()
     render(<ResultPanel tabId="tab1" connectionId="c1" />)
     act(() => useQueryStore.getState().setViewMode(activeQuerySurfaceRef('tab1'), 'form'))
-    expect(await screen.findByTestId('form-view')).toHaveTextContent('Form rows: 2')
+    expect(await screen.findByTestId('form-view')).toHaveTextContent('Form surface: tab1')
     act(() => useQueryStore.getState().setViewMode(activeQuerySurfaceRef('tab1'), 'text'))
     await user.click(document.body)
-    expect(await screen.findByTestId('text-view')).toHaveTextContent('Text rows: 2')
+    expect(await screen.findByTestId('text-view')).toHaveTextContent('Text surface: tab1')
   })
 
   it('keeps the grid instance and checked rows across a grid to form to grid switch', async () => {
@@ -173,7 +174,7 @@ describe('ResultPanel', () => {
 
     expect(screen.queryByRole('tabpanel')).not.toBeInTheDocument()
     expect(screen.getByTestId('result-toolbar')).toBeInTheDocument()
-    expect(screen.getByTestId('grid-view')).toHaveTextContent('Grid rows: 2')
+    expect(screen.getByTestId('grid-view')).toHaveTextContent('Grid surface: tab1')
   })
 
   describe('band slot (wireframes 1, 1b and 2)', () => {

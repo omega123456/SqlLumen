@@ -9,9 +9,12 @@ import type {
   ViewSpecChange,
 } from './data-view-types'
 
+export type DataViewSelector<Selected> = (view: DataViewState | undefined) => Selected
+
 export interface DataViewBinding {
   read: (ref: DataViewSurfaceRef) => DataViewState | undefined
   update: (ref: DataViewSurfaceRef, patch: DataViewPatch) => void
+  useView: <Selected>(ref: DataViewSurfaceRef, selector: DataViewSelector<Selected>) => Selected
 }
 
 export interface PaintedView {

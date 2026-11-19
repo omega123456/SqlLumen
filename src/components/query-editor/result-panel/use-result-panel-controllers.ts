@@ -8,13 +8,14 @@ import {
 } from '../../../stores/query-store'
 import type { DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
 import { useResultFilter, type ResultFilter } from './use-result-filter'
-import { useResultViewHandlers, type ResultViewHandlers } from './use-result-view-handlers'
+import type { DataViewSource } from '../../shared/data-view/data-view-source'
+import { queryDataViewSource } from './query-data-view-source'
 
 export interface ResultPanelControllers {
   activeResult: SingleResultState
   activeResultIndex: number
   surfaceRef: DataViewSurfaceRef
-  viewHandlers: ResultViewHandlers
+  source: DataViewSource
   filter: ResultFilter
 }
 
@@ -47,7 +48,18 @@ export function useResultPanelControllers(
     () => querySurfaceRef(tabId, activeResultIndex),
     [tabId, activeResultIndex]
   )
-  const viewHandlers = useResultViewHandlers(surfaceRef, activeResult)
+  const isTruncated = activeResult.truncated
+  const canEdit = activeResult.view.editTarget.tableName !== null
+  const source = useMemo(
+    () =>
+      queryDataViewSource({
+        ref: surfaceRef,
+        isActive: isActive,
+        isTruncated: isTruncated,
+        canEdit: canEdit,
+      }),
+    [surfaceRef, isActive, isTruncated, canEdit]
+  )
   const filter = useResultFilter({ surfaceRef: surfaceRef, result: activeResult })
   useCloseOverlaysWhenInactive({
     surfaceRef: surfaceRef,
@@ -55,7 +67,7 @@ export function useResultPanelControllers(
     exportDialogOpen: activeResult.view.prompts.isExportOpen,
     closeFilterDialog: filter.closeFilterDialog,
   })
-  return { activeResult, activeResultIndex, surfaceRef, viewHandlers, filter }
+  return { activeResult, activeResultIndex, surfaceRef, source, filter }
 }
 
 export function useRetryExpiredResult(tabId: string): () => void {

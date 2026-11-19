@@ -1,6 +1,5 @@
 import type { SingleResultState } from '../../../stores/query-store'
 import { cloneSourceRowIndex, copiedBoundColumnNames } from '../../../stores/data-view/row-clone'
-import type { DataViewLocation } from '../../../types/shared-data-view'
 import type {
   FullExportBlockedReason,
   PrimaryKeyInfo,
@@ -144,21 +143,4 @@ export function subTabLabelledBy(
 
 export function shouldShowExpiredState(isExpired: boolean, displayStatus: DisplayStatus): boolean {
   return isExpired && displayStatus !== 'running'
-}
-
-interface ResultEditTarget {
-  editMode: string | null
-  editTable: ReturnType<typeof readEditTable>['editTable']
-}
-
-export function resultEditLocation(
-  connectionId: string,
-  { editMode, editTable }: ResultEditTarget
-): DataViewLocation | null {
-  if (!editMode) return null
-  return {
-    connectionId: connectionId,
-    database: editTable?.database ?? '',
-    table: editTable?.table ?? editMode,
-  }
 }

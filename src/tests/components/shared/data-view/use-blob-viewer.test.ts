@@ -1,10 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 import { useBlobViewer } from '../../../../components/shared/data-view/use-blob-viewer'
 import { useTableEditSession } from '../../../../components/table-data/table-data-edit-session'
 import { buildColumnDescriptors } from '../../../../components/table-data/table-data-grid-columns'
-import { useResultEditSession } from '../../../../components/query-editor/result-edit-session'
-import { useResultColumnDescriptors } from '../../../../components/query-editor/result-column-descriptors'
 import { useTableDataStore } from '../../../../stores/table-data-store'
 import { useToastStore } from '../../../../stores/toast-store'
 import type { TableDataColumnMeta } from '../../../../types/schema'
@@ -162,69 +160,5 @@ describe('useBlobViewer with table data', () => {
 
     expect(result.current.target).toBeNull()
     expectToast('error', 'Could not open BLOB viewer')
-  })
-})
-
-describe('useBlobViewer with query results', () => {
-  function renderResultBlobViewer() {
-    const callbacks = {
-      onStartEditing: vi.fn(),
-      onUpdateCellValue: vi.fn(),
-      onSyncCellValue: vi.fn(),
-      onSaveRow: vi.fn(async () => true),
-      onDiscardRow: vi.fn(),
-      onRowSelected: vi.fn(),
-    }
-    const editInputs = {
-      columns: [
-        { name: 'id', dataType: 'INT' },
-        { name: 'payload', dataType: 'BLOB' },
-      ],
-      editMode: 'mydb.users',
-      editableColumnMap: new Map([
-        [0, false],
-        [1, false],
-      ]),
-      editTableColumns: COLUMNS,
-      editForeignKeys: [],
-      editColumnBindings: new Map([
-        [0, 'id'],
-        [1, 'payload'],
-      ]),
-    }
-    const rendered = renderHook(() => {
-      const { descriptors } = useResultColumnDescriptors(editInputs)
-      const session = useResultEditSession({
-        ...editInputs,
-        ...callbacks,
-        tabId: TAB_ID,
-        resultIndex: 0,
-        queryId: 'q1',
-        viewVersion: 1,
-        editState: null,
-        editingRowIndex: null,
-        editingBaseIndex: null,
-      })
-      return useBlobViewer({ session: session, columns: descriptors })
-    })
-    return { ...rendered, callbacks }
-  }
-
-  it('shows the inline cell value and writes applied envelopes through the editing row', () => {
-    const { result, callbacks } = renderResultBlobViewer()
-    const rowData = { __rowIdx: 0, __baseIdx: 0, col_0: 1, col_1: 'aGk=' }
-
-    act(() => result.current.openBlobViewer(rowData, 'col_1'))
-
-    expect(result.current.target).toMatchObject({
-      columnLabel: 'payload',
-      isEditable: true,
-      content: { initialBase64: 'aGk=' },
-    })
-
-    act(() => result.current.applyBlob(EMPTY_ENVELOPE))
-
-    expect(callbacks.onStartEditing).toHaveBeenCalledWith(0, { row: [1, 'aGk='], baseIndex: 0 })
-    expect(callbacks.onSyncCellValue).toHaveBeenCalledWith(1, EMPTY_ENVELOPE)
   })
 })

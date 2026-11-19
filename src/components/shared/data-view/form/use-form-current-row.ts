@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { logFrontend } from '../../../lib/app-log-commands'
+import { logFrontend } from '../../../../lib/app-log-commands'
 import {
   getLoadedRow,
   isResultsExpiredError,
@@ -7,25 +7,19 @@ import {
   subscribeToResultWindow,
   subscribeToRowPatches,
   type CachedRow,
-} from '../../../lib/result-window-cache'
-import { useQueryStore } from '../../../stores/query-store'
-import { toErrorMessage } from '../../../lib/error-message'
+} from '../../../../lib/result-window-cache'
+import { toErrorMessage } from '../../../../lib/error-message'
+import type { DataViewSlot, DataViewSurfaceRef } from '../../../../stores/data-view/data-view-types'
+import { DRAFT_ROW_BASE_INDEX } from '../../../../stores/data-view/data-view-selectors'
+import { routeOf } from '../../../../stores/data-view/route-registry'
 import {
   fetchedRowFor,
   patchFetchedRow,
   type FetchedRow,
   type FormRowPosition,
-  type ResultFormViewProps,
-} from './result-form-model'
+} from './data-form-model'
 
-const DRAFT_BASE_INDEX = -1
-
-interface ResultSurface {
-  tabId: string
-  resultIndex: number
-}
-
-function useWindowTick({ tabId, resultIndex }: ResultSurface, clampedIndex: number): number {
+function useWindowTick({ tabId, resultIndex }: DataViewSurfaceRef, clampedIndex: number): number {
   const [windowTick, setWindowTick] = useState(0)
   useEffect(
     () =>
@@ -38,7 +32,7 @@ function useWindowTick({ tabId, resultIndex }: ResultSurface, clampedIndex: numb
   return windowTick
 }
 
-function usePatchedFetchedRow({ tabId, resultIndex }: ResultSurface) {
+function usePatchedFetchedRow({ tabId, resultIndex }: DataViewSurfaceRef) {
   const [fetched, setFetched] = useState<FetchedRow | null>(null)
   useEffect(
     () =>
@@ -51,7 +45,7 @@ function usePatchedFetchedRow({ tabId, resultIndex }: ResultSurface) {
 }
 
 interface RowFetch {
-  surface: ResultSurface
+  surface: DataViewSurfaceRef
   clampedIndex: number
   fetchKey: string
   needsFetch: boolean
@@ -60,7 +54,6 @@ interface RowFetch {
 function useFetchRowOutsideWindow(fetch: RowFetch) {
   const { surface, clampedIndex, fetchKey, needsFetch } = fetch
   const { tabId, resultIndex } = surface
-  const markResultsExpired = useQueryStore((state) => state.markResultsExpired)
   const { fetched, setFetched } = usePatchedFetchedRow(surface)
 
   useEffect(() => {
@@ -70,12 +63,12 @@ function useFetchRowOutsideWindow(fetch: RowFetch) {
     const handleFailure = (error: unknown) => {
       if (cancelled) return
       if (isResultsExpiredError(error)) {
-        markResultsExpired(tabId)
+        routeOf(surface).lifecycle.onExpired(surface)
         return
       }
       logFrontend(
         'warn',
-        `[result-form-view] could not load row ${clampedIndex + 1}: ${toErrorMessage(error)}`
+        `[data-form-view] could not load row ${clampedIndex + 1}: ${toErrorMessage(error)}`
       )
     }
     readViewRange({
@@ -92,27 +85,23 @@ function useFetchRowOutsideWindow(fetch: RowFetch) {
     return () => {
       cancelled = true
     }
-  }, [
-    clampedIndex,
-    fetchKey,
-    fetched,
-    markResultsExpired,
-    needsFetch,
-    resultIndex,
-    tabId,
-    setFetched,
-  ])
+  }, [clampedIndex, fetchKey, fetched, needsFetch, resultIndex, surface, tabId, setFetched])
 
   return fetched
 }
 
-export function useFormCurrentRow(props: ResultFormViewProps, position: FormRowPosition) {
-  const { tabId, resultIndex, queryId, viewVersion } = props
+interface FormCurrentRowInputs {
+  ref: DataViewSurfaceRef
+  slot: DataViewSlot
+  draftRow: unknown[] | null
+  position: FormRowPosition
+}
+
+export function useFormCurrentRow({ ref, slot, draftRow, position }: FormCurrentRowInputs) {
   const { clampedIndex, isDraftPosition, totalRows } = position
-  const draftRow = props.draftRow ?? null
-  const surface = useMemo(() => ({ tabId, resultIndex }), [tabId, resultIndex])
-  const windowTick = useWindowTick(surface, clampedIndex)
-  const fetchKey = `${queryId ?? ''}:${viewVersion}:${clampedIndex}`
+  const { tabId, resultIndex } = ref
+  const windowTick = useWindowTick(ref, clampedIndex)
+  const fetchKey = `${slot.queryId ?? ''}:${slot.viewVersion}:${clampedIndex}`
 
   const loadedRow = useMemo(() => {
     void windowTick
@@ -122,7 +111,7 @@ export function useFormCurrentRow(props: ResultFormViewProps, position: FormRowP
   }, [clampedIndex, isDraftPosition, resultIndex, tabId, totalRows, windowTick])
   const needsFetch = !isDraftPosition && totalRows > 0 && loadedRow === null
   const fetched = useFetchRowOutsideWindow({
-    surface: surface,
+    surface: ref,
     clampedIndex: clampedIndex,
     fetchKey: fetchKey,
     needsFetch: needsFetch,
@@ -130,7 +119,7 @@ export function useFormCurrentRow(props: ResultFormViewProps, position: FormRowP
 
   return useMemo<CachedRow | null>(() => {
     const showsDraftRow = isDraftPosition && draftRow
-    if (showsDraftRow) return { row: draftRow, baseIndex: DRAFT_BASE_INDEX }
+    if (showsDraftRow) return { row: draftRow, baseIndex: DRAFT_ROW_BASE_INDEX }
     return loadedRow ?? fetchedRowFor(fetched, fetchKey)
   }, [draftRow, fetchKey, fetched, isDraftPosition, loadedRow])
 }

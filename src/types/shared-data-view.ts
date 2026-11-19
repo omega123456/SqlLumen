@@ -87,11 +87,9 @@ export interface BaseGridViewProps {
   selectedRowIndex?: number | null
   selectedCellPosition?: GridCellPosition | null
   onSelectedCellChange?: (position: GridCellPosition) => void
-  selectedRowClassName?: string
   isModifiedCell?: (rowData: Record<string, unknown>, columnKey: string) => boolean
   applyReadOnlyCellStyles?: boolean
   autoSizeConfig?: AutoSizeConfig
-  showReadOnlyHeaders?: boolean
   testId?: string
   isEditMode?: boolean
   editableColumnKeys?: ReadonlySet<string>

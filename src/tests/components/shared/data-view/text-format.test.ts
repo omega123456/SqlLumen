@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { formatTextOutput } from '../../../components/query-editor/result-text-format'
-import type { ColumnMeta } from '../../../types/schema'
+import { formatTextOutput } from '../../../../components/shared/data-view/text-format'
+import type { ColumnMeta } from '../../../../types/schema'
 
 describe('formatTextOutput', () => {
   it('returns empty string for zero columns', () => {

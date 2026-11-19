@@ -1,6 +1,6 @@
 import { patchedLegacyResult, resultState } from '../../helpers/legacy-result-fields'
 import React from 'react'
-import { act, render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ipc } from '../../ipc-mock'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -10,9 +10,10 @@ import { useQueryStore, querySurfaceRef } from '../../../stores/query-store'
 import { makeTabState, withRows } from '../../helpers/query-test-utils'
 import * as ResultSubTabsModule from '../../../components/query-editor/ResultSubTabs'
 import * as ResultToolbarModule from '../../../components/query-editor/ResultToolbar'
-import * as ResultGridViewModule from '../../../components/query-editor/ResultGridView'
-import * as ResultFormViewModule from '../../../components/query-editor/ResultFormView'
-import * as ResultTextViewModule from '../../../components/query-editor/ResultTextView'
+import type { DataViewSource } from '../../../components/shared/data-view/data-view-source'
+import * as DataGridViewModule from '../../../components/shared/data-view/DataGridView'
+import * as DataFormViewModule from '../../../components/shared/data-view/DataFormView'
+import * as DataTextViewModule from '../../../components/shared/data-view/DataTextView'
 import * as ExportDialogModule from '../../../components/dialogs/ExportDialog'
 import * as FilterDialogModule from '../../../components/dialogs/FilterDialog'
 import { useToastStore } from '../../../stores/toast-store'
@@ -22,14 +23,10 @@ import * as FkLookupDialogModule from '../../../components/shared/FkLookupDialog
 // Use vi.spyOn to install per-test mock implementations without vi.mock().
 // IPC commands are handled via ipc.override().
 
-let capturedGridProps: Record<string, unknown> = {}
-let capturedFormProps: Record<string, unknown> = {}
 let capturedExportDialogProps: Record<string, unknown> = {}
 
 beforeEach(() => {
   vi.clearAllMocks()
-  capturedGridProps = {}
-  capturedFormProps = {}
   capturedExportDialogProps = {}
   useQueryStore.setState({ tabs: {} })
 
@@ -78,19 +75,19 @@ beforeEach(() => {
     ) as unknown as React.ReactElement
   })
 
-  vi.spyOn(ResultGridViewModule.ResultGridView, 'type').mockImplementation((props) => {
-    capturedGridProps = props as unknown as Record<string, unknown>
-    return (<div data-testid="result-grid-view" />) as unknown as React.ReactElement
-  })
+  vi.spyOn(DataGridViewModule.DataGridView, 'type').mockImplementation(
+    () => (<div data-testid="result-grid-view" />) as unknown as React.ReactElement
+  )
 
-  vi.spyOn(ResultFormViewModule, 'ResultFormView').mockImplementation((props) => {
-    capturedFormProps = props as unknown as Record<string, unknown>
-    return (<div data-testid="result-form-view">Form View</div>) as unknown as React.ReactElement
-  })
+  vi.spyOn(DataFormViewModule, 'DataFormView').mockImplementation(
+    () => (<div data-testid="result-form-view">Form View</div>) as unknown as React.ReactElement
+  )
 
-  vi.spyOn(ResultTextViewModule, 'ResultTextView').mockImplementation(
-    ({ viewRowCount }: { viewRowCount: number }) =>
-      (<div data-testid="result-text-view">{viewRowCount}</div>) as unknown as React.ReactElement
+  vi.spyOn(DataTextViewModule, 'DataTextView').mockImplementation(
+    ({ source }: { source: DataViewSource }) =>
+      (
+        <div data-testid="result-text-view">{source.ref.tabId}</div>
+      ) as unknown as React.ReactElement
   )
 
   vi.spyOn(ExportDialogModule, 'default').mockImplementation((props) => {
@@ -221,99 +218,6 @@ describe('ResultPanel actions and states', () => {
     expect(screen.getByTestId('dml-success')).toHaveTextContent('Query OK3 rows affected')
   })
 
-  it('delegates sort changes through navigation guarding and store sortResults', () => {
-    const requestNavigationActionSpy = vi.spyOn(useQueryStore.getState(), 'requestNavigationAction')
-    const sortResultsSpy = vi
-      .spyOn(useQueryStore.getState(), 'sortResults')
-      .mockResolvedValue(undefined)
-
-    renderPanel()
-    ;(
-      capturedGridProps.onSortChanged as (column: string, direction: 'asc' | 'desc' | null) => void
-    )('name', 'desc')
-
-    expect(requestNavigationActionSpy).toHaveBeenCalledWith(
-      querySurfaceRef('tab-1', 0),
-      expect.any(Function)
-    )
-    expect(sortResultsSpy).toHaveBeenCalledWith(querySurfaceRef('tab-1', 0), {
-      column: 'name',
-      direction: 'desc',
-    })
-  })
-
-  it('navigates form rows, saves form edits, and discards form edits', async () => {
-    const setSelectedRowSpy = vi.spyOn(useQueryStore.getState(), 'setSelectedRow')
-    const discardCurrentRowSpy = vi.spyOn(useQueryStore.getState(), 'discardCurrentRow')
-    const saveCurrentRowSpy = vi
-      .spyOn(useQueryStore.getState(), 'saveCurrentRow')
-      .mockImplementation(async () => {
-        useQueryStore.setState((state) => ({
-          tabs: {
-            ...state.tabs,
-            'tab-1': {
-              ...state.tabs['tab-1'],
-              results: state.tabs['tab-1'].results.map((result, index) =>
-                index === 0 ? patchedLegacyResult(result, { saveError: 'failed to save' }) : result
-              ),
-            },
-          },
-        }))
-        return false
-      })
-
-    const { rerender } = renderPanel({ viewMode: 'form', selectedRowIndex: 0 })
-
-    act(() => {
-      ;(capturedFormProps.onNavigate as (direction: 'prev' | 'next') => void)('next')
-      ;(capturedFormProps.onNavigate as (direction: 'prev' | 'next') => void)('prev')
-    })
-
-    expect(setSelectedRowSpy).toHaveBeenCalledTimes(1)
-    expect(setSelectedRowSpy).toHaveBeenCalledWith(querySurfaceRef('tab-1', 0), 1)
-
-    useQueryStore.setState({
-      tabs: {
-        ...useQueryStore.getState().tabs,
-        'tab-1': makeTabState({
-          status: 'success',
-          connectionId: 'conn-1',
-          viewMode: 'form',
-          selectedRowIndex: 1,
-          columns: [
-            { name: 'id', dataType: 'INT' },
-            { name: 'role_id', dataType: 'INT' },
-            { name: 'name', dataType: 'VARCHAR' },
-          ],
-          rows: [
-            [1, 5, 'Alice'],
-            [2, 6, 'Bob'],
-          ],
-          totalRows: 2,
-          queryId: 'q1',
-        }),
-      },
-    })
-    rerender(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
-
-    act(() => {
-      ;(capturedFormProps.onNavigate as (direction: 'prev' | 'next') => void)('prev')
-    })
-
-    expect(setSelectedRowSpy).toHaveBeenCalledTimes(2)
-    expect(setSelectedRowSpy).toHaveBeenLastCalledWith(querySurfaceRef('tab-1', 0), 0)
-
-    await act(async () => {
-      await expect((capturedFormProps.onSaveRow as () => Promise<boolean>)()).resolves.toBe(false)
-    })
-    expect(saveCurrentRowSpy).toHaveBeenCalledWith(querySurfaceRef('tab-1', 0))
-
-    act(() => {
-      ;(capturedFormProps.onDiscardRow as () => void)()
-    })
-    expect(discardCurrentRowSpy).toHaveBeenCalledWith(querySurfaceRef('tab-1', 0))
-  })
-
   it('applies and cancels filter dialog interactions', async () => {
     const user = userEvent.setup()
     const applyQueryFiltersSpy = vi.spyOn(useQueryStore.getState(), 'applyQueryFilters')
@@ -374,28 +278,6 @@ describe('ResultPanel actions and states', () => {
 
     expect(closeExportDialogSpy).toHaveBeenCalledWith(querySurfaceRef('tab-1', 0))
   })
-
-  it('passes the edit table location and row discard handler to the grid', () => {
-    renderPanel({
-      editMode: 'appdb.users',
-      editTableMetadata: {
-        'appdb.users': {
-          database: 'appdb',
-          table: 'users',
-          columns: [],
-          primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
-          foreignKeys: [],
-        },
-      },
-    })
-
-    expect(capturedGridProps.editLocation).toEqual({
-      connectionId: 'conn-1',
-      database: 'appdb',
-      table: 'users',
-    })
-    expect(typeof capturedGridProps.onDiscardRow).toBe('function')
-  })
 })
 
 describe('filter button and dialog', () => {
@@ -441,7 +323,7 @@ describe('filter button and dialog', () => {
     ipc.override('export_table_data', () => undefined)
     ipc.override('export_results', () => ({ bytesWritten: 1024, rowsExported: 5 }))
 
-    vi.spyOn(ResultGridViewModule.ResultGridView, 'type').mockImplementation(
+    vi.spyOn(DataGridViewModule.DataGridView, 'type').mockImplementation(
       () => (<div data-testid="grid-view">Grid Mock</div>) as unknown as React.ReactElement
     )
     vi.spyOn(FkLookupDialogModule, 'FkLookupDialog').mockImplementation(

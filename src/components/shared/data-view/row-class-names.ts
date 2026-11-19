@@ -1,6 +1,6 @@
 const EDITING_ROW_CLASS = 'grid-editing-row'
 export const NEW_ROW_CLASS = 'grid-new-row'
-export const SELECTED_ROW_CLASS = 'grid-row-precision-selected'
+const SELECTED_ROW_CLASS = 'grid-row-precision-selected'
 
 export interface RowPresentationState {
   isEditing: boolean

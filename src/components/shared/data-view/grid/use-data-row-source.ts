@@ -3,73 +3,65 @@ import {
   createWindowRowMaterializer,
   materializeRow,
   type ResultRow,
-} from '../../../lib/result-row-materializer'
+} from '../../../../lib/result-row-materializer'
 import {
   getLoadedRow,
   readViewRange,
   requestVisibleRange,
   subscribeToResultWindow,
   type CachedRow,
-} from '../../../lib/result-window-cache'
-import type { RowEditState } from '../../../types/schema'
+} from '../../../../lib/result-window-cache'
 import type {
-  GridRowSource,
-  RowRange,
-  RowSourceReadOptions,
-} from '../../shared/glide/grid-row-source'
-import { rekeyByBoundColumn } from './result-grid-model'
-
-const DRAFT_BASE_INDEX = -1
+  DataViewEditSession,
+  DataViewSlot,
+  DataViewSurfaceRef,
+} from '../../../../stores/data-view/data-view-types'
+import { DRAFT_ROW_BASE_INDEX } from '../../../../stores/data-view/data-view-selectors'
+import type { GridRowSource, RowRange, RowSourceReadOptions } from '../../glide/grid-row-source'
+import { isEditedRow, rekeyByBoundColumn } from './data-grid-model'
 
 interface RowReaderInputs {
   tabId: string
   resultIndex: number
   columnCount: number
   viewRowCount: number
-  draftRow: unknown[] | null
-  editState: RowEditState | null
-  editingRowIndex: number | null
-  editingBaseIndex: number | null
+  edit: DataViewEditSession
   boundColumnIndexLookup: Map<string, number>
 }
 
-export interface ResultRowSourceInputs extends RowReaderInputs {
-  queryId: string | null
-  viewVersion: number
+export interface DataRowSourceInputs {
+  ref: DataViewSurfaceRef
+  slot: DataViewSlot
+  edit: DataViewEditSession
+  boundColumnIndexLookup: Map<string, number>
 }
 
 type WindowRowMaterializer = ReturnType<typeof createWindowRowMaterializer>
 
-class ResultRowReader {
+class DataRowReader {
   constructor(
     private readonly inputs: RowReaderInputs,
     private readonly materializer: WindowRowMaterializer
   ) {}
 
-  private isEditingRow(position: number, baseIndex: number): boolean {
-    const { editState, editingBaseIndex, editingRowIndex } = this.inputs
-    if (editState === null) return false
-    if (baseIndex >= 0) return baseIndex === editingBaseIndex
-    return position === editingRowIndex
-  }
-
   private withEditOverlay(row: ResultRow, position: number, baseIndex: number): ResultRow {
-    const { editState, boundColumnIndexLookup } = this.inputs
-    if (!editState) return row
-    if (!this.isEditingRow(position, baseIndex)) return row
-    return { ...row, ...rekeyByBoundColumn(editState.currentValues, boundColumnIndexLookup) }
+    const { edit, boundColumnIndexLookup } = this.inputs
+    if (!edit.state) return row
+    const isEditingRow = isEditedRow({ position: position, baseIndex: baseIndex }, edit)
+    if (!isEditingRow) return row
+    return { ...row, ...rekeyByBoundColumn(edit.state.currentValues, boundColumnIndexLookup) }
   }
 
   private draftRowAt(position: number): ResultRow | undefined {
-    const { draftRow, columnCount } = this.inputs
-    if (!draftRow) return undefined
+    const { edit, columnCount } = this.inputs
+    if (!edit.draftRow) return undefined
     const draft = materializeRow({
       position: position,
-      baseIndex: DRAFT_BASE_INDEX,
-      row: draftRow,
+      baseIndex: DRAFT_ROW_BASE_INDEX,
+      row: edit.draftRow,
       columnCount: columnCount,
     })
-    return this.withEditOverlay(draft, position, DRAFT_BASE_INDEX)
+    return this.withEditOverlay(draft, position, DRAFT_ROW_BASE_INDEX)
   }
 
   getRow(position: number): ResultRow | undefined {
@@ -113,9 +105,9 @@ class ResultRowReader {
     const [start, end] = range
     const fetched = await this.fetchViewRows(range, options)
     const rows = fetched.map((cached, offset) => this.materializeFetched(cached, start + offset))
-    const { draftRow, viewRowCount } = this.inputs
+    const { edit, viewRowCount } = this.inputs
     const reachesDraftRow = end > viewRowCount
-    if (draftRow && reachesDraftRow) {
+    if (edit.draftRow && reachesDraftRow) {
       const draft = this.getRow(viewRowCount)
       if (draft) rows.push(draft)
     }
@@ -123,11 +115,11 @@ class ResultRowReader {
   }
 }
 
-function toGridRowSource(reader: ResultRowReader, inputs: RowReaderInputs) {
-  const { tabId, resultIndex, viewRowCount, draftRow } = inputs
+function toGridRowSource(reader: DataRowReader, inputs: RowReaderInputs) {
+  const { tabId, resultIndex, viewRowCount, edit } = inputs
   const source: GridRowSource<ResultRow> = {
     kind: 'windowed',
-    rowCount: viewRowCount + (draftRow ? 1 : 0),
+    rowCount: viewRowCount + (edit.draftRow ? 1 : 0),
     getRow: (position) => reader.getRow(position),
     isLoaded: (position) => reader.getRow(position) !== undefined,
     onVisibleRangeChange: (range) => requestVisibleRange(tabId, resultIndex, range),
@@ -137,10 +129,10 @@ function toGridRowSource(reader: ResultRowReader, inputs: RowReaderInputs) {
   return source
 }
 
-function useResettingMaterializer(inputs: ResultRowSourceInputs) {
-  const { queryId, viewVersion, columnCount } = inputs
+function useResettingMaterializer(slot: DataViewSlot) {
+  const columnCount = slot.columns.length
   const [materializer] = useState(() => createWindowRowMaterializer(columnCount))
-  const materializerKey = `${queryId ?? ''}:${viewVersion}:${columnCount}`
+  const materializerKey = `${slot.queryId ?? ''}:${slot.viewVersion}:${columnCount}`
   const [lastMaterializerKey, setLastMaterializerKey] = useState(materializerKey)
   if (lastMaterializerKey !== materializerKey) {
     setLastMaterializerKey(materializerKey)
@@ -149,19 +141,16 @@ function useResettingMaterializer(inputs: ResultRowSourceInputs) {
   return { materializer, materializerKey }
 }
 
-export function useResultRowSource(inputs: ResultRowSourceInputs): GridRowSource<ResultRow> {
-  const { materializer, materializerKey } = useResettingMaterializer(inputs)
-  const {
-    tabId,
-    resultIndex,
-    columnCount,
-    viewRowCount,
-    draftRow,
-    editState,
-    editingRowIndex,
-    editingBaseIndex,
-    boundColumnIndexLookup,
-  } = inputs
+export function useDataRowSource({
+  ref,
+  slot,
+  edit,
+  boundColumnIndexLookup,
+}: DataRowSourceInputs): GridRowSource<ResultRow> {
+  const { materializer, materializerKey } = useResettingMaterializer(slot)
+  const { tabId, resultIndex } = ref
+  const columnCount = slot.columns.length
+  const viewRowCount = slot.viewRowCount
   return useMemo(() => {
     void materializerKey
     const readerInputs: RowReaderInputs = {
@@ -169,20 +158,14 @@ export function useResultRowSource(inputs: ResultRowSourceInputs): GridRowSource
       resultIndex: resultIndex,
       columnCount: columnCount,
       viewRowCount: viewRowCount,
-      draftRow: draftRow,
-      editState: editState,
-      editingRowIndex: editingRowIndex,
-      editingBaseIndex: editingBaseIndex,
+      edit: edit,
       boundColumnIndexLookup: boundColumnIndexLookup,
     }
-    return toGridRowSource(new ResultRowReader(readerInputs, materializer), readerInputs)
+    return toGridRowSource(new DataRowReader(readerInputs, materializer), readerInputs)
   }, [
     boundColumnIndexLookup,
     columnCount,
-    draftRow,
-    editState,
-    editingBaseIndex,
-    editingRowIndex,
+    edit,
     materializer,
     materializerKey,
     resultIndex,

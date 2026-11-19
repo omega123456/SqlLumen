@@ -1,5 +1,5 @@
-import { formatCellValue } from '../../lib/result-cell-utils'
-import type { ColumnMeta } from '../../types/schema'
+import { formatCellValue } from '../../../lib/result-cell-utils'
+import type { ColumnMeta } from '../../../types/schema'
 
 const MAX_COL_WIDTH = 40
 

@@ -165,26 +165,54 @@ async function setCellValueForTest(
   )
 }
 
-async function expectSelectedTableDataColumn(page: Page, columnName: string) {
-  await expect
-    .poll(
-      async () =>
-        page.evaluate(() => {
-          const store = (
-            window as unknown as {
-              __tableDataStore__?: {
-                getState?: () => {
-                  tabs?: Record<string, { selectedCell?: { columnKey?: string } | null }>
-                }
-              }
+function selectedColumnOf(page: Page, gridTestId: GridCellAddress['gridTestId']) {
+  return page.evaluate((grid) => {
+    if (grid === 'table-data-grid') {
+      const tableStore = (
+        window as unknown as {
+          __tableDataStore__?: {
+            getState?: () => {
+              tabs?: Record<string, { selectedCell?: { columnKey?: string } | null }>
             }
-          ).__tableDataStore__
-
-          const tabs = Object.values(store?.getState?.().tabs ?? {})
-          return tabs.find((tab) => tab?.selectedCell?.columnKey)?.selectedCell?.columnKey ?? null
-        }),
-      { timeout: APP_READY_MS, intervals: [100, 200, 300] }
+          }
+        }
+      ).__tableDataStore__
+      const tabs = Object.values(tableStore?.getState?.().tabs ?? {})
+      return tabs.find((tab) => tab?.selectedCell?.columnKey)?.selectedCell?.columnKey ?? null
+    }
+    const queryStore = (
+      window as unknown as {
+        __queryStore__?: {
+          getState?: () => {
+            tabs?: Record<
+              string,
+              {
+                activeResultIndex?: number
+                results?: Array<{ view?: { selection?: { cell?: { columnKey?: string } | null } } }>
+              }
+            >
+          }
+        }
+      }
+    ).__queryStore__
+    const tabs = Object.values(queryStore?.getState?.().tabs ?? {})
+    const selectedCells = tabs.map(
+      (tab) => tab?.results?.[tab?.activeResultIndex ?? 0]?.view?.selection?.cell?.columnKey
     )
+    return selectedCells.find((columnKey) => columnKey) ?? null
+  }, gridTestId)
+}
+
+async function expectSelectedColumn(
+  page: Page,
+  gridTestId: GridCellAddress['gridTestId'],
+  columnName: string
+) {
+  await expect
+    .poll(() => selectedColumnOf(page, gridTestId), {
+      timeout: APP_READY_MS,
+      intervals: [100, 200, 300],
+    })
     .toBe(columnName)
 }
 
@@ -300,6 +328,19 @@ async function openQueryEditorWithResults(page: Page, sql = 'SELECT * FROM users
     timeout: APP_READY_MS,
   })
 }
+
+const EDITING_ROUTES = [
+  {
+    name: 'table data',
+    gridTestId: 'table-data-grid',
+    open: openTableDataTab,
+  },
+  {
+    name: 'query result',
+    gridTestId: 'result-grid',
+    open: (page: Page) => openQueryEditorWithResults(page),
+  },
+] as const
 
 async function getCellByColumnName(
   grid: ReturnType<Page['locator']>,
@@ -437,31 +478,35 @@ test('editing a cell then selecting the next cell requires re-activation to edit
   await emailEditor.fill('julian@example.com')
 })
 
-test('table data grid Tab commits the open editor and moves between columns', async ({ page }) => {
-  await waitForApp(page)
-  await openTableDataTab(page)
+for (const route of EDITING_ROUTES) {
+  test(`${route.name} grid Tab commits the open editor and moves between columns`, async ({
+    page,
+  }) => {
+    await waitForApp(page)
+    await route.open(page)
 
-  const grid = page.getByTestId('table-data-grid')
-  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-  const canvas = grid.locator('canvas[data-testid="data-grid-canvas"]').first()
-  const cellEditor = page.locator('input[data-variant="gridCell"]').first()
+    const grid = activePanel(page).getByTestId(route.gridTestId)
+    await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+    const canvas = grid.locator('canvas[data-testid="data-grid-canvas"]').first()
+    const cellEditor = page.locator('input[data-variant="gridCell"]').first()
 
-  await clickCellByColumnName(grid, 0, 'name')
-  await expect(canvas).toBeFocused({ timeout: APP_READY_MS })
-  await page.keyboard.type('J')
-  await expect(cellEditor).toBeVisible({ timeout: APP_READY_MS })
-  await cellEditor.fill('Julian Thorne')
+    await clickCellByColumnName(grid, 0, 'name')
+    await expect(canvas).toBeFocused({ timeout: APP_READY_MS })
+    await page.keyboard.type('J')
+    await expect(cellEditor).toBeVisible({ timeout: APP_READY_MS })
+    await cellEditor.fill('Julian Thorne')
 
-  await page.keyboard.press('Tab')
-  await expect(cellEditor).not.toBeVisible({ timeout: APP_READY_MS })
-  await expectSelectedTableDataColumn(page, 'email')
-  await expect.poll(() => grid.evaluate((el) => el.contains(document.activeElement))).toBe(true)
+    await page.keyboard.press('Tab')
+    await expect(cellEditor).not.toBeVisible({ timeout: APP_READY_MS })
+    await expectSelectedColumn(page, route.gridTestId, 'email')
+    await expect.poll(() => grid.evaluate((el) => el.contains(document.activeElement))).toBe(true)
 
-  await page.keyboard.press('Shift+Tab')
-  await expectSelectedTableDataColumn(page, 'name')
-  await page.keyboard.press('Tab')
-  await expectSelectedTableDataColumn(page, 'email')
-})
+    await page.keyboard.press('Shift+Tab')
+    await expectSelectedColumn(page, route.gridTestId, 'name')
+    await page.keyboard.press('Tab')
+    await expectSelectedColumn(page, route.gridTestId, 'email')
+  })
+}
 
 test('table data grid typing on a selected cell opens the editor and keeps focus', async ({
   page,
@@ -845,7 +890,7 @@ test('table data enum editor opens when an already-selected enum cell is clicked
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
 
   await clickCellByColumnName(grid, 0, 'status')
-  await expectSelectedTableDataColumn(page, 'status')
+  await expectSelectedColumn(page, 'table-data-grid', 'status')
   await clickCellByColumnName(grid, 0, 'status')
 
   const enumEditor = glideDropdownEditor(page)
@@ -863,7 +908,7 @@ test('table data enum editor opens with Enter on the selected enum cell', async 
 
   const statusCell = await getCellByColumnName(grid, 0, 'status')
   await statusCell.click()
-  await expectSelectedTableDataColumn(page, 'status')
+  await expectSelectedColumn(page, 'table-data-grid', 'status')
   await page.evaluate(() => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
   })
@@ -872,7 +917,7 @@ test('table data enum editor opens with Enter on the selected enum cell', async 
   // In headless Playwright, the React Select overlay is not reliably materialized from Enter,
   // so keep this E2E assertion focused on the keyboard path not breaking the grid.
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-  await expectSelectedTableDataColumn(page, 'status')
+  await expectSelectedColumn(page, 'table-data-grid', 'status')
 })
 
 test('table data enum editor supports uppercase letter typeahead selection', async ({ page }) => {
@@ -1020,7 +1065,7 @@ test('table data FK lookup opens from ellipsis click and F4 shortcut', async ({ 
   await expect(page.getByTestId('fk-lookup-dialog')).not.toBeVisible({ timeout: APP_READY_MS })
 
   await clickCellByColumnName(grid, 0, 'user_id')
-  await expectSelectedTableDataColumn(page, 'user_id')
+  await expectSelectedColumn(page, 'table-data-grid', 'user_id')
   await grid.focus()
   await page.keyboard.press('F4')
   await expect(page.getByTestId('fk-lookup-dialog')).toBeVisible({ timeout: APP_READY_MS })
@@ -1052,7 +1097,7 @@ test('table data FK ellipsis on the selected cell does not open the inline edito
   // selected cell, without two quick pointer clicks counting as a double-click.
   await clickCellByColumnName(grid, 0, 'id')
   await page.keyboard.press('ArrowRight')
-  await expectSelectedTableDataColumn(page, 'user_id')
+  await expectSelectedColumn(page, 'table-data-grid', 'user_id')
   await clickFkEllipsis(page, userIdColumn, 0)
   await expect(page.getByTestId('fk-lookup-dialog')).toBeVisible({ timeout: APP_READY_MS })
   // The buggy overlay editor rendered a couple of frames after the dialog; let several frames

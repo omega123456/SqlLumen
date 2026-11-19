@@ -1,5 +1,6 @@
-import { registerDataViewRoute } from '../data-view/route-registry'
+import { registerDataViewRoute, type DataViewSelector } from '../data-view/route-registry'
 import type { DataViewSurfaceRef } from '../data-view/data-view-types'
+import { useQueryStore } from '../query-store'
 import { markTabResultsExpired, patchSurface, resultOf } from './query-store-access'
 import {
   latestRequestedSpec,
@@ -8,6 +9,13 @@ import {
   retryRequestedView,
 } from './result-view-requests'
 import { rerunResultAfterInsert } from './row-save-rerun'
+
+function useQueryView<Selected>(
+  ref: DataViewSurfaceRef,
+  selector: DataViewSelector<Selected>
+): Selected {
+  return useQueryStore((state) => selector(state.tabs[ref.tabId]?.results[ref.resultIndex]?.view))
+}
 
 function latestKnownViewVersion(ref: DataViewSurfaceRef): number {
   return resultOf(ref)?.latestKnownViewVersion ?? 0
@@ -19,6 +27,7 @@ export function registerQueryDataViewRoute() {
     binding: {
       read: (ref) => resultOf(ref)?.view,
       update: (ref, patch) => patchSurface(ref, { view: patch }),
+      useView: useQueryView,
     },
     viewRequests: {
       apply: requestView,

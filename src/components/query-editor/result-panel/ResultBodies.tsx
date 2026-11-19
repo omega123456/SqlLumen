@@ -4,6 +4,7 @@ import { ResultSubTabs } from '../ResultSubTabs'
 import { ResultToolbar } from '../ResultToolbar'
 import { ResultBands } from './ResultBands'
 import { ResultViews, type ResultViewsProps } from './ResultViews'
+import type { SingleResultState } from '../../../stores/query-store'
 import { ResultActivityOverlay, EmptyResultState } from './ResultStatusViews'
 import {
   dmlSuccessMessage,
@@ -22,6 +23,8 @@ export interface ResultBodyProps {
   displayStatus: DisplayStatus
   toolbar: ResultToolbarProps
   views: ResultViewsProps
+  tabId: string
+  result: SingleResultState
   isTabRunning: boolean
 }
 
@@ -38,8 +41,7 @@ function InfoBody({ children }: { children: ReactNode }) {
   )
 }
 
-function ResultContent({ views, isTabRunning }: ResultBodyProps) {
-  const { result } = views
+function ResultContent({ views, result, isTabRunning }: ResultBodyProps) {
   const hasNoColumns = result.view.slot.columns.length === 0
   if (hasNoColumns) {
     return (
@@ -55,7 +57,7 @@ function ResultContent({ views, isTabRunning }: ResultBodyProps) {
   }
   return (
     <>
-      <ResultBands surfaceRef={views.surfaceRef} result={result} isTabRunning={isTabRunning} />
+      <ResultBands surfaceRef={views.source.ref} result={result} isTabRunning={isTabRunning} />
       <ResultViews {...views} />
     </>
   )
@@ -74,7 +76,7 @@ function SuccessResultBody(props: ResultBodyProps) {
   )
 }
 
-function ErrorResultBody({ tabPanelAttributes, toolbar, views }: ResultBodyProps) {
+function ErrorResultBody({ tabPanelAttributes, toolbar, result }: ResultBodyProps) {
   return (
     <div {...tabPanelAttributes} className={RESULT_TAB_PANEL}>
       <ResultToolbar {...toolbar} rowInsertion={NO_ROW_INSERTION} />
@@ -82,7 +84,7 @@ function ErrorResultBody({ tabPanelAttributes, toolbar, views }: ResultBodyProps
         <InfoBar
           severity="error"
           title="Query failed"
-          message={views.result.errorMessage}
+          message={result.errorMessage}
           data-testid="result-error"
         />
       </InfoBody>
@@ -99,7 +101,7 @@ export function ResultStatusView({ showsSubTabs, body }: ResultStatusViewProps) 
   const { displayStatus } = body
   if (displayStatus === 'idle') return <EmptyResultState isRunning={false} />
   if (displayStatus === 'running') return <EmptyResultState isRunning={true} />
-  const subTabs = showsSubTabs ? <ResultSubTabs tabId={body.views.tabId} /> : null
+  const subTabs = showsSubTabs ? <ResultSubTabs tabId={body.tabId} /> : null
   if (displayStatus === 'error') {
     return (
       <>
@@ -114,7 +116,7 @@ export function ResultStatusView({ showsSubTabs, body }: ResultStatusViewProps) 
       <SuccessResultBody {...body} />
       <ResultActivityOverlay
         displayStatus={displayStatus}
-        isSorting={body.views.result.view.spec.applying === 'sort'}
+        isSorting={body.result.view.spec.applying === 'sort'}
       />
     </>
   )
