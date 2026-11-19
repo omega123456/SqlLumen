@@ -2,15 +2,10 @@ use crate::commands::query_history_bridge::{
     log_history_record, resolve_connection_context, run_with_history, single_row_count,
     HistoryRecord, HistoryStatement,
 };
-#[cfg(not(coverage))]
-use crate::commands::requests::ConnectionTabRequest;
-use crate::commands::run_blocking_with_state;
 use crate::db::history::NewHistoryEntry;
 use crate::mysql::result_cache::{CacheKey, VersionedValue};
 use crate::mysql::schema_queries::safe_identifier;
 use crate::mysql::table_data;
-#[cfg(not(coverage))]
-use crate::mysql::table_data::{evict_table_data_impl, touch_table_data_impl};
 use crate::state::AppState;
 
 mod export_history;

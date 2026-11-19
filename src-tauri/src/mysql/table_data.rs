@@ -1,4 +1,3 @@
-use crate::mysql::cache_status::{cache_status_json, CacheStatus};
 use crate::mysql::cell_values::is_binary_data_type;
 #[cfg(not(coverage))]
 use crate::mysql::cell_values::{grid_cell_json, CellValue, DecodedRow, GridCellVariant};
@@ -6,17 +5,16 @@ use crate::mysql::cell_values::{grid_cell_json, CellValue, DecodedRow, GridCellV
 use crate::mysql::logged_query::LoggedStatement;
 use crate::mysql::metadata_cache::{MetadataCache, MetadataTableKey, TableKeyMetadata};
 use crate::mysql::pool::BackgroundPool;
-use crate::mysql::query_executor::{SharedRow, SharedRows};
-use crate::mysql::result_cache::{CacheKey, VersionedValue};
+#[cfg(not(coverage))]
+use crate::mysql::query_executor::SharedRow;
+use crate::mysql::query_executor::SharedRows;
 use crate::mysql::schema_queries::safe_identifier;
-use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock as TokioRwLock;
 
 mod blob_values;
-mod cache_sync;
 mod edit_sql;
 mod export;
 mod filters;
@@ -24,7 +22,6 @@ mod page_slot;
 mod paging;
 mod serialization;
 pub use blob_values::*;
-pub use cache_sync::*;
 pub use edit_sql::*;
 pub use export::*;
 pub use filters::*;
@@ -78,19 +75,6 @@ pub struct TableDataResponse {
     pub execution_time_ms: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct TableDataCacheRestoreResponse {
-    pub status: CacheStatus,
-    pub data: Option<TableDataResponse>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct TableDataCacheSyncResponse {
-    pub status: CacheStatus,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SortInfo {
@@ -128,21 +112,6 @@ pub struct FetchTableDataRequest {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SyncTableDataCacheRequest {
-    pub connection_id: String,
-    pub tab_id: String,
-    pub database: String,
-    pub table: String,
-    pub columns: Vec<TableDataColumnMeta>,
-    pub rows: Vec<Vec<serde_json::Value>>,
-    pub current_page: u32,
-    pub page_size: u32,
-    pub primary_key: Option<PrimaryKeyInfo>,
-    pub execution_time_ms: u64,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ExportTableDataRequest {
     pub connection_id: String,
     pub database: String,
@@ -156,15 +125,6 @@ pub struct ExportTableDataRequest {
     pub sort_direction: Option<String>,
     pub page: Option<u32>,
     pub page_size: Option<u32>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RestoreTableDataCacheRequest {
-    pub connection_id: String,
-    pub tab_id: String,
-    pub database: String,
-    pub table: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

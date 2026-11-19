@@ -17,5 +17,4 @@ pub mod session;
 pub mod sql_chars;
 pub mod sql_table_parser;
 pub mod table_data;
-pub mod table_data_cache;
 pub mod table_designer;

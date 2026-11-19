@@ -8,7 +8,6 @@ use sqllumen_lib::mysql::query_executor::{fetch_schema_metadata_full_impl, Trigg
 use sqllumen_lib::mysql::registry::{
     ConnectionRegistry, ConnectionStatus, RegistryEntry, StoredConnectionParams,
 };
-use sqllumen_lib::mysql::table_data_cache::TableDataCache;
 use sqllumen_lib::state::AppState;
 use std::sync::{Arc, Mutex};
 
@@ -31,10 +30,6 @@ fn test_state() -> AppState {
                 std::env::temp_dir().join("sqllumen-test-schema-metadata-vt-results"),
             ),
         ),
-        table_data_cache: Arc::new(TableDataCache::new_for_test(
-            1800,
-            std::env::temp_dir().join("sqllumen-test-schema-metadata-vt-table-data"),
-        )),
         metadata_cache: sqllumen_lib::mysql::metadata_cache::MetadataCache::new(),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),

@@ -14,7 +14,6 @@ use sqllumen_lib::mysql::query_executor::{
 };
 use sqllumen_lib::mysql::registry::ConnectionRegistry;
 use sqllumen_lib::mysql::result_view::fetch_result_window_impl;
-use sqllumen_lib::mysql::table_data_cache::TableDataCache;
 use sqllumen_lib::state::AppState;
 use std::sync::{Arc, Mutex};
 
@@ -37,10 +36,6 @@ fn test_state() -> AppState {
                 std::env::temp_dir().join("sqllumen-test-cmdquery-results"),
             ),
         ),
-        table_data_cache: std::sync::Arc::new(TableDataCache::new_for_test(
-            1800,
-            std::env::temp_dir().join("sqllumen-test-cmdquery-table-data"),
-        )),
         metadata_cache: sqllumen_lib::mysql::metadata_cache::MetadataCache::new(),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
@@ -77,10 +72,6 @@ fn test_state_with_zero_ttl() -> AppState {
                 std::env::temp_dir().join("sqllumen-test-cmdquery-zero-ttl"),
             ),
         ),
-        table_data_cache: std::sync::Arc::new(TableDataCache::new_for_test(
-            0,
-            std::env::temp_dir().join("sqllumen-test-cmdquery-zero-ttl-td"),
-        )),
         metadata_cache: sqllumen_lib::mysql::metadata_cache::MetadataCache::new(),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
@@ -686,10 +677,6 @@ fn touch_results_reports_available_after_spill_rewarm() {
 
     let state = AppState {
         result_cache: std::sync::Arc::new(cache),
-        table_data_cache: std::sync::Arc::new(TableDataCache::new_for_test(
-            1800,
-            std::env::temp_dir().join("sqllumen-test-cmdquery-table-data"),
-        )),
         ..state
     };
 

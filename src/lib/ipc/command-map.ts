@@ -23,8 +23,6 @@ import type {
   SchemaMetadataFull,
   SchemaMetadataResponse,
   SetResultViewResult,
-  TableDataCacheRestoreResult,
-  TableDataCacheSyncResult,
   TableDataResponse,
   TablePageResult,
   TableDesignerSchema,
@@ -110,9 +108,6 @@ import type {
   FetchTableDataRequest,
   InsertedColumnValue,
   InsertTableRowRequest,
-  RestoreTableDataCacheRequest,
-  SyncTableDataCacheRequest,
-  TableDataTouchResult,
   UpdateTableRowRequest,
 } from '../table-data-commands'
 import type { WindowBackdrop } from '../window-commands'
@@ -218,12 +213,6 @@ export interface PayloadCommandMap {
 
   fetch_table_data: Command<FetchTableDataRequest, TableDataResponse>
   fetch_table_page: Command<FetchTableDataRequest, TablePageResult>
-  touch_table_data: Command<ConnectionTabRequest, TableDataTouchResult>
-  evict_table_data: Command<ConnectionTabRequest, void>
-  restore_table_data_cache: Command<RestoreTableDataCacheRequest, TableDataCacheRestoreResult>
-  sync_table_data_cache_after_insert: Command<SyncTableDataCacheRequest, TableDataCacheSyncResult>
-  sync_table_data_cache_after_update: Command<SyncTableDataCacheRequest, TableDataCacheSyncResult>
-  sync_table_data_cache_after_delete: Command<SyncTableDataCacheRequest, TableDataCacheSyncResult>
   update_table_row: Command<UpdateTableRowRequest, void>
   insert_table_row: Command<InsertTableRowRequest, InsertedColumnValue[]>
   delete_table_row: Command<DeleteTableRowRequest, void>

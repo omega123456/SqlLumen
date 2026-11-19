@@ -1,7 +1,6 @@
 use crate::logging::LoggingInit;
 use crate::mysql::registry::ConnectionRegistry;
 use crate::mysql::result_cache::{ResultCache, SysinfoMemorySnapshot};
-use crate::mysql::table_data_cache::TableDataCache;
 use crate::state::AppState;
 use crate::{commands, resolved_app_data_dir, window_chrome};
 use rusqlite::Connection;
@@ -25,7 +24,6 @@ const LOGS_DATABASE_LABEL: &str = "logs";
 
 struct SharedCaches {
     result_cache: Arc<ResultCache>,
-    table_data_cache: Arc<TableDataCache>,
 }
 
 struct AppStateParts {
@@ -133,42 +131,26 @@ fn remove_leftover_spill_directory(spill_dir: &Path) {
 fn create_shared_caches(conn: &Connection, spill_dir: PathBuf) -> SharedCaches {
     remove_leftover_spill_directory(&spill_dir);
     let shared_cache_ttl = Arc::new(AtomicU64::new(load_cache_ttl_seconds(conn)));
-    let result_cache = Arc::new(ResultCache::new_with_shared_ttl(
-        Arc::clone(&shared_cache_ttl),
-        spill_dir.clone(),
-    ));
+    let result_cache = Arc::new(ResultCache::new_with_shared_ttl(shared_cache_ttl, spill_dir));
     result_cache.set_row_ceiling(commands::settings::load_results_max_rows(conn));
-    let table_data_cache = Arc::new(TableDataCache::new_with_shared_ttl(
-        shared_cache_ttl,
-        spill_dir,
-    ));
-    SharedCaches {
-        result_cache,
-        table_data_cache,
-    }
+    SharedCaches { result_cache }
 }
 
 fn spawn_cache_maintenance(caches: &SharedCaches) {
     let result_cache = Arc::clone(&caches.result_cache);
-    let table_data_cache = Arc::clone(&caches.table_data_cache);
     tauri::async_runtime::spawn(async move {
         loop {
             tokio::time::sleep(CACHE_MAINTENANCE_INTERVAL).await;
-            run_cache_maintenance_pass(&result_cache, &table_data_cache).await;
+            run_cache_maintenance_pass(&result_cache).await;
         }
     });
 }
 
-async fn run_cache_maintenance_pass(
-    result_cache: &Arc<ResultCache>,
-    table_data_cache: &Arc<TableDataCache>,
-) {
+async fn run_cache_maintenance_pass(result_cache: &Arc<ResultCache>) {
     let result_cache = Arc::clone(result_cache);
-    let table_data_cache = Arc::clone(table_data_cache);
     let join_result = tauri::async_runtime::spawn_blocking(move || {
         let mut snapshot = SysinfoMemorySnapshot::new();
         result_cache.run_maintenance(&mut snapshot);
-        table_data_cache.run_maintenance(&mut snapshot);
     })
     .await;
     if let Err(error) = join_result {
@@ -195,7 +177,6 @@ fn build_app_state(
         registry: ConnectionRegistry::new(),
         app_handle: Some(app_handle.clone()),
         result_cache: parts.caches.result_cache,
-        table_data_cache: parts.caches.table_data_cache,
         metadata_cache: crate::mysql::metadata_cache::MetadataCache::new(),
         log_filter_reload: Mutex::new(Some(logging_init.filter_reload)),
         running_queries: tokio::sync::RwLock::new(HashMap::new()),

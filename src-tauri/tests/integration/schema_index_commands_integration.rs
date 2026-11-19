@@ -13,7 +13,6 @@ use sqllumen_lib::commands::schema_index::{
 };
 use sqllumen_lib::db::settings;
 use sqllumen_lib::init_sqlite_vec;
-use sqllumen_lib::mysql::table_data_cache::TableDataCache;
 use sqllumen_lib::schema_index::storage;
 use sqllumen_lib::schema_index::types::{IndexMeta, IndexStatus};
 use sqllumen_lib::state::AppState;
@@ -36,10 +35,6 @@ fn test_state() -> AppState {
                 std::env::temp_dir().join("sqllumen-test-schidx-results"),
             ),
         ),
-        table_data_cache: std::sync::Arc::new(TableDataCache::new_for_test(
-            1800,
-            std::env::temp_dir().join("sqllumen-test-schidx-table-data"),
-        )),
         metadata_cache: sqllumen_lib::mysql::metadata_cache::MetadataCache::new(),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(HashMap::new()),
@@ -75,10 +70,6 @@ fn test_state_with_vec() -> AppState {
                 std::env::temp_dir().join("sqllumen-test-schidx-results"),
             ),
         ),
-        table_data_cache: std::sync::Arc::new(TableDataCache::new_for_test(
-            1800,
-            std::env::temp_dir().join("sqllumen-test-schidx-table-data"),
-        )),
         metadata_cache: sqllumen_lib::mysql::metadata_cache::MetadataCache::new(),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(HashMap::new()),

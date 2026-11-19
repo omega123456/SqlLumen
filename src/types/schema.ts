@@ -48,10 +48,6 @@ export type {
   PrimaryKeyInfo,
   TableDataResponse,
   TablePageResult,
-  TableDataCacheRestoreStatus,
-  TableDataCacheRestoreResult,
-  TableDataCacheSyncStatus,
-  TableDataCacheSyncResult,
 } from './schema/table-data'
 export type {
   DefaultValueModel,

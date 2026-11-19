@@ -12,7 +12,6 @@ use sqllumen_lib::mysql::registry::ConnectionRegistry;
 use sqllumen_lib::mysql::result_view::{
     remove_result_rows_impl, set_result_view_impl, ResultViewSpec,
 };
-use sqllumen_lib::mysql::table_data_cache::TableDataCache;
 use sqllumen_lib::state::AppState;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
@@ -36,10 +35,6 @@ fn test_state() -> AppState {
                 std::env::temp_dir().join("sqllumen-test-export-results"),
             ),
         ),
-        table_data_cache: std::sync::Arc::new(TableDataCache::new_for_test(
-            1800,
-            std::env::temp_dir().join("sqllumen-test-export-table-data"),
-        )),
         metadata_cache: sqllumen_lib::mysql::metadata_cache::MetadataCache::new(),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),

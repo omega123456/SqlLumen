@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { evictTableData, fetchTableData } from '../../../lib/table-data-commands'
+import { fetchTableData } from '../../../lib/table-data-commands'
 import type {
   TableDataColumnMeta,
   TableDataResponse,
   PrimaryKeyInfo,
   FilterCondition,
 } from '../../../types/schema'
-import { logFrontend } from '../../../lib/app-log-commands'
 import { toErrorMessage } from '../../../lib/error-message'
 import {
   LOOKUP_PAGE_SIZE,
@@ -56,7 +55,7 @@ function initialQuery(filterModel: FilterCondition[]): LookupQuery {
   }
 }
 
-function cacheTabIdOf({ connectionId, database, referencedTable }: FkLookupSource): string {
+function lookupTabIdOf({ connectionId, database, referencedTable }: FkLookupSource): string {
   return `fk-lookup-${connectionId}-${database}-${referencedTable}`
 }
 
@@ -122,7 +121,7 @@ type LookupState = ReturnType<typeof useLookupState>
 
 function useLoadLookupPage(source: FkLookupSource, state: LookupState) {
   const { connectionId, database, referencedTable } = source
-  const cacheTabId = cacheTabIdOf(source)
+  const lookupTabId = lookupTabIdOf(source)
   const mountedRef = useMountedRef()
   const loadRequestTokenRef = useRef(0)
   const { setQuery, setPage, setIsLoading, setError, setSelectedRowKey } = state
@@ -135,7 +134,7 @@ function useLoadLookupPage(source: FkLookupSource, state: LookupState) {
       try {
         const response = await fetchTableData({
           connectionId: connectionId,
-          tabId: cacheTabId,
+          tabId: lookupTabId,
           database: database,
           table: referencedTable,
           page: page,
@@ -160,7 +159,7 @@ function useLoadLookupPage(source: FkLookupSource, state: LookupState) {
       }
     },
     [
-      cacheTabId,
+      lookupTabId,
       connectionId,
       database,
       referencedTable,
@@ -172,20 +171,6 @@ function useLoadLookupPage(source: FkLookupSource, state: LookupState) {
       setSelectedRowKey,
     ]
   )
-}
-
-function useEvictCacheOnClose(source: FkLookupSource, isOpen: boolean) {
-  const { connectionId } = source
-  const cacheTabId = cacheTabIdOf(source)
-  useEffect(() => {
-    if (!isOpen) return
-    return () => {
-      evictTableData({ connectionId: connectionId, tabId: cacheTabId }).catch((error: unknown) => {
-        const errorMessage = toErrorMessage(error)
-        logFrontend('warn', `FK lookup cache cleanup failed for ${cacheTabId}: ${errorMessage}`)
-      })
-    }
-  }, [cacheTabId, connectionId, isOpen])
 }
 
 export interface LookupOpenRequest {
@@ -240,7 +225,6 @@ function useLookupReloads({ request, state, loadData }: LookupReloadInputs) {
 export function useFkLookupData(source: FkLookupSource, request: LookupOpenRequest) {
   const state = useLookupState()
   const loadData = useLoadLookupPage(source, state)
-  useEvictCacheOnClose(source, request.isOpen)
   useLookupReloads({ request: request, state: state, loadData: loadData })
   const { query } = state
   const retry = useCallback(() => void loadData(toPageRequest(query)), [loadData, query])

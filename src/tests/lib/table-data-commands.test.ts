@@ -2,12 +2,6 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { ipc } from '../ipc-mock'
 import {
   fetchTableData,
-  touchTableData,
-  evictTableData,
-  restoreTableDataCache,
-  syncTableDataCacheAfterInsert,
-  syncTableDataCacheAfterUpdate,
-  syncTableDataCacheAfterDelete,
   updateTableRow,
   insertTableRow,
   deleteTableRow,
@@ -16,12 +10,7 @@ import {
   readFileBytes,
   writeFileBytes,
 } from '../../lib/table-data-commands'
-import type {
-  FilterCondition,
-  PrimaryKeyInfo,
-  TableDataResponse,
-  TableDataColumnMeta,
-} from '../../types/schema'
+import type { FilterCondition, PrimaryKeyInfo, TableDataResponse } from '../../types/schema'
 
 const DEFAULT_FETCH_RESPONSE: TableDataResponse = {
   columns: [
@@ -52,23 +41,11 @@ const DEFAULT_INSERT_RESPONSE = [
 
 beforeEach(() => {
   ipc.override('fetch_table_data', () => DEFAULT_FETCH_RESPONSE)
-  ipc.override('touch_table_data', () => ({ status: 'available' }))
-  ipc.override('evict_table_data', () => null)
-  ipc.override('restore_table_data_cache', () => ({
-    status: 'available',
-    data: DEFAULT_FETCH_RESPONSE,
-  }))
-  ipc.override('sync_table_data_cache_after_insert', () => ({ status: 'synced' }))
-  ipc.override('sync_table_data_cache_after_update', () => ({ status: 'synced' }))
-  ipc.override('sync_table_data_cache_after_delete', () => ({ status: 'synced' }))
   ipc.override('update_table_row', () => null)
   ipc.override('insert_table_row', () => DEFAULT_INSERT_RESPONSE)
   ipc.override('delete_table_row', () => null)
   ipc.override('export_table_data', () => null)
 })
-
-const DEFAULT_SYNC_COLUMNS: TableDataColumnMeta[] = DEFAULT_FETCH_RESPONSE.columns
-const DEFAULT_SYNC_PRIMARY_KEY = DEFAULT_FETCH_RESPONSE.primaryKey
 
 function payloadOf(call: unknown): Record<string, unknown> {
   return (call as { payload: Record<string, unknown> }).payload
@@ -232,146 +209,6 @@ describe('fetchTableData', () => {
     })
 
     expect(result.columns[0].setValues).toEqual(['alpha', 'beta', 'gamma'])
-  })
-})
-
-describe('table data cache lifecycle commands', () => {
-  it('touchTableData invokes touch_table_data', async () => {
-    const result = await touchTableData({
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-    })
-
-    expect(result).toEqual({ status: 'available' })
-    expect(ipc.payloads('touch_table_data')).toContainEqual({
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-    })
-  })
-
-  it('evictTableData invokes evict_table_data', async () => {
-    await evictTableData({
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-    })
-
-    expect(ipc.payloads('evict_table_data')).toContainEqual({
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-    })
-  })
-
-  it('restoreTableDataCache invokes restore_table_data_cache', async () => {
-    const result = await restoreTableDataCache({
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      database: 'mydb',
-      table: 'users',
-    })
-
-    expect(result).toEqual({
-      status: 'available',
-      data: DEFAULT_FETCH_RESPONSE,
-    })
-    expect(ipc.payloads('restore_table_data_cache')).toContainEqual({
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      database: 'mydb',
-      table: 'users',
-    })
-  })
-
-  it('syncTableDataCacheAfterInsert invokes sync_table_data_cache_after_insert', async () => {
-    const result = await syncTableDataCacheAfterInsert({
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      database: 'mydb',
-      table: 'users',
-      columns: DEFAULT_SYNC_COLUMNS,
-      rows: [[1], [2], [3]],
-      currentPage: 1,
-      pageSize: 1000,
-      primaryKey: DEFAULT_SYNC_PRIMARY_KEY,
-      executionTimeMs: 14,
-    })
-
-    expect(result).toEqual({ status: 'synced' })
-    expect(ipc.calls('sync_table_data_cache_after_insert')).toContainEqual({
-      payload: {
-        connectionId: 'conn-1',
-        tabId: 'tab-1',
-        database: 'mydb',
-        table: 'users',
-        columns: DEFAULT_SYNC_COLUMNS,
-        rows: [[1], [2], [3]],
-        currentPage: 1,
-        pageSize: 1000,
-        primaryKey: DEFAULT_SYNC_PRIMARY_KEY,
-        executionTimeMs: 14,
-      },
-    })
-  })
-
-  it('syncTableDataCacheAfterUpdate invokes sync_table_data_cache_after_update', async () => {
-    const result = await syncTableDataCacheAfterUpdate({
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      database: 'mydb',
-      table: 'users',
-      columns: DEFAULT_SYNC_COLUMNS,
-      rows: [[1, 'Updated']],
-      currentPage: 2,
-      pageSize: 50,
-      primaryKey: DEFAULT_SYNC_PRIMARY_KEY,
-      executionTimeMs: 22,
-    })
-
-    expect(result).toEqual({ status: 'synced' })
-    expect(ipc.calls('sync_table_data_cache_after_update')).toContainEqual({
-      payload: {
-        connectionId: 'conn-1',
-        tabId: 'tab-1',
-        database: 'mydb',
-        table: 'users',
-        columns: DEFAULT_SYNC_COLUMNS,
-        rows: [[1, 'Updated']],
-        currentPage: 2,
-        pageSize: 50,
-        primaryKey: DEFAULT_SYNC_PRIMARY_KEY,
-        executionTimeMs: 22,
-      },
-    })
-  })
-
-  it('syncTableDataCacheAfterDelete invokes sync_table_data_cache_after_delete', async () => {
-    const result = await syncTableDataCacheAfterDelete({
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      database: 'mydb',
-      table: 'users',
-      columns: DEFAULT_SYNC_COLUMNS,
-      rows: [[2]],
-      currentPage: 1,
-      pageSize: 1000,
-      primaryKey: DEFAULT_SYNC_PRIMARY_KEY,
-      executionTimeMs: 8,
-    })
-
-    expect(result).toEqual({ status: 'synced' })
-    expect(ipc.calls('sync_table_data_cache_after_delete')).toContainEqual({
-      payload: {
-        connectionId: 'conn-1',
-        tabId: 'tab-1',
-        database: 'mydb',
-        table: 'users',
-        columns: DEFAULT_SYNC_COLUMNS,
-        rows: [[2]],
-        currentPage: 1,
-        pageSize: 1000,
-        primaryKey: DEFAULT_SYNC_PRIMARY_KEY,
-        executionTimeMs: 8,
-      },
-    })
   })
 })
 

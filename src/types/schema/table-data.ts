@@ -44,16 +44,3 @@ export interface TablePageResult {
   rowCeiling: number
   firstWindow: ResultWindow
 }
-
-export type TableDataCacheRestoreStatus = 'available' | 'expired' | 'missing'
-
-export interface TableDataCacheRestoreResult {
-  status: TableDataCacheRestoreStatus
-  data: TableDataResponse | null
-}
-
-export type TableDataCacheSyncStatus = 'synced' | 'expired' | 'missing'
-
-export interface TableDataCacheSyncResult {
-  status: TableDataCacheSyncStatus
-}

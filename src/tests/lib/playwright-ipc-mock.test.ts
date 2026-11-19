@@ -94,22 +94,6 @@ describe('playwrightIpcMockHandler', () => {
     ).toEqual({ status: 'available' })
   })
 
-  it('returns available status for touch_table_data', () => {
-    expect(
-      playwrightIpcMockHandler('touch_table_data', {
-        payload: { connectionId: 'conn-1', tabId: 'tab-1' },
-      })
-    ).toEqual({ status: 'available' })
-  })
-
-  it('returns null for evict_table_data', () => {
-    expect(
-      playwrightIpcMockHandler('evict_table_data', {
-        payload: { connectionId: 'conn-1', tabId: 'tab-1' },
-      })
-    ).toBeNull()
-  })
-
   it('returns fetch_table_data results without removed total fields', () => {
     const result = playwrightIpcMockHandler('fetch_table_data', {
       payload: {

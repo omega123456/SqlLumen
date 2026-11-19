@@ -23,7 +23,6 @@ mod binary_projection_integration {
     use sqllumen_lib::mysql::table_data::{
         insert_table_row_impl, PrimaryKeyInfo, TableDataResponse,
     };
-    use sqllumen_lib::mysql::table_data_cache::TableDataCache;
     use sqllumen_lib::state::AppState;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
@@ -48,10 +47,6 @@ mod binary_projection_integration {
                     std::env::temp_dir().join("sqllumen-test-binary-projection-results"),
                 ),
             ),
-            table_data_cache: std::sync::Arc::new(TableDataCache::new_for_test(
-                1800,
-                std::env::temp_dir().join("sqllumen-test-binary-projection-table-data"),
-            )),
             metadata_cache: sqllumen_lib::mysql::metadata_cache::MetadataCache::new(),
             log_filter_reload: Mutex::new(None),
             running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),

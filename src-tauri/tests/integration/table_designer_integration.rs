@@ -1398,7 +1398,6 @@ mod command_wrapper_integration {
     use sqllumen_lib::commands::mysql::{open_connection_impl, OpenConnectionResult};
     use sqllumen_lib::commands::table_designer::load_table_for_designer_impl;
     use sqllumen_lib::mysql::registry::ConnectionRegistry;
-    use sqllumen_lib::mysql::table_data_cache::TableDataCache;
     use sqllumen_lib::state::AppState;
     use std::sync::{Arc, Mutex};
     use tauri::ipc::{CallbackFn, InvokeBody};
@@ -1422,10 +1421,6 @@ mod command_wrapper_integration {
                     std::env::temp_dir().join("sqllumen-test-tbldesign-results"),
                 ),
             ),
-            table_data_cache: std::sync::Arc::new(TableDataCache::new_for_test(
-                1800,
-                std::env::temp_dir().join("sqllumen-test-tbldesign-table-data"),
-            )),
             metadata_cache: sqllumen_lib::mysql::metadata_cache::MetadataCache::new(),
             log_filter_reload: Mutex::new(None),
             running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),

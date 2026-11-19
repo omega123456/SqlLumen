@@ -29,7 +29,6 @@ use sqllumen_lib::mysql::pool::{
 use sqllumen_lib::mysql::registry::{
     ConnectionRegistry, ConnectionStatus, RegistryEntry, StoredConnectionParams,
 };
-use sqllumen_lib::mysql::table_data_cache::TableDataCache;
 use sqllumen_lib::state::AppState;
 #[cfg(coverage)]
 use std::process::Command;
@@ -86,10 +85,6 @@ fn test_state() -> AppState {
                 std::env::temp_dir().join("sqllumen-test-creds-results"),
             ),
         ),
-        table_data_cache: std::sync::Arc::new(TableDataCache::new_for_test(
-            1800,
-            std::env::temp_dir().join("sqllumen-test-creds-table-data"),
-        )),
         metadata_cache: sqllumen_lib::mysql::metadata_cache::MetadataCache::new(),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
@@ -133,10 +128,6 @@ fn poisoned_state() -> AppState {
                 std::env::temp_dir().join("sqllumen-test-creds-results"),
             ),
         ),
-        table_data_cache: std::sync::Arc::new(TableDataCache::new_for_test(
-            1800,
-            std::env::temp_dir().join("sqllumen-test-creds-table-data"),
-        )),
         metadata_cache: sqllumen_lib::mysql::metadata_cache::MetadataCache::new(),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),

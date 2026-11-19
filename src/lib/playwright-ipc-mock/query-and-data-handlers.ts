@@ -117,24 +117,10 @@ export const QUERY_ARGUMENT_HANDLERS = {
   get_run_export_progress: returnNull,
 } satisfies Partial<ArgumentCommandHandlers>
 
-function syncMockTableDataCache({ table }: { table: string }): { status: string } {
-  void getTableDataFixture(table)
-  return { status: 'synced' }
-}
-
 export const TABLE_DATA_PAYLOAD_HANDLERS = {
   fetch_table_data: (payload) => getTableDataFixture(payload.table),
   fetch_table_page: (payload) => fetchTablePageFixture(payload),
-  touch_table_data: returnAvailableStatus,
-  evict_table_data: returnNull,
-  restore_table_data_cache: (payload) => ({
-    status: 'available',
-    data: getTableDataFixture(payload.table),
-  }),
   get_table_foreign_keys: (payload) => getForeignKeysFixture(payload.table),
-  sync_table_data_cache_after_insert: syncMockTableDataCache,
-  sync_table_data_cache_after_update: syncMockTableDataCache,
-  sync_table_data_cache_after_delete: syncMockTableDataCache,
   update_table_row: returnNull,
   insert_table_row: () => getStaticFixture('insertedRow'),
   delete_table_row: returnNull,

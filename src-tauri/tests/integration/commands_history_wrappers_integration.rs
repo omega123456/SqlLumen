@@ -7,7 +7,7 @@ use sqllumen_lib::commands::sql_dump::{
 };
 use sqllumen_lib::commands::table_data::{
     delete_table_row_with_history, export_table_data_with_history, fetch_blob_value_on_connection,
-    fetch_table_data_with_cache, insert_table_row_with_history, update_table_row_with_history,
+    fetch_table_rows, insert_table_row_with_history, update_table_row_with_history,
 };
 use sqllumen_lib::mysql::pool::SslSettings;
 use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
@@ -141,11 +141,11 @@ async fn row_writes_reject_read_only_and_missing_connections() {
 async fn fetch_table_data_validates_page_size_and_connection() {
     let state = common::test_app_state();
 
-    let zero_page = fetch_table_data_with_cache(&state, request(fetch_page_request(SESSION_ID, 0)));
+    let zero_page = fetch_table_rows(&state, request(fetch_page_request(SESSION_ID, 0)));
     assert_eq!(zero_page.await.unwrap_err(), "page_size must be at least 1");
 
     let missing =
-        fetch_table_data_with_cache(&state, request(fetch_page_request(MISSING_SESSION_ID, 50)));
+        fetch_table_rows(&state, request(fetch_page_request(MISSING_SESSION_ID, 50)));
     assert_eq!(missing.await.unwrap_err(), "Connection 'missing' not found");
 }
 

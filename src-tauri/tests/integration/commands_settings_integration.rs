@@ -4,7 +4,6 @@ use crate::common;
 
 use sqllumen_lib::commands::settings::{get_all_settings_impl, get_setting_impl, set_setting_impl};
 use sqllumen_lib::mysql::registry::ConnectionRegistry;
-use sqllumen_lib::mysql::table_data_cache::TableDataCache;
 use sqllumen_lib::state::AppState;
 use std::sync::{Arc, Mutex};
 
@@ -160,10 +159,6 @@ fn test_set_setting_impl_ignores_poisoned_log_reload_mutex() {
                 std::env::temp_dir().join("sqllumen-test-settings-results"),
             ),
         ),
-        table_data_cache: std::sync::Arc::new(TableDataCache::new_for_test(
-            1800,
-            std::env::temp_dir().join("sqllumen-test-settings-table-data"),
-        )),
         metadata_cache: sqllumen_lib::mysql::metadata_cache::MetadataCache::new(),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
@@ -209,7 +204,6 @@ fn test_set_setting_impl_updates_result_cache_ttl() {
     let state = common::test_app_state();
 
     assert_eq!(state.result_cache.ttl_seconds(), 1800);
-    assert_eq!(state.table_data_cache.ttl_seconds(), 1800);
 
     set_setting_impl(
         &state,
@@ -221,7 +215,6 @@ fn test_set_setting_impl_updates_result_cache_ttl() {
     .expect("should set ttl");
 
     assert_eq!(state.result_cache.ttl_seconds(), 900);
-    assert_eq!(state.table_data_cache.ttl_seconds(), 900);
     let persisted = get_setting_impl(&state, "results.cacheTTL").expect("should get ttl");
     assert_eq!(persisted, Some("900".to_string()));
 }
@@ -231,7 +224,6 @@ fn test_set_setting_impl_ignores_unparseable_result_cache_ttl() {
     let state = common::test_app_state();
 
     assert_eq!(state.result_cache.ttl_seconds(), 1800);
-    assert_eq!(state.table_data_cache.ttl_seconds(), 1800);
 
     set_setting_impl(
         &state,
@@ -243,7 +235,6 @@ fn test_set_setting_impl_ignores_unparseable_result_cache_ttl() {
     .expect("should persist invalid ttl string");
 
     assert_eq!(state.result_cache.ttl_seconds(), 1800);
-    assert_eq!(state.table_data_cache.ttl_seconds(), 1800);
     let persisted = get_setting_impl(&state, "results.cacheTTL").expect("should get ttl");
     assert_eq!(persisted, Some("not-a-number".to_string()));
 }

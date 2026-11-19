@@ -9,7 +9,6 @@ use crate::logging::LogFilterReloadHandle;
 use crate::mysql::metadata_cache::MetadataCache;
 use crate::mysql::registry::ConnectionRegistry;
 use crate::mysql::result_cache::ResultCache;
-use crate::mysql::table_data_cache::TableDataCache;
 use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -222,7 +221,6 @@ pub struct AppState {
     pub registry: ConnectionRegistry,
     pub app_handle: Option<AppHandle>,
     pub result_cache: Arc<ResultCache>,
-    pub table_data_cache: Arc<TableDataCache>,
     pub metadata_cache: MetadataCache,
     pub log_filter_reload: Mutex<Option<LogFilterReloadHandle>>,
     pub running_queries: TokioRwLock<HashMap<(String, String), u64>>,

@@ -42,32 +42,6 @@ pub(super) fn fetch_history_sql(query: &table_data::TableDataPageQuery) -> Strin
     })
 }
 
-pub(super) struct FetchedPageCacheWrite<'a> {
-    pub(super) connection_id: &'a str,
-    pub(super) tab_id: &'a str,
-    pub(super) expected_invalidation_version: u64,
-}
-
-pub(super) fn cache_fetched_page(
-    state: &AppState,
-    target: &FetchedPageCacheWrite<'_>,
-    response: &table_data::TableDataResponse,
-) {
-    let write = VersionedValue {
-        expected_invalidation_version: target.expected_invalidation_version,
-        value: response.clone(),
-    };
-    let key = CacheKey::new(target.connection_id, target.tab_id);
-    let inserted = state.table_data_cache.insert_if_current(key, write);
-    if !inserted {
-        tracing::debug!(
-            connection_id = %target.connection_id,
-            tab_id = %target.tab_id,
-            "skipped table-data cache insert after explicit cleanup"
-        );
-    }
-}
-
 pub(super) fn log_fetch_history(
     state: &AppState,
     statement: HistoryStatement<'_>,
@@ -106,7 +80,7 @@ pub(super) fn page_query_from(
     }
 }
 
-pub async fn fetch_table_data_with_cache(
+pub async fn fetch_table_rows(
     state: &AppState,
     request: table_data::FetchTableDataRequest,
 ) -> Result<table_data::TableDataResponse, String> {
@@ -116,23 +90,12 @@ pub async fn fetch_table_data_with_cache(
     let connection_id = request.connection_id.clone();
     let pool = connection_pool(state, &connection_id)?;
     let query = page_query_from(request);
-    let cache_target = FetchedPageCacheWrite {
-        connection_id: &connection_id,
-        tab_id: &query.tab_id,
-        expected_invalidation_version: state
-            .table_data_cache
-            .current_invalidation_version(&connection_id, &query.tab_id),
-    };
     let context = table_data::TableDataContext {
         pool: &pool,
         connection_id: &connection_id,
         metadata_cache: &state.metadata_cache,
     };
     let result = table_data::fetch_table_data_impl(&context, &state.running_queries, &query).await;
-
-    if let Ok(response) = &result {
-        cache_fetched_page(state, &cache_target, response);
-    }
     let statement = HistoryStatement {
         session_id: &connection_id,
         sql_text: fetch_history_sql(&query),
@@ -223,23 +186,5 @@ pub async fn fetch_table_data(
     state: tauri::State<'_, AppState>,
     payload: table_data::FetchTableDataRequest,
 ) -> Result<table_data::TableDataResponse, String> {
-    fetch_table_data_with_cache(&state, payload).await
-}
-
-#[cfg(not(coverage))]
-#[tauri::command]
-pub async fn touch_table_data(
-    payload: ConnectionTabRequest,
-    app: tauri::AppHandle,
-) -> Result<serde_json::Value, String> {
-    run_blocking_with_state(app, move |state| {
-        touch_table_data_impl(state, &payload.connection_id, &payload.tab_id)
-    })
-    .await
-}
-
-#[cfg(not(coverage))]
-#[tauri::command]
-pub fn evict_table_data(payload: ConnectionTabRequest, state: tauri::State<'_, AppState>) {
-    evict_table_data_impl(&state, &payload.connection_id, &payload.tab_id);
+    fetch_table_rows(&state, payload).await
 }

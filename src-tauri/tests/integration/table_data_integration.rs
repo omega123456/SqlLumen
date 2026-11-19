@@ -107,7 +107,6 @@ mod type_aware_filter_integration {
     use sqllumen_lib::commands::table_data as table_data_commands;
     use sqllumen_lib::mysql::pool::set_test_pool_factory;
     use sqllumen_lib::mysql::registry::ConnectionRegistry;
-    use sqllumen_lib::mysql::table_data_cache::TableDataCache;
     use sqllumen_lib::state::AppState;
     use std::sync::{Arc, Mutex};
     use tauri::ipc::{CallbackFn, InvokeBody};
@@ -131,10 +130,6 @@ mod type_aware_filter_integration {
                     std::env::temp_dir().join("sqllumen-test-tbldata-results"),
                 ),
             ),
-            table_data_cache: std::sync::Arc::new(TableDataCache::new_for_test(
-                1800,
-                std::env::temp_dir().join("sqllumen-test-tbldata-table-data"),
-            )),
             metadata_cache: sqllumen_lib::mysql::metadata_cache::MetadataCache::new(),
             log_filter_reload: Mutex::new(None),
             running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
@@ -1172,10 +1167,7 @@ mod command_wrapper_coverage {
             .manage(state)
             .invoke_handler(tauri::generate_handler![
                 fetch_table_data,
-                restore_table_data_cache,
-                sync_table_data_cache_after_insert,
-                sync_table_data_cache_after_update,
-                sync_table_data_cache_after_delete,
+                fetch_table_page,
                 update_table_row,
                 insert_table_row,
                 delete_table_row,
@@ -1228,35 +1220,11 @@ mod command_wrapper_coverage {
     }
 
     #[tauri::command]
-    async fn restore_table_data_cache(
-        app: tauri::AppHandle<tauri::test::MockRuntime>,
-        payload: sqllumen_lib::mysql::table_data::RestoreTableDataCacheRequest,
-    ) -> Result<sqllumen_lib::mysql::table_data::TableDataCacheRestoreResponse, String> {
-        table_data_commands::restore_table_data_cache(app, payload).await
-    }
-
-    #[tauri::command]
-    async fn sync_table_data_cache_after_insert(
-        app: tauri::AppHandle<tauri::test::MockRuntime>,
-        payload: sqllumen_lib::mysql::table_data::SyncTableDataCacheRequest,
-    ) -> Result<sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse, String> {
-        table_data_commands::sync_table_data_cache_after_insert(app, payload).await
-    }
-
-    #[tauri::command]
-    async fn sync_table_data_cache_after_update(
-        app: tauri::AppHandle<tauri::test::MockRuntime>,
-        payload: sqllumen_lib::mysql::table_data::SyncTableDataCacheRequest,
-    ) -> Result<sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse, String> {
-        table_data_commands::sync_table_data_cache_after_update(app, payload).await
-    }
-
-    #[tauri::command]
-    async fn sync_table_data_cache_after_delete(
-        app: tauri::AppHandle<tauri::test::MockRuntime>,
-        payload: sqllumen_lib::mysql::table_data::SyncTableDataCacheRequest,
-    ) -> Result<sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse, String> {
-        table_data_commands::sync_table_data_cache_after_delete(app, payload).await
+    async fn fetch_table_page(
+        state: tauri::State<'_, AppState>,
+        payload: sqllumen_lib::mysql::table_data::FetchTableDataRequest,
+    ) -> Result<sqllumen_lib::mysql::table_data::TablePageResult, String> {
+        table_data_commands::fetch_table_page(state, payload).await
     }
 
     #[tauri::command]
@@ -1522,10 +1490,10 @@ mod command_wrapper_coverage {
                     is_generated: false,
                 },
             ],
-            rows: std::sync::Arc::new(vec![vec![
+            rows: std::sync::Arc::new(vec![std::sync::Arc::from(vec![
                 serde_json::json!(id),
                 serde_json::json!("Alice"),
-            ]]),
+            ])]),
             current_page: 1,
             page_size: 50,
             primary_key: Some(PrimaryKeyInfo {
@@ -1537,213 +1505,48 @@ mod command_wrapper_coverage {
         }
     }
 
-    #[tokio::test]
-    async fn table_data_cache_wrappers_restore_and_sync_expected_statuses() {
-        let state = common::test_app_state();
-        let cached = sample_cached_response(1);
-        state.table_data_cache.insert(
-            sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "tab-1"),
-            cached.clone(),
-        );
-        let webview = build_app(state);
-
-        let restored =
-            invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheRestoreResponse>(
-                &webview,
-                "restore_table_data_cache",
-                json!({ "payload": {
-                    "connectionId": "conn-1",
-                    "tabId": "tab-1",
-                    "database": "test_db",
-                    "table": "users"
-                } }),
-            )
-            .expect("restore should return cached entry");
-        assert_eq!(
-            restored.status,
-            sqllumen_lib::mysql::cache_status::CacheStatus::Available
-        );
-        assert_eq!(restored.data, Some(cached.clone()));
-
-        let synced_insert =
-            invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse>(
-                &webview,
-                "sync_table_data_cache_after_insert",
-                json!({
-                    "payload": {
-                        "connectionId": "conn-1",
-                        "tabId": "tab-1",
-                        "database": "test_db",
-                        "table": "users",
-                        "columns": cached.columns.clone(),
-                        "rows": [
-                            [1, "Alice"],
-                            [2, "Bob"]
-                        ],
-                        "currentPage": 1,
-                        "pageSize": 50,
-                        "primaryKey": cached.primary_key.clone(),
-                        "executionTimeMs": 15
-                    }
-                }),
-            )
-            .expect("insert sync should succeed");
-        assert_eq!(
-            synced_insert.status,
-            sqllumen_lib::mysql::cache_status::CacheStatus::Synced
-        );
-
-        let synced_update =
-            invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse>(
-                &webview,
-                "sync_table_data_cache_after_update",
-                json!({
-                    "payload": {
-                        "connectionId": "conn-1",
-                        "tabId": "tab-1",
-                        "database": "test_db",
-                        "table": "users",
-                        "columns": cached.columns.clone(),
-                        "rows": [
-                            [1, "Alicia"],
-                            [2, "Bob"]
-                        ],
-                        "currentPage": 1,
-                        "pageSize": 50,
-                        "primaryKey": cached.primary_key.clone(),
-                        "executionTimeMs": 18
-                    }
-                }),
-            )
-            .expect("update sync should succeed");
-        assert_eq!(
-            synced_update.status,
-            sqllumen_lib::mysql::cache_status::CacheStatus::Synced
-        );
-
-        let after_update =
-            invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheRestoreResponse>(
-                &webview,
-                "restore_table_data_cache",
-                json!({ "payload": {
-                    "connectionId": "conn-1",
-                    "tabId": "tab-1",
-                    "database": "test_db",
-                    "table": "users"
-                } }),
-            )
-            .expect("restore after update should succeed");
-        let after_update_data = after_update.data.expect("updated cache should exist");
-        assert_eq!(
-            *after_update_data.rows,
-            vec![
-                vec![serde_json::json!(1), serde_json::json!("Alicia")],
-                vec![serde_json::json!(2), serde_json::json!("Bob")]
-            ]
-        );
-
-        let synced_delete =
-            invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse>(
-                &webview,
-                "sync_table_data_cache_after_delete",
-                json!({
-                    "payload": {
-                        "connectionId": "conn-1",
-                        "tabId": "tab-1",
-                        "database": "test_db",
-                        "table": "users",
-                        "columns": after_update_data.columns.clone(),
-                        "rows": [
-                            [2, "Bob"]
-                        ],
-                        "currentPage": 1,
-                        "pageSize": 50,
-                        "primaryKey": after_update_data.primary_key.clone(),
-                        "executionTimeMs": 20
-                    }
-                }),
-            )
-            .expect("delete sync should succeed");
-        assert_eq!(
-            synced_delete.status,
-            sqllumen_lib::mysql::cache_status::CacheStatus::Synced
-        );
-
-        let final_restore =
-            invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheRestoreResponse>(
-                &webview,
-                "restore_table_data_cache",
-                json!({ "payload": {
-                    "connectionId": "conn-1",
-                    "tabId": "tab-1",
-                    "database": "test_db",
-                    "table": "users"
-                } }),
-            )
-            .expect("restore after delete should succeed");
-        let final_data = final_restore
-            .data
-            .expect("deleted cache should still exist");
-        assert_eq!(
-            final_restore.status,
-            sqllumen_lib::mysql::cache_status::CacheStatus::Available
-        );
-        assert_eq!(
-            *final_data.rows,
-            vec![vec![serde_json::json!(2), serde_json::json!("Bob")]]
-        );
-
-        let missing_sync =
-            invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse>(
-                &webview,
-                "sync_table_data_cache_after_insert",
-                json!({
-                    "payload": {
-                        "connectionId": "conn-1",
-                        "tabId": "missing-tab",
-                        "database": "test_db",
-                        "table": "users",
-                        "columns": final_data.columns.clone(),
-                        "rows": [
-                            [3, "Cara"]
-                        ],
-                        "currentPage": 1,
-                        "pageSize": 50,
-                        "primaryKey": final_data.primary_key.clone(),
-                        "executionTimeMs": 22
-                    }
-                }),
-            )
-            .expect("missing sync should return status");
-        assert_eq!(
-            missing_sync.status,
-            sqllumen_lib::mysql::cache_status::CacheStatus::Missing
-        );
-
-        let missing_restore =
-            invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheRestoreResponse>(
-                &webview,
-                "restore_table_data_cache",
-                json!({ "payload": {
-                    "connectionId": "conn-1",
-                    "tabId": "missing-tab",
-                    "database": "test_db",
-                    "table": "users"
-                } }),
-            )
-            .expect("missing restore should return status");
-        assert_eq!(
-            missing_restore.status,
-            sqllumen_lib::mysql::cache_status::CacheStatus::Missing
-        );
-        assert_eq!(missing_restore.data, None);
-    }
-
-    // ── History logging verification tests ──────────────────────────────────
-
-    /// Helper: wait for fire-and-forget history logging spawned tasks to complete.
     async fn wait_for_history_logging() {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    async fn fetch_table_page_stores_the_page_as_a_table_page_slot() {
+        let state = common::test_app_state();
+        let result_cache = std::sync::Arc::clone(&state.result_cache);
+        register_connection(&state, "page-conn", false);
+        let webview = build_app(state);
+
+        let page = invoke_tauri_command::<serde_json::Value>(
+            &webview,
+            "fetch_table_page",
+            json!({
+                "payload": {
+                    "connectionId": "page-conn",
+                    "tabId": "table-data-tab-1",
+                    "database": "test_db",
+                    "table": "users",
+                    "page": 2,
+                    "pageSize": 50,
+                    "sortColumn": null,
+                    "sortDirection": null,
+                    "filterModel": null
+                }
+            }),
+        )
+        .expect("fetch_table_page should succeed");
+
+        assert_eq!(page["currentPage"], 2);
+        assert_eq!(page["pageSize"], 50);
+        assert_eq!(page["viewVersion"], 1);
+        let entry = result_cache
+            .get("page-conn", "table-data-tab-1")
+            .into_entry()
+            .expect("the table page should be stored as a result slot");
+        assert_eq!(page["queryId"], entry.value[0].query_id.as_str());
+        assert_eq!(
+            entry.value[0].origin,
+            sqllumen_lib::mysql::query_executor::StoredResultOrigin::TablePage
+        );
     }
 
     #[tokio::test]

@@ -64,10 +64,7 @@ fn apply_log_level_setting(state: &AppState, value: &str) {
 
 fn apply_cache_ttl_setting(state: &AppState, value: &str) {
     match value.parse::<u64>() {
-        Ok(secs) => {
-            state.result_cache.set_ttl(secs);
-            state.table_data_cache.set_ttl(secs);
-        }
+        Ok(secs) => state.result_cache.set_ttl(secs),
         Err(error) => {
             tracing::warn!(
                 key = CACHE_TTL_KEY,
