@@ -77,7 +77,7 @@ beforeEach(() => {
     ) as unknown as React.ReactElement
   })
 
-  vi.spyOn(ResultGridViewModule, 'ResultGridView').mockImplementation((props) => {
+  vi.spyOn(ResultGridViewModule.ResultGridView, 'type').mockImplementation((props) => {
     capturedGridProps = props as unknown as Record<string, unknown>
     return (<div data-testid="result-grid-view" />) as unknown as React.ReactElement
   })
@@ -446,7 +446,7 @@ describe('filter button and dialog', () => {
     ipc.override('export_table_data', () => undefined)
     ipc.override('export_results', () => ({ bytesWritten: 1024, rowsExported: 5 }))
 
-    vi.spyOn(ResultGridViewModule, 'ResultGridView').mockImplementation(
+    vi.spyOn(ResultGridViewModule.ResultGridView, 'type').mockImplementation(
       () => (<div data-testid="grid-view">Grid Mock</div>) as unknown as React.ReactElement
     )
     vi.spyOn(FkLookupDialogModule, 'FkLookupDialog').mockImplementation(

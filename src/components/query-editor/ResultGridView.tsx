@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { EditorCallbacksContext } from '../shared/editor-callbacks-context'
 import { FkLookupProvider } from '../shared/fk-lookup-context'
 import { BlobViewerTargetDialog } from '../shared/data-view/BlobViewerTargetDialog'
@@ -6,7 +7,7 @@ import { CanvasBaseGridView } from '../shared/glide/CanvasBaseGridView'
 import type { ResultGridViewProps } from './result-grid-view/result-grid-model'
 import { useResultGridViewModel } from './result-grid-view/use-result-grid-view-model'
 
-export function ResultGridView(props: ResultGridViewProps) {
+export const ResultGridView = memo(function ResultGridView(props: ResultGridViewProps) {
   const { gridRef, gridProps, editorCallbacksContext, foreignKeyLookup, blobViewer } =
     useResultGridViewModel(props)
   return (
@@ -21,4 +22,4 @@ export function ResultGridView(props: ResultGridViewProps) {
       </FkLookupProvider>
     </EditorCallbacksContext.Provider>
   )
-}
+})

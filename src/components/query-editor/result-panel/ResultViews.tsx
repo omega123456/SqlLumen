@@ -4,6 +4,7 @@ import type { DataViewLocation } from '../../../types/shared-data-view'
 import { ResultGridView } from '../ResultGridView'
 import { ResultFormView } from '../ResultFormView'
 import { ResultTextView } from '../ResultTextView'
+import { DataViewModeSwitch } from '../../shared/data-view/DataViewModeSwitch'
 import type { ResultViewHandlers } from './use-result-view-handlers'
 
 export interface ResultViewsProps {
@@ -25,10 +26,8 @@ function GridResultView({
   handlers,
   isActive,
 }: ResultViewsProps) {
-  const remountPerResultKey = activeResultIndex
   return (
     <ResultGridView
-      key={remountPerResultKey}
       columns={result.columns}
       resultIndex={activeResultIndex}
       queryId={result.queryId}
@@ -116,13 +115,15 @@ function TextResultView({ tabId, activeResultIndex, result }: ResultViewsProps) 
   )
 }
 
-const RESULT_VIEWS_BY_MODE: Record<SingleResultState['viewMode'], typeof GridResultView> = {
-  grid: GridResultView,
-  form: FormResultView,
-  text: TextResultView,
-}
-
 export function ResultViews(props: ResultViewsProps) {
-  const ViewForMode = RESULT_VIEWS_BY_MODE[props.result.viewMode]
-  return <ViewForMode {...props} />
+  const remountPerResultKey = props.activeResultIndex
+  return (
+    <DataViewModeSwitch
+      key={remountPerResultKey}
+      mode={props.result.viewMode}
+      grid={<GridResultView {...props} />}
+      form={<FormResultView {...props} />}
+      text={<TextResultView {...props} />}
+    />
+  )
 }

@@ -7,7 +7,7 @@ import {
   resolveDisplayStatus,
   shouldShowExpiredState,
 } from './result-panel/result-panel-model'
-import { buildResultBodyProps } from './result-panel/result-body-props'
+import { buildResultBodyProps, useResultEditLocation } from './result-panel/result-body-props'
 import {
   useResultPanelControllers,
   useRetryExpiredResult,
@@ -33,6 +33,7 @@ export function ResultPanel({
   const controllers = useResultPanelControllers(tabId, isActive)
   const handleRetryExpired = useRetryExpiredResult(tabId)
   const { activeResult } = controllers
+  const editLocation = useResultEditLocation(connectionId, activeResult)
 
   const displayStatus = resolveDisplayStatus({
     tabStatus: tabStatus,
@@ -48,6 +49,7 @@ export function ResultPanel({
         isActive: isActive,
         hideSubTabs: hideSubTabs,
       },
+      editLocation: editLocation,
       controllers: controllers,
       displayStatus: displayStatus,
       isTabRunning: tabStatus === 'running',

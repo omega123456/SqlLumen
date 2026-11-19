@@ -128,6 +128,7 @@ function buildResultGridProps(parts: ResultGridParts): CanvasGridProps {
     onColumnResize: storeState.handleColumnResize,
     initialScrollCell: storeState.initialScrollCell,
     rowMarkers: 'checkbox',
+    initialCheckedRanges: storeState.initialCheckedRanges,
     onRowMarkerRangesChange: storeState.handleRowMarkerRangesChange,
     resetSelectionKey: storeState.resetSelectionKey,
     testId: 'result-grid',

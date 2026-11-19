@@ -3245,6 +3245,21 @@ describe('windowed rendering and actions over unloaded rows', () => {
       expect(onRowMarkerRangesChange).toHaveBeenLastCalledWith([[0, 100000]])
       expect(source.readRange).not.toHaveBeenCalled()
     })
+
+    it('starts from its initial checked ranges and reports when they are cleared', async () => {
+      const onRowMarkerRangesChange = vi.fn()
+      const source = fakeSource(100, new Set([0, 1, 2]))
+      renderWindowed(source, {
+        rowMarkers: 'checkbox',
+        onRowMarkerRangesChange,
+        initialCheckedRanges: [[0, 2]],
+      })
+      const seeded = (gridProps() as unknown as { selection: GridSelection }).selection
+      expect([...seeded.rows]).toEqual([0, 1])
+
+      await setSelection(selection(CompactSelection.empty()))
+      expect(onRowMarkerRangesChange).toHaveBeenLastCalledWith([])
+    })
   })
 
   describe('CanvasBaseGridView — actions over unloaded rows', () => {

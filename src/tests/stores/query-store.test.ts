@@ -2814,9 +2814,19 @@ describe('multi-result actions', () => {
 
     it('switches the active result index and ignores out-of-bounds, negative and unknown tabs', () => {
       setupMultiResult()
+      const tabBefore = useQueryStore.getState().tabs['tab-1']!
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': {
+            ...tabBefore,
+            results: tabBefore.results.map((result) => ({ ...result, checkedRanges: [[0, 1]] })),
+          },
+        },
+      })
 
       useQueryStore.getState().setActiveResultIndex('tab-1', 1)
       expect(useQueryStore.getState().tabs['tab-1']!.activeResultIndex).toBe(1)
+      expect(useQueryStore.getState().tabs['tab-1']!.results[1].checkedRanges).toEqual([])
 
       useQueryStore.getState().setActiveResultIndex('tab-1', 5)
       useQueryStore.getState().setActiveResultIndex('tab-1', -1)

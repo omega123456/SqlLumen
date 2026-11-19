@@ -5,7 +5,12 @@ import type { GridRow } from './canvas-grid-types'
 import { isListSelectionColumn } from './grid-columns'
 import { haveSameRowIndexes, selectionRowRanges, withoutUnloadedRowCheck } from './grid-row-ranges'
 import { currentSelectionCell, toCellPosition } from './grid-selection-helpers'
-import type { GridSelectionModel, GridSelectionRefs, GridViewModel } from './grid-view-model'
+import {
+  markedRangesKeyOf,
+  type GridSelectionModel,
+  type GridSelectionRefs,
+  type GridViewModel,
+} from './grid-view-model'
 
 interface RowMarkersInput {
   model: GridViewModel
@@ -32,7 +37,7 @@ function useReportRowMarkerRanges(model: GridViewModel) {
   return useCallback(
     (rows: CompactSelection) => {
       const ranges = selectionRowRanges(rows)
-      const key = JSON.stringify(ranges)
+      const key = markedRangesKeyOf(ranges)
       if (key === previousMarkedRangesKeyRef.current) return
       previousMarkedRangesKeyRef.current = key
       onRowMarkerRangesChange?.(ranges)

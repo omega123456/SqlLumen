@@ -39,6 +39,7 @@ export interface CanvasBaseGridViewProps extends BaseGridViewProps {
   onRowDoubleClicked?: (row: GridRow) => void
   resetSelectionKey?: number
   rowSource?: GridRowSource<GridRow>
+  initialCheckedRanges?: readonly RowRange[]
   onRowMarkerRangesChange?: (ranges: RowRange[]) => void
   rowActions?: GridRowActions
 }

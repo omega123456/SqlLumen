@@ -12,7 +12,7 @@ import type {
 } from '../../types/schema'
 import { InfoBar } from '../common/InfoBar'
 import { Button } from '../common/Button'
-import { RetainedView } from '../shared/RetainedView'
+import { DataViewModeSwitch } from '../shared/data-view/DataViewModeSwitch'
 import { FOCUS_RING } from '../../lib/focus-ring'
 import { joinClassNames } from '../../lib/class-names'
 import { useTableDataTabLifecycle } from './table-data-tab/use-table-data-tab-lifecycle'
@@ -178,16 +178,17 @@ function TableDataContent({
       aria-busy={view.isRestoring}
       data-testid="table-data-content"
     >
-      <RetainedView isVisible={view.viewMode === 'grid'}>
-        <TableDataGrid
-          tabId={tabId}
-          isReadOnly={isReadOnly || !view.primaryKey}
-          isActive={isActive}
-        />
-      </RetainedView>
-      {view.viewMode === 'form' && (
-        <TableDataFormView tabId={tabId} isView={isViewObject} isActive={isActive} />
-      )}
+      <DataViewModeSwitch
+        mode={view.viewMode}
+        grid={
+          <TableDataGrid
+            tabId={tabId}
+            isReadOnly={isReadOnly || !view.primaryKey}
+            isActive={isActive}
+          />
+        }
+        form={<TableDataFormView tabId={tabId} isView={isViewObject} isActive={isActive} />}
+      />
       {view.isLoading && <BusyOverlay label="Loading…" testId="table-data-sort-overlay" />}
       {view.isRestoring && (
         <BusyOverlay label="Restoring cached table data..." testId="table-data-restore-overlay" />

@@ -120,6 +120,7 @@ function switchActiveResult(tabId: string, previousIndex: number, nextIndex: num
     getQueryState().markResultSurfaceInactive(tabId, previousIndex)
   }
   patchTab(tabId, { activeResultIndex: nextIndex })
+  patchResultByIndex(tabId, nextIndex, { checkedRanges: [] })
   if (isResultSurfaceVisible) {
     void getQueryState().markResultSurfaceActive(tabId, nextIndex)
   }

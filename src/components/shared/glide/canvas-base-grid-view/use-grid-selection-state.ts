@@ -1,7 +1,7 @@
-import { useCallback, useLayoutEffect, useMemo, useState, type RefObject } from 'react'
-import type { GridSelection } from '@glideapps/glide-data-grid'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { CompactSelection, type GridSelection } from '@glideapps/glide-data-grid'
 import type { GridCellPosition, GridHandle } from '../glide-grid-types'
-import type { GridRowSource } from '../grid-row-source'
+import type { GridRowSource, RowRange } from '../grid-row-source'
 import type { CanvasBaseGridViewProps, GridRow } from './canvas-grid-types'
 import { withoutCheckedRows } from './grid-row-ranges'
 import { selectionWithFocusedCell } from './grid-selection-helpers'
@@ -31,10 +31,25 @@ function useResetCheckedRowsOnKeyChange(input: ResetCheckedRowsInput): void {
     setLastResetSelectionKey(resetSelectionKey)
     setGridSelection(withoutCheckedRows)
   }
+  const appliedResetSelectionKeyRef = useRef(resetSelectionKey)
   useLayoutEffect(() => {
     if (resetSelectionKey == null) return
+    if (appliedResetSelectionKeyRef.current === resetSelectionKey) return
+    appliedResetSelectionKeyRef.current = resetSelectionKey
     previousMarkedRangesKeyRef.current = NO_MARKED_RANGES_KEY
   }, [previousMarkedRangesKeyRef, resetSelectionKey])
+}
+
+function selectionWithCheckedRanges(
+  checkedRanges: readonly RowRange[] | undefined
+): GridSelection | undefined {
+  const hasCheckedRanges = checkedRanges !== undefined && checkedRanges.length > 0
+  if (!hasCheckedRanges) return undefined
+  const rows = checkedRanges.reduce(
+    (selection, range) => selection.add([range[0], range[1]]),
+    CompactSelection.empty()
+  )
+  return { columns: CompactSelection.empty(), rows: rows, current: undefined }
 }
 
 function useActiveGridSelection(
@@ -52,7 +67,9 @@ export function useGridSelectionState(input: GridSelectionStateInput): GridSelec
   const { selectedRowIndex, selectedCellPosition, onRowChanging, onSelectedCellChange } = props
   const { onSelectedRowChange } = props
   const [internalSelectedRowIndex, setInternalSelectedRowIndex] = useState<number | null>(null)
-  const [gridSelection, setGridSelection] = useState<GridSelection | undefined>(undefined)
+  const [gridSelection, setGridSelection] = useState<GridSelection | undefined>(() =>
+    selectionWithCheckedRanges(props.initialCheckedRanges)
+  )
   const activeSelectedRowIndex = selectedRowIndex ?? internalSelectedRowIndex
   const activeGridSelection = useActiveGridSelection(gridSelection, selectedCellPosition)
   useResetCheckedRowsOnKeyChange({

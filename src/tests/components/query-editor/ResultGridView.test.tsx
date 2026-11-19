@@ -217,7 +217,7 @@ describe('ResultGridView', () => {
     ])
   })
 
-  it('clears stale checked rows from the active result on mount', () => {
+  it('seeds the grid with the active result checked rows and keeps them in the store', () => {
     act(() => {
       useQueryStore.setState({
         tabs: {
@@ -229,7 +229,10 @@ describe('ResultGridView', () => {
       } as unknown as Parameters<typeof useQueryStore.setState>[0])
     })
     render(<ResultGridView {...baseProps} />)
-    expect(useQueryStore.getState().tabs['tab-1'].results[0].checkedRanges).toEqual([])
+    expect(useQueryStore.getState().tabs['tab-1'].results[0].checkedRanges).toEqual([[0, 2]])
+    expect(mockCanvasBaseGridView.mock.lastCall?.[0]).toMatchObject({
+      initialCheckedRanges: [[0, 2]],
+    })
   })
 
   it('bumps resetSelectionKey when the store checked set clears after a delete', () => {

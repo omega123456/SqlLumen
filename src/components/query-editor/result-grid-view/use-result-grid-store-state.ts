@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { countRanges, useQueryStore, type QueryState } from '../../../stores/query-store'
 import type { RowRange } from '../../shared/glide/grid-row-source'
 import { useSelectionResetKey } from '../../shared/use-selection-reset-key'
@@ -27,6 +27,7 @@ function useScrollCell(tabId: string) {
 }
 
 const NO_COLUMN_WIDTHS: Record<string, number> = {}
+const NO_CHECKED_RANGES: RowRange[] = []
 
 function useColumnWidths(tabId: string) {
   const storeSetResultColumnWidth = useQueryStore((state) => state.setResultColumnWidth)
@@ -42,9 +43,10 @@ function useColumnWidths(tabId: string) {
 
 function useCheckedRows(tabId: string, viewRowCount: number) {
   const storeSetCheckedRanges = useQueryStore((state) => state.setCheckedRanges)
-  const checkedRowCount = useQueryStore((state) =>
-    countRanges(activeResultOf(state, tabId)?.checkedRanges ?? [])
+  const checkedRanges = useQueryStore(
+    (state) => activeResultOf(state, tabId)?.checkedRanges ?? NO_CHECKED_RANGES
   )
+  const checkedRowCount = countRanges(checkedRanges)
 
   const handleRowMarkerRangesChange = useCallback(
     (ranges: RowRange[]) => {
@@ -56,11 +58,8 @@ function useCheckedRows(tabId: string, viewRowCount: number) {
     [storeSetCheckedRanges, tabId, viewRowCount]
   )
 
-  useEffect(() => {
-    storeSetCheckedRanges(tabId, [])
-  }, [storeSetCheckedRanges, tabId])
-
   return {
+    initialCheckedRanges: checkedRanges,
     handleRowMarkerRangesChange: handleRowMarkerRangesChange,
     resetSelectionKey: useSelectionResetKey(checkedRowCount),
   }

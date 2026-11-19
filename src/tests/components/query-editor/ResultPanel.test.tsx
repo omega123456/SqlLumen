@@ -33,7 +33,7 @@ describe('ResultPanel', () => {
       ({ tabId }: { tabId: string }) =>
         (<div data-testid="result-toolbar">{tabId}</div>) as unknown as React.ReactElement
     )
-    vi.spyOn(ResultGridViewModule, 'ResultGridView').mockImplementation(
+    vi.spyOn(ResultGridViewModule.ResultGridView, 'type').mockImplementation(
       ({ viewRowCount }: { viewRowCount: number }) =>
         (
           <div data-testid="grid-view">Grid rows: {viewRowCount}</div>
@@ -95,6 +95,22 @@ describe('ResultPanel', () => {
     act(() => useQueryStore.getState().setViewMode('tab1', 'text'))
     await user.click(document.body)
     expect(await screen.findByTestId('text-view')).toHaveTextContent('Text rows: 2')
+  })
+
+  it('keeps the grid instance and checked rows across a grid to form to grid switch', async () => {
+    render(<ResultPanel tabId="tab1" connectionId="c1" />)
+    const gridBeforeSwitch = screen.getByTestId('grid-view')
+    act(() => useQueryStore.getState().setCheckedRanges('tab1', [[0, 2]]))
+
+    act(() => useQueryStore.getState().setViewMode('tab1', 'form'))
+    expect(await screen.findByTestId('form-view')).toBeVisible()
+    expect(gridBeforeSwitch).not.toBeVisible()
+
+    act(() => useQueryStore.getState().setViewMode('tab1', 'grid'))
+    expect(screen.getByTestId('grid-view')).toBe(gridBeforeSwitch)
+    expect(gridBeforeSwitch).toBeVisible()
+    expect(screen.queryByTestId('form-view')).not.toBeInTheDocument()
+    expect(useQueryStore.getState().tabs.tab1.results[0].checkedRanges).toEqual([[0, 2]])
   })
 
   it('handles empty successful results', () => {

@@ -1,7 +1,7 @@
 import { useMemo, useRef, type Dispatch, type RefObject, type SetStateAction } from 'react'
 import type { GridSelection, Rectangle } from '@glideapps/glide-data-grid'
 import type { GridCellPosition, GridColumn, GridHandle } from '../glide-grid-types'
-import type { GridRowSource } from '../grid-row-source'
+import type { GridRowSource, RowRange } from '../grid-row-source'
 import type {
   CanvasBaseGridViewProps,
   EditorSessionBaseline,
@@ -99,10 +99,14 @@ function useGridEditorRefs(): GridEditorRefs {
   )
 }
 
-function useGridSelectionRefs(): GridSelectionRefs {
+export function markedRangesKeyOf(ranges: readonly RowRange[]): string {
+  return JSON.stringify(ranges)
+}
+
+function useGridSelectionRefs(initialCheckedRanges: readonly RowRange[]): GridSelectionRefs {
   const lastInteractedCellRef = useRef<GridCellPosition | null>(null)
   const previousMarkedRowsRef = useRef<number[]>([])
-  const previousMarkedRangesKeyRef = useRef(NO_MARKED_RANGES_KEY)
+  const previousMarkedRangesKeyRef = useRef(markedRangesKeyOf(initialCheckedRanges))
   const lastSelectedListCellRef = useRef<GridCellPosition | null>(null)
   return useMemo(
     () => ({
@@ -122,10 +126,14 @@ function useGridActionRefs(): GridActionRefs {
   return useMemo(() => ({ actionPendingRef, actionAbortRef, lastVisibleRegionRef }), [])
 }
 
-export function useGridSessionRefs(): GridSessionRefs {
+const NO_CHECKED_RANGES: readonly RowRange[] = []
+
+export function useGridSessionRefs(
+  initialCheckedRanges: readonly RowRange[] = NO_CHECKED_RANGES
+): GridSessionRefs {
   const scroll = useGridScrollRefs()
   const editor = useGridEditorRefs()
-  const selection = useGridSelectionRefs()
+  const selection = useGridSelectionRefs(initialCheckedRanges)
   const action = useGridActionRefs()
   return useMemo(() => ({ scroll, editor, selection, action }), [scroll, editor, selection, action])
 }

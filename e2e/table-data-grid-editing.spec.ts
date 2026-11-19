@@ -250,7 +250,7 @@ async function openJsonTableDataTab(page: Page) {
   })
 }
 
-async function openQueryEditorWithResults(page: Page) {
+async function runQueryInEditor(page: Page, sql: string) {
   // A new connection opens with one blank, active query tab
   await connectToSample(page)
   await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({
@@ -260,7 +260,7 @@ async function openQueryEditorWithResults(page: Page) {
     timeout: APP_READY_MS,
   })
 
-  await page.evaluate(() => {
+  await page.evaluate((querySql) => {
     const wsStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
       getState: () => {
         tabsByConnection: Record<string, { id: string; type: string }[]>
@@ -275,8 +275,8 @@ async function openQueryEditorWithResults(page: Page) {
     const qStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
       getState: () => { setContent: (id: string, c: string) => void }
     }
-    qStore.getState().setContent(queryTab.id, 'SELECT * FROM users;')
-  })
+    qStore.getState().setContent(queryTab.id, querySql)
+  }, sql)
 
   await expect(activePanel(page).getByTestId('toolbar-execute-all')).toBeEnabled({
     timeout: APP_READY_MS,
@@ -286,6 +286,10 @@ async function openQueryEditorWithResults(page: Page) {
     timeout: APP_READY_MS,
   })
   await expect(activePanel(page).getByTestId('result-grid')).toBeVisible({ timeout: APP_READY_MS })
+}
+
+async function openQueryEditorWithResults(page: Page, sql = 'SELECT * FROM users;') {
+  await runQueryInEditor(page, sql)
   const editModeDropdown = activePanel(page).getByTestId('edit-mode-dropdown')
   await expect(editModeDropdown).toBeVisible({ timeout: APP_READY_MS })
   await editModeDropdown.click()
@@ -697,30 +701,51 @@ test('table data calendar opens from the NULL date cell of a blank new row and a
     .toMatch(/^\d{4}-\d{2}-15 \d{2}:\d{2}:\d{2}$/)
 })
 
-test('table data form with JSON fields survives a second switch from the grid', async ({
-  page,
-}) => {
-  const pageErrors: string[] = []
-  page.on('pageerror', (error) => {
-    pageErrors.push(error.message)
+const JSON_FORM_ROUTES = [
+  {
+    name: 'table data',
+    open: openJsonTableDataTab,
+    gridTestId: 'table-data-grid',
+    formTestId: 'table-data-form-view',
+  },
+  {
+    name: 'query result',
+    open: (page: Page) => openQueryEditorWithResults(page, 'SELECT * FROM json_sample;'),
+    gridTestId: 'result-grid',
+    formTestId: 'result-form-view',
+  },
+] as const
+
+for (const route of JSON_FORM_ROUTES) {
+  test(`${route.name} form with JSON fields survives a second switch from the grid`, async ({
+    page,
+  }) => {
+    const pageErrors: string[] = []
+    page.on('pageerror', (error) => {
+      pageErrors.push(error.message)
+    })
+
+    await waitForApp(page)
+    await route.open(page)
+
+    const formView = activePanel(page).getByTestId(route.formTestId)
+    await activePanel(page).getByTestId('view-mode-form').click()
+    await expect(formView).toBeVisible({ timeout: APP_READY_MS })
+    await page.getByRole('button', { name: 'Next record' }).click()
+
+    await activePanel(page).getByTestId('view-mode-grid').click()
+    await expect(activePanel(page).getByTestId(route.gridTestId)).toBeVisible({
+      timeout: APP_READY_MS,
+    })
+
+    await activePanel(page).getByTestId('view-mode-form').click()
+    await expect(formView).toBeVisible({ timeout: APP_READY_MS })
+    await expect(formView.locator('.monaco-editor').first()).toBeVisible({
+      timeout: APP_READY_MS,
+    })
+    expect(pageErrors).toEqual([])
   })
-
-  await waitForApp(page)
-  await openJsonTableDataTab(page)
-
-  const formView = page.getByTestId('table-data-form-view')
-  await page.getByTestId('view-mode-form').click()
-  await expect(formView).toBeVisible({ timeout: APP_READY_MS })
-  await page.getByRole('button', { name: 'Next record' }).click()
-
-  await page.getByTestId('view-mode-grid').click()
-  await expect(page.getByTestId('table-data-grid')).toBeVisible({ timeout: APP_READY_MS })
-
-  await page.getByTestId('view-mode-form').click()
-  await expect(formView).toBeVisible({ timeout: APP_READY_MS })
-  await expect(formView.locator('.monaco-editor').first()).toBeVisible({ timeout: APP_READY_MS })
-  expect(pageErrors).toEqual([])
-})
+}
 
 test('table data JSON editor NULL marker sets null without outside-click dismissal', async ({
   page,

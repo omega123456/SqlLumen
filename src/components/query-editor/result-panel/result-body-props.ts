@@ -1,3 +1,6 @@
+import { useMemo } from 'react'
+import type { SingleResultState } from '../../../stores/query-store'
+import type { DataViewLocation } from '../../../types/shared-data-view'
 import type { ResultBodyProps } from './ResultBodies'
 import {
   gridTabPanelClassNameFor,
@@ -19,6 +22,7 @@ export interface ResultPanelLocation {
 
 interface ResultBodyInputs {
   location: ResultPanelLocation
+  editLocation: DataViewLocation | null
   controllers: ResultPanelControllers
   displayStatus: DisplayStatus
   isTabRunning: boolean
@@ -55,6 +59,18 @@ function resolveToolbarProps(inputs: ResultBodyInputs): ResultBodyProps['toolbar
   }
 }
 
+export function useResultEditLocation(
+  connectionId: string,
+  result: SingleResultState
+): DataViewLocation | null {
+  const { editMode } = result
+  const { editTable } = readEditTable(result)
+  return useMemo(
+    () => resultEditLocation(connectionId, { editMode: editMode, editTable: editTable }),
+    [connectionId, editMode, editTable]
+  )
+}
+
 export function buildResultBodyProps(
   inputs: ResultBodyInputs,
   showsSubTabs: boolean
@@ -71,7 +87,7 @@ export function buildResultBodyProps(
       activeResultIndex: activeResultIndex,
       result: result,
       editTableColumns: readEditTable(result).editTableColumns,
-      editLocation: resultEditLocation(location.connectionId, result),
+      editLocation: inputs.editLocation,
       handlers: controllers.viewHandlers,
       isActive: location.isActive,
     },

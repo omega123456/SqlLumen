@@ -145,15 +145,19 @@ export function shouldShowExpiredState(isExpired: boolean, displayStatus: Displa
   return isExpired && displayStatus !== 'running'
 }
 
+interface ResultEditTarget {
+  editMode: string | null
+  editTable: ReturnType<typeof readEditTable>['editTable']
+}
+
 export function resultEditLocation(
   connectionId: string,
-  result: SingleResultState
+  { editMode, editTable }: ResultEditTarget
 ): DataViewLocation | null {
-  if (!result.editMode) return null
-  const { editTable } = readEditTable(result)
+  if (!editMode) return null
   return {
     connectionId: connectionId,
     database: editTable?.database ?? '',
-    table: editTable?.table ?? result.editMode,
+    table: editTable?.table ?? editMode,
   }
 }

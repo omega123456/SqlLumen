@@ -28,7 +28,7 @@ import { buildClipboardMenuProps, buildGlideGridProps } from './glide-grid-props
 function useGridViewModel(props: CanvasBaseGridViewProps) {
   const flags = resolveGridBehaviourFlags(props)
   const gridRef = useRef<GridHandle | null>(null)
-  const refs = useGridSessionRefs()
+  const refs = useGridSessionRefs(props.initialCheckedRanges)
   const { source, isWindowed, rowCount, autoSizeSampleRows } = useGridRowData(props)
   const columns = useGridColumns({ props, flags, autoSizeSampleRows })
   const model: GridViewModel = {
