@@ -6,11 +6,17 @@ const ANCHOR_GAP_PX = 4
 const VIEWPORT_EDGE_MARGIN_PX = 8
 const MINIMUM_LEFT_PX = 4
 
-export interface PopupPosition {
+interface BelowAnchorPosition {
   top: number
   left: number
-  flipUp: boolean
 }
+
+interface AboveAnchorPosition {
+  bottom: number
+  left: number
+}
+
+export type PopupPosition = BelowAnchorPosition | AboveAnchorPosition
 
 export interface AnchorBounds {
   top: number
@@ -23,18 +29,13 @@ export interface ViewportSize {
   height: number
 }
 
-const UNANCHORED_POPUP_POSITION: PopupPosition = { top: 0, left: 0, flipUp: false }
+const UNANCHORED_POPUP_POSITION: PopupPosition = { top: 0, left: 0 }
 
 function shouldFlipAbove(anchor: AnchorBounds, viewport: ViewportSize): boolean {
   const spaceBelow = viewport.height - anchor.bottom
   const fitsBelow = spaceBelow >= ESTIMATED_POPUP_HEIGHT_PX
   const fitsAbove = anchor.top > ESTIMATED_POPUP_HEIGHT_PX
   return !fitsBelow && fitsAbove
-}
-
-function popupTop(anchor: AnchorBounds, flipUp: boolean): number {
-  if (flipUp) return anchor.top - ESTIMATED_POPUP_HEIGHT_PX - ANCHOR_GAP_PX
-  return anchor.bottom + ANCHOR_GAP_PX
 }
 
 function popupLeft(anchor: AnchorBounds, viewport: ViewportSize): number {
@@ -46,8 +47,11 @@ function popupLeft(anchor: AnchorBounds, viewport: ViewportSize): number {
 }
 
 export function computePopupPosition(anchor: AnchorBounds, viewport: ViewportSize): PopupPosition {
-  const flipUp = shouldFlipAbove(anchor, viewport)
-  return { top: popupTop(anchor, flipUp), left: popupLeft(anchor, viewport), flipUp: flipUp }
+  const left = popupLeft(anchor, viewport)
+  if (shouldFlipAbove(anchor, viewport)) {
+    return { bottom: viewport.height - anchor.top + ANCHOR_GAP_PX, left: left }
+  }
+  return { top: anchor.bottom + ANCHOR_GAP_PX, left: left }
 }
 
 function measurePopupPosition(anchorElement: HTMLElement): PopupPosition {

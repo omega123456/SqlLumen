@@ -149,7 +149,7 @@ export function DateTimePicker({
     <div
       ref={mergedPopupRef}
       className="fixed z-1100 click-outside-ignore"
-      style={{ top: position.top, left: position.left }}
+      style={position}
       data-testid="date-time-picker-popup"
     >
       <div className="w-75 overflow-hidden rounded-overlay border border-light-stroke-flyout bg-light-surface-container-high font-body text-light-on-surface shadow-light-flyout dark:border-dark-stroke-flyout dark:bg-dark-surface-container-high dark:text-dark-on-surface dark:shadow-dark-flyout">

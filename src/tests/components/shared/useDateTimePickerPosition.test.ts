@@ -3,16 +3,14 @@ import { computePopupPosition } from '../../../components/shared/useDateTimePick
 
 const VIEWPORT = { width: 1200, height: 800 }
 const ANCHOR_GAP_PX = 4
-const POPUP_HEIGHT_PX = 380
 const MINIMUM_LEFT_PX = 4
 
 describe('computePopupPosition', () => {
-  it('flips above the anchor when only the space above fits the popup', () => {
+  it('pins the popup bottom just above the anchor when only the space above fits it', () => {
     const anchor = { top: 700, bottom: 730, left: 200 }
     expect(computePopupPosition(anchor, VIEWPORT)).toEqual({
-      top: anchor.top - POPUP_HEIGHT_PX - ANCHOR_GAP_PX,
+      bottom: VIEWPORT.height - anchor.top + ANCHOR_GAP_PX,
       left: anchor.left,
-      flipUp: true,
     })
   })
 
