@@ -8,6 +8,7 @@
 
 use crate::common;
 use sqllumen_lib::commands::processlist::{get_processlist_impl, kill_queries_impl};
+#[cfg(not(coverage))]
 use sqllumen_lib::db::ssl_mode::SslMode;
 
 #[cfg(not(coverage))]

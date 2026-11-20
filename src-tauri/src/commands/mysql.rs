@@ -1,4 +1,5 @@
 use crate::commands::helpers::lock_db;
+#[cfg(not(coverage))]
 use crate::credentials;
 use crate::db::connections;
 #[cfg(not(coverage))]
@@ -115,6 +116,7 @@ impl From<crate::mysql::connection_options::ConnectFailure> for OpenConnectionEr
 }
 
 struct ProfileToOpen {
+    #[cfg(not(coverage))]
     read_only: bool,
     stored_params: StoredConnectionParams,
 }
@@ -133,6 +135,7 @@ fn profile_to_open(
     let mut stored_params = StoredConnectionParams::from_connection_record(profile_id, &record);
     stored_params.session_password = payload.password.map(SessionPassword::new);
     Ok(ProfileToOpen {
+        #[cfg(not(coverage))]
         read_only: record.read_only,
         stored_params,
     })
@@ -368,7 +371,7 @@ pub async fn open_connection_impl(
     state: &AppState,
     payload: OpenConnectionPayload,
 ) -> Result<OpenConnectionResult, OpenConnectionError> {
-    let ProfileToOpen { stored_params, .. } = profile_to_open(state, payload)?;
+    let ProfileToOpen { stored_params } = profile_to_open(state, payload)?;
     let params = stored_params.to_connection_params(stored_params.resolve_password()?);
 
     let validated_pool = create_pool(&params)

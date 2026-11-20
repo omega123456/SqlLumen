@@ -1,7 +1,6 @@
 use sqllumen_lib::commands::table_designer::{
     generate_table_ddl_impl, invalidate_metadata_cache_for_applied_table_ddl, parse_column_type,
 };
-use sqllumen_lib::db::ssl_mode::SslMode;
 #[cfg(coverage)]
 use sqllumen_lib::mysql::pool::SslSettings;
 use sqllumen_lib::mysql::table_designer::{
@@ -1395,6 +1394,7 @@ mod command_wrapper_integration {
     use serde::de::DeserializeOwned;
     use serde_json::json;
     use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
+    use sqllumen_lib::db::ssl_mode::SslMode;
     use sqllumen_lib::commands::mysql::{open_connection_impl, OpenConnectionResult};
     use sqllumen_lib::commands::table_designer::load_table_for_designer_impl;
     use sqllumen_lib::mysql::registry::ConnectionRegistry;

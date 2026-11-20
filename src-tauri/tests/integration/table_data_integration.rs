@@ -1,7 +1,6 @@
 //! Integration tests for table data operations — filter translation and coverage stubs.
 
 use sqllumen_lib::commands::table_data::interpolate_sql_params;
-use sqllumen_lib::db::ssl_mode::SslMode;
 #[cfg(coverage)]
 use sqllumen_lib::mysql::pool::SslSettings;
 #[cfg(not(coverage))]
@@ -103,6 +102,7 @@ mod type_aware_filter_integration {
     use serde::de::DeserializeOwned;
     use serde_json::json;
     use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
+    use sqllumen_lib::db::ssl_mode::SslMode;
     use sqllumen_lib::commands::mysql::{open_connection_impl, OpenConnectionResult};
     use sqllumen_lib::commands::table_data as table_data_commands;
     use sqllumen_lib::mysql::pool::set_test_pool_factory;
@@ -1123,7 +1123,6 @@ mod command_wrapper_coverage {
     use serde_json::json;
     use sqllumen_lib::commands::table_data as table_data_commands;
     use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
-    use sqllumen_lib::mysql::table_data::{PrimaryKeyInfo, TableDataColumnMeta, TableDataResponse};
     use sqllumen_lib::state::AppState;
     use tauri::ipc::{CallbackFn, InvokeBody};
     use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
@@ -1454,55 +1453,6 @@ mod command_wrapper_coverage {
             }),
         )
         .expect("export should succeed");
-    }
-
-    fn sample_cached_response(id: i64) -> TableDataResponse {
-        TableDataResponse {
-            columns: vec![
-                TableDataColumnMeta {
-                    name: "id".to_string(),
-                    data_type: "BIGINT".to_string(),
-                    is_boolean_alias: false,
-                    enum_values: None,
-                    set_values: None,
-                    is_nullable: false,
-                    is_primary_key: true,
-                    is_unique_key: true,
-                    has_default: false,
-                    column_default: None,
-                    is_binary: false,
-                    is_auto_increment: true,
-                    is_generated: false,
-                },
-                TableDataColumnMeta {
-                    name: "name".to_string(),
-                    data_type: "VARCHAR".to_string(),
-                    is_boolean_alias: false,
-                    enum_values: None,
-                    set_values: None,
-                    is_nullable: false,
-                    is_primary_key: false,
-                    is_unique_key: false,
-                    has_default: false,
-                    column_default: None,
-                    is_binary: false,
-                    is_auto_increment: false,
-                    is_generated: false,
-                },
-            ],
-            rows: std::sync::Arc::new(vec![std::sync::Arc::from(vec![
-                serde_json::json!(id),
-                serde_json::json!("Alice"),
-            ])]),
-            current_page: 1,
-            page_size: 50,
-            primary_key: Some(PrimaryKeyInfo {
-                key_columns: vec!["id".to_string()],
-                has_auto_increment: true,
-                is_unique_key_fallback: false,
-            }),
-            execution_time_ms: 12,
-        }
     }
 
     async fn wait_for_history_logging() {
