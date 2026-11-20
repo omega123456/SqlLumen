@@ -391,6 +391,42 @@ describe('Dropdown', () => {
     }
   })
 
+  it('widens the flyout to fit option labels longer than the trigger', async () => {
+    const user = userEvent.setup()
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const isTrigger = this.getAttribute('role') === 'combobox'
+        const isMeasuringLabelWidth = this.style.width === 'min-content'
+        const labelWidth = isMeasuringLabelWidth ? 263.4 : 0
+        const rect = isTrigger
+          ? { left: 100, top: 22, width: 60, height: 28, right: 160, bottom: 50 }
+          : { left: 0, top: 0, width: labelWidth, height: 0, right: labelWidth, bottom: 0 }
+        return { ...rect, x: rect.left, y: rect.top, toJSON: () => rect } as DOMRect
+      })
+
+    try {
+      render(
+        <Dropdown
+          id="d-content-width"
+          ariaLabel="Pick"
+          options={options}
+          value=""
+          onChange={vi.fn()}
+        />
+      )
+
+      await user.click(screen.getByRole('combobox', { name: 'Pick' }))
+
+      const listbox = screen.getByRole('listbox')
+      await waitFor(() => {
+        expect(listbox.style.width).toBe('264px')
+      })
+    } finally {
+      rectSpy.mockRestore()
+    }
+  })
+
   it('supports typeahead letter navigation while the listbox is open', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()

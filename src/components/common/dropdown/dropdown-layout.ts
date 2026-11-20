@@ -47,10 +47,25 @@ export function getScrollParents(node: HTMLElement | null): (HTMLElement | Windo
   return list
 }
 
-function horizontalPanelBounds(triggerRect: DOMRect, minPanelWidth: number): HorizontalPanelBounds {
+function unwrappedLabelWidth(panel: HTMLElement): number {
+  const assignedWidth = panel.style.width
+  panel.style.width = 'min-content'
+  const labelWidth = Math.ceil(panel.getBoundingClientRect().width)
+  panel.style.width = assignedWidth
+  return labelWidth
+}
+
+interface HorizontalPanelRequest {
+  triggerRect: DOMRect
+  minPanelWidth: number
+  labelWidth: number
+}
+
+function horizontalPanelBounds(request: HorizontalPanelRequest): HorizontalPanelBounds {
+  const { triggerRect, minPanelWidth, labelWidth } = request
   const viewportWidth = window.innerWidth
   let left = triggerRect.left
-  let width = Math.max(triggerRect.width, minPanelWidth)
+  let width = Math.max(triggerRect.width, minPanelWidth, labelWidth)
   if (left < VIEWPORT_MARGIN) {
     width -= VIEWPORT_MARGIN - left
     left = VIEWPORT_MARGIN
@@ -106,7 +121,11 @@ export interface PanelLayoutRequest {
 export function measurePanelLayout(request: PanelLayoutRequest): DropdownPanelLayout {
   const dialog = closestDialogElement(request.trigger)
   const triggerRect = request.trigger.getBoundingClientRect()
-  const horizontal = horizontalPanelBounds(triggerRect, request.minPanelWidth)
+  const horizontal = horizontalPanelBounds({
+    triggerRect: triggerRect,
+    minPanelWidth: request.minPanelWidth,
+    labelWidth: unwrappedLabelWidth(request.panel),
+  })
   const vertical = verticalPanelPlacement(triggerRect, request.panel)
   return {
     placement: vertical.placement,
