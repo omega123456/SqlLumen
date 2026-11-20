@@ -14,7 +14,7 @@ export function DataViewModeSwitch({ mode, grid, form, text = null }: DataViewMo
     <>
       <RetainedView isVisible={mode === 'grid'}>{grid}</RetainedView>
       {mode === 'form' && form}
-      {mode === 'text' && text}
+      <RetainedView isVisible={mode === 'text'}>{text}</RetainedView>
     </>
   )
 }

@@ -84,9 +84,9 @@ const MALFORMED_SCHEMA_METADATA = {
  */
 async function waitForActiveResultValue(page: Page, expectedValue: string) {
   await activePanel(page).getByTestId('view-mode-text').click()
-  const pre = activePanel(page).getByTestId('result-text-view').locator('pre')
+  const firstRow = activePanel(page).getByTestId('text-view-row').first()
   await expect
-    .poll(async () => ((await pre.textContent()) ?? '').split('\n')[2]?.trim(), {
+    .poll(async () => ((await firstRow.textContent({ timeout: 100 })) ?? '').trim(), {
       timeout: 5_000,
       intervals: [100, 200, 300],
     })

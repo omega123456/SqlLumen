@@ -12,9 +12,9 @@ import type { DataViewSurfaceRef } from '../../../stores/data-view/data-view-typ
 import { routeOf } from '../../../stores/data-view/route-registry'
 import { useDataView } from '../../../stores/data-view/use-data-view'
 import type { DataViewSource } from './data-view-source'
-import { formatTextOutput } from './text-format'
+import { TextTableLayout } from './text-format'
+import { VirtualTextTable } from './text/VirtualTextTable'
 import { toErrorMessage } from '../../../lib/error-message'
-import { joinClassNames, SCROLLBAR } from '../../../lib/class-names'
 
 export interface DataTextViewProps {
   source: DataViewSource
@@ -96,7 +96,7 @@ interface TextHeaderProps {
 
 function TextHeader(props: TextHeaderProps) {
   if (!props.isCapped) {
-    return <div className="absolute top-2 right-2 z-1">{props.copyButton}</div>
+    return <div className="absolute top-2 right-2 z-2">{props.copyButton}</div>
   }
   return (
     <div
@@ -154,16 +154,16 @@ function useTextViewRows({ ref, loadKey, shownCount }: TextRowsRequest) {
   return visibleTextRows(shownCount, loaded, loadKey)
 }
 
-function useCopyText(formattedText: string) {
+function useCopyText(layout: TextTableLayout) {
   return useCallback(async () => {
     try {
-      await writeClipboardText(formattedText)
+      await writeClipboardText(layout.fullText())
     } catch (error) {
       const message = toErrorMessage(error)
       logFrontend('warn', `[data-text-view] clipboard write failed: ${message}`)
       showErrorToast(CLIPBOARD_ACTION_FAILURES.copy.title, CLIPBOARD_ACTION_FAILURES.copy.message)
     }
-  }, [formattedText])
+  }, [layout])
 }
 
 export function DataTextView({ source }: DataTextViewProps) {
@@ -179,11 +179,11 @@ export function DataTextView({ source }: DataTextViewProps) {
     loadKey: loadKey,
     shownCount: shownCount,
   })
-  const formattedText = useMemo(
-    () => (rows ? formatTextOutput(columns, rows) : ''),
+  const layout = useMemo(
+    () => TextTableLayout.fromRows(columns, rows ?? EMPTY_ROWS),
     [columns, rows]
   )
-  const handleCopyAll = useCopyText(formattedText)
+  const handleCopyAll = useCopyText(layout)
 
   const copyButton = (
     <CopyAllButton
@@ -197,7 +197,7 @@ export function DataTextView({ source }: DataTextViewProps) {
 
   return (
     <div
-      className="relative flex h-full flex-col bg-light-surface-container-low dark:bg-dark-surface-container-low"
+      className="relative flex min-h-0 flex-1 flex-col bg-light-surface-container-low dark:bg-dark-surface-container-low"
       data-testid={source.testIds.text}
     >
       <TextHeader
@@ -206,16 +206,11 @@ export function DataTextView({ source }: DataTextViewProps) {
         viewRowCount={viewRowCount}
         copyButton={copyButton}
       />
-      <pre
-        className={joinClassNames([
-          'm-0 flex-1 overflow-auto px-4 pb-4 font-mono text-size-row leading-loose whitespace-pre text-light-on-surface tab-4 dark:text-dark-on-surface',
-          SCROLLBAR,
-          isCapped ? 'pt-4' : 'pt-11',
-        ])}
-        aria-busy={rows === null}
-      >
-        {formattedText}
-      </pre>
+      <VirtualTextTable
+        layout={layout}
+        topSpacing={isCapped ? 'strip' : 'floating-copy'}
+        isBusy={rows === null}
+      />
     </div>
   )
 }

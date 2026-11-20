@@ -41,11 +41,10 @@ async function windowRequestOffsets(page: Page): Promise<number[]> {
   })
 }
 
-/** The first data row of the text view, read from the `<pre>` (header, separator, rows). */
 async function firstTextRow(page: Page): Promise<string> {
-  const text =
-    (await activePanel(page).getByTestId('result-text-view').locator('pre').textContent()) ?? ''
-  return text.split('\n')[2]?.trim() ?? ''
+  const firstRow = activePanel(page).getByTestId('text-view-row').first()
+  if ((await firstRow.count()) === 0) return ''
+  return ((await firstRow.textContent()) ?? '').trim()
 }
 
 test.describe('windowed query results', () => {
@@ -92,6 +91,11 @@ test.describe('windowed query results', () => {
       /Showing first 5,000 of 12,340 rows in this view\./
     )
     await expect(activePanel(page).getByTestId('copy-all-button')).toHaveText('Copy first 5,000')
+    const textView = activePanel(page).getByTestId('result-text-view')
+    const resultPanelBox = await textView.locator('..').boundingBox()
+    const scrollerBox = await textView.getByTestId('text-view-scroller').boundingBox()
+    const scrollerBottom = scrollerBox!.y + scrollerBox!.height
+    expect(scrollerBottom).toBeLessThanOrEqual(resultPanelBox!.y + resultPanelBox!.height)
 
     await activePanel(page).getByTestId('view-mode-grid').click()
     const gridAgain = await waitForResultGrid(page)

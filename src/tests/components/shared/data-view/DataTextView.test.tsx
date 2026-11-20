@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { DataTextView } from '../../../../components/shared/data-view/DataTextView'
-import { formatTextOutput } from '../../../../components/shared/data-view/text-format'
+import { TextTableLayout } from '../../../../components/shared/data-view/text-format'
 import { useQueryStore } from '../../../../stores/query-store'
 import { expectToast, ipc } from '../../../ipc-mock'
 import { DATA_VIEW_TAB_ID, seedDataView } from '../../../helpers/data-view-test-utils'
@@ -10,6 +10,8 @@ import type { ColumnMeta } from '../../../../types/schema'
 
 // Real context-menu-utils is used. In jsdom, writeClipboardText falls through to
 // navigator.clipboard.writeText (polyfilled in setup.ts as a vi.fn).
+
+const JSDOM_TEXT_LINE_HEIGHT_PX = 21
 
 const columns: ColumnMeta[] = [
   { name: 'id', dataType: 'INT' },
@@ -33,6 +35,10 @@ interface TextViewSetup {
   truncated?: boolean
 }
 
+function renderedRowTexts(): string[] {
+  return screen.getAllByTestId('text-view-row').map((row) => row.textContent ?? '')
+}
+
 function renderTextView({
   viewRowCount = rows.length,
   loaded = rows,
@@ -52,12 +58,12 @@ describe('DataTextView', () => {
     renderTextView()
     expect(screen.getByTestId('result-text-view')).toBeInTheDocument()
     await waitFor(() => {
-      const text = screen.getByTestId('result-text-view').querySelector('pre')!.textContent!
-      expect(text).toContain('id')
+      const text = renderedRowTexts().join('\n')
       expect(text).toContain('Alice')
       expect(text).toContain('Charlie')
       expect(text).toContain('NULL')
     })
+    expect(screen.getByTestId('text-view-header')).toHaveTextContent(/^id\s+name\s+email/)
     expect(ipc.payloads('fetch_result_window')).toHaveLength(0)
   })
 
@@ -74,7 +80,7 @@ describe('DataTextView', () => {
     await waitFor(() => expect(screen.getByTestId('copy-all-button')).toBeEnabled())
     await user.click(screen.getByTestId('copy-all-button'))
     await waitFor(() => {
-      expect(writeText).toHaveBeenCalledWith(formatTextOutput(columns, rows))
+      expect(writeText).toHaveBeenCalledWith(TextTableLayout.fromRows(columns, rows).fullText())
     })
   })
 
@@ -89,6 +95,8 @@ describe('DataTextView', () => {
   })
 
   it('caps at 5,000 rows with the strip and the relabelled shared Button', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText')
     ipc.overridePayload('fetch_result_window', (args) => {
       const offset = Number(args?.offset)
       const limit = Number(args?.limit)
@@ -111,10 +119,21 @@ describe('DataTextView', () => {
       'title',
       'Copies the rows shown. Export all rows for the full result.'
     )
-    await waitFor(() => {
-      const text = screen.getByTestId('result-text-view').querySelector('pre')!.textContent!
-      expect(text.split('\n')).toHaveLength(5002)
-    })
+    await waitFor(() => expect(button).toBeEnabled())
+    const scroller = screen.getByTestId('text-view-scroller')
+    expect(scroller).toHaveAttribute('aria-busy', 'false')
+    const initialRows = renderedRowTexts()
+    expect(initialRows.length).toBeLessThan(100)
+    expect(initialRows[0]).toMatch(/^0\s/)
+
+    scroller.scrollTop = JSDOM_TEXT_LINE_HEIGHT_PX * 3000
+    fireEvent.scroll(scroller)
+    await waitFor(() => expect(renderedRowTexts()).toContainEqual(expect.stringMatching(/^3000\s/)))
+    expect(renderedRowTexts().length).toBeLessThan(100)
+
+    await user.click(button)
+    await waitFor(() => expect(writeText).toHaveBeenCalled())
+    expect(String(writeText.mock.calls[0][0]).split('\n')).toHaveLength(5002)
     const calls = ipc.payloads('fetch_result_window') as Array<Record<string, number>>
     expect(calls.reduce((sum, call) => sum + call.limit, 0)).toBe(5000)
     expect(Math.max(...calls.map((call) => call.limit))).toBeLessThanOrEqual(2000)
@@ -156,7 +175,7 @@ describe('DataTextView', () => {
 
   it('renders only the header for an empty view', () => {
     renderTextView({ viewRowCount: 0, loaded: [] })
-    const text = screen.getByTestId('result-text-view').querySelector('pre')!.textContent!
-    expect(text.split('\n')).toHaveLength(2)
+    expect(screen.getByTestId('text-view-header')).toHaveTextContent(/^id\s+name\s+email/)
+    expect(screen.queryByTestId('text-view-row')).not.toBeInTheDocument()
   })
 })

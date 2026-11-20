@@ -15,7 +15,7 @@ function renderSwitch(mode: ViewMode) {
 }
 
 describe('DataViewModeSwitch', () => {
-  it('keeps the grid mounted while form and text mount only while shown', () => {
+  it('keeps grid and text mounted while hidden and mounts form only while shown', () => {
     const { rerender } = render(renderSwitch('grid'))
     const grid = screen.getByTestId('grid-view')
     expect(screen.queryByTestId('form-view')).not.toBeInTheDocument()
@@ -25,13 +25,18 @@ describe('DataViewModeSwitch', () => {
     expect(grid).not.toBeVisible()
 
     rerender(renderSwitch('text'))
-    expect(screen.getByTestId('text-view')).toBeVisible()
+    const text = screen.getByTestId('text-view')
+    expect(text).toBeVisible()
     expect(screen.queryByTestId('form-view')).not.toBeInTheDocument()
 
     rerender(renderSwitch('grid'))
     expect(screen.getByTestId('grid-view')).toBe(grid)
     expect(grid).toBeVisible()
-    expect(screen.queryByTestId('text-view')).not.toBeInTheDocument()
+    expect(text).not.toBeVisible()
+
+    rerender(renderSwitch('text'))
+    expect(screen.getByTestId('text-view')).toBe(text)
+    expect(text).toBeVisible()
   })
 
   it('renders nothing for text mode when no text view is given', () => {
