@@ -5,7 +5,7 @@ import { EditModeDropdown } from '../../../components/query-editor/EditModeDropd
 import { useQueryStore, querySurfaceRef } from '../../../stores/query-store'
 import { useConnectionStore } from '../../../stores/connection-store'
 import type { QueryTableEditInfo } from '../../../types/schema'
-import { makeTabState } from '../../helpers/query-test-utils'
+import { makeTabState, type MakeTabStateOverrides } from '../../helpers/query-test-utils'
 
 const MOCK_TABLE_INFO: QueryTableEditInfo = {
   database: 'test_db',
@@ -69,7 +69,7 @@ const MOCK_TABLE_INFO_2: QueryTableEditInfo = {
   foreignKeys: [],
 }
 
-function setupTabState(tabId: string, overrides: Record<string, unknown> = {}) {
+function setupTabState(tabId: string, overrides: MakeTabStateOverrides = {}) {
   useQueryStore.setState({
     tabs: {
       [tabId]: makeTabState(overrides),
@@ -134,7 +134,7 @@ describe('EditModeDropdown', () => {
       setupTabState(tabId, {
         status: 'error',
         errorMessage: 'Some error',
-        columns: [{ name: 'id', dataType: 'INT' }],
+        view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
       })
       setupConnectionStore(connectionId)
       const { container } = render(
@@ -144,7 +144,10 @@ describe('EditModeDropdown', () => {
     })
 
     it('is hidden when no result columns', () => {
-      setupTabState(tabId, { status: 'success', columns: [] })
+      setupTabState(tabId, {
+        status: 'success',
+        view: { slot: { columns: [] } },
+      })
       setupConnectionStore(connectionId)
       const { container } = render(
         <EditModeDropdown surfaceRef={querySurfaceRef(tabId, 0)} connectionId={connectionId} />
@@ -155,7 +158,7 @@ describe('EditModeDropdown', () => {
     it('is hidden when connection is read-only', () => {
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
+        view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
       })
       setupConnectionStore(connectionId, true)
       const { container } = render(
@@ -167,7 +170,7 @@ describe('EditModeDropdown', () => {
     it('is visible when status is success with columns and not read-only', () => {
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
+        view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
         lastExecutedSql: 'SELECT * FROM users',
       })
       setupConnectionStore(connectionId)
@@ -180,7 +183,7 @@ describe('EditModeDropdown', () => {
     it('is hidden for SHOW statements even with columns', () => {
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'Tables_in_db', dataType: 'VARCHAR' }],
+        view: { slot: { columns: [{ name: 'Tables_in_db', dataType: 'VARCHAR' }] } },
         lastExecutedSql: 'SHOW TABLES',
       })
       setupConnectionStore(connectionId)
@@ -193,7 +196,7 @@ describe('EditModeDropdown', () => {
     it('is hidden for DESCRIBE statements even with columns', () => {
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'Field', dataType: 'VARCHAR' }],
+        view: { slot: { columns: [{ name: 'Field', dataType: 'VARCHAR' }] } },
         lastExecutedSql: 'DESCRIBE users',
       })
       setupConnectionStore(connectionId)
@@ -206,7 +209,7 @@ describe('EditModeDropdown', () => {
     it('is hidden for EXPLAIN statements even with columns', () => {
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
+        view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
         lastExecutedSql: 'EXPLAIN SELECT * FROM users',
       })
       setupConnectionStore(connectionId)
@@ -219,7 +222,7 @@ describe('EditModeDropdown', () => {
     it('is hidden when lastExecutedSql is null', () => {
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
+        view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
         lastExecutedSql: null,
       })
       setupConnectionStore(connectionId)
@@ -234,7 +237,7 @@ describe('EditModeDropdown', () => {
     it('renders with data-testid="edit-mode-dropdown"', () => {
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
+        view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
         lastExecutedSql: 'SELECT * FROM users',
       })
       setupConnectionStore(connectionId)
@@ -247,7 +250,7 @@ describe('EditModeDropdown', () => {
     it('renders with data-testid="edit-mode-group"', () => {
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
+        view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
         lastExecutedSql: 'SELECT * FROM users',
       })
       setupConnectionStore(connectionId)
@@ -260,7 +263,7 @@ describe('EditModeDropdown', () => {
     it('shows "Read only" as default option', () => {
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
+        view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
         lastExecutedSql: 'SELECT * FROM users',
       })
       setupConnectionStore(connectionId)
@@ -274,8 +277,10 @@ describe('EditModeDropdown', () => {
       const user = userEvent.setup()
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
-        editTableMetadata: { 'test_db.users': MOCK_TABLE_INFO },
+        view: {
+          slot: { columns: [{ name: 'id', dataType: 'INT' }] },
+          editTarget: { tables: { 'test_db.users': MOCK_TABLE_INFO } },
+        },
         lastExecutedSql: 'SELECT * FROM users',
       })
       setupConnectionStore(connectionId)
@@ -292,10 +297,14 @@ describe('EditModeDropdown', () => {
       const user = userEvent.setup()
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
-        editTableMetadata: {
-          'test_db.users': MOCK_TABLE_INFO,
-          'other_db.orders': MOCK_TABLE_INFO_2,
+        view: {
+          slot: { columns: [{ name: 'id', dataType: 'INT' }] },
+          editTarget: {
+            tables: {
+              'test_db.users': MOCK_TABLE_INFO,
+              'other_db.orders': MOCK_TABLE_INFO_2,
+            },
+          },
         },
         lastExecutedSql: 'SELECT * FROM users',
       })
@@ -315,10 +324,14 @@ describe('EditModeDropdown', () => {
       const sameDbTable: QueryTableEditInfo = { ...MOCK_TABLE_INFO_2, database: 'test_db' }
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
-        editTableMetadata: {
-          'test_db.users': MOCK_TABLE_INFO,
-          'test_db.orders': sameDbTable,
+        view: {
+          slot: { columns: [{ name: 'id', dataType: 'INT' }] },
+          editTarget: {
+            tables: {
+              'test_db.users': MOCK_TABLE_INFO,
+              'test_db.orders': sameDbTable,
+            },
+          },
         },
         lastExecutedSql: 'SELECT * FROM users',
       })
@@ -335,7 +348,7 @@ describe('EditModeDropdown', () => {
     it('is disabled when isAnalyzingQuery is true', () => {
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
+        view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
         isAnalyzingQuery: true,
         lastExecutedSql: 'SELECT * FROM users',
       })
@@ -349,9 +362,10 @@ describe('EditModeDropdown', () => {
     it('reflects current editMode as selected value', () => {
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
-        editTableMetadata: { 'test_db.users': MOCK_TABLE_INFO },
-        editMode: 'test_db.users',
+        view: {
+          slot: { columns: [{ name: 'id', dataType: 'INT' }] },
+          editTarget: { tables: { 'test_db.users': MOCK_TABLE_INFO }, tableName: 'test_db.users' },
+        },
         lastExecutedSql: 'SELECT * FROM users',
       })
       setupConnectionStore(connectionId)
@@ -367,8 +381,10 @@ describe('EditModeDropdown', () => {
       const user = userEvent.setup()
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
-        editTableMetadata: { 'test_db.users': MOCK_TABLE_INFO },
+        view: {
+          slot: { columns: [{ name: 'id', dataType: 'INT' }] },
+          editTarget: { tables: { 'test_db.users': MOCK_TABLE_INFO } },
+        },
         lastExecutedSql: 'SELECT * FROM users',
       })
       setupConnectionStore(connectionId)
@@ -389,9 +405,10 @@ describe('EditModeDropdown', () => {
       const user = userEvent.setup()
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
-        editTableMetadata: { 'test_db.users': MOCK_TABLE_INFO },
-        editMode: 'test_db.users',
+        view: {
+          slot: { columns: [{ name: 'id', dataType: 'INT' }] },
+          editTarget: { tables: { 'test_db.users': MOCK_TABLE_INFO }, tableName: 'test_db.users' },
+        },
         lastExecutedSql: 'SELECT * FROM users',
       })
       setupConnectionStore(connectionId)
@@ -412,17 +429,20 @@ describe('EditModeDropdown', () => {
       const user = userEvent.setup()
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
-        editTableMetadata: { 'test_db.users': MOCK_TABLE_INFO },
-        editMode: 'test_db.users',
-        lastExecutedSql: 'SELECT * FROM users',
-        editState: {
-          rowKey: { id: 1 },
-          originalValues: { name: 'Alice' },
-          currentValues: { name: 'Bob' },
-          modifiedColumns: new Set(['name']),
-          isNewRow: false,
+        view: {
+          slot: { columns: [{ name: 'id', dataType: 'INT' }] },
+          editTarget: { tables: { 'test_db.users': MOCK_TABLE_INFO }, tableName: 'test_db.users' },
+          edit: {
+            state: {
+              rowKey: { id: 1 },
+              originalValues: { name: 'Alice' },
+              currentValues: { name: 'Bob' },
+              modifiedColumns: new Set(['name']),
+              isNewRow: false,
+            },
+          },
         },
+        lastExecutedSql: 'SELECT * FROM users',
       })
       setupConnectionStore(connectionId)
 
@@ -442,17 +462,20 @@ describe('EditModeDropdown', () => {
       const user = userEvent.setup()
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
-        editTableMetadata: { 'test_db.users': MOCK_TABLE_INFO },
-        editMode: 'test_db.users',
-        lastExecutedSql: 'SELECT * FROM users',
-        editState: {
-          rowKey: { id: 1 },
-          originalValues: { name: 'Alice' },
-          currentValues: { name: 'Alice' },
-          modifiedColumns: new Set(),
-          isNewRow: false,
+        view: {
+          slot: { columns: [{ name: 'id', dataType: 'INT' }] },
+          editTarget: { tables: { 'test_db.users': MOCK_TABLE_INFO }, tableName: 'test_db.users' },
+          edit: {
+            state: {
+              rowKey: { id: 1 },
+              originalValues: { name: 'Alice' },
+              currentValues: { name: 'Alice' },
+              modifiedColumns: new Set(),
+              isNewRow: false,
+            },
+          },
         },
+        lastExecutedSql: 'SELECT * FROM users',
       })
       setupConnectionStore(connectionId)
 
@@ -476,7 +499,7 @@ describe('EditModeDropdown', () => {
     it('has aria-label="Edit mode"', () => {
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
+        view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
         lastExecutedSql: 'SELECT * FROM users',
       })
       setupConnectionStore(connectionId)

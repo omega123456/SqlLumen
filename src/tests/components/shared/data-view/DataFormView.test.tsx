@@ -10,7 +10,11 @@ import type {
   TableDataColumnMeta,
   RowEditState,
 } from '../../../../types/schema'
-import { makeTabState } from '../../../helpers/query-test-utils'
+import {
+  makeTabState,
+  mergedTabStateOverrides,
+  type MakeTabStateOverrides,
+} from '../../../helpers/query-test-utils'
 import { dataViewResult, seedDataView } from '../../../helpers/data-view-test-utils'
 import { ipc } from '../../../ipc-mock'
 import {
@@ -89,19 +93,23 @@ const defaultProps = {
 }
 
 /** Helper to build a complete tab state for the query store. */
-function buildTabState(overrides: Record<string, unknown> = {}) {
-  return makeTabState({
-    status: 'success' as const,
-    columns,
-    rows,
-    totalRows: 5,
-    executionTimeMs: 10,
-    affectedRows: 0,
-    queryId: 'q1',
-    viewMode: 'form' as const,
-    selectedRowIndex: 0,
-    ...overrides,
-  })
+function buildTabState(overrides: MakeTabStateOverrides = {}) {
+  return makeTabState(
+    mergedTabStateOverrides(
+      {
+        status: 'success' as const,
+        view: {
+          mode: 'form' as const,
+          slot: { columns: columns, totalRows: 5, queryId: 'q1' },
+          selection: { rowIndex: 0 },
+        },
+        rows,
+        executionTimeMs: 10,
+        affectedRows: 0,
+      },
+      overrides
+    )
+  )
 }
 
 beforeEach(() => {
@@ -682,7 +690,7 @@ describe('DataFormView — Edit Mode', () => {
     useQueryStore.setState({
       tabs: {
         'tab-1': buildTabState({
-          selectedRowIndex: null,
+          view: { selection: { rowIndex: null } },
         }),
       },
     })
@@ -957,9 +965,8 @@ describe('DataFormView — Temporal Fields', () => {
     useQueryStore.setState({
       tabs: {
         'tab-1': buildTabState({
-          columns: temporalColumns,
+          view: { slot: { columns: temporalColumns, totalRows: 1 } },
           rows: temporalRows,
-          totalRows: 1,
         }),
       },
     })

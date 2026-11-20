@@ -1,6 +1,7 @@
 import type { FilterCondition, SelectedCellInfo } from '../../types/schema'
 import type { ViewMode } from '../../types/shared-data-view'
 import { retryFailedWindow, type ViewRange } from '../../lib/result-window-cache'
+import { logFrontendError } from '../../lib/app-log-commands'
 import { showErrorToast } from '../toast-store'
 import type { DataViewPatch, DataViewSurfaceRef, ExportRowScope } from './data-view-types'
 import { mergeViewPatches } from './data-view-reducers'
@@ -29,6 +30,11 @@ function reportTextViewSwitchFailure() {
   )
 }
 
+function reportTextViewSwitchError(error: unknown) {
+  logFrontendError('[data-view] saveCurrentRow failed while switching to text view:', error)
+  reportTextViewSwitchFailure()
+}
+
 async function saveThenSwitchToText(ref: DataViewSurfaceRef) {
   await saveCurrentRow(ref)
   const viewAfterSave = readView(ref)
@@ -45,7 +51,7 @@ export function setViewMode(ref: DataViewSurfaceRef, mode: ViewMode) {
   if (!view) return
   const isLeavingUnsavedEditsForText = mode === 'text' && hasUnsavedModifications(view)
   if (isLeavingUnsavedEditsForText) {
-    void saveThenSwitchToText(ref)
+    saveThenSwitchToText(ref).catch(reportTextViewSwitchError)
     return
   }
   updateView(ref, { mode: mode })
@@ -86,6 +92,7 @@ export function setScrollCell(ref: DataViewSurfaceRef, { scrollRow, scrollColumn
 }
 
 export function setColumnWidth(ref: DataViewSurfaceRef, columnKey: string, width: number) {
+  if (!Number.isFinite(width)) return
   const view = readView(ref)
   if (!view) return
   updateView(ref, {

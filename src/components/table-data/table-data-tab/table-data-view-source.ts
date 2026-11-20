@@ -7,6 +7,7 @@ import {
 import type { TableDataTabState } from '../../../stores/table-data-store'
 import type { ViewMode } from '../../../types/shared-data-view'
 import type {
+  DataColumnMetadata,
   DataViewColumnJump,
   DataViewPaging,
   DataViewReload,
@@ -30,6 +31,11 @@ const NO_PRIMARY_KEY_BLOB_REASON = 'Cannot view BLOB — table has no primary ke
 function hasEditTarget(tab: TableDataTabState | undefined): boolean {
   if (!tab) return false
   return tab.view.editTarget.tableName !== null
+}
+
+function columnMetadataOf(meta: TableDataTabState['meta'] | undefined): DataColumnMetadata | null {
+  if (!meta) return null
+  return { tableColumns: meta.columns, foreignKeys: meta.foreignKeys }
 }
 
 function useTablePaging(tabId: string, page: TableDataTabState['page'] | undefined) {
@@ -98,6 +104,7 @@ export function useTableDataViewSource({
   const page = useTableDataStore((state) => state.tabs[tabId]?.page)
   const hasPrimaryKey = useTableDataStore((state) => Boolean(state.tabs[tabId]?.meta.primaryKey))
   const canEdit = useTableDataStore((state) => hasEditTarget(state.tabs[tabId]))
+  const meta = useTableDataStore((state) => state.tabs[tabId]?.meta)
   const ref = useMemo(() => tableSurfaceRef(tabId), [tabId])
   const paging = useTablePaging(tabId, page)
   const reload = useTableReload(tabId, page)
@@ -116,8 +123,9 @@ export function useTableDataViewSource({
         paging: paging,
         reload: reload,
         columnJump: columnJump,
+        columnMetadata: columnMetadataOf(meta),
       },
     }),
-    [ref, isActive, canEdit, isView, hasPrimaryKey, paging, reload, columnJump]
+    [ref, isActive, canEdit, isView, hasPrimaryKey, paging, reload, columnJump, meta]
   )
 }

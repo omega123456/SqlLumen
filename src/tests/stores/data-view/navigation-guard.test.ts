@@ -1,4 +1,4 @@
-import { legacyTabFields } from '../../helpers/legacy-result-fields'
+import { getActiveResult } from '../../../stores/query-store'
 import { describe, it, expect, vi } from 'vitest'
 import { useQueryStore, activeQuerySurfaceRef } from '../../../stores/query-store'
 import { flat } from '../../helpers/query-test-utils'
@@ -36,8 +36,8 @@ describe('requestNavigationAction', () => {
 
     // Edit state should be discarded since dataset is changing
     const tab = flat('tab-1')
-    expect(tab.editState).toBeNull()
-    expect(tab.editingRowIndex).toBeNull()
+    expect(tab.view.edit.state).toBeNull()
+    expect(tab.view.edit.rowIndex).toBeNull()
   })
 
   it('defers action when there are pending edits', async () => {
@@ -50,7 +50,7 @@ describe('requestNavigationAction', () => {
     useQueryStore.getState().requestNavigationAction(activeQuerySurfaceRef('tab-1'), action)
     expect(action).not.toHaveBeenCalled()
     expect(
-      legacyTabFields(useQueryStore.getState().getTabState('tab-1')).pendingNavigationAction
+      getActiveResult(useQueryStore.getState().getTabState('tab-1')).view.prompts.pendingNavigation
     ).toBeTruthy()
   })
 })
@@ -73,7 +73,7 @@ describe('confirmNavigation', () => {
     await useQueryStore.getState().confirmNavigation(activeQuerySurfaceRef('tab-1'), true)
     expect(action).toHaveBeenCalledOnce()
     expect(
-      legacyTabFields(useQueryStore.getState().getTabState('tab-1')).pendingNavigationAction
+      getActiveResult(useQueryStore.getState().getTabState('tab-1')).view.prompts.pendingNavigation
     ).toBeNull()
   })
 
@@ -95,7 +95,7 @@ describe('confirmNavigation', () => {
 
     expect(action).not.toHaveBeenCalled()
     expect(ipc.calls('update_table_row')).toHaveLength(0)
-    expect(flat('tab-1').editState?.currentValues.name).toBe('not a date')
+    expect(flat('tab-1').view.edit.state?.currentValues.name).toBe('not a date')
     await expectToast('error', 'Invalid date value')
   })
 
@@ -130,7 +130,7 @@ describe('cancelNavigation', () => {
     useQueryStore.getState().cancelNavigation(activeQuerySurfaceRef('tab-1'))
 
     expect(
-      legacyTabFields(useQueryStore.getState().getTabState('tab-1')).pendingNavigationAction
+      getActiveResult(useQueryStore.getState().getTabState('tab-1')).view.prompts.pendingNavigation
     ).toBeNull()
     expect(action).not.toHaveBeenCalled()
   })

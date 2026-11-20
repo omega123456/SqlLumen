@@ -40,6 +40,7 @@ export function registerQueryDataViewRoute() {
     writes: {
       cellProjection: 'full',
       afterInsert: rerunResultAfterInsert,
+      staleResultAdvice: 'Re-run the query to refresh.',
     },
     lifecycle: {
       onExpired: (ref) => markTabResultsExpired(ref.tabId),

@@ -30,6 +30,10 @@ export function editTableOf(view: DataViewState): QueryTableEditInfo | null {
   return view.editTarget.tables[tableName] ?? null
 }
 
+export function boundColumnIndexOf(view: DataViewState, columnName: string): number | undefined {
+  return view.editTarget.boundIndexByName.get(columnName.toLowerCase())
+}
+
 function draftRowAt(view: DataViewState, position: number): unknown[] | null {
   const isDraftRowPosition = position === view.slot.viewRowCount
   return isDraftRowPosition ? view.edit.draftRow : null

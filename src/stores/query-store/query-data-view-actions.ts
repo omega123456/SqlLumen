@@ -8,7 +8,7 @@ import {
 import { saveCurrentRow } from '../data-view/row-save'
 import { deleteRows } from '../data-view/row-deletion'
 import { cloneSelectedRow } from '../data-view/row-clone'
-import { beginRowAction, cancelRowAction } from '../data-view/row-action-progress'
+import { beginRowAction } from '../data-view/row-action-progress'
 import {
   cancelNavigation,
   confirmNavigation,
@@ -27,7 +27,6 @@ export function queryDataViewActions() {
     discardCurrentRow: discardCurrentRow,
     deleteResultRows: deleteRows,
     beginRowAction: beginRowAction,
-    cancelRowAction: cancelRowAction,
     requestNavigationAction: requestNavigationAction,
     requestTabNavigation: requestTabNavigation,
     confirmNavigation: confirmNavigation,

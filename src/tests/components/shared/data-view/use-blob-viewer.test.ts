@@ -62,7 +62,11 @@ function renderTableBlobViewer() {
     const session = useDataEditSession(REF)
     const columns = useDataView(REF, (view) => view.slot.columns)
     const editTarget = useDataView(REF, (view) => view.editTarget)
-    const { descriptors } = useDataColumnDescriptors({ columns: columns, editTarget: editTarget })
+    const { descriptors } = useDataColumnDescriptors({
+      columns: columns,
+      editTarget: editTarget,
+      metadata: null,
+    })
     return { viewer: useBlobViewer({ session: session, columns: descriptors }), descriptors }
   })
 }

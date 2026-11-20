@@ -1,5 +1,3 @@
-import { legacyFieldsOf } from '../helpers/legacy-result-fields'
-import { patchedLegacyResult, resultState } from '../helpers/legacy-result-fields'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { ipc, expectToast, overrideIpcCommands, overrideNamedIpcCommands } from '../ipc-mock'
 import {
@@ -7,6 +5,7 @@ import {
   DEFAULT_RESULT_STATE,
   RESULT_EXPORT_POLL_MS,
   activeQuerySurfaceRef,
+  type ResultPatch,
 } from '../../stores/query-store'
 import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
 import { useTableDataStore } from '../../stores/table-data-store'
@@ -32,6 +31,7 @@ import {
   overrideNamedCommands,
   patchResult,
   registerQueryStoreSetup,
+  resultWith,
 } from '../helpers/query-store-fixtures'
 
 registerQueryStoreSetup()
@@ -47,12 +47,11 @@ describe('useQueryStore — getTabState', () => {
     expect(state.wasCancelled).toBe(false)
 
     const unknownTab = flat('unknown')
-    expect(unknownTab.columns).toHaveLength(0)
-    expect(unknownTab.viewMode).toBe('grid')
-    expect(unknownTab.sortColumn).toBeNull()
-    expect(unknownTab.sortDirection).toBeNull()
-    expect(unknownTab.selectedRowIndex).toBeNull()
-    expect(unknownTab.exportDialogOpen).toBe(false)
+    expect(unknownTab.view.slot.columns).toHaveLength(0)
+    expect(unknownTab.view.mode).toBe('grid')
+    expect(unknownTab.view.spec.sort).toBeNull()
+    expect(unknownTab.view.selection.rowIndex).toBeNull()
+    expect(unknownTab.view.prompts.isExportOpen).toBe(false)
     expect(unknownTab.lastExecutedSql).toBeNull()
   })
 })
@@ -293,9 +292,9 @@ describe('useQueryStore — executeQuery', () => {
     expect(state.tabStatus).toBe('success')
     expect(state.activeBottomPanelItem).toEqual({ type: 'result' })
     const f = flat('tab-1')
-    expect(f.queryId).toBe('q-mock')
-    expect(f.totalRows).toBe(3)
-    expect(f.columns).toHaveLength(1)
+    expect(f.view.slot.queryId).toBe('q-mock')
+    expect(f.view.slot.totalRows).toBe(3)
+    expect(f.view.slot.columns).toHaveLength(1)
     expect(f.rows).toEqual([[1], [2], [3]])
     expect(f.lastExecutedSql).toBe('SELECT 1')
   })
@@ -314,16 +313,16 @@ describe('useQueryStore — executeQuery', () => {
     // Set up tab with existing sort/selection state
     useQueryStore.getState().setContent('tab-reset', 'SELECT 1')
     patchResult('tab-reset', {
-      sortColumn: 'id',
-      sortDirection: 'asc' as const,
-      selectedRowIndex: 5,
+      view: {
+        selection: { rowIndex: 5 },
+        spec: { sort: { column: 'id', direction: 'asc' as const } },
+      },
     })
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-reset', 'SELECT 1')
     const f = flat('tab-reset')
-    expect(f.sortColumn).toBeNull()
-    expect(f.sortDirection).toBeNull()
-    expect(f.selectedRowIndex).toBeNull()
+    expect(f.view.spec.sort).toBeNull()
+    expect(f.view.selection.rowIndex).toBeNull()
   })
 
   it('normalizes tinyint boolean aliases to integer rows on executeQuery', async () => {
@@ -389,7 +388,7 @@ describe('useQueryStore — executeQuery', () => {
       expect(flat('tab-null-analyze').isAnalyzingQuery).toBe(false)
     })
 
-    expect(flat('tab-null-analyze').editTableMetadata).toEqual({})
+    expect(flat('tab-null-analyze').view.editTarget.tables).toEqual({})
     const analyzeErrors = errSpy.mock.calls.filter(
       (c) => typeof c[0] === 'string' && c[0].includes('analyze_query_for_edit')
     )
@@ -624,10 +623,10 @@ describe('useQueryStore — export dialog', () => {
     patchResult('tab-1', {})
 
     useQueryStore.getState().openExportDialog(activeQuerySurfaceRef('tab-1'))
-    expect(flat('tab-1').exportDialogOpen).toBe(true)
+    expect(flat('tab-1').view.prompts.isExportOpen).toBe(true)
 
     useQueryStore.getState().closeExportDialog(activeQuerySurfaceRef('tab-1'))
-    expect(flat('tab-1').exportDialogOpen).toBe(false)
+    expect(flat('tab-1').view.prompts.isExportOpen).toBe(false)
   })
 })
 
@@ -642,16 +641,19 @@ describe('useQueryStore — sortResults', () => {
           connectionId: 'conn-1',
           tabStatus: 'success',
           results: [
-            resultState({
+            resultWith({
               resultStatus: 'success',
-              columns: [{ name: 'id', dataType: 'INT' }],
-              queryId: 'q-sort',
-              totalRows: 3,
-              viewVersion: 1,
+              view: {
+                slot: {
+                  columns: [{ name: 'id', dataType: 'INT' }],
+                  queryId: 'q-sort',
+                  totalRows: 3,
+                  viewVersion: 1,
+                },
+                checked: { ranges: [[0, 2]], viewVersion: 1 },
+              },
               latestKnownViewVersion: 1,
               lastExecutedSql: 'SELECT id FROM t',
-              checkedRanges: [[0, 2]],
-              checkedViewVersion: 1,
               ...withRows([[3], [1], [2]]),
             }),
           ],
@@ -679,12 +681,11 @@ describe('useQueryStore — sortResults', () => {
       viewSpec: { sort: { column: 'id', direction: 'asc' }, filters: [] },
     })
     const f = flat('tab-1')
-    expect(f.sortColumn).toBe('id')
-    expect(f.sortDirection).toBe('asc')
+    expect(f.view.spec.sort).toEqual({ column: 'id', direction: 'asc' })
     expect(f.rows).toEqual([[1], [2], [3]])
     expect(baseIndicesOf('tab-1')).toEqual([1, 2, 0])
     // Checked ranges belong to the old view and are cleared.
-    expect(f.checkedRanges).toEqual([])
+    expect(f.view.checked.ranges).toEqual([])
     expect(ipc.calls('sort_results')).toHaveLength(0)
   })
 
@@ -707,8 +708,7 @@ describe('useQueryStore — sortResults', () => {
     expect(ipc.payloads('execute_query')).toHaveLength(0)
     expect(ipc.payloads('reexecute_single_result')).toHaveLength(0)
     const f = flat('tab-1')
-    expect(f.sortColumn).toBeNull()
-    expect(f.sortDirection).toBeNull()
+    expect(f.view.spec.sort).toBeNull()
     expect(f.rows).toEqual([[3], [1], [2]])
   })
 
@@ -721,12 +721,16 @@ describe('useQueryStore — sortResults', () => {
           ...prev.tabs['tab-bool']!,
           connectionId: 'conn-1',
           results: [
-            resultState({
+            resultWith({
               resultStatus: 'success',
-              columns: BOOLEAN_ALIAS_COLUMNS,
-              queryId: 'q-bool',
-              totalRows: 1,
-              viewVersion: 1,
+              view: {
+                slot: {
+                  columns: BOOLEAN_ALIAS_COLUMNS,
+                  queryId: 'q-bool',
+                  totalRows: 1,
+                  viewVersion: 1,
+                },
+              },
               ...withRows([[1, 0, 'x']]),
             }),
           ],
@@ -803,8 +807,7 @@ describe('useQueryStore — changeRowLimit', () => {
     patchResult('tab-1', {
       lastExecutedSql: 'SELECT id FROM t',
       resultStatus: 'success' as const,
-      queryId: 'q-old',
-      selectedRowIndex: 3,
+      view: { slot: { queryId: 'q-old' }, selection: { rowIndex: 3 } },
     })
     useQueryStore.setState((prev) => ({
       tabs: {
@@ -820,13 +823,12 @@ describe('useQueryStore — changeRowLimit', () => {
     const f = flat('tab-1')
     expect(f.resultStatus).toBe('success')
     expect(f.rowLimit).toBe(500)
-    expect(f.queryId).toBe('q-new')
-    expect(f.totalRows).toBe(100)
+    expect(f.view.slot.queryId).toBe('q-new')
+    expect(f.view.slot.totalRows).toBe(100)
     expect(f.rows).toEqual([[1], [2]])
 
-    expect(f.sortColumn).toBeNull()
-    expect(f.sortDirection).toBeNull()
-    expect(f.selectedRowIndex).toBeNull()
+    expect(f.view.spec.sort).toBeNull()
+    expect(f.view.selection.rowIndex).toBeNull()
   })
 
   it('normalizes tinyint boolean aliases when changeRowLimit re-executes the query', async () => {
@@ -851,7 +853,7 @@ describe('useQueryStore — changeRowLimit', () => {
     patchResult('tab-bool-size', {
       lastExecutedSql: 'SELECT is_active FROM t',
       resultStatus: 'success' as const,
-      queryId: 'q-old',
+      view: { slot: { queryId: 'q-old' } },
     })
     useQueryStore.setState((prev) => ({
       tabs: {
@@ -1006,7 +1008,7 @@ describe('useQueryStore — changeRowLimit', () => {
     patchResult('tab-ps-error-state', {
       lastExecutedSql: 'SELECT 1',
       resultStatus: 'success' as const,
-      queryId: 'q-stable',
+      view: { slot: { queryId: 'q-stable' } },
     })
     useQueryStore.setState((prev) => ({
       tabs: {
@@ -1489,10 +1491,11 @@ describe('useQueryStore — totalTimeMs propagation', () => {
   it('keeps totalTimeMs when clearing a sort (no re-execute)', async () => {
     useQueryStore.getState().setContent('tab-sort-total', 'SELECT 1')
     patchResult('tab-sort-total', {
-      sortColumn: 'id',
-      sortDirection: 'asc' as const,
+      view: {
+        slot: { queryId: 'q-old' },
+        spec: { sort: { column: 'id', direction: 'asc' as const } },
+      },
       lastExecutedSql: 'SELECT id FROM t',
-      queryId: 'q-old',
       totalTimeMs: 33,
       resultStatus: 'success' as const,
     })
@@ -1532,7 +1535,7 @@ describe('useQueryStore — totalTimeMs propagation', () => {
     patchResult('tab-limit-total', {
       lastExecutedSql: 'SELECT id FROM t',
       resultStatus: 'success' as const,
-      queryId: 'q-old',
+      view: { slot: { queryId: 'q-old' } },
     })
     useQueryStore.setState((prev) => ({
       tabs: {
@@ -1564,7 +1567,7 @@ describe('useQueryStore — connection-aware async completion', () => {
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-visible', 'SELECT id FROM t')
 
-    const residency = flat('tab-visible').rowResidency
+    const residency = flat('tab-visible').view.residency.rows
     expect(residency.isActive).toBe(true)
     expect(residency.inactiveSince).toBeNull()
     expect(flat('tab-visible').rows).toEqual([[1], [2], [3]])
@@ -1577,7 +1580,7 @@ describe('useQueryStore — connection-aware async completion', () => {
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-bg', 'SELECT id FROM t')
 
-    const residency = flat('tab-bg').rowResidency
+    const residency = flat('tab-bg').view.residency.rows
     expect(residency.status).toBe('resident')
     expect(residency.isActive).toBe(false)
     expect(typeof residency.inactiveSince).toBe('number')
@@ -1627,15 +1630,14 @@ describe('full export job', () => {
         [tabId]: {
           ...makeTabState({ connectionId: CONN, tabStatus: 'success' }),
           results: [
-            resultState({
+            resultWith({
               resultStatus: 'success',
-              queryId: 'q-truncated',
+              view: {
+                slot: { queryId: 'q-truncated', totalRows: 5, viewRowCount: 5 },
+                prompts: { isExportOpen: exportDialogOpen, exportScope: 'allRows' },
+              },
               truncated: true,
               rowCeiling: 5,
-              totalRows: 5,
-              viewRowCount: 5,
-              exportDialogOpen,
-              preferredExportScope: 'allRows',
             }),
           ],
         },
@@ -1690,7 +1692,7 @@ describe('full export job', () => {
     progress = { ...running(250_000), status: 'completed' }
     await vi.advanceTimersByTimeAsync(RESULT_EXPORT_POLL_MS)
     expect(job()).toBeUndefined()
-    expect(flat(TAB).exportDialogOpen).toBe(false)
+    expect(flat(TAB).view.prompts.isExportOpen).toBe(false)
     await expectToast('success', 'Export completed')
     await expectToast('success', '250,000 rows saved to /tmp/all.csv')
 
@@ -1763,7 +1765,7 @@ describe('full export job', () => {
     await startAndFirstPoll()
 
     await useQueryStore.getState().executeQuery(CONN, TAB, 'SELECT id FROM t')
-    expect(flat(TAB).queryId).toBe('q-mock')
+    expect(flat(TAB).view.slot.queryId).toBe('q-mock')
     expect(job()).toMatchObject({ jobId: 'job-1', status: 'running', queryId: 'q-truncated' })
 
     progress = { ...running(9), status: 'completed' }
@@ -1924,8 +1926,8 @@ describe('full export job', () => {
     })
     await useQueryStore.getState().startFullExport(TAB, REQUEST)
     expect(job()).toBeUndefined()
-    expect(flat(TAB).isExpired).toBe(true)
-    expect(flat(TAB).exportDialogOpen).toBe(false)
+    expect(flat(TAB).view.residency.isExpired).toBe(true)
+    expect(flat(TAB).view.prompts.isExportOpen).toBe(false)
   })
 
   it('a progress poll failure fails the job', async () => {
@@ -2141,14 +2143,14 @@ describe('multi-result actions', () => {
             cursorPosition: null,
             connectionId: 'conn-1',
             results: [
-              resultState({
+              resultWith({
                 resultStatus: 'success',
                 ...withRows([[1]]),
                 view: {
                   slot: { queryId: 'q1', columns: [{ name: 'id', dataType: 'INT' }], totalRows: 1 },
                 },
               }),
-              resultState({
+              resultWith({
                 resultStatus: 'success',
                 ...withRows([['Alice']]),
                 view: {
@@ -2179,7 +2181,12 @@ describe('multi-result actions', () => {
           'tab-1': {
             ...tabBefore,
             results: tabBefore.results.map((result) =>
-              patchedLegacyResult(result, { checkedRanges: [[0, 1]] })
+              resultWith(
+                {
+                  view: { checked: { ranges: [[0, 1]] } },
+                },
+                result
+              )
             ),
           },
         },
@@ -2200,11 +2207,11 @@ describe('multi-result actions', () => {
     it('flat() returns data for the active result', () => {
       setupMultiResult()
       // Initial: activeResultIndex=0
-      expect(flat('tab-1').queryId).toBe('q1')
+      expect(flat('tab-1').view.slot.queryId).toBe('q1')
 
       useQueryStore.getState().setActiveResultIndex('tab-1', 1)
-      expect(flat('tab-1').queryId).toBe('q2')
-      expect(flat('tab-1').columns).toEqual([{ name: 'name', dataType: 'VARCHAR' }])
+      expect(flat('tab-1').view.slot.queryId).toBe('q2')
+      expect(flat('tab-1').view.slot.columns).toEqual([{ name: 'name', dataType: 'VARCHAR' }])
     })
 
     it('does not touch result residency when switching results on a hidden query tab', () => {
@@ -2242,7 +2249,7 @@ describe('multi-result actions', () => {
             cursorPosition: null,
             connectionId: 'conn-1',
             results: [
-              resultState({
+              resultWith({
                 resultStatus: 'success',
                 ...withRows([[1], [2]]),
                 view: {
@@ -2250,7 +2257,7 @@ describe('multi-result actions', () => {
                   slot: { queryId: 'q1', columns: [{ name: 'id', dataType: 'INT' }], totalRows: 2 },
                 },
               }),
-              resultState({
+              resultWith({
                 resultStatus: 'success',
                 ...withRows([['Alice']]),
                 view: {
@@ -2309,8 +2316,8 @@ describe('multi-result actions', () => {
             cursorPosition: null,
             connectionId: 'conn-1',
             results: [
-              resultState({ resultStatus: 'success' }),
-              resultState({ resultStatus: 'success' }),
+              resultWith({ resultStatus: 'success' }),
+              resultWith({ resultStatus: 'success' }),
             ],
             activeResultIndex: 0,
             executionStartedAt: null,
@@ -2339,8 +2346,8 @@ describe('multi-result actions', () => {
             cursorPosition: null,
             connectionId: 'conn-1',
             results: [
-              resultState({ resultStatus: 'success' }),
-              resultState({
+              resultWith({ resultStatus: 'success' }),
+              resultWith({
                 resultStatus: 'success',
                 view: {
                   edit: {
@@ -2392,7 +2399,7 @@ describe('multi-result actions', () => {
             cursorPosition: null,
             connectionId: 'conn-1',
             results: [
-              resultState({
+              resultWith({
                 resultStatus: 'success',
                 ...withRows([[1]]),
                 isAnalyzed: true,
@@ -2402,7 +2409,7 @@ describe('multi-result actions', () => {
                   slot: { queryId: 'q1', columns: [{ name: 'id', dataType: 'INT' }], totalRows: 1 },
                 },
               }),
-              resultState({
+              resultWith({
                 resultStatus: 'success',
                 ...withRows([['Alice']]),
                 isAnalyzed: false,
@@ -2455,9 +2462,12 @@ describe('multi-result actions', () => {
             const tab = prev.tabs['tab-1']
             if (!tab) return prev
             const nextResults = [...tab.results]
-            nextResults[1] = patchedLegacyResult(nextResults[1], {
-              view: { slot: { queryId: 'q2-newer' } },
-            })
+            nextResults[1] = resultWith(
+              {
+                view: { slot: { queryId: 'q2-newer' } },
+              },
+              nextResults[1]
+            )
             return {
               tabs: {
                 ...prev.tabs,
@@ -2491,22 +2501,24 @@ describe('multi-result actions', () => {
             cursorPosition: null,
             connectionId: 'conn-1',
             results: [
-              resultState({
+              resultWith({
                 resultStatus: 'success',
-                ...withRows([[1]]), // editState with NO modified columns (clean)
-                editState: {
-                  rowKey: { id: 1 },
-                  originalValues: { id: 1 },
-                  currentValues: { id: 1 },
-                  modifiedColumns: new Set<string>(),
-                  isNewRow: false,
-                },
+                ...withRows([[1]]),
                 view: {
+                  edit: {
+                    state: {
+                      rowKey: { id: 1 },
+                      originalValues: { id: 1 },
+                      currentValues: { id: 1 },
+                      modifiedColumns: new Set<string>(),
+                      isNewRow: false,
+                    },
+                    rowIndex: 0,
+                  },
                   slot: { queryId: 'q1', columns: [{ name: 'id', dataType: 'INT' }], totalRows: 1 },
-                  edit: { rowIndex: 0 },
                 },
               }),
-              resultState({
+              resultWith({
                 resultStatus: 'success',
                 ...withRows([['Alice']]),
                 view: {
@@ -2560,7 +2572,7 @@ describe('multi-result actions', () => {
             cursorPosition: null,
             connectionId: 'conn-1',
             results: [
-              resultState({
+              resultWith({
                 resultStatus: 'success',
                 ...withRows([[1]]),
                 reExecutable: false,
@@ -2613,7 +2625,7 @@ describe('multi-result actions', () => {
   // ---------------------------------------------------------------------------
 
   describe('useQueryStore — sortResults', () => {
-    function setupSortableTab(overrides: Record<string, unknown> = {}) {
+    function setupSortableTab(overrides: ResultPatch = {}) {
       useQueryStore.setState({
         tabs: {
           'tab-1': {
@@ -2625,22 +2637,21 @@ describe('multi-result actions', () => {
             cursorPosition: null,
             connectionId: 'conn-1',
             results: [
-              patchedLegacyResult(
-                resultState({
+              resultWith(
+                overrides,
+                resultWith({
                   view: {
                     slot: {
                       queryId: 'q1',
                       columns: [{ name: 'id', dataType: 'INT' }],
                       totalRows: 3,
                     },
+                    spec: { sort: { column: 'id', direction: 'asc' as const } },
                   },
                   resultStatus: 'success',
                   ...withRows([[3], [1], [2]]),
                   lastExecutedSql: 'SELECT id FROM t',
-                  sortColumn: 'id',
-                  sortDirection: 'asc' as const,
-                }),
-                overrides
+                })
               ),
             ],
             activeResultIndex: 0,
@@ -2668,8 +2679,7 @@ describe('multi-result actions', () => {
         .sortResults(activeQuerySurfaceRef('tab-1'), { column: 'id', direction: null })
 
       const tab = useQueryStore.getState().tabs['tab-1']!
-      expect(legacyFieldsOf(tab.results[0]).sortColumn).toBeNull()
-      expect(legacyFieldsOf(tab.results[0]).sortDirection).toBeNull()
+      expect(tab.results[0].view.spec.sort).toBeNull()
       expect(rowsOf('tab-1', 0)).toEqual([[3], [1], [2]])
       expect(ipc.payloads('reexecute_single_result')).toHaveLength(0)
       expect(ipc.payloads('execute_call_query')).toHaveLength(0)
@@ -2686,7 +2696,7 @@ describe('multi-result actions', () => {
         .sortResults(activeQuerySurfaceRef('tab-1'), { column: 'id', direction: 'desc' })
 
       const result = useQueryStore.getState().tabs['tab-1']!.results[0]
-      expect(legacyFieldsOf(result).sortDirection).toBe('asc')
+      expect(result.view.spec.sort?.direction).toBe('asc')
       expect(result.view.spec.error).toBe('Sort failed')
     })
   })
@@ -2708,14 +2718,14 @@ describe('multi-result actions', () => {
             cursorPosition: null,
             connectionId: 'conn-1',
             results: [
-              resultState({
+              resultWith({
                 resultStatus: 'success',
                 ...withRows([[1]]),
                 view: {
                   slot: { queryId: 'q1', columns: [{ name: 'id', dataType: 'INT' }], totalRows: 1 },
                 },
               }),
-              resultState({
+              resultWith({
                 resultStatus: 'success',
                 ...withRows([['Bob'], ['Alice']]),
                 view: {
@@ -2751,7 +2761,7 @@ describe('multi-result actions', () => {
       expect(rowsOf('tab-1', 1)).toEqual([['Alice'], ['Bob']])
       expect(rowsOf('tab-1', 0)).toEqual([[1]])
       expect(
-        legacyFieldsOf(useQueryStore.getState().tabs['tab-1']!.results[0]).sortColumn
+        useQueryStore.getState().tabs['tab-1']!.results[0].view.spec.sort?.column ?? null
       ).toBeNull()
     })
   })
@@ -2773,7 +2783,7 @@ describe('multi-result actions', () => {
             cursorPosition: null,
             connectionId: 'conn-1',
             results: [
-              resultState({
+              resultWith({
                 resultStatus: 'success',
                 ...withRows([[1]]),
                 lastExecutedSql: 'SELECT 1',
@@ -2782,7 +2792,7 @@ describe('multi-result actions', () => {
                   slot: { queryId: 'q1', columns: [{ name: 'id', dataType: 'INT' }], totalRows: 1 },
                 },
               }),
-              resultState({
+              resultWith({
                 resultStatus: 'success',
                 ...withRows([['Alice']]),
                 lastExecutedSql: 'SELECT 2',
@@ -2818,10 +2828,13 @@ describe('multi-result actions', () => {
             const tab = prev.tabs['tab-1']
             if (!tab) return prev
             const newResults = [...tab.results]
-            newResults[0] = patchedLegacyResult(newResults[0], {
-              ...withRows([[777]]),
-              view: { slot: { queryId: 'q1-replaced-newer' } },
-            })
+            newResults[0] = resultWith(
+              {
+                ...withRows([[777]]),
+                view: { slot: { queryId: 'q1-replaced-newer' } },
+              },
+              newResults[0]
+            )
             return {
               tabs: {
                 ...prev.tabs,
@@ -2973,7 +2986,7 @@ describe('expired results', () => {
             cursorPosition: null,
             connectionId: CONN_ID,
             results: [
-              resultState({
+              resultWith({
                 resultStatus: 'success',
                 lastExecutedSql: 'SELECT * FROM users',
                 ...withRows([[1]]),
@@ -3012,7 +3025,7 @@ describe('expired results', () => {
             cursorPosition: { lineNumber: 1, column: 10 },
             connectionId: CONN_ID,
             results: [
-              resultState({
+              resultWith({
                 resultStatus: 'success',
                 lastExecutedSql: 'SELECT * FROM users',
                 ...withRows([[1]]),
@@ -3025,7 +3038,7 @@ describe('expired results', () => {
                   },
                 },
               }),
-              resultState({
+              resultWith({
                 resultStatus: 'success',
                 lastExecutedSql: 'SELECT * FROM orders',
                 ...withRows([[2]]),
@@ -3126,7 +3139,12 @@ describe('expired results', () => {
         useQueryStore.setState((state) => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
-          const result = patchedLegacyResult(tab.results[0], { filterModel: FILTER_EQ_ID_2 })
+          const result = resultWith(
+            {
+              view: { spec: { filters: FILTER_EQ_ID_2 } },
+            },
+            tab.results[0]
+          )
           return {
             tabs: {
               ...state.tabs,
@@ -3161,16 +3179,23 @@ describe('expired results', () => {
         useQueryStore.setState((state) => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
-          const result = patchedLegacyResult(tab.results[0], {
-            rowsEvictedAt: 1234,
-            filterModel: FILTER_EQ_ID_2,
-            viewVersion: 3,
-            rowResidency: {
-              status: 'evicted' as const,
-              isActive: false,
-              inactiveSince: Date.now(),
+          const result = resultWith(
+            {
+              view: {
+                residency: {
+                  evictedAt: 1234,
+                  rows: {
+                    status: 'evicted' as const,
+                    isActive: false,
+                    inactiveSince: Date.now(),
+                  },
+                },
+                spec: { filters: FILTER_EQ_ID_2 },
+                slot: { viewVersion: 3 },
+              },
             },
-          })
+            tab.results[0]
+          )
           return {
             tabs: {
               ...state.tabs,
@@ -3225,17 +3250,20 @@ describe('expired results', () => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
           const results = [...tab.results]
-          results[1] = patchedLegacyResult(results[1], {
-            view: {
-              residency: {
-                rows: {
-                  status: 'evicted',
-                  isActive: false,
-                  inactiveSince: 123,
+          results[1] = resultWith(
+            {
+              view: {
+                residency: {
+                  rows: {
+                    status: 'evicted',
+                    isActive: false,
+                    inactiveSince: 123,
+                  },
                 },
               },
             },
-          })
+            results[1]
+          )
           return {
             tabs: {
               ...state.tabs,
@@ -3291,17 +3319,20 @@ describe('expired results', () => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
           const results = [...tab.results]
-          results[1] = patchedLegacyResult(results[1], {
-            view: {
-              residency: {
-                rows: {
-                  status: 'evicted',
-                  isActive: false,
-                  inactiveSince: 123,
+          results[1] = resultWith(
+            {
+              view: {
+                residency: {
+                  rows: {
+                    status: 'evicted',
+                    isActive: false,
+                    inactiveSince: 123,
+                  },
                 },
               },
             },
-          })
+            results[1]
+          )
           return {
             tabs: {
               ...state.tabs,
@@ -3354,13 +3385,20 @@ describe('expired results', () => {
         useQueryStore.setState((state) => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
-          const result = patchedLegacyResult(tab.results[0], {
-            rowResidency: {
-              status: 'evicted' as const,
-              isActive: false,
-              inactiveSince: Date.now(),
+          const result = resultWith(
+            {
+              view: {
+                residency: {
+                  rows: {
+                    status: 'evicted' as const,
+                    isActive: false,
+                    inactiveSince: Date.now(),
+                  },
+                },
+              },
             },
-          })
+            tab.results[0]
+          )
           return {
             tabs: {
               ...state.tabs,
@@ -3398,13 +3436,20 @@ describe('expired results', () => {
               [TAB_ID]: {
                 ...tab,
                 results: [
-                  patchedLegacyResult(tab.results[0], {
-                    rowResidency: {
-                      status: 'evicted',
-                      isActive: false,
-                      inactiveSince: 999,
+                  resultWith(
+                    {
+                      view: {
+                        residency: {
+                          rows: {
+                            status: 'evicted',
+                            isActive: false,
+                            inactiveSince: 999,
+                          },
+                        },
+                      },
                     },
-                  }),
+                    tab.results[0]
+                  ),
                 ],
               },
             },
@@ -3436,16 +3481,23 @@ describe('expired results', () => {
         useQueryStore.setState((state) => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
-          const result = patchedLegacyResult(tab.results[0], {
-            editState: {
-              rowKey: { id: 1 },
-              originalValues: { id: 1 },
-              currentValues: { id: 2 },
-              modifiedColumns: new Set(['id']),
-              isNewRow: false,
-              insertEligibleColumns: new Set<string>(),
+          const result = resultWith(
+            {
+              view: {
+                edit: {
+                  state: {
+                    rowKey: { id: 1 },
+                    originalValues: { id: 1 },
+                    currentValues: { id: 2 },
+                    modifiedColumns: new Set(['id']),
+                    isNewRow: false,
+                    insertEligibleColumns: new Set<string>(),
+                  },
+                },
+              },
             },
-          })
+            tab.results[0]
+          )
           return {
             tabs: {
               ...state.tabs,
@@ -3479,17 +3531,20 @@ describe('expired results', () => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
           const results = [...tab.results]
-          results[1] = patchedLegacyResult(results[1], {
-            view: {
-              residency: {
-                rows: {
-                  status: 'evicted',
-                  isActive: false,
-                  inactiveSince: Date.now(),
+          results[1] = resultWith(
+            {
+              view: {
+                residency: {
+                  rows: {
+                    status: 'evicted',
+                    isActive: false,
+                    inactiveSince: Date.now(),
+                  },
                 },
               },
             },
-          })
+            results[1]
+          )
           return {
             tabs: {
               ...state.tabs,
@@ -3531,10 +3586,13 @@ describe('expired results', () => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
           const results = [...tab.results]
-          results[0] = patchedLegacyResult(results[0], {
-            lastExecutedSql: 'SELECT * FROM users',
-            view: { residency: { isExpired: true } },
-          })
+          results[0] = resultWith(
+            {
+              lastExecutedSql: 'SELECT * FROM users',
+              view: { residency: { isExpired: true } },
+            },
+            results[0]
+          )
           return {
             tabs: {
               ...state.tabs,
@@ -3583,10 +3641,13 @@ describe('expired results', () => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
           const results = [...tab.results]
-          results[0] = patchedLegacyResult(results[0], {
-            lastExecutedSql: null,
-            view: { residency: { isExpired: true } },
-          })
+          results[0] = resultWith(
+            {
+              lastExecutedSql: null,
+              view: { residency: { isExpired: true } },
+            },
+            results[0]
+          )
           return {
             tabs: {
               ...state.tabs,
@@ -3612,7 +3673,7 @@ describe('expired results', () => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
           const results = [...tab.results]
-          results[0] = patchedLegacyResult(results[0], { view: { residency: { isExpired: true } } })
+          results[0] = resultWith({ view: { residency: { isExpired: true } } }, results[0])
           return { tabs: { ...state.tabs, [TAB_ID]: { ...tab, results } } }
         })
       })
@@ -3652,7 +3713,7 @@ describe('expired results', () => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
           const results = [...tab.results]
-          results[0] = patchedLegacyResult(results[0], { view: { residency: { isExpired: true } } })
+          results[0] = resultWith({ view: { residency: { isExpired: true } } }, results[0])
           return { tabs: { ...state.tabs, [TAB_ID]: { ...tab, results } } }
         })
       })
@@ -3708,7 +3769,7 @@ describe('expired results', () => {
 
       const tab = useQueryStore.getState().tabs[TAB_ID]
       expect(tab?.results.every((result) => result.view.residency.isExpired)).toBe(true)
-      expect(tab?.results.some((result) => legacyFieldsOf(result).isSorting)).toBe(false)
+      expect(tab?.results.some((result) => result.view.spec.applying === 'sort')).toBe(false)
     })
 
     it('changeRowLimit sets all tab results expired when re-execution returns results_expired', async () => {
@@ -3736,25 +3797,34 @@ describe('expired results', () => {
         useQueryStore.setState((state) => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
-          const result = patchedLegacyResult(tab.results[0], {
-            editMode: 'db.users',
-            editConnectionId: CONN_ID,
-            editingRowIndex: 0,
-            editingBaseIndex: 0,
-            editBoundColumnIndexMap: new Map([['id', 0]]),
-            editColumnBindings: new Map([[0, 'id']]),
-            editState: {
-              rowKey: { id: 1 },
-              originalValues: { id: 1 },
-              currentValues: { id: 2 },
-              modifiedColumns: new Set(['id']),
-              isNewRow: false,
-              insertEligibleColumns: new Set<string>(),
+          const result = resultWith(
+            {
+              view: {
+                editTarget: {
+                  tableName: 'db.users',
+                  boundIndexByName: new Map([['id', 0]]),
+                  bindings: new Map([[0, 'id']]),
+                  tables: {
+                    'db.users': TEST_EDIT_TABLE_INFO,
+                  },
+                },
+                slot: { connectionId: CONN_ID },
+                edit: {
+                  rowIndex: 0,
+                  baseIndex: 0,
+                  state: {
+                    rowKey: { id: 1 },
+                    originalValues: { id: 1 },
+                    currentValues: { id: 2 },
+                    modifiedColumns: new Set(['id']),
+                    isNewRow: false,
+                    insertEligibleColumns: new Set<string>(),
+                  },
+                },
+              },
             },
-            editTableMetadata: {
-              'db.users': TEST_EDIT_TABLE_INFO,
-            },
-          })
+            tab.results[0]
+          )
           return {
             tabs: {
               ...state.tabs,
@@ -3790,7 +3860,7 @@ describe('expired results', () => {
           const tab = state.tabs[TAB_ID]
           if (!tab) return state
           const results = [...tab.results]
-          results[0] = patchedLegacyResult(results[0], { view: { residency: { isExpired: true } } })
+          results[0] = resultWith({ view: { residency: { isExpired: true } } }, results[0])
           return { tabs: { ...state.tabs, [TAB_ID]: { ...tab, results } } }
         })
       })
@@ -3828,7 +3898,12 @@ describe('expired results', () => {
               [TAB_ID]: {
                 ...tab,
                 results: tab.results.map((result) =>
-                  patchedLegacyResult(result, { isExpired: true })
+                  resultWith(
+                    {
+                      view: { residency: { isExpired: true } },
+                    },
+                    result
+                  )
                 ),
               },
             },

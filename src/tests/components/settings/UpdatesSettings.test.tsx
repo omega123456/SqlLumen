@@ -1,4 +1,4 @@
-import { resultState } from '../../helpers/legacy-result-fields'
+import { resultWith } from '../../helpers/query-store-fixtures'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -367,7 +367,7 @@ describe('UpdatesSettings', () => {
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
-            resultState({
+            resultWith({
               resultStatus: 'running',
               rowLimit: 100,
               lastExecutedSql: 'select 1',
@@ -390,13 +390,12 @@ describe('UpdatesSettings', () => {
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
-            resultState({
+            resultWith({
               resultStatus: 'success',
               rowLimit: 100,
               lastExecutedSql: 'select 2',
-              editConnectionId: 'conn-1',
               view: {
-                slot: { totalRows: 1, queryId: 'q2' },
+                slot: { connectionId: 'conn-1', totalRows: 1, queryId: 'q2' },
                 edit: {
                   state: {
                     rowKey: { id: 1 },

@@ -1,10 +1,9 @@
-import { patchedLegacyResult } from '../../helpers/legacy-result-fields'
-import { resultState } from '../../helpers/legacy-result-fields'
+import { resultWith } from '../../helpers/query-store-fixtures'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ResultPanel } from '../../../components/query-editor/ResultPanel'
-import { useQueryStore, querySurfaceRef } from '../../../stores/query-store'
+import { useQueryStore, type ResultPatch, type TabQueryState } from '../../../stores/query-store'
 import * as DataToolbarModule from '../../../components/shared/data-view/DataToolbar'
 import type { DataViewSource } from '../../../components/shared/data-view/data-view-source'
 import * as DataGridViewModule from '../../../components/shared/data-view/DataGridView'
@@ -14,14 +13,14 @@ import * as FilterDialogModule from '../../../components/dialogs/FilterDialog'
 import React from 'react'
 import { expectToast, ipc } from '../../ipc-mock'
 import { withRows } from '../../helpers/query-test-utils'
+import { seedResultWindow } from '../../../lib/result-window-cache'
+import type { FullExportBlockedReason } from '../../../types/schema'
 
 // Use vi.spyOn to install per-test mock implementations without vi.mock().
 
-const result = resultState({
+const result = resultWith({
   resultStatus: 'success' as const,
-  columns: [{ name: 'id', dataType: 'INT' }],
-  totalRows: 2,
-  viewRowCount: 2,
+  view: { slot: { columns: [{ name: 'id', dataType: 'INT' }], totalRows: 2, viewRowCount: 2 } },
 })
 
 describe('ResultPanel', () => {
@@ -96,7 +95,15 @@ describe('ResultPanel', () => {
           ...state.tabs,
           tab1: {
             ...state.tabs.tab1,
-            results: [patchedLegacyResult(result, { columns: [], affectedRows: 0 })],
+            results: [
+              resultWith(
+                {
+                  view: { slot: { columns: [] } },
+                  affectedRows: 0,
+                },
+                result
+              ),
+            ],
           },
         },
       }))
@@ -117,11 +124,14 @@ describe('ResultPanel', () => {
             ...state.tabs.tab1,
             tabStatus: 'error',
             results: [
-              patchedLegacyResult(result, {
-                resultStatus: 'error' as const,
-                columns: [],
-                errorMessage: "Table 'shop.user' doesn't exist",
-              }),
+              resultWith(
+                {
+                  resultStatus: 'error' as const,
+                  view: { slot: { columns: [] } },
+                  errorMessage: "Table 'shop.user' doesn't exist",
+                },
+                result
+              ),
             ],
           },
         },
@@ -151,7 +161,7 @@ describe('ResultPanel', () => {
   })
 
   describe('band slot (wireframes 1, 1b and 2)', () => {
-    function setResult(patch: Record<string, unknown>, tabPatch: Record<string, unknown> = {}) {
+    function setResult(patch: ResultPatch, tabPatch: Partial<TabQueryState> = {}) {
       act(() => {
         useQueryStore.setState((state) => ({
           tabs: {
@@ -159,7 +169,9 @@ describe('ResultPanel', () => {
             tab1: {
               ...state.tabs.tab1,
               ...tabPatch,
-              results: [patchedLegacyResult(result, { queryId: 'q-1', ...patch })],
+              results: [
+                resultWith(patch, resultWith({ view: { slot: { queryId: 'q-1' } } }, result)),
+              ],
             },
           },
         }))
@@ -173,7 +185,11 @@ describe('ResultPanel', () => {
 
     it('announces a truncated re-runnable result politely with "Export all rows…"', async () => {
       const user = userEvent.setup()
-      setResult({ truncated: true, rowCeiling: 100000, totalRows: 100000, viewRowCount: 100000 })
+      setResult({
+        truncated: true,
+        rowCeiling: 100000,
+        view: { slot: { totalRows: 100000, viewRowCount: 100000 } },
+      })
       render(<ResultPanel tabId="tab1" connectionId="c1" />)
 
       const band = screen.getByTestId('result-truncation-band')
@@ -199,8 +215,7 @@ describe('ResultPanel', () => {
         {
           truncated: true,
           rowCeiling: 100000,
-          totalRows: 100000,
-          viewRowCount: 100000,
+          view: { slot: { totalRows: 100000, viewRowCount: 100000 } },
           exportedRowCount: 2345678,
         },
         {
@@ -226,7 +241,7 @@ describe('ResultPanel', () => {
       await waitFor(() => expectToast('success', 'Run file path copied'))
     })
 
-    it.each([
+    it.each<[FullExportBlockedReason, string]>([
       [
         'call',
         'Result truncated. Exporting all rows would run this stored procedure again and repeat its changes. To keep more rows in future runs, raise Maximum rows kept per result in Settings.',
@@ -243,8 +258,7 @@ describe('ResultPanel', () => {
       setResult({
         truncated: true,
         rowCeiling: 100000,
-        totalRows: 100000,
-        viewRowCount: 100000,
+        view: { slot: { totalRows: 100000, viewRowCount: 100000 } },
         fullExportBlockedReason: reason,
       })
       render(<ResultPanel tabId="tab1" connectionId="c1" />)
@@ -260,11 +274,22 @@ describe('ResultPanel', () => {
       setResult({
         truncated: true,
         rowCeiling: 100000,
-        totalRows: 100000,
-        viewRowCount: 100000,
-        failedWindowRange: [12000, 13000],
+        view: {
+          slot: { totalRows: 100000, viewRowCount: 100000 },
+          window: { failedRange: [12000, 13000] },
+        },
       })
-      const retry = vi.spyOn(useQueryStore.getState(), 'retryResultWindow')
+      seedResultWindow({
+        route: 'query',
+        connectionId: 'c1',
+        tabId: 'tab1',
+        resultIndex: 0,
+        queryId: 'q-1',
+        viewVersion: useQueryStore.getState().tabs.tab1!.results[0]!.view.slot.viewVersion,
+        viewRowCount: 100000,
+        columns: [],
+        window: { offset: 0, rows: [], baseIndices: [] },
+      })
       render(<ResultPanel tabId="tab1" connectionId="c1" />)
 
       const slot = screen.getByTestId('result-band-slot')
@@ -275,23 +300,28 @@ describe('ResultPanel', () => {
       expect(failure).toHaveTextContent("Couldn't load rows 12,001–13,000")
       expect(failure).toHaveTextContent('Retry to load these rows.')
       await user.click(screen.getByTestId('window-error-retry'))
-      expect(retry).toHaveBeenCalledWith(querySurfaceRef('tab1', 0))
+      await waitFor(() =>
+        expect(screen.queryByTestId('result-window-error-band')).not.toBeInTheDocument()
+      )
     })
 
     it('shows the view-change failure band with the backend message and Retry', async () => {
       const user = userEvent.setup()
-      setResult({ viewError: "Sort column 'x' not found" })
-      const retry = vi.spyOn(useQueryStore.getState(), 'retryViewChange')
+      setResult({
+        view: { spec: { error: "Sort column 'x' not found" } },
+      })
       render(<ResultPanel tabId="tab1" connectionId="c1" />)
       const band = screen.getByTestId('result-view-error-band')
       expect(band).toHaveTextContent("Couldn't apply sort or filter")
       expect(band).toHaveTextContent("Sort column 'x' not found")
       await user.click(screen.getByTestId('view-error-retry'))
-      expect(retry).toHaveBeenCalledWith(querySurfaceRef('tab1', 0))
+      await waitFor(() => expect(ipc.payloads('set_result_view')).toHaveLength(1))
     })
 
     it('routes an expired result to the Results expired block instead of a band', () => {
-      setResult({ isExpired: true, failedWindowRange: [0, 500] })
+      setResult({
+        view: { residency: { isExpired: true }, window: { failedRange: [0, 500] } },
+      })
       render(<ResultPanel tabId="tab1" connectionId="c1" />)
       expect(screen.getByText('Results expired')).toBeInTheDocument()
       expect(screen.queryByTestId('result-window-error-band')).not.toBeInTheDocument()
@@ -316,7 +346,7 @@ describe('expired state', () => {
             cursorPosition: null,
             connectionId: CONN_ID,
             results: [
-              resultState({
+              resultWith({
                 resultStatus: 'success',
                 lastExecutedSql: 'SELECT * FROM users',
                 ...withRows([[1]]),
@@ -355,7 +385,7 @@ describe('expired state', () => {
             cursorPosition: null,
             connectionId: CONN_ID,
             results: [
-              resultState({
+              resultWith({
                 resultStatus: 'success',
                 lastExecutedSql: 'SELECT * FROM users',
                 ...withRows([]),
@@ -515,7 +545,7 @@ describe('expired state', () => {
               cursorPosition: null,
               connectionId: CONN_ID,
               results: [
-                resultState({
+                resultWith({
                   resultStatus: 'success',
                   lastExecutedSql: 'SELECT 1',
                   ...withRows([[1]]),
@@ -572,7 +602,7 @@ describe('expired state', () => {
               cursorPosition: null,
               connectionId: CONN_ID,
               results: [
-                resultState({
+                resultWith({
                   resultStatus: 'success',
                   ...withRows([[1]]),
                   view: {
@@ -590,7 +620,7 @@ describe('expired state', () => {
                     },
                   },
                 }),
-                resultState({
+                resultWith({
                   resultStatus: 'success',
                   ...withRows([]),
                   view: {

@@ -14,6 +14,16 @@ export interface RowActionHandle {
 }
 
 const rowActionCancels = new Map<string, () => void>()
+let lastRowActionId = 0
+
+function nextRowActionId(): number {
+  lastRowActionId += 1
+  return lastRowActionId
+}
+
+function isOwnProgress(ref: DataViewSurfaceRef, actionId: number): boolean {
+  return readView(ref)?.rowAction?.actionId === actionId
+}
 
 function tabKeyPrefixOf(ref: Pick<DataViewSurfaceRef, 'route' | 'tabId'>): string {
   return `${ref.route}:${ref.tabId}:`
@@ -31,16 +41,16 @@ export function beginRowAction(
   { verb, total, onCancel }: RowActionStart
 ): RowActionHandle {
   const actionKey = surfaceKeyOf(ref)
-  const queryId = readView(ref)?.slot.queryId ?? null
+  const actionId = nextRowActionId()
   let done = 0
   let visible = false
   let finished = false
-  const patchProgress = (progress: RowActionProgress | null) => {
-    const currentQueryId = readView(ref)?.slot.queryId
-    if (currentQueryId !== queryId) return
+  const patchOwnProgress = (progress: RowActionProgress | null) => {
+    if (!isOwnProgress(ref, actionId)) return
     updateView(ref, { rowAction: progress })
   }
   const snapshot = (): RowActionProgress => ({
+    actionId: actionId,
     verb: verb,
     done: done,
     total: total,
@@ -48,24 +58,24 @@ export function beginRowAction(
     visible: visible,
   })
   if (onCancel) rowActionCancels.set(actionKey, onCancel)
-  patchProgress(snapshot())
+  updateView(ref, { rowAction: snapshot() })
   const timer = setTimeout(() => {
     if (finished) return
     visible = true
-    patchProgress(snapshot())
+    patchOwnProgress(snapshot())
   }, RESULT_LOADING_STATUS_DELAY_MS)
   return {
     update: (nextDone: number) => {
       done = nextDone
       const isShowingProgress = visible && !finished
-      if (isShowingProgress) patchProgress(snapshot())
+      if (isShowingProgress) patchOwnProgress(snapshot())
     },
     finish: () => {
       finished = true
       clearTimeout(timer)
       const isOwnCancelHandler = rowActionCancels.get(actionKey) === onCancel
       if (isOwnCancelHandler) rowActionCancels.delete(actionKey)
-      patchProgress(null)
+      patchOwnProgress(null)
       return visible
     },
   }

@@ -1,7 +1,7 @@
-import type { DataViewSurfaceRef } from '../../stores/data-view/data-view-types'
 import { type ReactNode } from 'react'
 import { useConnectionStore } from '../../stores/connection-store'
-import { getActiveResult, useQueryStore, activeQuerySurfaceRef } from '../../stores/query-store'
+import { getActiveResult, useQueryStore } from '../../stores/query-store'
+import { cancelRowAction } from '../../stores/data-view/row-action-progress'
 import { useTableDataStore } from '../../stores/table-data-store'
 import { useSchemaIndexStore } from '../../stores/schema-index-store'
 import { useSettingsStore } from '../../stores/settings-store'
@@ -17,11 +17,13 @@ import {
   STATUS_TEXT,
 } from '../../lib/class-names-status-bar'
 import {
+  pendingWorkSurfaceRef,
   resolveIndexingProgress,
   resolveStatusActivity,
   statusLabel,
   useActiveWorkspaceTab,
   useIndexFlash,
+  type PendingWorkTabs,
   type StatusActivity,
 } from './status-bar/status-bar-model'
 import {
@@ -85,12 +87,10 @@ function StatusBarTrailing(props: StatusBarTrailingProps) {
   )
 }
 
-function cancelPendingRowAction(
-  tabId: string | null,
-  cancelRowAction: (ref: DataViewSurfaceRef) => void
-) {
-  if (!tabId) return
-  cancelRowAction(activeQuerySurfaceRef(tabId))
+function cancelPendingRowAction(tabs: PendingWorkTabs) {
+  const surfaceRef = pendingWorkSurfaceRef(tabs)
+  if (!surfaceRef) return
+  cancelRowAction(surfaceRef)
 }
 
 function useVisibleRun(activeWorkspaceTabId: string | null): VisibleRun | null {
@@ -146,7 +146,6 @@ export function StatusBar() {
   const connectionTabId = useConnectionStore((state) => state.activeTabId)
   const updateStatus = useUpdateStore((state) => state.status)
   const openSettingsDialog = useSettingsStore((state) => state.openDialog)
-  const cancelRowAction = useQueryStore((state) => state.cancelRowAction)
 
   const { activeWorkspaceTabId, isQueryEditorTab, activeTableDataTabId } =
     useActiveWorkspaceTab(connectionTabId)
@@ -197,7 +196,12 @@ export function StatusBar() {
         runProgress={<RunProgressSlot activeWorkspaceTabId={activeWorkspaceTabId} />}
         updateIndicator={updateIndicator}
         serverVersion={activeConnection.serverVersion}
-        onCancelPendingWork={() => cancelPendingRowAction(activeWorkspaceTabId, cancelRowAction)}
+        onCancelPendingWork={() =>
+          cancelPendingRowAction({
+            activeWorkspaceTabId: activeWorkspaceTabId,
+            activeTableDataTabId: activeTableDataTabId,
+          })
+        }
       />
     </div>
   )

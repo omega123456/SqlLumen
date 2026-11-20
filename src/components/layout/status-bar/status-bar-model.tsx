@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { CheckCircle, WarningCircle } from '@phosphor-icons/react'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
-import { useQueryStore, type SingleResultState } from '../../../stores/query-store'
+import {
+  activeQuerySurfaceRef,
+  useQueryStore,
+  type SingleResultState,
+} from '../../../stores/query-store'
 import type { ConnectionIndexState } from '../../../stores/schema-index-store'
-import type { TableDataTabState } from '../../../stores/table-data-store'
+import { tableSurfaceRef, type TableDataTabState } from '../../../stores/table-data-store'
+import type { DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
 import { formatRowCountParts } from '../../../lib/format-row-count'
 import type { WorkspaceTab } from '../../../types/schema'
 import {
@@ -286,6 +291,17 @@ export function resolveTableDataInfo(
 export function resolvePendingWork(inputs: StatusActivityInputs): PendingWork | null {
   if (inputs.queryPane.isActive) return resolveResultPendingWork(inputs.queryPane.result)
   return resolveTablePendingWork(inputs.tableData)
+}
+
+export interface PendingWorkTabs {
+  activeWorkspaceTabId: string | null
+  activeTableDataTabId: string | null
+}
+
+export function pendingWorkSurfaceRef(tabs: PendingWorkTabs): DataViewSurfaceRef | null {
+  if (tabs.activeTableDataTabId !== null) return tableSurfaceRef(tabs.activeTableDataTabId)
+  if (tabs.activeWorkspaceTabId === null) return null
+  return activeQuerySurfaceRef(tabs.activeWorkspaceTabId)
 }
 
 export function resolveQueryInfo(queryPane: QueryPane): QueryInfoState | null {

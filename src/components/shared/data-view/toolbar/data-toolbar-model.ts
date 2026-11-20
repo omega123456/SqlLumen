@@ -17,6 +17,10 @@ export interface RowInsertion {
 
 const NO_ROW_INSERTION: RowInsertion = { canAddRow: false, canCloneSelection: false }
 
+export function isRestoringRows(view: DataViewState): boolean {
+  return view.residency.rows.status === 'restoring'
+}
+
 export function canMutateRows(view: DataViewState, isConnectionReadOnly: boolean): boolean {
   if (isConnectionReadOnly) return false
   return view.editTarget.tableName !== null
@@ -77,7 +81,6 @@ function insertableEditTable(
   const editTable = editTableOf(view)
   const primaryKey = editTable?.primaryKey ?? null
   if (!primaryKey) return null
-  if (primaryKey.isUniqueKeyFallback) return null
   return editTable
 }
 

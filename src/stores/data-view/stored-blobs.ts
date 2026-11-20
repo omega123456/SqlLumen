@@ -5,7 +5,7 @@ import {
 } from '../../lib/blob-utils'
 import { fetchBlobValue } from '../../lib/table-data-commands'
 import type { DataViewState, DataViewSurfaceRef } from './data-view-types'
-import { editTableOf } from './data-view-selectors'
+import { boundColumnIndexOf, editTableOf } from './data-view-selectors'
 import { routeOf, type StoredBlobTable } from './route-registry'
 
 export type CellValueAt = (columnIndex: number) => unknown
@@ -14,12 +14,12 @@ export function editTargetBlobTable(view: DataViewState | undefined): StoredBlob
   if (!view) return null
   const tableInfo = editTableOf(view)
   if (!tableInfo?.primaryKey) return null
-  const { bindings, boundIndexByName } = view.editTarget
+  const { bindings } = view.editTarget
   return {
     connectionId: view.slot.connectionId,
     tableInfo: tableInfo,
     boundNameOf: (columnIndex) => bindings.get(columnIndex),
-    columnIndexOf: (columnName) => boundIndexByName.get(columnName.toLowerCase()),
+    columnIndexOf: (columnName) => boundColumnIndexOf(view, columnName),
   }
 }
 

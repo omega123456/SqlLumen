@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { ipc, expectToast } from '../../ipc-mock'
-import { useQueryStore, activeQuerySurfaceRef } from '../../../stores/query-store'
+import { useQueryStore, activeQuerySurfaceRef, type ResultPatch } from '../../../stores/query-store'
 import { useToastStore } from '../../../stores/toast-store'
 import { flat, withRows } from '../../helpers/query-test-utils'
 import { patchResult, registerQueryStoreSetup } from '../../helpers/query-store-fixtures'
@@ -24,7 +24,7 @@ describe('deleteResultRows', () => {
   ]
 
   // An edit-mode result bound to `users` with `id` (result column 0) as its key.
-  function setupEditableResult(tabId: string, overrides: Record<string, unknown> = {}) {
+  function setupEditableResult(tabId: string, overrides: ResultPatch = {}) {
     useQueryStore.getState().setContent(tabId, 'SELECT id, name FROM users')
     useQueryStore.setState((prev) => ({
       tabs: {
@@ -33,31 +33,39 @@ describe('deleteResultRows', () => {
       },
     }))
     patchResult(tabId, {
-      columns: [
-        { name: 'id', dataType: 'INT' },
-        { name: 'name', dataType: 'VARCHAR' },
-      ],
+      view: {
+        slot: {
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'name', dataType: 'VARCHAR' },
+          ],
+          queryId: 'q-del',
+          totalRows: 3,
+          viewVersion: 1,
+          connectionId: 'conn-1',
+        },
+        selection: { rowIndex: 1 },
+        editTarget: {
+          tableName: 'users',
+          tables: editMetadata,
+          boundIndexByName: new Map([
+            ['id', 0],
+            ['name', 1],
+          ]),
+        },
+        checked: {
+          ranges: [
+            [0, 1],
+            [2, 3],
+          ],
+          viewVersion: 1,
+        },
+      },
       ...withRows(ROWS),
-      queryId: 'q-del',
-      totalRows: 3,
-      viewVersion: 1,
       latestKnownViewVersion: 1,
-      selectedRowIndex: 1,
-      editMode: 'users',
-      editConnectionId: 'conn-1',
       lastExecutedSql: 'SELECT id, name FROM users',
-      editTableMetadata: editMetadata,
-      editBoundColumnIndexMap: new Map([
-        ['id', 0],
-        ['name', 1],
-      ]),
-      checkedRanges: [
-        [0, 1],
-        [2, 3],
-      ],
-      checkedViewVersion: 1,
-      ...overrides,
     })
+    patchResult(tabId, overrides)
   }
 
   function removedResponse() {
@@ -97,11 +105,11 @@ describe('deleteResultRows', () => {
     expect(ipc.payloads('reexecute_single_result')).toHaveLength(0)
 
     const result = flat('tab-del')
-    expect(result.totalRows).toBe(1)
-    expect(result.viewRowCount).toBe(1)
-    expect(result.viewVersion).toBe(2)
-    expect(result.selectedRowIndex).toBeNull()
-    expect(result.checkedRanges).toEqual([])
+    expect(result.view.slot.totalRows).toBe(1)
+    expect(result.view.slot.viewRowCount).toBe(1)
+    expect(result.view.slot.viewVersion).toBe(2)
+    expect(result.view.selection.rowIndex).toBeNull()
+    expect(result.view.checked.ranges).toEqual([])
     await expectToast('success', 'Rows deleted')
   })
 
@@ -111,8 +119,7 @@ describe('deleteResultRows', () => {
     // The view is sorted: positions map to base indices 2, 0, 1. Only the first row is loaded.
     setupEditableResult('tab-del-sel', {
       ...withRows([[3, 'c']]),
-      viewRowCount: 3,
-      checkedRanges: [[0, 3]],
+      view: { slot: { viewRowCount: 3 }, checked: { ranges: [[0, 3]] } },
     })
     ipc.override('fetch_result_window', () => ({
       offset: 0,
@@ -146,14 +153,17 @@ describe('deleteResultRows', () => {
 
     const calls = ipc.payloads('remove_result_rows') as Array<Record<string, unknown>>
     expect(calls.map((call) => call.baseViewVersion)).toEqual([1, 5])
-    expect(flat('tab-del-cas').viewVersion).toBe(6)
+    expect(flat('tab-del-cas').view.slot.viewVersion).toBe(6)
   })
 
   it('never repaints a tombstone response older than the view already painted', async () => {
     // A sort committed on top of the tombstones (v3) and painted while the
     // delete's own response (v2) was still in flight.
     ipc.override('delete_table_row', () => {
-      patchResult('tab-del-late', { viewVersion: 3, latestKnownViewVersion: 3 })
+      patchResult('tab-del-late', {
+        view: { slot: { viewVersion: 3 } },
+        latestKnownViewVersion: 3,
+      })
       return undefined
     })
     ipc.override('remove_result_rows', () => ({ viewVersion: 2, viewRowCount: 1, totalRows: 1 }))
@@ -162,9 +172,9 @@ describe('deleteResultRows', () => {
     await useQueryStore.getState().deleteResultRows(activeQuerySurfaceRef('tab-del-late'))
 
     const result = flat('tab-del-late')
-    expect(result.viewVersion).toBe(3)
-    expect(result.checkedRanges).toEqual([])
-    expect(result.editState).toBeNull()
+    expect(result.view.slot.viewVersion).toBe(3)
+    expect(result.view.checked.ranges).toEqual([])
+    expect(result.view.edit.state).toBeNull()
     await expectToast('success', 'Rows deleted')
   })
 
@@ -180,8 +190,8 @@ describe('deleteResultRows', () => {
       .deleteResultRows(activeQuerySurfaceRef('tab-del-stale'))
 
     expect(count).toBe(2)
-    expect(flat('tab-del-stale').isStale).toBe(true)
-    expect(flat('tab-del-stale').checkedRanges).toEqual([])
+    expect(flat('tab-del-stale').view.edit.isStale).toBe(true)
+    expect(flat('tab-del-stale').view.checked.ranges).toEqual([])
     await expectToast(
       'error',
       "2 rows deleted, but the result couldn't be updated. Re-run the query to refresh."
@@ -199,12 +209,14 @@ describe('deleteResultRows', () => {
     await useQueryStore.getState().deleteResultRows(activeQuerySurfaceRef('tab-del-cas2'))
 
     expect(ipc.payloads('remove_result_rows')).toHaveLength(2)
-    expect(flat('tab-del-cas2').isStale).toBe(true)
+    expect(flat('tab-del-cas2').view.edit.isStale).toBe(true)
   })
 
   it('refuses to delete and warns when the result is not in edit mode', async () => {
     ipc.override('delete_table_row', () => undefined)
-    setupEditableResult('tab-del-ro', { editMode: null })
+    setupEditableResult('tab-del-ro', {
+      view: { editTarget: { tableName: null } },
+    })
 
     const count = await useQueryStore
       .getState()
@@ -218,14 +230,16 @@ describe('deleteResultRows', () => {
   it('refuses when the table has no key, or there is no edit connection', async () => {
     ipc.override('delete_table_row', () => undefined)
     setupEditableResult('tab-del-nopk', {
-      editTableMetadata: { users: { ...editMetadata.users, primaryKey: null } },
+      view: { editTarget: { tables: { users: { ...editMetadata.users, primaryKey: null } } } },
     })
     expect(
       await useQueryStore.getState().deleteResultRows(activeQuerySurfaceRef('tab-del-nopk'))
     ).toBe(0)
     await expectToast('error', 'no primary or unique key')
 
-    setupEditableResult('tab-del-noconn', { editConnectionId: null })
+    setupEditableResult('tab-del-noconn', {
+      view: { slot: { connectionId: '' } },
+    })
     expect(
       await useQueryStore.getState().deleteResultRows(activeQuerySurfaceRef('tab-del-noconn'))
     ).toBe(0)
@@ -235,7 +249,9 @@ describe('deleteResultRows', () => {
 
   it('refuses to delete when the key columns are absent from the result set', async () => {
     ipc.override('delete_table_row', () => undefined)
-    setupEditableResult('tab-del-nokey', { editBoundColumnIndexMap: new Map([['name', 1]]) })
+    setupEditableResult('tab-del-nokey', {
+      view: { editTarget: { boundIndexByName: new Map([['name', 1]]) } },
+    })
 
     const count = await useQueryStore
       .getState()
@@ -248,13 +264,17 @@ describe('deleteResultRows', () => {
 
   it('deletes nothing for checked ranges of an older view, or above the 10,000-row cap', async () => {
     ipc.override('delete_table_row', () => undefined)
-    setupEditableResult('tab-del-old', { checkedViewVersion: 0 })
+    setupEditableResult('tab-del-old', {
+      view: { checked: { viewVersion: 0 } },
+    })
     expect(
       await useQueryStore.getState().deleteResultRows(activeQuerySurfaceRef('tab-del-old'))
     ).toBe(0)
-    expect(flat('tab-del-old').checkedRanges).toEqual([])
+    expect(flat('tab-del-old').view.checked.ranges).toEqual([])
 
-    setupEditableResult('tab-del-cap', { viewRowCount: 100_000, checkedRanges: [[0, 100_000]] })
+    setupEditableResult('tab-del-cap', {
+      view: { slot: { viewRowCount: 100_000 }, checked: { ranges: [[0, 100_000]] } },
+    })
     expect(
       await useQueryStore.getState().deleteResultRows(activeQuerySurfaceRef('tab-del-cap'))
     ).toBe(0)
@@ -269,8 +289,7 @@ describe('deleteResultRows', () => {
     })
     setupEditableResult('tab-del-load', {
       ...withRows([]),
-      viewRowCount: 3,
-      checkedRanges: [[0, 3]],
+      view: { slot: { viewRowCount: 3 }, checked: { ranges: [[0, 3]] } },
     })
 
     expect(
@@ -286,14 +305,13 @@ describe('deleteResultRows', () => {
     })
     setupEditableResult('tab-del-exp', {
       ...withRows([]),
-      viewRowCount: 3,
-      checkedRanges: [[0, 3]],
+      view: { slot: { viewRowCount: 3 }, checked: { ranges: [[0, 3]] } },
     })
 
     expect(
       await useQueryStore.getState().deleteResultRows(activeQuerySurfaceRef('tab-del-exp'))
     ).toBe(0)
-    expect(flat('tab-del-exp').isExpired).toBe(true)
+    expect(flat('tab-del-exp').view.residency.isExpired).toBe(true)
   })
 
   it('stops on the first failed delete and tombstones only the deleted subset', async () => {
@@ -314,7 +332,7 @@ describe('deleteResultRows', () => {
     expect(count).toBe(1)
     expect(ipc.payloads('remove_result_rows')[0]).toMatchObject({ baseIndices: [0] })
     const result = flat('tab-del-err')
-    expect(result.saveError).toBe('FK constraint')
+    expect(result.view.edit.saveError).toBe('FK constraint')
     await expectToast('error', 'FK constraint')
     // The failure already surfaced an error toast; no "Rows deleted" success.
     expect(
@@ -338,14 +356,16 @@ describe('deleteResultRows', () => {
     expect(ipc.payloads('remove_result_rows')).toHaveLength(0)
     const result = flat('tab-del-first-err')
     expect(result.rows).toHaveLength(3)
-    expect(result.saveError).toBe('access denied')
+    expect(result.view.edit.saveError).toBe('access denied')
     await expectToast('error', 'access denied')
   })
 
   it('deletes the selected row when nothing is checked', async () => {
     ipc.override('delete_table_row', () => undefined)
     removedResponse()
-    setupEditableResult('tab-del-selected', { checkedRanges: [] })
+    setupEditableResult('tab-del-selected', {
+      view: { checked: { ranges: [] } },
+    })
 
     const count = await useQueryStore
       .getState()
@@ -360,7 +380,9 @@ describe('deleteResultRows', () => {
 
   it('no-ops when nothing is checked and no row is selected', async () => {
     ipc.override('delete_table_row', () => undefined)
-    setupEditableResult('tab-del-empty', { checkedRanges: [], selectedRowIndex: null })
+    setupEditableResult('tab-del-empty', {
+      view: { checked: { ranges: [] }, selection: { rowIndex: null } },
+    })
 
     const count = await useQueryStore
       .getState()
@@ -382,24 +404,26 @@ describe('deleteResultRows', () => {
           })
       )
       removedResponse()
-      setupEditableResult('tab-del-progress', { checkedRanges: [[0, 1]] })
+      setupEditableResult('tab-del-progress', {
+        view: { checked: { ranges: [[0, 1]] } },
+      })
 
       const deletion = useQueryStore
         .getState()
         .deleteResultRows(activeQuerySurfaceRef('tab-del-progress'))
       await vi.advanceTimersByTimeAsync(0)
-      expect(flat('tab-del-progress').rowActionProgress).toMatchObject({
+      expect(flat('tab-del-progress').view.rowAction).toMatchObject({
         verb: 'Deleting',
         total: 1,
         visible: false,
         cancellable: false,
       })
       await vi.advanceTimersByTimeAsync(1000)
-      expect(flat('tab-del-progress').rowActionProgress?.visible).toBe(true)
+      expect(flat('tab-del-progress').view.rowAction?.visible).toBe(true)
       release?.()
       await vi.advanceTimersByTimeAsync(0)
       await deletion
-      expect(flat('tab-del-progress').rowActionProgress).toBeNull()
+      expect(flat('tab-del-progress').view.rowAction).toBeNull()
     } finally {
       vi.useRealTimers()
     }

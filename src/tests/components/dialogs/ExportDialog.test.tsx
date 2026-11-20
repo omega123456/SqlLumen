@@ -1,10 +1,10 @@
-import { patchedLegacyResult } from '../../helpers/legacy-result-fields'
-import { resultState } from '../../helpers/legacy-result-fields'
+import type { DataViewPatch } from '../../../stores/data-view/data-view-types'
+import { resultWith } from '../../helpers/query-store-fixtures'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ExportDialog from '../../../components/dialogs/ExportDialog'
-import { useQueryStore, activeQuerySurfaceRef } from '../../../stores/query-store'
+import { useQueryStore, activeQuerySurfaceRef, type ResultPatch } from '../../../stores/query-store'
 import { useToastStore } from '../../../stores/toast-store'
 import { ipc, expectToast } from '../../ipc-mock'
 import { makeTabState } from '../../helpers/query-test-utils'
@@ -267,12 +267,12 @@ describe('ExportDialog', () => {
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
-            resultState({
+            resultWith({
               resultStatus: 'success',
               lastExecutedSql: 'SELECT 1',
               view: { slot: { queryId: 'q-1' } },
             }),
-            resultState({
+            resultWith({
               resultStatus: 'success',
               lastExecutedSql: 'SELECT 2',
               view: { slot: { queryId: 'q-2' } },
@@ -628,15 +628,16 @@ describe('ExportDialog — full export of truncated results', () => {
     error: null,
   })
 
-  function seedResult(overrides: Record<string, unknown> = {}) {
+  function seedResult(overrides: ResultPatch = {}) {
     useQueryStore.setState({
       exportJobs: {},
       tabs: {
         [TAB]: {
           ...makeTabState({ connectionId: CONN, tabStatus: 'success' }),
           results: [
-            patchedLegacyResult(
-              resultState({
+            resultWith(
+              overrides,
+              resultWith({
                 view: {
                   slot: { queryId: 'q-truncated', totalRows: 100_000, viewRowCount: 2_340 },
                   prompts: { isExportOpen: true },
@@ -644,8 +645,7 @@ describe('ExportDialog — full export of truncated results', () => {
                 resultStatus: 'success',
                 truncated: true,
                 rowCeiling: 100_000,
-              }),
-              overrides
+              })
             ),
           ],
         },
@@ -782,18 +782,17 @@ describe('ExportDialog — full export of truncated results', () => {
     expect(screen.getByTestId('export-rows-select')).toHaveTextContent('Current view · 2,340 rows')
   })
 
-  it.each([
-    [{ sortColumn: 'a', sortDirection: 'asc' as const }, 'Your sort will be ignored.'],
+  it.each<[DataViewPatch['spec'], string]>([
+    [{ sort: { column: 'a', direction: 'asc' } }, 'Your sort will be ignored.'],
     [
       {
-        sortColumn: 'a',
-        sortDirection: 'desc' as const,
-        filterModel: [{ column: 'a', operator: '==' as const, value: '1' }],
+        sort: { column: 'a', direction: 'desc' },
+        filters: [{ column: 'a', operator: '==', value: '1' }],
       },
       'Your sort and 1 filter will be ignored.',
     ],
-  ])('names the ignored sort (%#)', (overrides, message) => {
-    seedResult({ preferredExportScope: 'allRows', ...overrides })
+  ])('names the ignored sort (%#)', (spec, message) => {
+    seedResult({ view: { prompts: { exportScope: 'allRows' }, spec: spec } })
     render(<Harness />)
     expect(screen.getByTestId('export-ignored-view-warning')).toHaveTextContent(message)
   })

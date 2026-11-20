@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_DATA_VIEW_STATE } from '../../../stores/data-view/data-view-defaults'
 import { applyViewPatch, mergeViewPatches } from '../../../stores/data-view/data-view-reducers'
 
-const PROGRESS = { verb: 'Copying' as const, done: 1, total: 2, cancellable: false, visible: true }
+const PROGRESS = {
+  actionId: 1,
+  verb: 'Copying' as const,
+  done: 1,
+  total: 2,
+  cancellable: false,
+  visible: true,
+}
 
 describe('data view reducers', () => {
   it('merges patched groups field by field and keeps untouched groups by reference', () => {

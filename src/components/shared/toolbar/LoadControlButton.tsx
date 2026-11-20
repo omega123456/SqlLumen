@@ -5,10 +5,11 @@ import type { DataViewReload } from '../data-view/data-view-source'
 interface LoadControlButtonProps {
   reload: DataViewReload
   isBusy: boolean
+  isCancellable: boolean
 }
 
-export function LoadControlButton({ reload, isBusy }: LoadControlButtonProps) {
-  if (reload.isLoading) {
+export function LoadControlButton({ reload, isBusy, isCancellable }: LoadControlButtonProps) {
+  if (isCancellable) {
     return (
       <Button
         variant="subtle"

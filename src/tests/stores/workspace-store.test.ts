@@ -1,5 +1,5 @@
-import { legacyTabFields } from '../helpers/legacy-result-fields'
-import { resultState } from '../helpers/legacy-result-fields'
+import { resultWith } from '../helpers/query-store-fixtures'
+import { getActiveResult } from '../../stores/query-store'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { resetWorkspaceStore, seedVisibleConnection } from '../helpers/workspace-test-utils'
@@ -111,9 +111,7 @@ function makeQueryTabState(overrides: Partial<TabQueryState> = {}): TabQueryStat
     prevTabStatus: 'idle',
     cursorPosition: null,
     connectionId: 'conn-1',
-    results: [
-      resultState({ resultStatus: 'success', view: { slot: { queryId: 'q-validate-1' } } }),
-    ],
+    results: [resultWith({ resultStatus: 'success', view: { slot: { queryId: 'q-validate-1' } } })],
     activeResultIndex: 0,
     activeBottomPanelItem: { type: 'result' as const },
     executionStartedAt: null,
@@ -322,7 +320,7 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
       tabs: {
         [firstQueryTabId]: makeQueryTabState({
           results: [
-            resultState({
+            resultWith({
               resultStatus: 'success',
               ...withRows([[1, 'alice']]),
               view: {
@@ -402,7 +400,7 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
       tabs: {
         [queryTabId]: makeQueryTabState({
           results: [
-            resultState({
+            resultWith({
               resultStatus: 'success',
               ...withRows([[1, 'alice']]),
               view: {
@@ -486,7 +484,7 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
       tabs: {
         [queryTabId]: makeQueryTabState({
           results: [
-            resultState({
+            resultWith({
               resultStatus: 'success',
               ...withRows([[1, 'alice']]),
               view: {
@@ -545,7 +543,7 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
       tabs: {
         [queryTabId]: makeQueryTabState({
           results: [
-            resultState({
+            resultWith({
               resultStatus: 'success',
               ...withRows([[1, 'alice']]),
               view: {
@@ -559,7 +557,7 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
                 },
               },
             }),
-            resultState({
+            resultWith({
               resultStatus: 'success',
               ...withRows([[2, 'bob']]),
               view: {
@@ -613,7 +611,7 @@ describe('useWorkspaceStore — setVisibleConnectionSession', () => {
         [queryTabId]: makeQueryTabState({
           connectionId,
           results: [
-            resultState({
+            resultWith({
               resultStatus: 'success',
               ...withRows([[1, 'alice']]),
               view: {
@@ -656,7 +654,7 @@ describe('useWorkspaceStore — setVisibleConnectionSession', () => {
         [secondTabId]: makeQueryTabState({
           connectionId: 'conn-2',
           results: [
-            resultState({
+            resultWith({
               resultStatus: 'success',
               ...withRows([[2, 'bob']]),
               view: {
@@ -717,7 +715,7 @@ describe('useWorkspaceStore — setVisibleConnectionSession', () => {
         [backgroundTabId]: makeQueryTabState({
           connectionId: 'conn-2',
           results: [
-            resultState({
+            resultWith({
               resultStatus: 'success',
               ...withRows([[9, 'ghost']]),
               view: {
@@ -1024,7 +1022,7 @@ describe('useWorkspaceStore — closeTab', () => {
       tabs: {
         [queryTabId]: makeQueryTabState({
           results: [
-            resultState({
+            resultWith({
               resultStatus: 'success',
               view: {
                 slot: {
@@ -1200,7 +1198,21 @@ describe('useWorkspaceStore — closeTab', () => {
         [queryTabId]: {
           ...useQueryStore.getState().getTabState(queryTabId),
           connectionId: 'conn-1',
-          results: [resultState({ editState: { modifiedColumns: new Set(['name']) } })],
+          results: [
+            resultWith({
+              view: {
+                edit: {
+                  state: {
+                    rowKey: {},
+                    originalValues: {},
+                    currentValues: {},
+                    modifiedColumns: new Set(['name']),
+                    isNewRow: false,
+                  },
+                },
+              },
+            }),
+          ],
         },
       },
     })
@@ -1633,7 +1645,7 @@ describe('useWorkspaceStore — forceCloseTab', () => {
       tabs: {
         [queryTabId]: makeQueryTabState({
           results: [
-            resultState({
+            resultWith({
               resultStatus: 'success',
               view: {
                 slot: {
@@ -1746,31 +1758,41 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
-            resultState({
+            resultWith({
               resultStatus: 'success',
-              queryId: 'q1',
-              rowResidency: {
-                status: 'resident',
-                isActive: true,
-                inactiveSince: null,
+              view: {
+                slot: { queryId: 'q1' },
+                residency: {
+                  rows: {
+                    status: 'resident',
+                    isActive: true,
+                    inactiveSince: null,
+                  },
+                },
               },
             }),
-            resultState({
+            resultWith({
               resultStatus: 'success',
-              queryId: 'q2',
-              rowResidency: {
-                status: 'resident',
-                isActive: false,
-                inactiveSince: null,
+              view: {
+                slot: { queryId: 'q2' },
+                residency: {
+                  rows: {
+                    status: 'resident',
+                    isActive: false,
+                    inactiveSince: null,
+                  },
+                },
+                edit: {
+                  state: {
+                    rowKey: { id: 1 },
+                    originalValues: { name: 'Alice' },
+                    currentValues: { name: 'Bob' },
+                    modifiedColumns: new Set(['name']),
+                    isNewRow: false,
+                  },
+                  rowIndex: 0,
+                },
               },
-              editState: {
-                rowKey: { id: 1 },
-                originalValues: { name: 'Alice' },
-                currentValues: { name: 'Bob' },
-                modifiedColumns: new Set(['name']),
-                isNewRow: false,
-              },
-              editingRowIndex: 0,
             }),
           ],
           activeResultIndex: 0,
@@ -1798,7 +1820,7 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
     expect(queryTab?.results[1]?.view.residency.rows.isActive).toBe(true)
 
     // The query store should have a pendingNavigationAction set
-    expect(legacyTabFields(queryTab).pendingNavigationAction).not.toBeNull()
+    expect(getActiveResult(queryTab).view.prompts.pendingNavigation).not.toBeNull()
   })
 
   it('uses requestNavigationAction when dirty result IS the active result', () => {
@@ -1817,19 +1839,26 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
-            resultState({
+            resultWith({
               resultStatus: 'success',
-              queryId: 'q1',
-              editState: {
-                rowKey: { id: 1 },
-                originalValues: { name: 'Alice' },
-                currentValues: { name: 'Bob' },
-                modifiedColumns: new Set(['name']),
-                isNewRow: false,
+              view: {
+                slot: { queryId: 'q1' },
+                edit: {
+                  state: {
+                    rowKey: { id: 1 },
+                    originalValues: { name: 'Alice' },
+                    currentValues: { name: 'Bob' },
+                    modifiedColumns: new Set(['name']),
+                    isNewRow: false,
+                  },
+                  rowIndex: 0,
+                },
               },
-              editingRowIndex: 0,
             }),
-            resultState({ resultStatus: 'success', queryId: 'q2' }),
+            resultWith({
+              resultStatus: 'success',
+              view: { slot: { queryId: 'q2' } },
+            }),
           ],
           activeResultIndex: 0,
           executionStartedAt: null,
@@ -1850,7 +1879,7 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
 
     // requestNavigationAction should have set the pending action
     const queryTab = useQueryStore.getState().tabs[tabId]
-    expect(legacyTabFields(queryTab).pendingNavigationAction).not.toBeNull()
+    expect(getActiveResult(queryTab).view.prompts.pendingNavigation).not.toBeNull()
   })
 
   it('loops through multiple dirty results before closing (resolve first → check next)', () => {
@@ -1868,30 +1897,41 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
-            resultState({
+            resultWith({
               resultStatus: 'success',
-              queryId: 'q1',
-              editState: {
-                rowKey: { id: 1 },
-                originalValues: { name: 'Alice' },
-                currentValues: { name: 'Modified1' },
-                modifiedColumns: new Set(['name']),
-                isNewRow: false,
+              view: {
+                slot: { queryId: 'q1' },
+                edit: {
+                  state: {
+                    rowKey: { id: 1 },
+                    originalValues: { name: 'Alice' },
+                    currentValues: { name: 'Modified1' },
+                    modifiedColumns: new Set(['name']),
+                    isNewRow: false,
+                  },
+                  rowIndex: 0,
+                },
               },
-              editingRowIndex: 0,
             }),
-            resultState({ resultStatus: 'success', queryId: 'q2' }),
-            resultState({
+            resultWith({
               resultStatus: 'success',
-              queryId: 'q3',
-              editState: {
-                rowKey: { id: 2 },
-                originalValues: { email: 'a@b.com' },
-                currentValues: { email: 'x@y.com' },
-                modifiedColumns: new Set(['email']),
-                isNewRow: false,
+              view: { slot: { queryId: 'q2' } },
+            }),
+            resultWith({
+              resultStatus: 'success',
+              view: {
+                slot: { queryId: 'q3' },
+                edit: {
+                  state: {
+                    rowKey: { id: 2 },
+                    originalValues: { email: 'a@b.com' },
+                    currentValues: { email: 'x@y.com' },
+                    modifiedColumns: new Set(['email']),
+                    isNewRow: false,
+                  },
+                  rowIndex: 0,
+                },
               },
-              editingRowIndex: 0,
             }),
           ],
           activeResultIndex: 1, // active is the clean one
@@ -1913,14 +1953,13 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
     // Should have switched to first dirty result (index 0) and set pendingNavigationAction
     let queryTab = useQueryStore.getState().tabs[tabId]
     expect(queryTab?.activeResultIndex).toBe(0)
-    expect(legacyTabFields(queryTab).pendingNavigationAction).not.toBeNull()
+    expect(getActiveResult(queryTab).view.prompts.pendingNavigation).not.toBeNull()
 
     // Simulate user discarding result 0 (clears its editState and calls pendingNavigationAction)
     useQueryStore.getState().discardCurrentRow(activeQuerySurfaceRef(tabId))
     // Fire the pending action (simulates what confirmNavigation does)
-    const firstAction = legacyTabFields(
-      useQueryStore.getState().tabs[tabId]
-    ).pendingNavigationAction
+    const firstAction = getActiveResult(useQueryStore.getState().tabs[tabId]).view.prompts
+      .pendingNavigation
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
@@ -1934,13 +1973,12 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
     // Tab should STILL be open (result 2 is still dirty)
     expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toHaveLength(1)
     expect(queryTab?.activeResultIndex).toBe(2)
-    expect(legacyTabFields(queryTab).pendingNavigationAction).not.toBeNull()
+    expect(getActiveResult(queryTab).view.prompts.pendingNavigation).not.toBeNull()
 
     // Simulate user discarding result 2
     useQueryStore.getState().discardCurrentRow(activeQuerySurfaceRef(tabId))
-    const secondAction = legacyTabFields(
-      useQueryStore.getState().tabs[tabId]
-    ).pendingNavigationAction
+    const secondAction = getActiveResult(useQueryStore.getState().tabs[tabId]).view.prompts
+      .pendingNavigation
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
@@ -1969,8 +2007,14 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
-            resultState({ resultStatus: 'success', queryId: 'q1' }),
-            resultState({ resultStatus: 'success', queryId: 'q2' }),
+            resultWith({
+              resultStatus: 'success',
+              view: { slot: { queryId: 'q1' } },
+            }),
+            resultWith({
+              resultStatus: 'success',
+              view: { slot: { queryId: 'q2' } },
+            }),
           ],
           activeResultIndex: 0,
           executionStartedAt: null,

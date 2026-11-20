@@ -12,6 +12,9 @@ export const PRIMARY_RING_SPINNER =
 export const ELEVATED_SURFACE =
   'rounded-card bg-light-surface-container-high dark:bg-dark-surface-container-high shadow-light-elevated dark:shadow-dark-elevated'
 
+export const DATA_VIEW_BAND_SLOT =
+  'flex flex-none flex-col gap-2 border-t border-t-light-stroke-divider bg-light-surface-container-lowest p-3 dark:border-t-dark-stroke-divider dark:bg-dark-surface-container-lowest'
+
 export function joinClassNames(classNames: ReadonlyArray<string | undefined>): string {
   return classNames.filter(Boolean).join(CLASS_NAME_SEPARATOR)
 }

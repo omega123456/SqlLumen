@@ -200,7 +200,10 @@ function isSupersededPageFetch(error: unknown): boolean {
 function recordPageFetchFailure(tabId: string, error: unknown) {
   const tab = tableTabOf(tabId)
   if (!tab) return
-  if (isSupersededPageFetch(error)) return
+  if (isSupersededPageFetch(error)) {
+    logFrontend('info', `[table-data] superseded page fetch ignored: ${toErrorMessage(error)}`)
+    return
+  }
   patchTableTab(tabId, {
     page: {
       error: describeQueryFailure(tab.page.isCancelling, error),

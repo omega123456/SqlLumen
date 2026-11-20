@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { RunningIndicator } from '../../../components/query-editor/RunningIndicator'
 import { useQueryStore } from '../../../stores/query-store'
-import { makeTabState } from '../../helpers/query-test-utils'
+import { makeTabState, type MakeTabStateOverrides } from '../../helpers/query-test-utils'
 
-function setupTabState(overrides: Record<string, unknown> = {}) {
+function setupTabState(overrides: MakeTabStateOverrides = {}) {
   useQueryStore.setState({
     tabs: {
       'tab-1': makeTabState({ status: 'running' as const, ...overrides }),

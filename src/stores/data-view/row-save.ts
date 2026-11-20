@@ -21,7 +21,8 @@ import {
   SAVED_DRAFT_PATCH,
   SAVED_EDIT_PATCH,
 } from './data-view-defaults'
-import { editTableOf } from './data-view-selectors'
+import { boundColumnIndexOf, editTableOf } from './data-view-selectors'
+import { closeEditSession } from './edit-actions'
 import { isSurfaceOpen, readView, routeOf, updateView, type DataViewRoute } from './route-registry'
 
 const REPLACED_RESULT_MESSAGE_PREFIX = 'Results were refreshed'
@@ -83,7 +84,7 @@ async function insertEditedRow(save: RowSave, target: RowSaveTarget): Promise<bo
     return reportRowSaveFailure(save, error)
   }
   if (!isSurfaceOpen(save.ref)) return true
-  updateView(save.ref, SAVED_DRAFT_PATCH)
+  closeEditSession(save.ref, SAVED_DRAFT_PATCH)
   const isRefreshed = await save.route.writes.afterInsert(save.ref, insertedValues)
   if (isRefreshed) showRowSavedToast()
   return true
@@ -105,7 +106,7 @@ function handleSlotSyncFailure(save: RowSave, cacheError: unknown): boolean {
   }
   showWarningToast(
     'Cache sync warning',
-    'Row saved successfully, but the result cache may be stale. Re-run the query to refresh pagination/sort/export.'
+    `Row saved successfully, but the result cache may be stale. ${save.route.writes.staleResultAdvice}`
   )
   return false
 }
@@ -114,7 +115,7 @@ function displayedCellUpdates(save: RowSave): Record<number, unknown> {
   const { view, editState, route } = save
   const displayUpdates: Record<number, unknown> = {}
   for (const columnName of editState.modifiedColumns) {
-    const columnIndex = view.editTarget.boundIndexByName.get(columnName.toLowerCase())
+    const columnIndex = boundColumnIndexOf(view, columnName)
     if (columnIndex === undefined) continue
     const value = editState.currentValues[columnName]
     displayUpdates[columnIndex] = projectSavedCellValue(value, route.writes.cellProjection)
@@ -186,7 +187,7 @@ async function updateEditedRow(save: RowSave, target: RowSaveTarget): Promise<bo
     if (!isSurfaceOpen(save.ref)) return true
     await syncSavedRowIntoSlot(save)
     if (!isSurfaceOpen(save.ref)) return true
-    updateView(save.ref, SAVED_EDIT_PATCH)
+    closeEditSession(save.ref, SAVED_EDIT_PATCH)
     showRowSavedToast()
     return true
   } catch (error) {
@@ -207,7 +208,7 @@ export async function saveCurrentRow(ref: DataViewSurfaceRef): Promise<boolean> 
   if (!save) return true
 
   if (!hasModifiedColumns(save.editState)) {
-    updateView(ref, save.editState.isNewRow ? DISCARDED_DRAFT_PATCH : CLOSED_EDIT_PATCH)
+    closeEditSession(ref, save.editState.isNewRow ? DISCARDED_DRAFT_PATCH : CLOSED_EDIT_PATCH)
     return true
   }
 

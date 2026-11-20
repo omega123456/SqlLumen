@@ -4,8 +4,10 @@ import { openExportDialog, setViewMode } from '../../../../stores/data-view/view
 import { useDataView } from '../../../../stores/data-view/use-data-view'
 import { countRanges } from '../../../../lib/view-ranges'
 import type { ViewMode } from '../../../../types/shared-data-view'
+import type { DataViewSource } from '../data-view-source'
 import {
   isCopySelectedDisabled,
+  isRestoringRows,
   rowInsertionOf,
   sortedCheckedRanges,
   type DataToolbarReadiness,
@@ -20,16 +22,21 @@ function useDataViewActions(ref: DataViewSurfaceRef) {
   }
 }
 
-export function useDataToolbar(ref: DataViewSurfaceRef, readiness: DataToolbarReadiness) {
+export function useDataToolbar(source: DataViewSource, readiness: DataToolbarReadiness) {
+  const { ref } = source
   const view = useDataView(ref, (currentView) => currentView)
   const viewActions = useDataViewActions(ref)
   const copyCheckedRows = useCopyCheckedRows(ref)
   const checkedCount = countRanges(sortedCheckedRanges(view))
+  const isReloading = source.capabilities.reload?.isLoading ?? false
+  const isLoadBusy = isReloading || isRestoringRows(view)
+  const isBusy = isLoadBusy || view.rowAction !== null
   const rowActions = useDataRowActions({
     ref: ref,
     view: view,
     checkedCount: checkedCount,
     rowInsertion: rowInsertionOf(view, readiness),
+    isBusy: isBusy,
   })
   const hasNoColumns = view.slot.columns.length === 0
   const isEditing = view.edit.state !== null
@@ -37,6 +44,7 @@ export function useDataToolbar(ref: DataViewSurfaceRef, readiness: DataToolbarRe
     view: view,
     viewActions: viewActions,
     rowActions: rowActions,
+    isBusy: isBusy,
     isFilterDisabled: hasNoColumns || isEditing,
     isCopySelectedDisabled: isCopySelectedDisabled({
       hasData: readiness.hasData,

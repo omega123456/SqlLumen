@@ -22,7 +22,7 @@ import type {
 import type { ViewMode } from '../../types/shared-data-view'
 import type { DataViewSource } from '../../components/shared/data-view/data-view-source'
 import { queryDataViewSource } from '../../components/query-editor/result-panel/query-data-view-source'
-import { resultState } from './legacy-result-fields'
+import { resultWith } from './query-store-fixtures'
 import { makeTabState, seedResultRows } from './query-test-utils'
 
 export const DATA_VIEW_TAB_ID = 'tab-1'
@@ -83,31 +83,40 @@ function defaultEditingBaseIndex(fixture: DataViewFixture): number | null {
 function fixtureResult(fixture: DataViewFixture) {
   const bindings = fixture.editColumnBindings ?? new Map<number, string>()
   const viewRowCount = fixture.viewRowCount ?? fixture.rows.length
-  return resultState({
+  return resultWith({
     resultStatus: 'success',
     truncated: fixture.truncated ?? false,
-    viewMode: fixture.mode ?? 'grid',
-    columns: fixture.columns,
-    queryId: DATA_VIEW_QUERY_ID,
-    viewVersion: 1,
-    viewRowCount: viewRowCount,
-    totalRows: viewRowCount,
-    checkedViewVersion: 1,
-    editConnectionId: DATA_VIEW_CONNECTION_ID,
-    draftRow: fixture.draftRow ?? null,
-    editMode: fixture.editMode ?? null,
-    editableColumnMap: fixture.editableColumnMap ?? new Map(),
-    editState: fixture.editState ?? null,
-    editingRowIndex: fixture.editingRowIndex ?? null,
-    editingBaseIndex: defaultEditingBaseIndex(fixture),
-    editTableMetadata: editTablesOf(fixture),
-    editForeignKeys: fixture.editForeignKeys ?? [],
-    editColumnBindings: bindings,
-    editBoundColumnIndexMap: buildBoundColumnIndexMap(bindings),
-    selectedRowIndex: fixture.selectedRowIndex ?? null,
-    selectedCell: fixture.selectedCell ?? null,
-    checkedRanges: fixture.checkedRanges ?? [],
-    view: { spec: { sort: fixture.sort ?? null } },
+    view: {
+      mode: fixture.mode ?? 'grid',
+      slot: {
+        columns: fixture.columns,
+        queryId: DATA_VIEW_QUERY_ID,
+        viewVersion: 1,
+        viewRowCount: viewRowCount,
+        totalRows: viewRowCount,
+        connectionId: DATA_VIEW_CONNECTION_ID,
+      },
+      selection: {
+        rowIndex: fixture.selectedRowIndex ?? null,
+        cell: fixture.selectedCell ?? null,
+      },
+      checked: { ranges: fixture.checkedRanges ?? [], viewVersion: 1 },
+      spec: { sort: fixture.sort ?? null },
+      edit: {
+        state: fixture.editState ?? null,
+        rowIndex: fixture.editingRowIndex ?? null,
+        baseIndex: defaultEditingBaseIndex(fixture),
+        draftRow: fixture.draftRow ?? null,
+      },
+      editTarget: {
+        tableName: fixture.editMode ?? null,
+        tables: editTablesOf(fixture),
+        foreignKeys: fixture.editForeignKeys ?? [],
+        editableColumns: fixture.editableColumnMap ?? new Map(),
+        bindings: bindings,
+        boundIndexByName: buildBoundColumnIndexMap(bindings),
+      },
+    },
   })
 }
 

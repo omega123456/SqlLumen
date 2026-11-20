@@ -34,6 +34,10 @@ export function rowPlacementOf(row: Record<string, unknown>): RowPlacement {
   return { position: indexOrMissing(row.__rowIdx), baseIndex: indexOrMissing(row.__baseIdx) }
 }
 
+export function draftScrollRowIndex(edit: DataViewEditSession): number | null {
+  return edit.draftRow !== null ? edit.rowIndex : null
+}
+
 export function isEditedRow({ position, baseIndex }: RowPlacement, edit: DataViewEditSession) {
   if (edit.rowIndex === null) return false
   if (baseIndex >= 0) return baseIndex === edit.baseIndex

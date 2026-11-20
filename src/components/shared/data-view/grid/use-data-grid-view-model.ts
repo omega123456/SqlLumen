@@ -15,6 +15,7 @@ import type { CanvasBaseGridView, GridRowActions } from '../../glide/CanvasBaseG
 import type { GridHandle } from '../../glide/glide-grid-types'
 import {
   dataRowClass,
+  draftScrollRowIndex,
   editLocationOf,
   invertColumnBindings,
   selectedCellPositionOf,
@@ -131,6 +132,7 @@ function buildDataGridProps(parts: DataGridParts): CanvasGridProps {
     rowKeyGetter: rowKeyOf,
     getRowClass: derived.getRowClass,
     selectedRowIndex: view.selectedRowIndex,
+    scrollToRowIndex: draftScrollRowIndex(view.edit),
     autoSizeConfig: parts.columns.autoSizeConfig,
     isActive: source.isActive,
     onScrollCellChange: layout.handleScrollCellChange,
@@ -209,6 +211,7 @@ export function useDataGridViewModel(source: DataViewSource) {
   const dataColumns = useDataGridColumns({
     columns: view.slot.columns,
     editTarget: view.editTarget,
+    metadata: source.capabilities.columnMetadata,
     columnWidths: layout.columnWidths,
   })
   const { gridColumns } = dataColumns

@@ -76,78 +76,86 @@ describe('edit callback stability (focus-loss regression)', () => {
         tabs: {
           'tab-1': makeTabState({
             status: 'success',
-            viewMode: 'grid',
-            columns: [
-              { name: 'id', dataType: 'INT' },
-              { name: 'name', dataType: 'VARCHAR' },
-            ],
+            view: {
+              mode: 'grid',
+              slot: {
+                columns: [
+                  { name: 'id', dataType: 'INT' },
+                  { name: 'name', dataType: 'VARCHAR' },
+                ],
+                totalRows: 2,
+                queryId: 'q1',
+                connectionId: 'conn-1',
+              },
+              editTarget: {
+                tableName: 'test_db.users',
+                editableColumns: new Map([
+                  [0, false],
+                  [1, true],
+                ]),
+                bindings: new Map([
+                  [0, 'id'],
+                  [1, 'name'],
+                ]),
+                boundIndexByName: new Map([
+                  ['id', 0],
+                  ['name', 1],
+                ]),
+                tables: {
+                  'test_db.users': {
+                    database: 'test_db',
+                    table: 'users',
+                    columns: [
+                      {
+                        name: 'id',
+                        dataType: 'INT',
+                        isBooleanAlias: false,
+                        isNullable: false,
+                        isPrimaryKey: true,
+                        isUniqueKey: false,
+                        hasDefault: false,
+                        columnDefault: null,
+                        isBinary: false,
+                        isAutoIncrement: true,
+                      },
+                      {
+                        name: 'name',
+                        dataType: 'VARCHAR',
+                        isBooleanAlias: false,
+                        isNullable: true,
+                        isPrimaryKey: false,
+                        isUniqueKey: false,
+                        hasDefault: false,
+                        columnDefault: null,
+                        isBinary: false,
+                        isAutoIncrement: false,
+                      },
+                    ],
+                    primaryKey: {
+                      keyColumns: ['id'],
+                      hasAutoIncrement: true,
+                      isUniqueKeyFallback: false,
+                    },
+                    foreignKeys: [],
+                  },
+                },
+              },
+              edit: {
+                state: {
+                  rowKey: { id: 1 },
+                  originalValues: { id: 1, name: 'Alice' },
+                  currentValues: { id: 1, name: 'Alice' },
+                  modifiedColumns: new Set<string>(),
+                  isNewRow: false,
+                },
+                rowIndex: 0,
+              },
+            },
             rows: [
               [1, 'Alice'],
               [2, 'Bob'],
             ],
-            totalRows: 2,
-            queryId: 'q1',
             lastExecutedSql: 'SELECT id, name FROM users',
-            editMode: 'test_db.users',
-            editConnectionId: 'conn-1',
-            editableColumnMap: new Map([
-              [0, false],
-              [1, true],
-            ]),
-            editColumnBindings: new Map([
-              [0, 'id'],
-              [1, 'name'],
-            ]),
-            editBoundColumnIndexMap: new Map([
-              ['id', 0],
-              ['name', 1],
-            ]),
-            editTableMetadata: {
-              'test_db.users': {
-                database: 'test_db',
-                table: 'users',
-                columns: [
-                  {
-                    name: 'id',
-                    dataType: 'INT',
-                    isBooleanAlias: false,
-                    isNullable: false,
-                    isPrimaryKey: true,
-                    isUniqueKey: false,
-                    hasDefault: false,
-                    columnDefault: null,
-                    isBinary: false,
-                    isAutoIncrement: true,
-                  },
-                  {
-                    name: 'name',
-                    dataType: 'VARCHAR',
-                    isBooleanAlias: false,
-                    isNullable: true,
-                    isPrimaryKey: false,
-                    isUniqueKey: false,
-                    hasDefault: false,
-                    columnDefault: null,
-                    isBinary: false,
-                    isAutoIncrement: false,
-                  },
-                ],
-                primaryKey: {
-                  keyColumns: ['id'],
-                  hasAutoIncrement: true,
-                  isUniqueKeyFallback: false,
-                },
-                foreignKeys: [],
-              },
-            },
-            editState: {
-              rowKey: { id: 1 },
-              originalValues: { id: 1, name: 'Alice' },
-              currentValues: { id: 1, name: 'Alice' },
-              modifiedColumns: new Set<string>(),
-              isNewRow: false,
-            },
-            editingRowIndex: 0,
           }),
         },
       })

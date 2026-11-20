@@ -4,6 +4,7 @@ import type {
   DataViewSurfaceRef,
 } from '../../../../stores/data-view/data-view-types'
 import { routeOf } from '../../../../stores/data-view/route-registry'
+import { boundColumnIndexOf } from '../../../../stores/data-view/data-view-selectors'
 import { currentView } from '../../../../stores/data-view/use-data-view'
 import {
   beginRowAction,
@@ -66,7 +67,7 @@ function withUnsavedEdits(cached: CachedRow, view: DataViewState): unknown[] {
   if (!isEditedRow) return cached.row
   const row = [...cached.row]
   for (const [columnName, value] of Object.entries(editState.currentValues)) {
-    const columnIndex = view.editTarget.boundIndexByName.get(columnName)
+    const columnIndex = boundColumnIndexOf(view, columnName)
     if (columnIndex === undefined) continue
     row[columnIndex] = value
   }

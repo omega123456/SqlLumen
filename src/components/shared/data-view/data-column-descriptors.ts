@@ -3,10 +3,11 @@ import {
   resolveQueryResultColumns,
   type ResolvedQueryResultColumn,
 } from '../../../lib/query-result-column-utils'
-import type { ColumnMeta, TableDataColumnMeta } from '../../../types/schema'
+import type { ColumnMeta, ForeignKeyColumnInfo, TableDataColumnMeta } from '../../../types/schema'
 import type { GridColumnDescriptor } from '../../../types/shared-data-view'
 import type { DataViewEditTarget } from '../../../stores/data-view/data-view-types'
 import { buildGridColumnDescriptor } from './grid-column-descriptor'
+import type { DataColumnMetadata } from './data-view-source'
 
 const NO_TABLE_COLUMNS: TableDataColumnMeta[] = []
 
@@ -43,26 +44,59 @@ export function editTableColumnsOf(editTarget: DataViewEditTarget): TableDataCol
 export interface DataColumnDescriptorInputs {
   columns: ColumnMeta[]
   editTarget: DataViewEditTarget
+  metadata: DataColumnMetadata | null
   columnWidths?: Record<string, number>
 }
 
-export function useDataColumnDescriptors({
+export interface DescriptorMetadata {
+  tableColumns: TableDataColumnMeta[]
+  foreignKeys: ForeignKeyColumnInfo[]
+  bindings: Map<number, string>
+}
+
+function editTargetMetadataOf(editTarget: DataViewEditTarget): DescriptorMetadata {
+  return {
+    tableColumns: editTableColumnsOf(editTarget),
+    foreignKeys: editTarget.foreignKeys,
+    bindings: editTarget.bindings,
+  }
+}
+
+function identityBindingsOf(columns: ColumnMeta[]): Map<number, string> {
+  return new Map(columns.map((column, columnIndex) => [columnIndex, column.name]))
+}
+
+export function descriptorMetadataOf({
   columns,
   editTarget,
-  columnWidths,
-}: DataColumnDescriptorInputs) {
-  const resolvedColumns = useMemo(
-    () =>
-      resolveQueryResultColumns({
-        resultColumns: columns,
-        editMode: editTarget.tableName,
-        editableColumnMap: editTarget.editableColumns,
-        editTableColumns: editTableColumnsOf(editTarget),
-        editForeignKeys: editTarget.foreignKeys,
-        editColumnBindings: editTarget.bindings,
-      }),
-    [columns, editTarget]
-  )
+  metadata,
+}: DataColumnDescriptorInputs): DescriptorMetadata {
+  if (editTarget.tableName !== null) return editTargetMetadataOf(editTarget)
+  if (!metadata) return editTargetMetadataOf(editTarget)
+  return {
+    tableColumns: metadata.tableColumns,
+    foreignKeys: metadata.foreignKeys,
+    bindings: identityBindingsOf(columns),
+  }
+}
+
+export function useDataColumnDescriptors(inputs: DataColumnDescriptorInputs) {
+  const { columns, editTarget, metadata, columnWidths } = inputs
+  const resolvedColumns = useMemo(() => {
+    const descriptorMetadata = descriptorMetadataOf({
+      columns: columns,
+      editTarget: editTarget,
+      metadata: metadata,
+    })
+    return resolveQueryResultColumns({
+      resultColumns: columns,
+      editMode: editTarget.tableName,
+      editableColumnMap: editTarget.editableColumns,
+      editTableColumns: descriptorMetadata.tableColumns,
+      editForeignKeys: descriptorMetadata.foreignKeys,
+      editColumnBindings: descriptorMetadata.bindings,
+    })
+  }, [columns, editTarget, metadata])
 
   const descriptors: GridColumnDescriptor[] = useMemo(() => {
     const context = {

@@ -1,8 +1,10 @@
 import { useQueryStore, type SingleResultState } from '../../../stores/query-store'
 import type { DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
-import { formatCount, formatRowRange } from '../../../lib/format-row-count'
+import { formatCount } from '../../../lib/format-row-count'
+import { DATA_VIEW_BAND_SLOT } from '../../../lib/class-names'
 import { Button } from '../../common/Button'
 import { InfoBar } from '../../common/InfoBar'
+import { DataViewFailureBand } from '../../shared/data-view/body/DataViewFailureBand'
 import { TRUNCATION_MESSAGES } from './result-panel-model'
 
 interface ResultBandsProps {
@@ -38,66 +40,6 @@ function TruncationBand({ result, isTabRunning, onExportAllRows }: TruncationBan
       message={TRUNCATION_MESSAGES[fullExportBlockedReason ?? 'none']}
       actions={fullExportBlockedReason === null ? exportAllButton : undefined}
       data-testid="result-truncation-band"
-    />
-  )
-}
-
-function ViewErrorBand({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <InfoBar
-      severity="error"
-      title="Couldn't apply sort or filter"
-      message={message}
-      actions={
-        <Button size="sm" onClick={onRetry} data-testid="view-error-retry">
-          Retry
-        </Button>
-      }
-      data-testid="result-view-error-band"
-    />
-  )
-}
-
-interface WindowFailureBandProps {
-  failedWindowRange: NonNullable<SingleResultState['view']['window']['failedRange']>
-  onRetry: () => void
-}
-
-function WindowFailureBand({ failedWindowRange, onRetry }: WindowFailureBandProps) {
-  const [rangeStart, rangeEnd] = failedWindowRange
-  return (
-    <InfoBar
-      severity="error"
-      title={`Couldn't load rows ${formatRowRange(rangeStart + 1, rangeEnd)}`}
-      message="Retry to load these rows."
-      actions={
-        <Button size="sm" onClick={onRetry} data-testid="window-error-retry">
-          Retry
-        </Button>
-      }
-      data-testid="result-window-error-band"
-    />
-  )
-}
-
-interface FailureBandProps {
-  surfaceRef: DataViewSurfaceRef
-  result: SingleResultState
-}
-
-function FailureBand({ surfaceRef, result }: FailureBandProps) {
-  const retryResultWindow = useQueryStore((state) => state.retryResultWindow)
-  const retryViewChange = useQueryStore((state) => state.retryViewChange)
-  const viewError = result.view.spec.error
-  const failedWindowRange = result.view.window.failedRange
-  if (viewError !== null) {
-    return <ViewErrorBand message={viewError} onRetry={() => retryViewChange(surfaceRef)} />
-  }
-  if (failedWindowRange === null) return null
-  return (
-    <WindowFailureBand
-      failedWindowRange={failedWindowRange}
-      onRetry={() => retryResultWindow(surfaceRef)}
     />
   )
 }
@@ -159,14 +101,11 @@ function hasAnyBand(result: SingleResultState): boolean {
 export function ResultBands({ surfaceRef, result, isTabRunning }: ResultBandsProps) {
   if (!hasAnyBand(result)) return null
   return (
-    <div
-      className="flex flex-none flex-col gap-2 border-t border-t-light-stroke-divider bg-light-surface-container-lowest p-3 dark:border-t-dark-stroke-divider dark:bg-dark-surface-container-lowest"
-      data-testid="result-band-slot"
-    >
+    <div className={DATA_VIEW_BAND_SLOT} data-testid="result-band-slot">
       {result.truncated && (
         <ResultTruncationBand surfaceRef={surfaceRef} result={result} isTabRunning={isTabRunning} />
       )}
-      <FailureBand surfaceRef={surfaceRef} result={result} />
+      <DataViewFailureBand surfaceRef={surfaceRef} />
     </div>
   )
 }

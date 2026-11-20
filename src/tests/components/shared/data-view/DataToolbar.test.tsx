@@ -8,7 +8,12 @@ import { queryToolbarReadiness } from '../../../../components/query-editor/resul
 import { useQueryStore, querySurfaceRef, getActiveResult } from '../../../../stores/query-store'
 import { useToastStore } from '../../../../stores/toast-store'
 import { useConnectionStore } from '../../../../stores/connection-store'
-import { makeTabState, flat } from '../../../helpers/query-test-utils'
+import {
+  makeTabState,
+  flat,
+  type MakeTabStateOverrides,
+  mergedTabStateOverrides,
+} from '../../../helpers/query-test-utils'
 import {
   loadTablePage,
   setupTestConnection,
@@ -19,6 +24,8 @@ import { makeTableColumnMeta } from '../../../helpers/column-meta-fixtures'
 import { useTableDataViewSource } from '../../../../components/table-data/table-data-tab/table-data-view-source'
 import { tableSurfaceRef, useTableDataStore } from '../../../../stores/table-data-store'
 import { insertDraftRow, updateCellValue } from '../../../../stores/data-view/edit-actions'
+import { setSelectedRow } from '../../../../stores/data-view/view-actions'
+import { updateView } from '../../../../stores/data-view/route-registry'
 import { expectToast, ipc } from '../../../ipc-mock'
 
 const TOOLBAR_TAB_ID = 'tab-1'
@@ -34,7 +41,7 @@ const CLOSED_FILTER: DataViewFilter = {
 }
 
 /** Helper to set up store state for a tab. */
-function setupTabState(tabId: string, overrides: Record<string, unknown> = {}) {
+function setupTabState(tabId: string, overrides: MakeTabStateOverrides = {}) {
   useQueryStore.setState({
     tabs: {
       [tabId]: makeTabState(overrides),
@@ -69,8 +76,7 @@ describe('DataToolbar', () => {
   it('renders with data-testid="result-toolbar"', () => {
     setupTabState(tabId, {
       status: 'success',
-      totalRows: 10,
-      columns: [{ name: 'id', dataType: 'INT' }],
+      view: { slot: { totalRows: 10, columns: [{ name: 'id', dataType: 'INT' }] } },
     })
     renderToolbar()
     expect(screen.getByTestId('result-toolbar')).toBeInTheDocument()
@@ -79,11 +85,10 @@ describe('DataToolbar', () => {
   it('leaves the row count, timing and errors to the status bar', () => {
     setupTabState(tabId, {
       status: 'success',
-      totalRows: 42,
+      view: { slot: { totalRows: 42, columns: [{ name: 'id', dataType: 'INT' }] } },
       totalTimeMs: 51,
       autoLimitApplied: true,
       appliedRowLimit: 500,
-      columns: [{ name: 'id', dataType: 'INT' }],
     })
     renderToolbar()
     const toolbar = screen.getByTestId('result-toolbar')
@@ -96,7 +101,7 @@ describe('DataToolbar', () => {
   it('does not render pagination controls', () => {
     setupTabState(tabId, {
       status: 'success',
-      columns: [{ name: 'id', dataType: 'INT' }],
+      view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
     })
     renderToolbar()
     expect(screen.queryByLabelText('Previous page')).not.toBeInTheDocument()
@@ -107,7 +112,7 @@ describe('DataToolbar', () => {
   it('disables copying when no rows are checked', () => {
     setupTabState(tabId, {
       status: 'success',
-      columns: [{ name: 'id', dataType: 'INT' }],
+      view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
       rows: [[1]],
       checkedRowIndices: [],
     })
@@ -115,42 +120,50 @@ describe('DataToolbar', () => {
     expect(screen.getByTestId('btn-copy-selected-rows')).toBeDisabled()
   })
 
-  it('copies checked rows in display order with unsaved edits applied', async () => {
+  it('copies checked rows in display order with unsaved edits applied to mixed-case columns', async () => {
     const user = userEvent.setup()
     const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
     setupTabState(tabId, {
       status: 'success',
-      columns: [
-        { name: 'id', dataType: 'INT' },
-        { name: 'name', dataType: 'VARCHAR' },
-      ],
+      view: {
+        slot: {
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'Name', dataType: 'VARCHAR' },
+          ],
+        },
+        editTarget: {
+          tableName: 'users',
+          boundIndexByName: new Map([
+            ['id', 0],
+            ['name', 1],
+          ]),
+        },
+        edit: {
+          rowIndex: 0,
+          baseIndex: 0,
+          state: {
+            rowKey: { id: 1 },
+            originalValues: { id: 1, Name: 'Ada' },
+            currentValues: { id: 1, Name: 'Ada L.' },
+            modifiedColumns: new Set(['Name']),
+            isNewRow: false,
+          },
+        },
+      },
       rows: [
         [1, 'Ada'],
         [2, 'Grace'],
         [3, 'Linus, Jr.'],
       ],
       checkedRowIndices: [2, 0],
-      editMode: 'users',
-      editBoundColumnIndexMap: new Map([
-        ['id', 0],
-        ['name', 1],
-      ]),
-      editingRowIndex: 0,
-      editingBaseIndex: 0,
-      editState: {
-        rowKey: { id: 1 },
-        originalValues: { id: 1, name: 'Ada' },
-        currentValues: { id: 1, name: 'Ada L.' },
-        modifiedColumns: new Set(['name']),
-        isNewRow: false,
-      },
     })
     renderToolbar()
 
     await user.click(screen.getByTestId('btn-copy-selected-rows'))
 
     await waitFor(() => {
-      expect(writeText).toHaveBeenCalledWith('id,name\r\n1,Ada L.\r\n3,"Linus, Jr."\r\n')
+      expect(writeText).toHaveBeenCalledWith('id,Name\r\n1,Ada L.\r\n3,"Linus, Jr."\r\n')
     })
     await expectToast('success', '2 row(s) copied to clipboard.')
     writeText.mockRestore()
@@ -163,7 +176,7 @@ describe('DataToolbar', () => {
       .mockRejectedValue(new Error('clipboard denied'))
     setupTabState(tabId, {
       status: 'success',
-      columns: [{ name: 'id', dataType: 'INT' }],
+      view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
       rows: [[1]],
       checkedRowIndices: [0],
     })
@@ -180,7 +193,10 @@ describe('DataToolbar', () => {
   // --- View mode toggle tests ---
 
   it('renders view mode toggle buttons', () => {
-    setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
+    setupTabState(tabId, {
+      status: 'success',
+      view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
+    })
     renderToolbar()
     expect(screen.getByTestId('view-mode-grid')).toBeInTheDocument()
     expect(screen.getByTestId('view-mode-form')).toBeInTheDocument()
@@ -188,30 +204,42 @@ describe('DataToolbar', () => {
   })
 
   it('sets view mode to form when form button clicked', () => {
-    setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
+    setupTabState(tabId, {
+      status: 'success',
+      view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
+    })
     renderToolbar()
     fireEvent.click(screen.getByTestId('view-mode-form'))
-    expect(flat(tabId).viewMode).toBe('form')
+    expect(flat(tabId).view.mode).toBe('form')
   })
 
   it('sets view mode to text when text button clicked', () => {
-    setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
+    setupTabState(tabId, {
+      status: 'success',
+      view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
+    })
     renderToolbar()
     fireEvent.click(screen.getByTestId('view-mode-text'))
-    expect(flat(tabId).viewMode).toBe('text')
+    expect(flat(tabId).view.mode).toBe('text')
   })
 
   // --- Export button tests ---
 
   it('renders export button', () => {
-    setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
+    setupTabState(tabId, {
+      status: 'success',
+      view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
+    })
     renderToolbar()
     expect(screen.getByTestId('export-button')).toBeInTheDocument()
     expect(screen.getByText('Export')).toBeInTheDocument()
   })
 
   it('export button is enabled when results exist', () => {
-    setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
+    setupTabState(tabId, {
+      status: 'success',
+      view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
+    })
     renderToolbar()
     expect(screen.getByTestId('export-button')).not.toBeDisabled()
   })
@@ -223,10 +251,13 @@ describe('DataToolbar', () => {
   })
 
   it('opens export dialog when export button clicked', () => {
-    setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
+    setupTabState(tabId, {
+      status: 'success',
+      view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
+    })
     renderToolbar()
     fireEvent.click(screen.getByTestId('export-button'))
-    expect(flat(tabId).exportDialogOpen).toBe(true)
+    expect(flat(tabId).view.prompts.isExportOpen).toBe(true)
   })
 
   // --- Data testid verification ---
@@ -234,7 +265,7 @@ describe('DataToolbar', () => {
   it('has correct data-testid attributes', () => {
     setupTabState(tabId, {
       status: 'success',
-      columns: [{ name: 'id', dataType: 'INT' }],
+      view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
     })
     renderToolbar()
     expect(screen.getByTestId('result-toolbar')).toBeInTheDocument()
@@ -247,40 +278,49 @@ describe('DataToolbar', () => {
   it('shows the row actions in table-data order when editable result mode is active', () => {
     setupTabState(tabId, {
       status: 'success',
-      columns: [
-        { name: 'id', dataType: 'INT' },
-        { name: 'name', dataType: 'VARCHAR' },
-      ],
-      rows: [[1, 'Alice']],
-      selectedRowIndex: 0,
-      editMode: 'users',
-      editingRowIndex: 0,
-      editableColumnMap: new Map([
-        [0, false],
-        [1, true],
-      ]),
-      editColumnBindings: new Map([
-        [0, 'id'],
-        [1, 'name'],
-      ]),
-      editTableMetadata: {
-        users: {
-          database: 'app',
-          table: 'users',
-          columns: [],
-          primaryKey: {
-            keyColumns: ['id'],
-            isUniqueKeyFallback: false,
+      view: {
+        slot: {
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'name', dataType: 'VARCHAR' },
+          ],
+        },
+        selection: { rowIndex: 0 },
+        editTarget: {
+          tableName: 'users',
+          editableColumns: new Map([
+            [0, false],
+            [1, true],
+          ]),
+          bindings: new Map([
+            [0, 'id'],
+            [1, 'name'],
+          ]),
+          tables: {
+            users: {
+              database: 'app',
+              table: 'users',
+              columns: [],
+              primaryKey: {
+                keyColumns: ['id'],
+                hasAutoIncrement: false,
+                isUniqueKeyFallback: false,
+              },
+            },
+          },
+        },
+        edit: {
+          rowIndex: 0,
+          state: {
+            rowKey: { id: 1 },
+            originalValues: { id: 1, name: 'Alice' },
+            currentValues: { id: 1, name: 'Alicia' },
+            modifiedColumns: new Set(['name']),
+            isNewRow: false,
           },
         },
       },
-      editState: {
-        rowKey: { id: 1 },
-        originalValues: { id: 1, name: 'Alice' },
-        currentValues: { id: 1, name: 'Alicia' },
-        modifiedColumns: new Set(['name']),
-        isNewRow: false,
-      },
+      rows: [[1, 'Alice']],
     })
 
     renderToolbar()
@@ -332,11 +372,13 @@ describe('DataToolbar', () => {
   it('disables Add and Clone when the current view does not support row insertion', () => {
     setupTabState(tabId, {
       status: 'success',
-      columns: [{ name: 'id', dataType: 'INT' }],
+      view: {
+        mode: 'text',
+        slot: { columns: [{ name: 'id', dataType: 'INT' }] },
+        selection: { rowIndex: 0 },
+        editTarget: { tableName: 'users' },
+      },
       rows: [[1]],
-      selectedRowIndex: 0,
-      editMode: 'users',
-      viewMode: 'text',
     })
 
     renderToolbar()
@@ -345,67 +387,79 @@ describe('DataToolbar', () => {
     expect(screen.getByTestId('btn-clone-row')).toBeDisabled()
   })
 
-  function setupInsertableTab(overrides: Record<string, unknown> = {}) {
-    setupTabState(tabId, {
-      status: 'success',
-      columns: [
-        { name: 'id', dataType: 'INT' },
-        { name: 'name', dataType: 'VARCHAR' },
-      ],
-      rows: [[1, 'Alice']],
-      selectedRowIndex: 0,
-      editMode: 'users',
-      editableColumnMap: new Map([
-        [0, false],
-        [1, true],
-      ]),
-      editColumnBindings: new Map([
-        [0, 'id'],
-        [1, 'name'],
-      ]),
-      editBoundColumnIndexMap: new Map([
-        ['id', 0],
-        ['name', 1],
-      ]),
-      editConnectionId: 'conn-1',
-      editTableMetadata: {
-        users: {
-          database: 'app',
-          table: 'users',
-          columns: [
-            {
-              name: 'id',
-              dataType: 'INT',
-              isBooleanAlias: false,
-              isNullable: false,
-              isPrimaryKey: true,
-              isUniqueKey: false,
-              hasDefault: false,
-              columnDefault: null,
-              isBinary: false,
-              isAutoIncrement: true,
+  function setupInsertableTab(overrides: MakeTabStateOverrides = {}) {
+    setupTabState(
+      tabId,
+      mergedTabStateOverrides(
+        {
+          status: 'success',
+          view: {
+            slot: {
+              columns: [
+                { name: 'id', dataType: 'INT' },
+                { name: 'name', dataType: 'VARCHAR' },
+              ],
+              connectionId: 'conn-1',
             },
-            {
-              name: 'name',
-              dataType: 'VARCHAR',
-              isBooleanAlias: false,
-              isNullable: true,
-              isPrimaryKey: false,
-              isUniqueKey: false,
-              hasDefault: false,
-              columnDefault: null,
-              isBinary: false,
-              isAutoIncrement: false,
+            selection: { rowIndex: 0 },
+            editTarget: {
+              tableName: 'users',
+              editableColumns: new Map([
+                [0, false],
+                [1, true],
+              ]),
+              bindings: new Map([
+                [0, 'id'],
+                [1, 'name'],
+              ]),
+              boundIndexByName: new Map([
+                ['id', 0],
+                ['name', 1],
+              ]),
+              tables: {
+                users: {
+                  database: 'app',
+                  table: 'users',
+                  columns: [
+                    {
+                      name: 'id',
+                      dataType: 'INT',
+                      isBooleanAlias: false,
+                      isNullable: false,
+                      isPrimaryKey: true,
+                      isUniqueKey: false,
+                      hasDefault: false,
+                      columnDefault: null,
+                      isBinary: false,
+                      isAutoIncrement: true,
+                    },
+                    {
+                      name: 'name',
+                      dataType: 'VARCHAR',
+                      isBooleanAlias: false,
+                      isNullable: true,
+                      isPrimaryKey: false,
+                      isUniqueKey: false,
+                      hasDefault: false,
+                      columnDefault: null,
+                      isBinary: false,
+                      isAutoIncrement: false,
+                    },
+                  ],
+                  primaryKey: {
+                    keyColumns: ['id'],
+                    hasAutoIncrement: false,
+                    isUniqueKeyFallback: false,
+                  },
+                },
+              },
             },
-          ],
-          primaryKey: {
-            keyColumns: ['id'],
-            isUniqueKeyFallback: false,
           },
+          rows: [[1, 'Alice']],
         },
-      },
-      ...overrides,
-    })
+        overrides
+      )
+    )
   }
 
   it('clicking Clone selects and edits the cloned draft row', () => {
@@ -418,10 +472,10 @@ describe('DataToolbar', () => {
     const result = flat(tabId)
     // The clone draft is a virtual row after the last view row.
     expect(result.rows).toHaveLength(1)
-    expect(result.draftRow).not.toBeNull()
-    expect(result.selectedRowIndex).toBe(1)
-    expect(result.editingRowIndex).toBe(1)
-    expect(result.editState?.isNewRow).toBe(true)
+    expect(result.view.edit.draftRow).not.toBeNull()
+    expect(result.view.selection.rowIndex).toBe(1)
+    expect(result.view.edit.rowIndex).toBe(1)
+    expect(result.view.edit.state?.isNewRow).toBe(true)
   })
 
   it('clicking Add opens an empty draft row after the last view row', () => {
@@ -432,10 +486,10 @@ describe('DataToolbar', () => {
     fireEvent.click(screen.getByTestId('btn-add-row'))
 
     const result = flat(tabId)
-    expect(result.draftRow).toEqual([null, null])
-    expect(result.selectedRowIndex).toBe(1)
-    expect(result.editingRowIndex).toBe(1)
-    expect(result.editState?.isNewRow).toBe(true)
+    expect(result.view.edit.draftRow).toEqual([null, null])
+    expect(result.view.selection.rowIndex).toBe(1)
+    expect(result.view.edit.rowIndex).toBe(1)
+    expect(result.view.edit.state?.isNewRow).toBe(true)
   })
 
   it('blocks Save with the invalid date toast when an edited date is invalid', async () => {
@@ -452,32 +506,44 @@ describe('DataToolbar', () => {
       isAutoIncrement: false,
     }
     setupInsertableTab({
-      columns: [
-        { name: 'id', dataType: 'INT' },
-        { name: 'created_at', dataType: 'DATE' },
-      ],
-      rows: [[1, '2025-01-01']],
-      selectedRowIndex: null,
-      editingRowIndex: 0,
-      editColumnBindings: new Map([
-        [0, 'id'],
-        [1, 'created_at'],
-      ]),
-      editTableMetadata: {
-        users: {
-          database: 'app',
-          table: 'users',
-          columns: [createdAtColumn],
-          primaryKey: { keyColumns: ['id'], isUniqueKeyFallback: false },
+      view: {
+        slot: {
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'created_at', dataType: 'DATE' },
+          ],
+        },
+        selection: { rowIndex: null },
+        edit: {
+          rowIndex: 0,
+          state: {
+            rowKey: { id: 1 },
+            originalValues: { id: 1, created_at: '2025-01-01' },
+            currentValues: { id: 1, created_at: 'not-a-date' },
+            modifiedColumns: new Set(['created_at']),
+            isNewRow: false,
+          },
+        },
+        editTarget: {
+          bindings: new Map([
+            [0, 'id'],
+            [1, 'created_at'],
+          ]),
+          tables: {
+            users: {
+              database: 'app',
+              table: 'users',
+              columns: [createdAtColumn],
+              primaryKey: {
+                keyColumns: ['id'],
+                hasAutoIncrement: false,
+                isUniqueKeyFallback: false,
+              },
+            },
+          },
         },
       },
-      editState: {
-        rowKey: { id: 1 },
-        originalValues: { id: 1, created_at: '2025-01-01' },
-        currentValues: { id: 1, created_at: 'not-a-date' },
-        modifiedColumns: new Set(['created_at']),
-        isNewRow: false,
-      },
+      rows: [[1, '2025-01-01']],
     })
     const user = userEvent.setup()
 
@@ -487,8 +553,8 @@ describe('DataToolbar', () => {
 
     expectToast('error', 'Invalid date value')
     expect(ipc.payloads('update_table_row')).toHaveLength(0)
-    expect(flat(tabId).selectedRowIndex).toBe(0)
-    expect(flat(tabId).editState?.currentValues.created_at).toBe('not-a-date')
+    expect(flat(tabId).view.selection.rowIndex).toBe(0)
+    expect(flat(tabId).view.edit.state?.currentValues.created_at).toBe('not-a-date')
   })
 
   describe('delete checked rows (edit-mode DB delete)', () => {
@@ -503,40 +569,56 @@ describe('DataToolbar', () => {
     } as unknown as Record<string, import('../../../../types/schema').QueryTableEditInfo>
 
     /** Edit-mode result bound to `users` with `id` (result index 0) as its key. */
-    function setupDeletableTab(overrides: Record<string, unknown> = {}) {
-      setupTabState(tabId, {
-        status: 'success',
-        columns: [
-          { name: 'id', dataType: 'INT' },
-          { name: 'name', dataType: 'VARCHAR' },
-        ],
-        rows: [
-          [1, 'a'],
-          [2, 'b'],
-          [3, 'c'],
-        ],
-        totalRows: 3,
-        editMode: 'users',
-        editConnectionId: connectionId,
-        lastExecutedSql: null,
-        editTableMetadata: editMetadata,
-        editBoundColumnIndexMap: new Map([
-          ['id', 0],
-          ['name', 1],
-        ]),
-        checkedRowIndices: [0, 2],
-        ...overrides,
-      })
+    function setupDeletableTab(overrides: MakeTabStateOverrides = {}) {
+      setupTabState(
+        tabId,
+        mergedTabStateOverrides(
+          {
+            status: 'success',
+            view: {
+              slot: {
+                columns: [
+                  { name: 'id', dataType: 'INT' },
+                  { name: 'name', dataType: 'VARCHAR' },
+                ],
+                totalRows: 3,
+                connectionId: connectionId,
+              },
+              editTarget: {
+                tableName: 'users',
+                tables: editMetadata,
+                boundIndexByName: new Map([
+                  ['id', 0],
+                  ['name', 1],
+                ]),
+              },
+            },
+            rows: [
+              [1, 'a'],
+              [2, 'b'],
+              [3, 'c'],
+            ],
+            lastExecutedSql: null,
+            checkedRowIndices: [0, 2],
+          },
+          overrides
+        )
+      )
     }
 
     it('disables the delete button when no rows are checked or selected', () => {
-      setupDeletableTab({ checkedRowIndices: [], selectedRowIndex: null })
+      setupDeletableTab({
+        checkedRowIndices: [],
+        view: { selection: { rowIndex: null } },
+      })
       renderToolbar()
       expect(screen.getByTestId('btn-delete-row')).toBeDisabled()
     })
 
     it('disables the delete button when not in edit mode (no unique key)', () => {
-      setupDeletableTab({ editMode: null })
+      setupDeletableTab({
+        view: { editTarget: { tableName: null } },
+      })
       renderToolbar()
       expect(screen.getByTestId('btn-delete-row')).toBeDisabled()
     })
@@ -551,7 +633,10 @@ describe('DataToolbar', () => {
     it('deletes the selected row when no rows are checked', async () => {
       ipc.override('delete_table_row', () => undefined)
       ipc.override('remove_result_rows', () => ({ viewVersion: 2, viewRowCount: 2, totalRows: 2 }))
-      setupDeletableTab({ checkedRowIndices: [], selectedRowIndex: 1 })
+      setupDeletableTab({
+        checkedRowIndices: [],
+        view: { selection: { rowIndex: 1 } },
+      })
       renderToolbar()
 
       expect(screen.getByTestId('btn-delete-row')).toHaveAccessibleName('Delete row')
@@ -560,7 +645,7 @@ describe('DataToolbar', () => {
       expect(screen.getByText('Delete this row from users?')).toBeInTheDocument()
       fireEvent.click(screen.getByTestId('confirm-confirm-button'))
 
-      await waitFor(() => expect(flat(tabId).totalRows).toBe(2))
+      await waitFor(() => expect(flat(tabId).view.slot.totalRows).toBe(2))
       const calls = ipc.payloads('delete_table_row') as Array<Record<string, unknown>>
       expect(calls.map((call) => call.primaryKeyValues)).toEqual([{ id: 2 }])
     })
@@ -588,12 +673,12 @@ describe('DataToolbar', () => {
 
       fireEvent.click(screen.getByTestId('confirm-confirm-button'))
 
-      await waitFor(() => expect(flat(tabId).totalRows).toBe(1))
+      await waitFor(() => expect(flat(tabId).view.slot.totalRows).toBe(1))
       const calls = ipc.payloads('delete_table_row') as Array<Record<string, unknown>>
       expect(calls.map((c) => c.primaryKeyValues)).toEqual([{ id: 1 }, { id: 3 }])
       expect(ipc.payloads('remove_result_rows')[0]).toMatchObject({ baseIndices: [0, 2] })
       expect(ipc.payloads('execute_query')).toHaveLength(0)
-      expect(flat(tabId).checkedRanges).toEqual([])
+      expect(flat(tabId).view.checked.ranges).toEqual([])
     })
 
     it('uses the single-row copy for one checked row', () => {
@@ -606,7 +691,9 @@ describe('DataToolbar', () => {
     })
 
     it('adds the long-running warning between 1,001 and 10,000 rows (wireframe 7)', () => {
-      setupDeletableTab({ viewRowCount: 5000, checkedRanges: [[0, 4200]] })
+      setupDeletableTab({
+        view: { slot: { viewRowCount: 5000 }, checked: { ranges: [[0, 4200]] } },
+      })
       renderToolbar()
       expect(screen.getByTestId('btn-delete-row')).toHaveAccessibleName('Delete 4,200 rows')
       expect(screen.getByTestId('delete-count-badge')).toHaveTextContent('99+')
@@ -623,7 +710,9 @@ describe('DataToolbar', () => {
 
     it('blocks more than 10,000 rows with a single OK and deletes nothing (wireframe 7)', async () => {
       ipc.override('delete_table_row', () => undefined)
-      setupDeletableTab({ viewRowCount: 100000, checkedRanges: [[0, 100000]] })
+      setupDeletableTab({
+        view: { slot: { viewRowCount: 100000 }, checked: { ranges: [[0, 100000]] } },
+      })
       renderToolbar()
       const deleteButton = screen.getByTestId('btn-delete-row')
       // Stays enabled so keyboard users can reach the explanation.
@@ -667,14 +756,16 @@ describe('DataToolbar', () => {
     it('disables copying and row actions while a row action runs', () => {
       setupTabState(tabId, {
         status: 'success',
-        totalRows: 4200,
-        columns: [{ name: 'id', dataType: 'INT' }],
-        rowActionProgress: {
-          verb: 'Deleting',
-          done: 1200,
-          total: 4200,
-          cancellable: false,
-          visible: true,
+        view: {
+          rowAction: {
+            actionId: 1,
+            verb: 'Deleting',
+            done: 1200,
+            total: 4200,
+            cancellable: false,
+            visible: true,
+          },
+          slot: { totalRows: 4200, columns: [{ name: 'id', dataType: 'INT' }] },
         },
       })
       renderToolbar()
@@ -688,11 +779,11 @@ describe('DataToolbar', () => {
       const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
+        view: {
+          slot: { columns: [{ name: 'id', dataType: 'INT' }], viewRowCount: 3000, totalRows: 3000 },
+          checked: { ranges: [[0, 3000]] },
+        },
         rows: [[0]],
-        viewRowCount: 3000,
-        totalRows: 3000,
-        checkedRanges: [[0, 3000]],
       })
       ipc.overridePayload('fetch_result_window', (args) => {
         const offset = Number(args?.offset)
@@ -722,11 +813,11 @@ describe('DataToolbar', () => {
       const user = userEvent.setup()
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
+        view: {
+          slot: { columns: [{ name: 'id', dataType: 'INT' }], viewRowCount: 3000, totalRows: 3000 },
+          checked: { ranges: [[0, 3000]] },
+        },
         rows: [],
-        viewRowCount: 3000,
-        totalRows: 3000,
-        checkedRanges: [[0, 3000]],
       })
       ipc.override('fetch_result_window', () => {
         throw new Error('offline')
@@ -740,28 +831,28 @@ describe('DataToolbar', () => {
       const user = userEvent.setup()
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
+        view: {
+          slot: { columns: [{ name: 'id', dataType: 'INT' }], viewRowCount: 3000, totalRows: 3000 },
+          checked: { ranges: [[0, 3000]] },
+        },
         rows: [],
-        viewRowCount: 3000,
-        totalRows: 3000,
-        checkedRanges: [[0, 3000]],
       })
       ipc.override('fetch_result_window', () => {
         throw new Error('results_expired: gone')
       })
       renderToolbar()
       await user.click(screen.getByTestId('btn-copy-selected-rows'))
-      await waitFor(() => expect(flat(tabId).isExpired).toBe(true))
+      await waitFor(() => expect(flat(tabId).view.residency.isExpired).toBe(true))
     })
 
     it('ignores checked ranges of an older view', () => {
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
+        view: {
+          slot: { columns: [{ name: 'id', dataType: 'INT' }], viewVersion: 2 },
+          checked: { ranges: [[0, 1]], viewVersion: 1 },
+        },
         rows: [[1]],
-        viewVersion: 2,
-        checkedRanges: [[0, 1]],
-        checkedViewVersion: 1,
       })
       renderToolbar()
       expect(screen.getByTestId('btn-copy-selected-rows')).toBeDisabled()
@@ -817,6 +908,30 @@ describe('DataToolbar paging on the table route', () => {
         pageSize: Number(request.pageSize),
       })
     )
+  })
+
+  it('keeps row-dependent toolbar actions disabled while restore is in flight', () => {
+    act(() => {
+      useTableDataStore.setState((state) => ({
+        tabs: {
+          [PAGED_TAB_ID]: {
+            ...state.tabs[PAGED_TAB_ID]!,
+            page: { ...state.tabs[PAGED_TAB_ID]!.page, isLoading: true },
+          },
+        },
+      }))
+      setSelectedRow(PAGED_REF, 0)
+      updateView(PAGED_REF, {
+        residency: { rows: { status: 'restoring', isActive: true, inactiveSince: null } },
+      })
+    })
+    render(<PagedTableToolbar />)
+
+    expect(screen.getByTestId('btn-add-row')).toBeDisabled()
+    expect(screen.getByTestId('btn-clone-row')).toBeDisabled()
+    expect(screen.getByTestId('btn-delete-row')).toBeDisabled()
+    expect(screen.getByTestId('btn-refresh')).toBeDisabled()
+    expect(screen.queryByTestId('btn-cancel-load')).not.toBeInTheDocument()
   })
 
   it('pages forward and back, changes the page size, and holds paging behind unsaved edits', async () => {

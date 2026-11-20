@@ -9,7 +9,7 @@ import { requestNavigationAction } from '../../../stores/data-view/navigation-gu
 import type { DataViewState, DataViewSurfaceRef } from '../../../stores/data-view/data-view-types'
 import type { DataViewReload, DataViewSource } from './data-view-source'
 import { DataPaging } from './toolbar/DataPaging'
-import type { DataToolbarReadiness } from './toolbar/data-toolbar-model'
+import { isRestoringRows, type DataToolbarReadiness } from './toolbar/data-toolbar-model'
 import type { DataViewFilter } from './toolbar/use-data-filter'
 import { useDataToolbar } from './toolbar/use-data-toolbar'
 
@@ -20,21 +20,37 @@ export interface DataToolbarProps {
   readiness: DataToolbarReadiness
 }
 
-function isRestoringRows(view: DataViewState): boolean {
-  return view.residency.rows.status === 'restoring'
+function isCancellableLoad(view: DataViewState, reload: DataViewReload): boolean {
+  return reload.isLoading && !isRestoringRows(view)
 }
 
 function guardedReload(surfaceRef: DataViewSurfaceRef, reload: DataViewReload): DataViewReload {
   return { ...reload, onReload: () => requestNavigationAction(surfaceRef, reload.onReload) }
 }
 
+interface ReloadSlotProps {
+  source: DataViewSource
+  view: DataViewState
+  isBusy: boolean
+}
+
+function ReloadSlot({ source, view, isBusy }: ReloadSlotProps) {
+  const reload = source.capabilities.reload
+  if (!reload) return null
+  return (
+    <LoadControlButton
+      reload={guardedReload(source.ref, reload)}
+      isBusy={isBusy}
+      isCancellable={isCancellableLoad(view, reload)}
+    />
+  )
+}
+
 export function DataToolbar({ source, editTarget, filter, readiness }: DataToolbarProps) {
-  const toolbar = useDataToolbar(source.ref, readiness)
-  const { view, viewActions, rowActions } = toolbar
+  const toolbar = useDataToolbar(source, readiness)
+  const { view, viewActions, rowActions, isBusy } = toolbar
   const filterModel = view.spec.filters
-  const { reload, paging } = source.capabilities
-  const isReloading = reload?.isLoading ?? false
-  const isBusy = isReloading || isRestoringRows(view)
+  const { paging } = source.capabilities
 
   return (
     <DataViewToolbar
@@ -57,11 +73,7 @@ export function DataToolbar({ source, editTarget, filter, readiness }: DataToolb
           />
         ) : null
       }
-      reload={
-        reload ? (
-          <LoadControlButton reload={guardedReload(source.ref, reload)} isBusy={isBusy} />
-        ) : null
-      }
+      reload={<ReloadSlot source={source} view={view} isBusy={isBusy} />}
       dataActions={
         <DataActionButtons
           filter={{

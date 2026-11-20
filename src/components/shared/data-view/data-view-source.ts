@@ -1,5 +1,6 @@
 import type { DataViewSurfaceRef, PageRequest } from '../../../stores/data-view/data-view-types'
 import type { ViewMode } from '../../../types/shared-data-view'
+import type { ForeignKeyColumnInfo, TableDataColumnMeta } from '../../../types/schema'
 
 export interface DataViewTestIds {
   grid: string
@@ -37,6 +38,11 @@ export interface DataViewColumnJump {
   clearHighlight: () => void
 }
 
+export interface DataColumnMetadata {
+  tableColumns: TableDataColumnMeta[]
+  foreignKeys: ForeignKeyColumnInfo[]
+}
+
 export interface DataViewCapabilities {
   modes: readonly ViewMode[]
   canEdit: boolean
@@ -45,6 +51,7 @@ export interface DataViewCapabilities {
   paging: DataViewPaging | null
   reload: DataViewReload | null
   columnJump: DataViewColumnJump | null
+  columnMetadata: DataColumnMetadata | null
 }
 
 export interface DataViewSource {

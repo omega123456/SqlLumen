@@ -1,4 +1,4 @@
-import { patchedLegacyResult } from '../../helpers/legacy-result-fields'
+import { resultWith } from '../../helpers/query-store-fixtures'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import { StatusBar } from '../../../components/layout/StatusBar'
@@ -10,14 +10,20 @@ import { useThemeStore } from '../../../stores/theme-store'
 import { useSchemaIndexStore } from '../../../stores/schema-index-store'
 import { useSettingsStore } from '../../../stores/settings-store'
 import { useUpdateStore } from '../../../stores/update-store'
-import { useTableDataStore } from '../../../stores/table-data-store'
+import { tableSurfaceRef, useTableDataStore } from '../../../stores/table-data-store'
+import { beginRowAction } from '../../../stores/data-view/row-action-progress'
+import { readView, updateView } from '../../../stores/data-view/route-registry'
 import userEvent from '@testing-library/user-event'
 import { ipc } from '../../ipc-mock'
 import type { WorkspaceTab } from '../../../types/schema'
 import type { TableDataTabState } from '../../../stores/table-data-store'
 import type { TableDataTabPatch } from '../../../stores/table-data-store/table-data-tab-state'
 import { makeTableColumnMeta } from '../../helpers/column-meta-fixtures'
-import { makeTabState } from '../../helpers/query-test-utils'
+import {
+  makeTabState,
+  mergedTabStateOverrides,
+  type MakeTabStateOverrides,
+} from '../../helpers/query-test-utils'
 import { makeTableDataTabState } from '../../helpers/table-data-test-utils'
 import { makeActiveConnection } from '../../helpers/connection-test-utils'
 
@@ -62,6 +68,14 @@ const STATUS_BAR_TABLE_COLUMNS = [
 ]
 
 const STATUS_BAR_TABLE_ROW_COUNT = 3
+
+function startVisibleTableCopy(onCancel: () => void) {
+  const ref = tableSurfaceRef('table-1')
+  act(() => {
+    beginRowAction(ref, { verb: 'Copying', total: 5, onCancel: onCancel })
+    updateView(ref, { rowAction: { ...readView(ref)!.rowAction!, done: 2, visible: true } })
+  })
+}
 
 function makeStatusBarTableState(patch: TableDataTabPatch = {}): TableDataTabState {
   return makeTableDataTabState({
@@ -169,11 +183,9 @@ describe('StatusBar', () => {
     const successQueryState = makeTabState({
       content: 'SELECT * FROM users',
       status: 'success',
-      totalRows: 42,
-      viewRowCount: 42,
+      view: { slot: { totalRows: 42, viewRowCount: 42, queryId: 'q1' } },
       executionTimeMs: 12,
       totalTimeMs: 150,
-      queryId: 'q1',
     })
 
     function setupQueryEditorTab() {
@@ -223,12 +235,10 @@ describe('StatusBar', () => {
         tabs: {
           'tab-1': makeTabState({
             status: 'success',
-            totalRows: 100000,
-            viewRowCount: 100000,
+            view: { slot: { totalRows: 100000, viewRowCount: 100000, queryId: 'q1' } },
             truncated: true,
             executionTimeMs: 42,
             totalTimeMs: 51,
-            queryId: 'q1',
           }),
         },
       })
@@ -251,10 +261,10 @@ describe('StatusBar', () => {
         tabs: {
           'tab-1': makeTabState({
             status: 'success',
-            totalRows: 12340,
-            viewRowCount: 2340,
-            filterModel: [{ column: 'id', operator: '>', value: '1' }],
-            queryId: 'q1',
+            view: {
+              slot: { totalRows: 12340, viewRowCount: 2340, queryId: 'q1' },
+              spec: { filters: [{ column: 'id', operator: '>', value: '1' }] },
+            },
           }),
         },
       })
@@ -268,11 +278,9 @@ describe('StatusBar', () => {
           tabs: {
             'tab-1': makeTabState({
               status: 'success',
-              totalRows: 1000,
-              viewRowCount: 1000,
+              view: { slot: { totalRows: 1000, viewRowCount: 1000, queryId: 'q1' } },
               autoLimitApplied: true,
               appliedRowLimit: 1000,
-              queryId: 'q1',
             }),
           },
         })
@@ -446,7 +454,8 @@ describe('StatusBar', () => {
       expect(screen.queryByTestId('query-info')).not.toBeInTheDocument()
     })
 
-    it('shows the visible row count for an active bottom-panel table-data grid tab', () => {
+    it('shows the visible row count for an active bottom-panel table-data grid tab', async () => {
+      const user = userEvent.setup()
       setupActiveConnection()
       useWorkspaceStore.setState({
         tabsByConnection: {
@@ -476,7 +485,7 @@ describe('StatusBar', () => {
         tabs: {
           'query-1': makeTabState({
             status: 'success',
-            totalRows: 42,
+            view: { slot: { totalRows: 42 } },
             executionTimeMs: 12,
             totalTimeMs: 150,
             activeBottomPanelItem: { type: 'table-data', tabId: 'table-1' },
@@ -494,6 +503,11 @@ describe('StatusBar', () => {
       expect(screen.getByTestId('table-data-info')).toBeInTheDocument()
       expect(screen.getByTestId('table-data-rows')).toHaveTextContent('Rows 1')
       expect(screen.queryByTestId('query-info')).not.toBeInTheDocument()
+
+      const onCancel = vi.fn()
+      startVisibleTableCopy(onCancel)
+      await user.click(screen.getByTestId('row-action-cancel'))
+      expect(onCancel).toHaveBeenCalledTimes(1)
     })
 
     it('shows the row count and exec time in form view too', () => {
@@ -525,7 +539,8 @@ describe('StatusBar', () => {
       expect(screen.queryByTestId('table-data-time')).not.toBeInTheDocument()
     })
 
-    it('shows the loading, restoring and row-action states as pending work', () => {
+    it('shows the loading, restoring and row-action states as pending work', async () => {
+      const user = userEvent.setup()
       setupStandaloneTableTab()
       useTableDataStore.setState({
         tabs: { 'table-1': makeStatusBarTableState({ page: { isLoading: true } }) },
@@ -556,23 +571,19 @@ describe('StatusBar', () => {
       restoring.unmount()
 
       act(() => {
-        useTableDataStore.setState({
-          tabs: {
-            'table-1': makeStatusBarTableState({
-              view: {
-                rowAction: { verb: 'Copying', done: 2, total: 5, cancellable: true, visible: true },
-              },
-            }),
-          },
-        })
+        useTableDataStore.setState({ tabs: { 'table-1': makeStatusBarTableState() } })
       })
+      const onCancel = vi.fn()
+      startVisibleTableCopy(onCancel)
       render(<StatusBar />)
       expect(screen.getByTestId('status-pending-work-label')).toHaveTextContent('Copying… 2 of 5')
+      await user.click(screen.getByTestId('row-action-cancel'))
+      expect(onCancel).toHaveBeenCalledTimes(1)
     })
   })
 
   describe('query result pending work', () => {
-    function setupQueryTab(overrides: Record<string, unknown>) {
+    function setupQueryTab(overrides: MakeTabStateOverrides) {
       setupActiveConnection()
       useWorkspaceStore.setState({
         tabsByConnection: {
@@ -590,14 +601,22 @@ describe('StatusBar', () => {
       seedVisibleConnection('conn-1')
       useQueryStore.setState({
         tabs: {
-          'tab-1': makeTabState({
-            status: 'success',
-            totalRows: 100000,
-            viewRowCount: 100000,
-            queryId: 'q1',
-            columns: [{ name: 'id', dataType: 'INT' }],
-            ...overrides,
-          }),
+          'tab-1': makeTabState(
+            mergedTabStateOverrides(
+              {
+                status: 'success',
+                view: {
+                  slot: {
+                    totalRows: 100000,
+                    viewRowCount: 100000,
+                    queryId: 'q1',
+                    columns: [{ name: 'id', dataType: 'INT' }],
+                  },
+                },
+              },
+              overrides
+            )
+          ),
         },
       })
     }
@@ -610,14 +629,18 @@ describe('StatusBar', () => {
     })
 
     it('shows "Filtering…" next to the still-visible count', () => {
-      setupQueryTab({ isFiltering: true })
+      setupQueryTab({
+        view: { spec: { applying: 'filter' } },
+      })
       render(<StatusBar />)
       expect(screen.getByTestId('status-pending-work-label')).toHaveTextContent('Filtering…')
       expect(screen.getByTestId('query-rows')).toHaveTextContent('100,000 rows')
     })
 
     it('shows and announces "Loading rows X–Y…" for a pending window', () => {
-      setupQueryTab({ pendingWindowRange: [12000, 13000] })
+      setupQueryTab({
+        view: { window: { pendingRange: [12000, 13000] } },
+      })
       render(<StatusBar />)
       expect(screen.getByTestId('status-pending-work-label')).toHaveTextContent(
         'Loading rows 12,001–13,000…'
@@ -647,9 +670,12 @@ describe('StatusBar', () => {
             'tab-1': {
               ...state.tabs['tab-1']!,
               results: [
-                patchedLegacyResult(result, {
-                  rowActionProgress: { ...result.view.rowAction!, done: 4000, visible: true },
-                }),
+                resultWith(
+                  {
+                    view: { rowAction: { ...result.view.rowAction!, done: 4000, visible: true } },
+                  },
+                  result
+                ),
               ],
             },
           },
@@ -665,12 +691,15 @@ describe('StatusBar', () => {
 
     it('shows the delete progress without Cancel', () => {
       setupQueryTab({
-        rowActionProgress: {
-          verb: 'Deleting',
-          done: 1200,
-          total: 4200,
-          cancellable: false,
-          visible: true,
+        view: {
+          rowAction: {
+            actionId: 1,
+            verb: 'Deleting',
+            done: 1200,
+            total: 4200,
+            cancellable: false,
+            visible: true,
+          },
         },
       })
       render(<StatusBar />)

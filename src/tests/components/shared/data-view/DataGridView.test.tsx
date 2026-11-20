@@ -81,6 +81,7 @@ interface CapturedGridProps {
   rowKeyGetter: (row: Row) => string
   getRowClass: (row: Row) => string | undefined
   selectedCellPosition: { rowIdx: number; idx: number } | null
+  scrollToRowIndex: number | null
   testId: string
 }
 
@@ -247,6 +248,7 @@ describe('DataGridView rows', () => {
     expect(screen.getByTestId('mock-grid')).toHaveAttribute('data-row-count', '2')
     const props = gridProps()
     expect(props.testId).toBe('result-grid')
+    expect(props.scrollToRowIndex).toBeNull()
     expect(props.columns.map((column) => column.displayName)).toEqual(['id', 'name'])
     expect(props.rows[0]).toMatchObject({ col_0: 1, col_1: 'Ada', __rowIdx: 0, __baseIdx: 0 })
     expect(props.rows[1]).toMatchObject({ col_1: null })
@@ -288,6 +290,7 @@ describe('DataGridView rows', () => {
     const rows = await source.readRange?.([1, 3])
     expect(rows?.map((row) => row.col_1)).toEqual(['Bob', 'Edited draft'])
     expect(gridProps().editState?.isNewRow).toBe(true)
+    expect(gridProps().scrollToRowIndex).toBe(2)
   })
 
   it('overlays current edit values onto the edited row only and keeps other row objects', () => {

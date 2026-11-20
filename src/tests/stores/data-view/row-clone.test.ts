@@ -39,25 +39,25 @@ describe('cloneSelectedRow', () => {
     const tab = flat('tab-1')
     // The draft is a virtual row right after the last view row; cached rows are untouched.
     expect(tab.rows).toHaveLength(2)
-    expect(tab.selectedRowIndex).toBe(2)
-    expect(tab.editingRowIndex).toBe(2)
-    expect(tab.editingBaseIndex).toBeNull()
-    expect(tab.draftRow).toEqual([null, 'Alice', 'alice@test.com'])
-    expect(tab.editState?.isNewRow).toBe(true)
-    expect(tab.editState?.rowKey).toEqual({ id: null })
-    expect(tab.editState?.originalValues).toEqual({
+    expect(tab.view.selection.rowIndex).toBe(2)
+    expect(tab.view.edit.rowIndex).toBe(2)
+    expect(tab.view.edit.baseIndex).toBeNull()
+    expect(tab.view.edit.draftRow).toEqual([null, 'Alice', 'alice@test.com'])
+    expect(tab.view.edit.state?.isNewRow).toBe(true)
+    expect(tab.view.edit.state?.rowKey).toEqual({ id: null })
+    expect(tab.view.edit.state?.originalValues).toEqual({
       id: null,
       name: 'Alice',
       email: 'alice@test.com',
     })
-    expect(tab.editState?.currentValues).toEqual({
+    expect(tab.view.edit.state?.currentValues).toEqual({
       id: null,
       name: 'Alice',
       email: 'alice@test.com',
     })
-    expect(tab.editState?.modifiedColumns.has('name')).toBe(true)
-    expect(tab.editState?.modifiedColumns.has('email')).toBe(true)
-    expect(tab.editState?.modifiedColumns.has('id')).toBe(false)
+    expect(tab.view.edit.state?.modifiedColumns.has('name')).toBe(true)
+    expect(tab.view.edit.state?.modifiedColumns.has('email')).toBe(true)
+    expect(tab.view.edit.state?.modifiedColumns.has('id')).toBe(false)
   })
 
   it('copies natural primary-key values into the clone instead of leaving them blank', async () => {
@@ -89,9 +89,9 @@ describe('cloneSelectedRow', () => {
     useQueryStore.getState().cloneSelectedRow(activeQuerySurfaceRef('tab-1'))
 
     const tab = flat('tab-1')
-    expect(tab.draftRow).toEqual(['p-001', 'Alpha'])
-    expect(tab.editState?.currentValues.code).toBe('p-001')
-    expect(tab.editState?.modifiedColumns.has('code')).toBe(true)
+    expect(tab.view.edit.draftRow).toEqual(['p-001', 'Alpha'])
+    expect(tab.view.edit.state?.currentValues.code).toBe('p-001')
+    expect(tab.view.edit.state?.modifiedColumns.has('code')).toBe(true)
   })
 
   it('clones the only checkbox-checked row and refuses while several rows are checked', async () => {
@@ -100,14 +100,14 @@ describe('cloneSelectedRow', () => {
 
     useQueryStore.getState().setCheckedRanges(activeQuerySurfaceRef('tab-1'), [[0, 2]])
     useQueryStore.getState().cloneSelectedRow(activeQuerySurfaceRef('tab-1'))
-    expect(flat('tab-1').draftRow).toBeNull()
+    expect(flat('tab-1').view.edit.draftRow).toBeNull()
 
     useQueryStore.getState().setCheckedRanges(activeQuerySurfaceRef('tab-1'), [[1, 2]])
     useQueryStore.getState().cloneSelectedRow(activeQuerySurfaceRef('tab-1'))
-    expect(flat('tab-1').draftRow).toEqual([null, 'Bob', 'bob@test.com'])
+    expect(flat('tab-1').view.edit.draftRow).toEqual([null, 'Bob', 'bob@test.com'])
   })
 
-  it('refuses clone when edit metadata is using a unique-key fallback', async () => {
+  it('clones a row when edit metadata is using a unique-key fallback', async () => {
     const fallbackAnalyzeResult: QueryTableEditInfo[] = [
       {
         ...mockAnalyzeResult[0],
@@ -148,13 +148,8 @@ describe('cloneSelectedRow', () => {
     useQueryStore.getState().cloneSelectedRow(activeQuerySurfaceRef('tab-1'))
 
     const tab = flat('tab-1')
-    expect(tab.rows).toHaveLength(1)
-    expect(tab.editState).toBeNull()
-    expect(
-      useToastStore
-        .getState()
-        .toasts.some((toast) => toast.message?.includes('unique-key fallback'))
-    ).toBe(true)
+    expect(tab.view.edit.draftRow).toEqual([null, 'Alice', 'alice@test.com'])
+    expect(tab.view.edit.state?.isNewRow).toBe(true)
   })
 
   it('refuses clone when current row has unsaved edits that would be lost', async () => {
@@ -168,9 +163,9 @@ describe('cloneSelectedRow', () => {
 
     const tab = flat('tab-1')
     expect(tab.rows).toEqual(before.rows)
-    expect(tab.editingRowIndex).toBe(0)
-    expect(tab.editState?.isNewRow).toBe(false)
-    expect(tab.editState?.currentValues.name).toBe('Unsaved')
+    expect(tab.view.edit.rowIndex).toBe(0)
+    expect(tab.view.edit.state?.isNewRow).toBe(false)
+    expect(tab.view.edit.state?.currentValues.name).toBe('Unsaved')
     expect(
       useToastStore
         .getState()
@@ -247,8 +242,8 @@ describe('cloneSelectedRow', () => {
 
     const tab = flat('tab-1')
     expect(tab.rows).toHaveLength(1)
-    expect(tab.editState).toBeNull()
-    expect(tab.selectedRowIndex).toBe(0)
+    expect(tab.view.edit.state).toBeNull()
+    expect(tab.view.selection.rowIndex).toBe(0)
   })
 
   describe('stored BLOB cells', () => {
@@ -302,8 +297,8 @@ describe('cloneSelectedRow', () => {
         expect.objectContaining({ column: 'scan', primaryKeyPairs: [['id', 7]] }),
       ])
       const tab = flat('tab-1')
-      expect(tab.draftRow).toEqual([null, bytesEnvelope('U1FM'), null])
-      expect(tab.editState?.modifiedColumns).toEqual(new Set(['photo']))
+      expect(tab.view.edit.draftRow).toEqual([null, bytesEnvelope('U1FM'), null])
+      expect(tab.view.edit.state?.modifiedColumns).toEqual(new Set(['photo']))
       await expectToast('warning', 'Some BLOB values were not copied')
     })
 
@@ -315,7 +310,7 @@ describe('cloneSelectedRow', () => {
 
       await useQueryStore.getState().cloneSelectedRow(activeQuerySurfaceRef('tab-1'))
 
-      expect(flat('tab-1').draftRow).toBeNull()
+      expect(flat('tab-1').view.edit.draftRow).toBeNull()
       await expectToast('error', 'Clone failed')
     })
   })

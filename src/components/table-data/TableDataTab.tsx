@@ -2,14 +2,17 @@ import type { ReactNode } from 'react'
 import { useTableDataStore, type TableDataTabState } from '../../stores/table-data-store'
 import { useIsConnectionReadOnly } from '../../stores/connection-store'
 import { useDataView } from '../../stores/data-view/use-data-view'
+import type { DataViewSurfaceRef } from '../../stores/data-view/data-view-types'
 import type { WorkspaceTab, TableDataTab as TableDataTabType } from '../../types/schema'
 import { InfoBar } from '../common/InfoBar'
 import { Button } from '../common/Button'
 import { DataViewBody, type DataViewSlots } from '../shared/data-view/DataViewBody'
+import { DataViewFailureBand } from '../shared/data-view/body/DataViewFailureBand'
+import { hasViewFailure } from '../shared/data-view/body/data-view-body-model'
 import type { DataToolbarReadiness } from '../shared/data-view/toolbar/data-toolbar-model'
 import type { DataViewSource } from '../shared/data-view/data-view-source'
 import { FOCUS_RING } from '../../lib/focus-ring'
-import { joinClassNames } from '../../lib/class-names'
+import { DATA_VIEW_BAND_SLOT, joinClassNames } from '../../lib/class-names'
 import { useTableDataTabLifecycle } from './table-data-tab/use-table-data-tab-lifecycle'
 import { useTableDataViewSource } from './table-data-tab/table-data-view-source'
 import { TableExportDialog } from './table-data-tab/TableExportDialog'
@@ -56,13 +59,28 @@ function isNoKeyVisible(status: TableDataTabStatus, isViewObject: boolean): bool
 
 function NoPrimaryKeyWarning() {
   return (
-    <div className="shrink-0 px-3 pb-2.5">
-      <InfoBar
-        severity="warning"
-        title="Read only"
-        message="This table has no primary key or unique key. Editing is disabled. Data can be browsed but not modified."
-        data-testid="no-pk-warning"
-      />
+    <InfoBar
+      severity="warning"
+      title="Read only"
+      message="This table has no primary key or unique key. Editing is disabled. Data can be browsed but not modified."
+      data-testid="no-pk-warning"
+    />
+  )
+}
+
+interface TableDataBandsProps {
+  surfaceRef: DataViewSurfaceRef
+  showsNoKey: boolean
+}
+
+function TableDataBands({ surfaceRef, showsNoKey }: TableDataBandsProps) {
+  const hasFailure = useDataView(surfaceRef, hasViewFailure)
+  const hasAnyBand = showsNoKey || hasFailure
+  if (!hasAnyBand) return null
+  return (
+    <div className={DATA_VIEW_BAND_SLOT} data-testid="table-data-band-slot">
+      {showsNoKey && <NoPrimaryKeyWarning />}
+      <DataViewFailureBand surfaceRef={surfaceRef} />
     </div>
   )
 }
@@ -125,11 +143,12 @@ function useTableMessage(tabId: string, status: TableDataTabStatus): ReactNode {
 
 interface TableSlotInputs {
   tab: TableDataTabType
+  source: DataViewSource
   status: TableDataTabStatus
   isExportOpen: boolean
 }
 
-function useTableSlots({ tab, status, isExportOpen }: TableSlotInputs): DataViewSlots {
+function useTableSlots({ tab, source, status, isExportOpen }: TableSlotInputs): DataViewSlots {
   const isConnectionReadOnly = useIsConnectionReadOnly(tab.connectionId)
   const isViewObject = tab.objectType === 'view'
   const showsNoKey = isNoKeyVisible(status, isViewObject)
@@ -141,7 +160,7 @@ function useTableSlots({ tab, status, isExportOpen }: TableSlotInputs): DataView
         showNoKeyBadge={showsNoKey}
       />
     ),
-    bands: showsNoKey ? <NoPrimaryKeyWarning /> : null,
+    bands: <TableDataBands surfaceRef={source.ref} showsNoKey={showsNoKey} />,
     exportDialog: <TableExportDialog tab={tab} isOpen={isExportOpen} />,
   }
 }
@@ -183,7 +202,12 @@ export function TableDataTab({
     (view) => view.prompts.pendingNavigation !== null
   )
   const isExportOpen = useDataView(source.ref, (view) => view.prompts.isExportOpen)
-  const slots = useTableSlots({ tab: tableDataTab, status: status, isExportOpen: isExportOpen })
+  const slots = useTableSlots({
+    tab: tableDataTab,
+    source: source,
+    status: status,
+    isExportOpen: isExportOpen,
+  })
   const message = useTableMessage(tabId, status)
   useTableDataTabLifecycle({
     tab: tableDataTab,

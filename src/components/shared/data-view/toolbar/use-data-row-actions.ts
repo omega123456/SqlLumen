@@ -24,6 +24,7 @@ export interface DataRowActionInputs {
   view: DataViewState
   checkedCount: number
   rowInsertion: RowInsertion
+  isBusy: boolean
 }
 
 function useDataRowEdits(ref: DataViewSurfaceRef): Omit<RowActionHandlers, 'onDelete'> {
@@ -48,7 +49,7 @@ function useDataRowDeletion(inputs: DataRowActionInputs, deleteTargetCount: numb
 }
 
 export function useDataRowActions(inputs: DataRowActionInputs) {
-  const { view, rowInsertion } = inputs
+  const { view, rowInsertion, isBusy } = inputs
   const isConnectionReadOnly = useConnectionStore(
     (state) => state.activeConnections[view.slot.connectionId]?.profile?.readOnly ?? false
   )
@@ -61,7 +62,7 @@ export function useDataRowActions(inputs: DataRowActionInputs) {
     canCloneSelection: rowInsertion.canCloneSelection,
     deleteTargetCount: deleteTargetCount,
     hasPendingChanges: hasPendingRowChanges(view.edit.state),
-    isBusy: view.rowAction !== null,
+    isBusy: isBusy,
   })
   return {
     availability: availability,

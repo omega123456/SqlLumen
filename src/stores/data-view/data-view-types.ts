@@ -100,6 +100,7 @@ export interface DataViewPrompts {
 export type RowActionVerb = 'Copying' | 'Cutting' | 'Clearing' | 'Pasting' | 'Deleting'
 
 export interface RowActionProgress {
+  actionId: number
   verb: RowActionVerb
   done: number
   total: number

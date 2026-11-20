@@ -1,4 +1,4 @@
-import { resultState } from '../../helpers/legacy-result-fields'
+import { resultWith } from '../../helpers/query-store-fixtures'
 import React from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -6,7 +6,12 @@ import { ipc } from '../../ipc-mock'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ResultPanel } from '../../../components/query-editor/ResultPanel'
 import { useQueryStore, querySurfaceRef } from '../../../stores/query-store'
-import { makeTabState, withRows } from '../../helpers/query-test-utils'
+import {
+  makeTabState,
+  withRows,
+  mergedTabStateOverrides,
+  type MakeTabStateOverrides,
+} from '../../helpers/query-test-utils'
 import * as ResultSubTabsModule from '../../../components/query-editor/ResultSubTabs'
 import * as DataToolbarModule from '../../../components/shared/data-view/DataToolbar'
 import type { DataViewSource } from '../../../components/shared/data-view/data-view-source'
@@ -86,26 +91,34 @@ beforeEach(() => {
   })
 })
 
-function renderPanel(overrides: Record<string, unknown> = {}) {
+function renderPanel(overrides: MakeTabStateOverrides = {}) {
   useQueryStore.setState({
     tabs: {
-      'tab-1': makeTabState({
-        status: 'success',
-        connectionId: 'conn-1',
-        columns: [
-          { name: 'id', dataType: 'INT' },
-          { name: 'role_id', dataType: 'INT' },
-          { name: 'name', dataType: 'VARCHAR' },
-        ],
-        rows: [
-          [1, 5, 'Alice'],
-          [2, 6, 'Bob'],
-        ],
-        totalRows: 2,
-        selectedRowIndex: 0,
-        queryId: 'q1',
-        ...overrides,
-      }),
+      'tab-1': makeTabState(
+        mergedTabStateOverrides(
+          {
+            status: 'success',
+            connectionId: 'conn-1',
+            view: {
+              slot: {
+                columns: [
+                  { name: 'id', dataType: 'INT' },
+                  { name: 'role_id', dataType: 'INT' },
+                  { name: 'name', dataType: 'VARCHAR' },
+                ],
+                totalRows: 2,
+                queryId: 'q1',
+              },
+              selection: { rowIndex: 0 },
+            },
+            rows: [
+              [1, 5, 'Alice'],
+              [2, 6, 'Bob'],
+            ],
+          },
+          overrides
+        )
+      ),
     },
   })
 
@@ -119,7 +132,7 @@ describe('ResultPanel actions and states', () => {
         'tab-1': {
           ...makeTabState({ connectionId: 'conn-1' }),
           tabStatus: 'running',
-          results: [resultState({ resultStatus: 'success' })],
+          results: [resultWith({ resultStatus: 'success' })],
         },
       },
     })
@@ -134,12 +147,12 @@ describe('ResultPanel actions and states', () => {
           tabStatus: 'success',
           activeResultIndex: 1,
           results: [
-            resultState({
+            resultWith({
               resultStatus: 'success',
               ...withRows([[1]]),
               view: { slot: { columns: [{ name: 'id', dataType: 'INT' }], totalRows: 1 } },
             }),
-            resultState({ resultStatus: 'error', errorMessage: 'Broken query' }),
+            resultWith({ resultStatus: 'error', errorMessage: 'Broken query' }),
           ],
         },
       },
@@ -159,12 +172,12 @@ describe('ResultPanel actions and states', () => {
           tabStatus: 'success',
           activeResultIndex: 1,
           results: [
-            resultState({
+            resultWith({
               resultStatus: 'success',
               ...withRows([[1]]),
               view: { slot: { columns: [{ name: 'id', dataType: 'INT' }], totalRows: 1 } },
             }),
-            resultState({ resultStatus: 'error', errorMessage: 'Broken query' }),
+            resultWith({ resultStatus: 'error', errorMessage: 'Broken query' }),
           ],
         },
       },
@@ -177,7 +190,11 @@ describe('ResultPanel actions and states', () => {
   })
 
   it('shows affected row count for DML success results', () => {
-    renderPanel({ columns: [], rows: [], affectedRows: 3 })
+    renderPanel({
+      view: { slot: { columns: [] } },
+      rows: [],
+      affectedRows: 3,
+    })
 
     expect(screen.getByTestId('dml-success')).toHaveTextContent('Query OK3 rows affected')
   })
@@ -186,7 +203,9 @@ describe('ResultPanel actions and states', () => {
     const user = userEvent.setup()
     const closeExportDialogSpy = vi.spyOn(useQueryStore.getState(), 'closeExportDialog')
 
-    renderPanel({ exportDialogOpen: true })
+    renderPanel({
+      view: { prompts: { isExportOpen: true } },
+    })
 
     expect(screen.getByTestId('export-dialog-close')).toBeInTheDocument()
     expect(capturedExportDialogProps.resultIndex).toBe(0)

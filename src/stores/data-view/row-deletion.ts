@@ -20,7 +20,13 @@ import { showErrorToast, showSuccessToast } from '../toast-store'
 import type { DataViewPatch, DataViewState, DataViewSurfaceRef } from './data-view-types'
 import { CLOSED_EDIT_PATCH } from './data-view-defaults'
 import { mergeViewPatches } from './data-view-reducers'
-import { deleteTargetRangesOf, hasStaleCheckedRows, slotRefOf } from './data-view-selectors'
+import {
+  boundColumnIndexOf,
+  deleteTargetRangesOf,
+  hasStaleCheckedRows,
+  slotRefOf,
+} from './data-view-selectors'
+import { closeEditSession, notifyEditClosed } from './edit-actions'
 import { beginRowAction } from './row-action-progress'
 import { isSurfaceOpen, readView, routeOf, updateView } from './route-registry'
 
@@ -47,9 +53,7 @@ function resolveRowDeletionPlan(view: DataViewState): RowDeletionPlan | null {
     return null
   }
   const keyColumns = tableInfo.primaryKey.keyColumns
-  const keyColumnIndices = keyColumns.map(
-    (column) => view.editTarget.boundIndexByName.get(column.toLowerCase()) ?? -1
-  )
+  const keyColumnIndices = keyColumns.map((column) => boundColumnIndexOf(view, column) ?? -1)
   if (keyColumnIndices.some((index) => index < 0)) {
     showErrorToast(
       'Delete failed',
@@ -205,7 +209,7 @@ function applyTombstonedView(
   )
   const isNewerViewCommitted = removed.viewVersion < committedVersion
   if (isNewerViewCommitted) {
-    updateView(ref, mergeViewPatches(deletePatch, { checked: { ranges: [] } }))
+    closeEditSession(ref, mergeViewPatches(deletePatch, { checked: { ranges: [] } }))
     return
   }
   route.viewRequests.paint(ref, {
@@ -217,6 +221,7 @@ function applyTombstonedView(
     },
     extra: deletePatch,
   })
+  notifyEditClosed(ref)
 }
 
 function rowsWord(count: number): string {
@@ -239,9 +244,10 @@ function reportTombstoneFailure(
       edit: { isStale: true, saveError: outcome.failureMessage },
     })
   }
+  const advice = routeOf(deletion.ref).writes.staleResultAdvice
   showErrorToast(
     'Refresh failed',
-    `${formatCount(deletedCount)} ${rowsWord(deletedCount)} deleted, but the result couldn't be updated. Re-run the query to refresh.`
+    `${formatCount(deletedCount)} ${rowsWord(deletedCount)} deleted, but the result couldn't be updated. ${advice}`
   )
 }
 

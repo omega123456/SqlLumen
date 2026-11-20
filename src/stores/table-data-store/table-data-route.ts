@@ -24,7 +24,7 @@ import {
   type TableDataMeta,
   type TableDataTabState,
 } from './table-data-tab-state'
-import { useTableDataStore, type TableDataStore } from '../table-data-store'
+import { useTableDataStore } from '../table-data-store'
 
 function useTableView<Selected>(
   ref: DataViewSurfaceRef,
@@ -138,15 +138,17 @@ async function refetchExpiredPage(tabId: string, tab: TableDataTabState) {
   })
 }
 
-function refetchExpiredPages(state: TableDataStore) {
-  for (const [tabId, tab] of Object.entries(state.tabs)) {
-    if (canRefetchExpiredPage(tab)) void refetchExpiredPage(tabId, tab)
-  }
+function refetchExpiredPageWhenSettled(tabId: string) {
+  const tab = tableTabOf(tabId)
+  if (!tab) return
+  if (!canRefetchExpiredPage(tab)) return
+  void refetchExpiredPage(tabId, tab)
 }
 
 function expireTablePage(ref: DataViewSurfaceRef) {
   if (!isTableTabOpen(ref.tabId)) return
   patchTableTab(ref.tabId, { view: { residency: { isExpired: true } } })
+  refetchExpiredPageWhenSettled(ref.tabId)
 }
 
 function tablePageBlobTable(ref: DataViewSurfaceRef): StoredBlobTable | null {
@@ -182,13 +184,14 @@ export function registerTableDataRoute() {
     writes: {
       cellProjection: 'blobPlaceholders',
       afterInsert: appendInsertedRow,
+      staleResultAdvice: 'Reload the table to refresh.',
     },
     lifecycle: {
       onExpired: expireTablePage,
+      onEditClosed: (ref) => refetchExpiredPageWhenSettled(ref.tabId),
     },
     blobs: {
       storedTable: tablePageBlobTable,
     },
   })
-  useTableDataStore.subscribe(refetchExpiredPages)
 }

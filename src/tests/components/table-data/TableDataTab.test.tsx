@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { tableSurfaceRef, useTableDataStore } from '../../../stores/table-data-store'
 import { useConnectionStore } from '../../../stores/connection-store'
 import { openExportDialog } from '../../../stores/data-view/view-actions'
+import { updateView } from '../../../stores/data-view/route-registry'
 import { ipc } from '../../ipc-mock'
 import {
   setupTestConnection,
@@ -146,6 +147,28 @@ describe('TableDataTab', () => {
     await waitForTableDataLoaded()
     expect(ipc.calls('fetch_table_page')).toHaveLength(2)
     expect(screen.queryByTestId('table-data-error')).not.toBeInTheDocument()
+  })
+
+  it('shows the failure bands with a Retry for a failed window or view change', async () => {
+    const user = userEvent.setup()
+    setupTestConnection()
+    render(<TableDataTab tab={makeTab()} />)
+    await waitForTableDataLoaded()
+    expect(screen.queryByTestId('table-data-band-slot')).not.toBeInTheDocument()
+
+    act(() => updateView(tableSurfaceRef(TAB_ID), { window: { failedRange: [0, 2] } }))
+    expect(screen.getByTestId('result-window-error-band')).toHaveTextContent(
+      "Couldn't load rows 1–2"
+    )
+    await user.click(screen.getByTestId('window-error-retry'))
+    await waitFor(() =>
+      expect(screen.queryByTestId('table-data-band-slot')).not.toBeInTheDocument()
+    )
+
+    act(() => updateView(tableSurfaceRef(TAB_ID), { spec: { error: 'Unknown column' } }))
+    expect(screen.getByTestId('result-view-error-band')).toHaveTextContent('Unknown column')
+    await user.click(screen.getByTestId('view-error-retry'))
+    await waitFor(() => expect(ipc.calls('fetch_table_page')).toHaveLength(2))
   })
 
   it('exports the whole filtered table with the current page scope and closes the dialog', async () => {

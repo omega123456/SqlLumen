@@ -2,8 +2,6 @@ import type { ViewMode } from '../../types/shared-data-view'
 import type { DataViewSurfaceRef } from '../data-view/data-view-types'
 import {
   applyFilters,
-  retryViewChange,
-  retryWindow,
   setCheckedRanges,
   setColumnWidth,
   setScrollCell,
@@ -32,8 +30,6 @@ export function resultViewActions() {
     setViewMode: setQueryViewMode,
     setSelectedRow: setSelectedRow,
     setCheckedRanges: setCheckedRanges,
-    retryResultWindow: retryWindow,
-    retryViewChange: retryViewChange,
     setSelectedCell: setSelectedCell,
     setResultScrollCell: setScrollCell,
     setResultColumnWidth: setColumnWidth,

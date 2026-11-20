@@ -39,6 +39,7 @@ export function queryDataViewSource({
       paging: null,
       reload: null,
       columnJump: null,
+      columnMetadata: null,
     },
   }
 }

@@ -128,6 +128,7 @@ function useFormInteractions({ source, formView, currentRowData }: FormInteracti
   const gridColumns = useDataColumnDescriptors({
     columns: slot.columns,
     editTarget: editTarget,
+    metadata: source.capabilities.columnMetadata,
   }).descriptors
   const session = useDataEditSession(ref)
   const editHandlers = useFormEditHandlers({

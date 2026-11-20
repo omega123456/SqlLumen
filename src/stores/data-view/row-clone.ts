@@ -72,13 +72,6 @@ function resolveCloneSource(ref: DataViewSurfaceRef, view: DataViewState): Clone
 
   const tableInfo = editTableOf(view)
   if (!tableInfo?.primaryKey) return null
-  if (tableInfo.primaryKey.isUniqueKeyFallback) {
-    showErrorToast(
-      'Clone failed',
-      'Cannot clone query-result rows when edit mode is using a unique-key fallback.'
-    )
-    return null
-  }
 
   const sourceRow = rowAt(ref, view, sourceRowIndex)?.row
   if (!sourceRow) return null

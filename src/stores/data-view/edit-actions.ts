@@ -8,12 +8,13 @@ import type { DataViewPatch, DataViewState, DataViewSurfaceRef } from './data-vi
 import { CLOSED_EDIT_PATCH, DISCARDED_DRAFT_PATCH } from './data-view-defaults'
 import { mergeViewPatches } from './data-view-reducers'
 import {
+  boundColumnIndexOf,
   editTableOf,
   hasUnsavedModifications,
   rowAt,
   storedBaseIndexOf,
 } from './data-view-selectors'
-import { readView, updateView } from './route-registry'
+import { readView, routeOf, updateView } from './route-registry'
 
 export interface DraftRow {
   row: unknown[]
@@ -124,11 +125,20 @@ export function startEditingRow(ref: DataViewSurfaceRef, rowIndex: number, cache
   updateView(ref, patch)
 }
 
+export function notifyEditClosed(ref: DataViewSurfaceRef) {
+  routeOf(ref).lifecycle.onEditClosed?.(ref)
+}
+
+export function closeEditSession(ref: DataViewSurfaceRef, patch: DataViewPatch) {
+  updateView(ref, patch)
+  notifyEditClosed(ref)
+}
+
 export function discardCurrentRow(ref: DataViewSurfaceRef) {
   const view = readView(ref)
   if (!view?.edit.state) return
   const isDiscardingDraft = view.edit.state.isNewRow
-  updateView(ref, isDiscardingDraft ? DISCARDED_DRAFT_PATCH : CLOSED_EDIT_PATCH)
+  closeEditSession(ref, isDiscardingDraft ? DISCARDED_DRAFT_PATCH : CLOSED_EDIT_PATCH)
 }
 
 function modifiedColumnsAfterEdit(
@@ -255,7 +265,7 @@ function buildDraftEditState(
     boundColumnIndexMap: view.editTarget.boundIndexByName,
   })
   for (const columnName of draft.insertEligibleColumns) {
-    const boundColumnIndex = view.editTarget.boundIndexByName.get(columnName.toLowerCase())
+    const boundColumnIndex = boundColumnIndexOf(view, columnName)
     if (!isPresentIndex(boundColumnIndex)) continue
     const value = draft.row[boundColumnIndex]
     editState.originalValues[columnName] = value
@@ -308,7 +318,6 @@ function resolveInsertTable(view: DataViewState): InsertTable | null {
   }
   const primaryKey = tableInfo.primaryKey
   if (!primaryKey) return null
-  if (primaryKey.isUniqueKeyFallback) return null
   return { tableInfo: tableInfo, keyColumns: primaryKey.keyColumns }
 }
 

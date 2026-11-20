@@ -1,4 +1,4 @@
-import { resultState } from '../../helpers/legacy-result-fields'
+import { resultWith } from '../../helpers/query-store-fixtures'
 import { describe, expect, it } from 'vitest'
 import { makeTabState } from '../../helpers/query-test-utils'
 import {
@@ -8,8 +8,8 @@ import {
   isSameResultList,
 } from '../../../stores/query-store/result-lists'
 
-const firstResult = resultState({})
-const secondResult = resultState({})
+const firstResult = resultWith({})
+const secondResult = resultWith({})
 const DEFAULT_TAB_STATE = makeTabState()
 
 describe('result list predicates', () => {
@@ -32,7 +32,12 @@ describe('result list predicates', () => {
     const closedTab = { ...DEFAULT_TAB_STATE, results: [firstResult] }
     const openTab = {
       ...DEFAULT_TAB_STATE,
-      results: [firstResult, resultState({ exportDialogOpen: true })],
+      results: [
+        firstResult,
+        resultWith({
+          view: { prompts: { isExportOpen: true } },
+        }),
+      ],
     }
     expect(hasOpenExportDialog(undefined)).toBe(false)
     expect(hasOpenExportDialog(closedTab)).toBe(false)

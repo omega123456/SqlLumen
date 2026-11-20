@@ -17,6 +17,10 @@ const PANEL_CLASSES: Record<PanelLayout, string> = {
     'relative flex min-h-0 flex-1 flex-col overflow-hidden contain-layout contain-paint contain-style isolate',
 }
 
+export function hasViewFailure(view: DataViewState): boolean {
+  return view.spec.error !== null || view.window.failedRange !== null
+}
+
 export function activityOf(view: DataViewState, isReloading: boolean): DataViewActivity {
   const isRestoringRows = view.residency.rows.status === 'restoring'
   if (isRestoringRows) return 'restoring'

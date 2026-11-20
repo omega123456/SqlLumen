@@ -36,9 +36,9 @@ describe('saveCurrentRow', () => {
 
     expect(result).toBe(true)
     const tab = flat('tab-1')
-    expect(tab.editState).toBeNull()
-    expect(tab.editingRowIndex).toBeNull()
-    expect(tab.saveError).toBeNull()
+    expect(tab.view.edit.state).toBeNull()
+    expect(tab.view.edit.rowIndex).toBeNull()
+    expect(tab.view.edit.saveError).toBeNull()
     // Verify local row was updated
     expect(tab.rows[0][1]).toBe('Updated')
   })
@@ -91,8 +91,8 @@ describe('saveCurrentRow', () => {
 
     expect(result).toBe(false)
     const tab = flat('tab-1')
-    expect(tab.saveError).toContain('Duplicate entry')
-    expect(tab.editState).not.toBeNull() // edit state preserved on failure
+    expect(tab.view.edit.saveError).toContain('Duplicate entry')
+    expect(tab.view.edit.state).not.toBeNull() // edit state preserved on failure
 
     const toasts = useToastStore.getState().toasts
     expect(toasts.some((t) => t.variant === 'error' && t.title === 'Save failed')).toBe(true)
@@ -108,7 +108,7 @@ describe('saveCurrentRow', () => {
 
     expect(result).toBe(true)
     const tab = flat('tab-1')
-    expect(tab.editState).toBeNull()
+    expect(tab.view.edit.state).toBeNull()
   })
 
   it('shows error when table metadata has no primary key, returns false', async () => {
@@ -117,21 +117,27 @@ describe('saveCurrentRow', () => {
     // Manually patch the cached metadata to have no PK
     const tab = flat('tab-1')
     patchResult('tab-1', {
-      editMode: 'testdb.users',
-      editConnectionId: 'conn-1',
-      editingRowIndex: 0,
-      editTableMetadata: {
-        'testdb.users': {
-          ...tab.editTableMetadata['testdb.users'],
-          primaryKey: null,
+      view: {
+        editTarget: {
+          tableName: 'testdb.users',
+          tables: {
+            'testdb.users': {
+              ...tab.view.editTarget.tables['testdb.users'],
+              primaryKey: null,
+            },
+          },
         },
-      },
-      editState: {
-        rowKey: { id: 1 },
-        originalValues: { id: 1, name: 'Alice' },
-        currentValues: { id: 1, name: 'Changed' },
-        modifiedColumns: new Set(['name']),
-        isNewRow: false,
+        slot: { connectionId: 'conn-1' },
+        edit: {
+          rowIndex: 0,
+          state: {
+            rowKey: { id: 1 },
+            originalValues: { id: 1, name: 'Alice' },
+            currentValues: { id: 1, name: 'Changed' },
+            modifiedColumns: new Set(['name']),
+            isNewRow: false,
+          },
+        },
       },
     })
 
@@ -139,7 +145,7 @@ describe('saveCurrentRow', () => {
 
     expect(result).toBe(false)
     const tabAfter = flat('tab-1')
-    expect(tabAfter.saveError).toBe('No primary key info available')
+    expect(tabAfter.view.edit.saveError).toBe('No primary key info available')
 
     const toasts = useToastStore.getState().toasts
     expect(toasts.some((t) => t.variant === 'error' && t.title === 'Save failed')).toBe(true)
@@ -277,9 +283,9 @@ describe('saveCurrentRow', () => {
     useQueryStore.getState().syncCellValue(activeQuerySurfaceRef('tab-1'), 1, mockBlobEnvelope)
 
     const staged = flat('tab-1')
-    expect(staged.editingRowIndex).toBe(0)
-    expect(staged.editState?.originalValues.photo).toBe('SGVsbG8=')
-    expect(staged.editState?.currentValues.photo).toEqual(mockBlobEnvelope)
+    expect(staged.view.edit.rowIndex).toBe(0)
+    expect(staged.view.edit.state?.originalValues.photo).toBe('SGVsbG8=')
+    expect(staged.view.edit.state?.currentValues.photo).toEqual(mockBlobEnvelope)
     expect(staged.rows[0][1]).toBe('SGVsbG8=')
 
     const result = await useQueryStore.getState().saveCurrentRow(activeQuerySurfaceRef('tab-1'))
@@ -302,8 +308,8 @@ describe('saveCurrentRow', () => {
     )
 
     const saved = flat('tab-1')
-    expect(saved.editState).toBeNull()
-    expect(saved.editingRowIndex).toBeNull()
+    expect(saved.view.edit.state).toBeNull()
+    expect(saved.view.edit.rowIndex).toBeNull()
     expect(saved.rows[0][1]).toBe('U1FMLUx1bWVu')
   })
 
@@ -437,11 +443,11 @@ describe('saveCurrentRow', () => {
     const tab = flat('tab-1')
     expect(tab.rows).toHaveLength(3)
     expect(tab.rows[2]).toEqual([3, 'Alice', 'alice@test.com'])
-    expect(tab.editState).toBeNull()
-    expect(tab.editingRowIndex).toBeNull()
-    expect(tab.selectedRowIndex).toBeNull()
-    expect(tab.isStale).toBe(false)
-    expect(tab.queryId).toBe('q-after')
+    expect(tab.view.edit.state).toBeNull()
+    expect(tab.view.edit.rowIndex).toBeNull()
+    expect(tab.view.selection.rowIndex).toBeNull()
+    expect(tab.view.edit.isStale).toBe(false)
+    expect(tab.view.slot.queryId).toBe('q-after')
   })
 
   it('keeps generated primary keys out of the insert payload but includes user-entered natural keys', async () => {
@@ -574,7 +580,7 @@ describe('saveCurrentRow', () => {
     useQueryStore.getState().cloneSelectedRow(activeQuerySurfaceRef('tab-1'))
 
     const cloned = flat('tab-1')
-    expect(cloned.draftRow).toEqual([null, 'Alice', bytesEnvelope('q80=')])
+    expect(cloned.view.edit.draftRow).toEqual([null, 'Alice', bytesEnvelope('q80=')])
 
     await useQueryStore.getState().saveCurrentRow(activeQuerySurfaceRef('tab-1'))
 
@@ -634,12 +640,12 @@ describe('saveCurrentRow', () => {
       [1, 'Alice', 'alice@test.com'],
       [2, 'Bob', 'bob@test.com'],
     ])
-    expect(tab.editState).toBeNull()
-    expect(tab.editingRowIndex).toBeNull()
-    expect(tab.selectedRowIndex).toBeNull()
-    expect(tab.isStale).toBe(true)
-    expect(tab.queryId).toBe('q-before-stale')
-    expect(tab.saveError).toBeNull()
+    expect(tab.view.edit.state).toBeNull()
+    expect(tab.view.edit.rowIndex).toBeNull()
+    expect(tab.view.selection.rowIndex).toBeNull()
+    expect(tab.view.edit.isStale).toBe(true)
+    expect(tab.view.slot.queryId).toBe('q-before-stale')
+    expect(tab.view.edit.saveError).toBeNull()
     expect(
       useToastStore
         .getState()
@@ -737,7 +743,7 @@ describe('saveCurrentRow', () => {
     await savePromise
 
     const tab = flat('tab-1')
-    expect(tab.queryId).toBe('q-newer')
+    expect(tab.view.slot.queryId).toBe('q-newer')
     expect(tab.rows).toEqual([[9, 'Latest', 'latest@test.com']])
     expect(warnSpy).not.toHaveBeenCalled()
 

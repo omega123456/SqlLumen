@@ -152,15 +152,9 @@ export interface QueryState {
 
   beginRowAction: (ref: DataViewSurfaceRef, action: RowActionStart) => RowActionHandle
 
-  cancelRowAction: (ref: DataViewSurfaceRef) => void
-
   markResultsExpired: (tabId: string) => void
 
   markResultExpired: (tabId: string, resultIndex: number) => void
-
-  retryResultWindow: (ref: DataViewSurfaceRef) => void
-
-  retryViewChange: (ref: DataViewSurfaceRef) => void
 
   setSelectedCell: (ref: DataViewSurfaceRef, cell: SelectedCellInfo | null) => void
 

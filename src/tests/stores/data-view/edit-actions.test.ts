@@ -29,11 +29,11 @@ describe('startEditingRow', () => {
     useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
 
     const tab = flat('tab-1')
-    expect(tab.editState).not.toBeNull()
-    expect(tab.editState!.rowKey).toEqual({ id: 1 })
-    expect(tab.editState!.originalValues.name).toBe('Alice')
-    expect(tab.editState!.modifiedColumns.size).toBe(0)
-    expect(tab.editingRowIndex).toBe(0)
+    expect(tab.view.edit.state).not.toBeNull()
+    expect(tab.view.edit.state!.rowKey).toEqual({ id: 1 })
+    expect(tab.view.edit.state!.originalValues.name).toBe('Alice')
+    expect(tab.view.edit.state!.modifiedColumns.size).toBe(0)
+    expect(tab.view.edit.rowIndex).toBe(0)
   })
 
   it('does nothing when edit mode is not enabled', async () => {
@@ -41,7 +41,7 @@ describe('startEditingRow', () => {
     useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
 
     const tab = flat('tab-1')
-    expect(tab.editState).toBeNull()
+    expect(tab.view.edit.state).toBeNull()
   })
 })
 
@@ -57,8 +57,8 @@ describe('updateCellValue', () => {
     useQueryStore.getState().updateCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Charlie')
 
     const tab = flat('tab-1')
-    expect(tab.editState!.currentValues.name).toBe('Charlie')
-    expect(tab.editState!.modifiedColumns.has('name')).toBe(true)
+    expect(tab.view.edit.state!.currentValues.name).toBe('Charlie')
+    expect(tab.view.edit.state!.modifiedColumns.has('name')).toBe(true)
   })
 
   it('removes from modifiedColumns when value reverts to original', async () => {
@@ -67,10 +67,10 @@ describe('updateCellValue', () => {
     useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
 
     useQueryStore.getState().updateCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Charlie')
-    expect(flat('tab-1').editState!.modifiedColumns.has('name')).toBe(true)
+    expect(flat('tab-1').view.edit.state!.modifiedColumns.has('name')).toBe(true)
 
     useQueryStore.getState().updateCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Alice')
-    expect(flat('tab-1').editState!.modifiedColumns.has('name')).toBe(false)
+    expect(flat('tab-1').view.edit.state!.modifiedColumns.has('name')).toBe(false)
   })
 })
 
@@ -86,11 +86,11 @@ describe('syncCellValue', () => {
     useQueryStore.getState().syncCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Dave')
 
     const tab = flat('tab-1')
-    expect(tab.editState!.currentValues.name).toBe('Dave')
-    expect(tab.editState!.modifiedColumns.has('name')).toBe(true)
+    expect(tab.view.edit.state!.currentValues.name).toBe('Dave')
+    expect(tab.view.edit.state!.modifiedColumns.has('name')).toBe(true)
     // Handed-out cached rows are never mutated while editing.
     expect(tab.rows[0][1]).toBe('Alice')
-    expect(tab.editingBaseIndex).toBe(0)
+    expect(tab.view.edit.baseIndex).toBe(0)
   })
 
   it('removes from modifiedColumns when value reverts to original', async () => {
@@ -99,11 +99,11 @@ describe('syncCellValue', () => {
     useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
 
     useQueryStore.getState().syncCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Changed')
-    expect(flat('tab-1').editState!.modifiedColumns.has('name')).toBe(true)
+    expect(flat('tab-1').view.edit.state!.modifiedColumns.has('name')).toBe(true)
 
     // Revert to original value
     useQueryStore.getState().syncCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Alice')
-    expect(flat('tab-1').editState!.modifiedColumns.has('name')).toBe(false)
+    expect(flat('tab-1').view.edit.state!.modifiedColumns.has('name')).toBe(false)
   })
 })
 
@@ -119,14 +119,14 @@ describe('discardCurrentRow', () => {
     useQueryStore.getState().syncCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Modified')
 
     // The edit lives in editState only; the cached row is untouched.
-    expect(flat('tab-1').editState?.currentValues.name).toBe('Modified')
+    expect(flat('tab-1').view.edit.state?.currentValues.name).toBe('Modified')
     expect(flat('tab-1').rows[0][1]).toBe('Alice')
 
     useQueryStore.getState().discardCurrentRow(activeQuerySurfaceRef('tab-1'))
 
     const tab = flat('tab-1')
-    expect(tab.editState).toBeNull()
-    expect(tab.editingRowIndex).toBeNull()
+    expect(tab.view.edit.state).toBeNull()
+    expect(tab.view.edit.rowIndex).toBeNull()
     expect(tab.rows[0][1]).toBe('Alice') // restored
   })
 
@@ -167,7 +167,7 @@ describe('discardCurrentRow', () => {
     useQueryStore.getState().startEditingRow(activeQuerySurfaceRef('tab-1'), 0)
     useQueryStore.getState().syncCellValue(activeQuerySurfaceRef('tab-1'), 0, 5)
 
-    expect(flat('tab-1').editState?.modifiedColumns.size).toBe(1)
+    expect(flat('tab-1').view.edit.state?.modifiedColumns.size).toBe(1)
     expect(flat('tab-1').rows[0][0]).toBe(1)
 
     useQueryStore.getState().discardCurrentRow(activeQuerySurfaceRef('tab-1'))
@@ -227,13 +227,13 @@ describe('discardCurrentRow', () => {
     useQueryStore.getState().setSelectedRow(activeQuerySurfaceRef('tab-1'), 0)
 
     useQueryStore.getState().syncCellValue(activeQuerySurfaceRef('tab-1'), 1, mockBlobEnvelope)
-    expect(flat('tab-1').editState?.currentValues.photo).toEqual(mockBlobEnvelope)
+    expect(flat('tab-1').view.edit.state?.currentValues.photo).toEqual(mockBlobEnvelope)
 
     useQueryStore.getState().discardCurrentRow(activeQuerySurfaceRef('tab-1'))
 
     const tab = flat('tab-1')
-    expect(tab.editState).toBeNull()
-    expect(tab.editingRowIndex).toBeNull()
+    expect(tab.view.edit.state).toBeNull()
+    expect(tab.view.edit.rowIndex).toBeNull()
     expect(tab.rows[0][1]).toBe('SGVsbG8=')
   })
 
@@ -245,7 +245,7 @@ describe('discardCurrentRow', () => {
     useQueryStore.getState().syncCellValue(activeQuerySurfaceRef('tab-1'), 1, 'Clone Only')
 
     expect(flat('tab-1').rows).toHaveLength(2)
-    expect(flat('tab-1').draftRow?.[1]).toBe('Clone Only')
+    expect(flat('tab-1').view.edit.draftRow?.[1]).toBe('Clone Only')
 
     useQueryStore.getState().discardCurrentRow(activeQuerySurfaceRef('tab-1'))
 
@@ -254,9 +254,9 @@ describe('discardCurrentRow', () => {
       [1, 'Alice', 'alice@test.com'],
       [2, 'Bob', 'bob@test.com'],
     ])
-    expect(tab.editState).toBeNull()
-    expect(tab.editingRowIndex).toBeNull()
-    expect(tab.selectedRowIndex).toBeNull()
+    expect(tab.view.edit.state).toBeNull()
+    expect(tab.view.edit.rowIndex).toBeNull()
+    expect(tab.view.selection.rowIndex).toBeNull()
   })
 
   it('clears editState when editingRowIndex is null', async () => {
@@ -264,21 +264,25 @@ describe('discardCurrentRow', () => {
 
     // Manually set editState but with null editingRowIndex
     patchResult('tab-1', {
-      editState: {
-        rowKey: { id: 1 },
-        originalValues: { id: 1, name: 'Alice' },
-        currentValues: { id: 1, name: 'Changed' },
-        modifiedColumns: new Set(['name']),
-        isNewRow: false,
+      view: {
+        edit: {
+          state: {
+            rowKey: { id: 1 },
+            originalValues: { id: 1, name: 'Alice' },
+            currentValues: { id: 1, name: 'Changed' },
+            modifiedColumns: new Set(['name']),
+            isNewRow: false,
+          },
+          rowIndex: null,
+        },
       },
-      editingRowIndex: null,
     })
 
     useQueryStore.getState().discardCurrentRow(activeQuerySurfaceRef('tab-1'))
 
     const tab = flat('tab-1')
-    expect(tab.editState).toBeNull()
-    expect(tab.editingRowIndex).toBeNull()
+    expect(tab.view.edit.state).toBeNull()
+    expect(tab.view.edit.rowIndex).toBeNull()
   })
 })
 
@@ -295,12 +299,12 @@ describe('insertDraftRow', () => {
 
     const tab = flat('tab-1')
     expect(tab.rows).toHaveLength(2)
-    expect(tab.draftRow).toEqual([null, null, null])
-    expect(tab.selectedRowIndex).toBe(2)
-    expect(tab.editingRowIndex).toBe(2)
-    expect(tab.editingBaseIndex).toBeNull()
-    expect(tab.editState?.isNewRow).toBe(true)
-    expect(tab.editState?.modifiedColumns.size).toBe(0)
+    expect(tab.view.edit.draftRow).toEqual([null, null, null])
+    expect(tab.view.selection.rowIndex).toBe(2)
+    expect(tab.view.edit.rowIndex).toBe(2)
+    expect(tab.view.edit.baseIndex).toBeNull()
+    expect(tab.view.edit.state?.isNewRow).toBe(true)
+    expect(tab.view.edit.state?.modifiedColumns.size).toBe(0)
   })
 
   it('inserts the values typed into the draft when saved', async () => {
@@ -328,7 +332,7 @@ describe('insertDraftRow', () => {
 
     useQueryStore.getState().insertDraftRow(activeQuerySurfaceRef('tab-1'))
 
-    expect(flat('tab-1').draftRow).toBeNull()
+    expect(flat('tab-1').view.edit.draftRow).toBeNull()
     const toasts = useToastStore.getState().toasts
     expect(toasts.some((toast) => toast.title === 'Unsaved changes')).toBe(true)
   })
@@ -338,7 +342,7 @@ describe('insertDraftRow', () => {
 
     useQueryStore.getState().insertDraftRow(activeQuerySurfaceRef('tab-1'))
 
-    expect(flat('tab-1').draftRow).toBeNull()
-    expect(flat('tab-1').editState).toBeNull()
+    expect(flat('tab-1').view.edit.draftRow).toBeNull()
+    expect(flat('tab-1').view.edit.state).toBeNull()
   })
 })

@@ -10,13 +10,15 @@ import { frontendCacheLifecycle } from '../../lib/frontend-cache-lifecycle'
 import { getResultSurface } from '../../lib/result-window-cache'
 import { tableSurfaceRef, useTableDataStore } from '../../stores/table-data-store'
 import { routeOf } from '../../stores/data-view/route-registry'
-import { applyFilters, sortView } from '../../stores/data-view/view-actions'
+import { applyFilters, setSelectedRow, sortView } from '../../stores/data-view/view-actions'
 import {
   discardCurrentRow,
   insertDraftRow,
+  startEditingRow,
   updateCellValue,
 } from '../../stores/data-view/edit-actions'
 import { saveCurrentRow } from '../../stores/data-view/row-save'
+import { deleteRows } from '../../stores/data-view/row-deletion'
 import type { ForeignKeyInfo, PrimaryKeyInfo, TablePageResult } from '../../types/schema'
 
 const TAB_ID = 'tab-1'
@@ -192,6 +194,11 @@ describe('useTableDataStore — page fetches', () => {
     })
     await useTableDataStore.getState().refreshData(TAB_ID)
     expect(tab().page.error).toBeNull()
+    expect(ipc.payloads('log_frontend')).toContainEqual({
+      level: 'info',
+      message:
+        '[table-data] superseded page fetch ignored: table_page_superseded: a newer fetch replaced this page',
+    })
 
     ipc.override('fetch_table_page', () => {
       throw new Error('Access denied')
@@ -350,18 +357,56 @@ describe('useTableDataStore — rows inserted on the table route', () => {
 describe('useTableDataStore — expired pages', () => {
   it('refetches the current page once it expires, but not while an edit is dirty', async () => {
     await loadTablePage(TAB_ID, PAGE)
+    routeOf(REF).lifecycle.onExpired(REF)
+    await vi.waitFor(() => expect(ipc.payloads('fetch_table_page')).toHaveLength(2))
+    await vi.waitFor(() => expect(tab().view.residency.rows.status).not.toBe('restoring'))
+
     insertDraftRow(REF)
     updateCellValue(REF, 1, 'Draft')
 
     routeOf(REF).lifecycle.onExpired(REF)
     expect(tab().view.residency.isExpired).toBe(true)
-    expect(ipc.payloads('fetch_table_page')).toHaveLength(1)
+    expect(ipc.payloads('fetch_table_page')).toHaveLength(2)
 
     discardCurrentRow(REF)
 
-    await vi.waitFor(() => expect(ipc.payloads('fetch_table_page')).toHaveLength(2))
+    await vi.waitFor(() => expect(ipc.payloads('fetch_table_page')).toHaveLength(3))
     await vi.waitFor(() => expect(tab().view.residency.isExpired).toBe(false))
     expect(lastPageRequest()).toMatchObject({ page: 1 })
+  })
+
+  it('refetches a page that expired during an edit once the row is saved', async () => {
+    await loadTablePage(TAB_ID, PAGE)
+    startEditingRow(REF, 0)
+    updateCellValue(REF, 1, 'Alicia')
+    routeOf(REF).lifecycle.onExpired(REF)
+    ipc.override('update_table_row', () => undefined)
+    ipc.override('update_result_cell', () => {
+      throw new Error('disk full')
+    })
+
+    await expect(saveCurrentRow(REF)).resolves.toBe(true)
+
+    await expectToast('warning', 'cache may be stale. Reload the table to refresh.')
+    await vi.waitFor(() => expect(ipc.payloads('fetch_table_page')).toHaveLength(2))
+  })
+})
+
+describe('useTableDataStore — rows deleted on the table route', () => {
+  it('tells the user to reload the table when the slot cannot drop the deleted row', async () => {
+    await loadTablePage(TAB_ID, PAGE)
+    setSelectedRow(REF, 0)
+    ipc.override('delete_table_row', () => undefined)
+    ipc.override('remove_result_rows', () => {
+      throw new Error('cache write failed')
+    })
+
+    await expect(deleteRows(REF)).resolves.toBe(1)
+
+    await expectToast(
+      'error',
+      "1 row deleted, but the result couldn't be updated. Reload the table to refresh."
+    )
   })
 })
 

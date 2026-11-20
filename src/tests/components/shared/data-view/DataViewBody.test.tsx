@@ -1,4 +1,4 @@
-import { patchedLegacyResult, resultState } from '../../../helpers/legacy-result-fields'
+import { resultWith } from '../../../helpers/query-store-fixtures'
 import React from 'react'
 import { act, render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -15,7 +15,12 @@ import {
   activeQuerySurfaceRef,
   getActiveResult,
 } from '../../../../stores/query-store'
-import { makeTabState, withRows } from '../../../helpers/query-test-utils'
+import {
+  makeTabState,
+  withRows,
+  mergedTabStateOverrides,
+  type MakeTabStateOverrides,
+} from '../../../helpers/query-test-utils'
 import type { DataViewSource } from '../../../../components/shared/data-view/data-view-source'
 import * as DataGridViewModule from '../../../../components/shared/data-view/DataGridView'
 import * as DataFormViewModule from '../../../../components/shared/data-view/DataFormView'
@@ -47,24 +52,32 @@ function renderBody() {
   )
 }
 
-function setupBodyTab(overrides: Record<string, unknown> = {}) {
+function setupBodyTab(overrides: MakeTabStateOverrides = {}) {
   act(() => {
     useQueryStore.setState({
       tabs: {
-        [BODY_TAB_ID]: makeTabState({
-          status: 'success',
-          connectionId: 'conn-1',
-          columns: [
-            { name: 'id', dataType: 'INT' },
-            { name: 'name', dataType: 'VARCHAR' },
-          ],
-          rows: [
-            [1, 'Alice'],
-            [2, 'Bob'],
-          ],
-          queryId: 'q1',
-          ...overrides,
-        }),
+        [BODY_TAB_ID]: makeTabState(
+          mergedTabStateOverrides(
+            {
+              status: 'success',
+              connectionId: 'conn-1',
+              view: {
+                slot: {
+                  columns: [
+                    { name: 'id', dataType: 'INT' },
+                    { name: 'name', dataType: 'VARCHAR' },
+                  ],
+                  queryId: 'q1',
+                },
+              },
+              rows: [
+                [1, 'Alice'],
+                [2, 'Bob'],
+              ],
+            },
+            overrides
+          )
+        ),
       },
     })
   })
@@ -185,44 +198,56 @@ describe('DataViewBody', () => {
     const user = userEvent.setup()
     const navigate = vi.fn()
     setupBodyTab({
-      columns: [
-        { name: 'id', dataType: 'INT' },
-        { name: 'created_at', dataType: 'DATE' },
-      ],
-      rows: [[1, '2025-01-01']],
-      editMode: 'users',
-      editingRowIndex: 0,
-      editingBaseIndex: 0,
-      editTableMetadata: {
-        users: {
-          database: 'app',
-          table: 'users',
+      view: {
+        slot: {
           columns: [
-            {
-              name: 'created_at',
-              dataType: 'date',
-              isBooleanAlias: false,
-              isNullable: true,
-              isPrimaryKey: false,
-              isUniqueKey: false,
-              hasDefault: false,
-              columnDefault: null,
-              isBinary: false,
-              isAutoIncrement: false,
-            },
+            { name: 'id', dataType: 'INT' },
+            { name: 'created_at', dataType: 'DATE' },
           ],
-          primaryKey: { keyColumns: ['id'], isUniqueKeyFallback: false },
         },
+        editTarget: {
+          tableName: 'users',
+          tables: {
+            users: {
+              database: 'app',
+              table: 'users',
+              columns: [
+                {
+                  name: 'created_at',
+                  dataType: 'date',
+                  isBooleanAlias: false,
+                  isNullable: true,
+                  isPrimaryKey: false,
+                  isUniqueKey: false,
+                  hasDefault: false,
+                  columnDefault: null,
+                  isBinary: false,
+                  isAutoIncrement: false,
+                },
+              ],
+              primaryKey: {
+                keyColumns: ['id'],
+                hasAutoIncrement: false,
+                isUniqueKeyFallback: false,
+              },
+            },
+          },
+        },
+        edit: {
+          rowIndex: 0,
+          baseIndex: 0,
+          state: {
+            rowKey: { id: 1 },
+            originalValues: { id: 1, created_at: '2025-01-01' },
+            currentValues: { id: 1, created_at: 'not-a-date' },
+            modifiedColumns: new Set(['created_at']),
+            isNewRow: false,
+          },
+          saveError: 'cannot save yet',
+        },
+        prompts: { pendingNavigation: navigate },
       },
-      editState: {
-        rowKey: { id: 1 },
-        originalValues: { id: 1, created_at: '2025-01-01' },
-        currentValues: { id: 1, created_at: 'not-a-date' },
-        modifiedColumns: new Set(['created_at']),
-        isNewRow: false,
-      },
-      pendingNavigationAction: navigate,
-      saveError: 'cannot save yet',
+      rows: [[1, '2025-01-01']],
     })
     renderBody()
 
@@ -298,8 +323,9 @@ describe('filter button and dialog', () => {
    * Set up a tab in the query store with success status and filter-relevant state.
    */
   function setupQueryTab(resultOverrides: object = {}) {
-    const result: SingleResultState = patchedLegacyResult(
-      resultState({
+    const result: SingleResultState = resultWith(
+      resultOverrides,
+      resultWith({
         view: {
           slot: {
             columns: [
@@ -315,8 +341,7 @@ describe('filter button and dialog', () => {
           [1, 'Alice'],
           [2, 'Bob'],
         ]),
-      }),
-      resultOverrides
+      })
     )
 
     const tab: TabQueryState = {

@@ -1,6 +1,14 @@
 import { beforeEach, afterEach, vi } from 'vitest'
 import { overrideIpcCommands, overrideNamedIpcCommands } from '../ipc-mock'
-import { useQueryStore } from '../../stores/query-store'
+import {
+  DEFAULT_RESULT_STATE,
+  useQueryStore,
+  type ResultPatch,
+  type SingleResultState,
+} from '../../stores/query-store'
+import { patchedResult } from '../../stores/query-store/query-tab-reducers'
+import { mergeViewPatches } from '../../stores/data-view/data-view-reducers'
+import type { DataViewPatch } from '../../stores/data-view/data-view-types'
 import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
 import { useTableDataStore } from '../../stores/table-data-store'
 import type {
@@ -9,8 +17,7 @@ import type {
   QueryTableEditInfo,
   TableDataColumnMeta,
 } from '../../types/schema'
-import { patchedLegacyResult, resultState } from './legacy-result-fields'
-import { firstWindowFor } from './query-test-utils'
+import { firstWindowFor, pendingRowsOf, withPendingRows } from './query-test-utils'
 import { resetWorkspaceStore } from './workspace-test-utils'
 
 export const overrideNamedCommands = overrideNamedIpcCommands
@@ -25,20 +32,40 @@ export const QUERY_STORE_EDIT_COMMANDS = [
   'update_table_row',
 ] as const
 
+function pendingRowsViewPatch(patch: ResultPatch, rows: unknown[][] | undefined): DataViewPatch {
+  const view = patch.view ?? {}
+  const hasViewRowCount = view.slot?.viewRowCount !== undefined
+  if (!rows || hasViewRowCount) return view
+  return mergeViewPatches(view, { slot: { viewRowCount: rows.length } })
+}
+
 /**
- * Patch result-level fields on an existing tab's results[0].
+ * `base` with `patch` applied. Rows marked with `withRows` travel with the
+ * result (and set its view row count unless the patch sets one).
+ */
+export function resultWith(
+  patch: ResultPatch,
+  base: SingleResultState = DEFAULT_RESULT_STATE
+): SingleResultState {
+  const rows = pendingRowsOf(patch)
+  const view = pendingRowsViewPatch(patch, rows)
+  return withPendingRows(patchedResult(base, { ...patch, view: view }), rows)
+}
+
+/**
+ * Patch an existing tab's results[0].
  * Works for tabs populated by executeQuery (which creates results[0]).
  */
-export function patchResult(tabId: string, resultOverrides: Record<string, unknown>) {
+export function patchResult(tabId: string, patch: ResultPatch) {
   useQueryStore.setState((prev) => {
     const tab = prev.tabs[tabId]!
-    const existingResult = tab.results[0] ?? resultState({})
+    const existingResult = tab.results[0] ?? DEFAULT_RESULT_STATE
     return {
       tabs: {
         ...prev.tabs,
         [tabId]: {
           ...tab,
-          results: [patchedLegacyResult(existingResult, resultOverrides)],
+          results: [resultWith(patch, existingResult)],
           activeResultIndex: 0,
         },
       },

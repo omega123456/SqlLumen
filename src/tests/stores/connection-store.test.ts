@@ -1,4 +1,4 @@
-import { resultState } from '../helpers/legacy-result-fields'
+import { resultWith } from '../helpers/query-store-fixtures'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   isConnectionOfProfile,
@@ -58,17 +58,21 @@ function makeActiveConnection(
 }
 
 function dirtyQueryResult(queryId: string) {
-  return resultState({
+  return resultWith({
     resultStatus: 'success' as const,
-    queryId,
-    editState: {
-      rowKey: { id: 1 },
-      originalValues: { name: 'Alice' },
-      currentValues: { name: 'Bob' },
-      modifiedColumns: new Set(['name']),
-      isNewRow: false,
+    view: {
+      slot: { queryId: queryId },
+      edit: {
+        state: {
+          rowKey: { id: 1 },
+          originalValues: { name: 'Alice' },
+          currentValues: { name: 'Bob' },
+          modifiedColumns: new Set(['name']),
+          isNewRow: false,
+        },
+        rowIndex: 0,
+      },
     },
-    editingRowIndex: 0,
   })
 }
 
@@ -153,18 +157,25 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
           cursorPosition: null,
           connectionId: 'session-1',
           results: [
-            resultState({ resultStatus: 'success', queryId: 'q1' }),
-            resultState({
+            resultWith({
               resultStatus: 'success',
-              queryId: 'q2',
-              editState: {
-                rowKey: { id: 1 },
-                originalValues: { name: 'Alice' },
-                currentValues: { name: 'Bob' },
-                modifiedColumns: new Set(['name']),
-                isNewRow: false,
+              view: { slot: { queryId: 'q1' } },
+            }),
+            resultWith({
+              resultStatus: 'success',
+              view: {
+                slot: { queryId: 'q2' },
+                edit: {
+                  state: {
+                    rowKey: { id: 1 },
+                    originalValues: { name: 'Alice' },
+                    currentValues: { name: 'Bob' },
+                    modifiedColumns: new Set(['name']),
+                    isNewRow: false,
+                  },
+                  rowIndex: 0,
+                },
               },
-              editingRowIndex: 0,
             }),
           ],
           activeResultIndex: 0,
@@ -207,18 +218,25 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
           cursorPosition: null,
           connectionId: 'session-1',
           results: [
-            resultState({ resultStatus: 'success', queryId: 'q1' }),
-            resultState({
+            resultWith({
               resultStatus: 'success',
-              queryId: 'q2',
-              editState: {
-                rowKey: { id: 1 },
-                originalValues: { name: 'Alice' },
-                currentValues: { name: 'Bob' },
-                modifiedColumns: new Set(['name']),
-                isNewRow: false,
+              view: { slot: { queryId: 'q1' } },
+            }),
+            resultWith({
+              resultStatus: 'success',
+              view: {
+                slot: { queryId: 'q2' },
+                edit: {
+                  state: {
+                    rowKey: { id: 1 },
+                    originalValues: { name: 'Alice' },
+                    currentValues: { name: 'Bob' },
+                    modifiedColumns: new Set(['name']),
+                    isNewRow: false,
+                  },
+                  rowIndex: 0,
+                },
               },
-              editingRowIndex: 0,
             }),
           ],
           activeResultIndex: 0,
@@ -261,18 +279,21 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
           cursorPosition: null,
           connectionId: 'session-1',
           results: [
-            resultState({
+            resultWith({
               resultStatus: 'success',
-              queryId: 'q1',
-              editState: {
-                rowKey: { id: 1 },
-                originalValues: { name: 'Alice' },
-                currentValues: { name: 'Alice' },
-                modifiedColumns: new Set<string>(),
-                isNewRow: false,
+              view: {
+                slot: { queryId: 'q1', connectionId: 'session-1' },
+                edit: {
+                  state: {
+                    rowKey: { id: 1 },
+                    originalValues: { name: 'Alice' },
+                    currentValues: { name: 'Alice' },
+                    modifiedColumns: new Set<string>(),
+                    isNewRow: false,
+                  },
+                  rowIndex: 0,
+                },
               },
-              editingRowIndex: 0,
-              editConnectionId: 'session-1',
             }),
           ],
           activeResultIndex: 0,
@@ -315,31 +336,38 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
           cursorPosition: null,
           connectionId: 'session-1',
           results: [
-            resultState({
+            resultWith({
               resultStatus: 'success',
-              queryId: 'q1',
-              editMode: 'users',
-              editConnectionId: 'session-1',
-              editState: {
-                rowKey: { id: 1 },
-                originalValues: { name: 'Alice' },
-                currentValues: { name: 'Modified' },
-                modifiedColumns: new Set(['name']),
-                isNewRow: false,
+              view: {
+                slot: { queryId: 'q1', connectionId: 'session-1' },
+                editTarget: { tableName: 'users' },
+                edit: {
+                  state: {
+                    rowKey: { id: 1 },
+                    originalValues: { name: 'Alice' },
+                    currentValues: { name: 'Modified' },
+                    modifiedColumns: new Set(['name']),
+                    isNewRow: false,
+                  },
+                  rowIndex: 0,
+                },
               },
-              editingRowIndex: 0,
             }),
-            resultState({
+            resultWith({
               resultStatus: 'success',
-              queryId: 'q2',
-              editState: {
-                rowKey: { id: 2 },
-                originalValues: { email: 'a@b.com' },
-                currentValues: { email: 'x@y.com' },
-                modifiedColumns: new Set(['email']),
-                isNewRow: false,
+              view: {
+                slot: { queryId: 'q2' },
+                edit: {
+                  state: {
+                    rowKey: { id: 2 },
+                    originalValues: { email: 'a@b.com' },
+                    currentValues: { email: 'x@y.com' },
+                    modifiedColumns: new Set(['email']),
+                    isNewRow: false,
+                  },
+                  rowIndex: 0,
+                },
               },
-              editingRowIndex: 0,
             }),
           ],
           activeResultIndex: 0,
@@ -1693,23 +1721,29 @@ describe('connection store sessions', () => {
       useQueryStore.setState({
         tabs: {
           'qt-1': makeTabState({
-            editMode: 'testdb.users',
-            editConnectionId: 'sess-1',
-            editingRowIndex: 0,
-            editState: {
-              rowKey: { id: 1 },
-              originalValues: { id: 1, name: 'Alice' },
-              currentValues: { id: 1, name: 'Changed' },
-              modifiedColumns: new Set(['name']),
-              isNewRow: false,
-            },
-            editTableMetadata: {
-              'testdb.users': {
-                database: 'testdb',
-                table: 'users',
-                columns: [],
-                primaryKey: null, // No PK → save will fail
-                foreignKeys: [],
+            view: {
+              editTarget: {
+                tableName: 'testdb.users',
+                tables: {
+                  'testdb.users': {
+                    database: 'testdb',
+                    table: 'users',
+                    columns: [],
+                    primaryKey: null, // No PK → save will fail
+                    foreignKeys: [],
+                  },
+                },
+              },
+              slot: { connectionId: 'sess-1' },
+              edit: {
+                rowIndex: 0,
+                state: {
+                  rowKey: { id: 1 },
+                  originalValues: { id: 1, name: 'Alice' },
+                  currentValues: { id: 1, name: 'Changed' },
+                  modifiedColumns: new Set(['name']),
+                  isNewRow: false,
+                },
               },
             },
           }),
@@ -1839,35 +1873,43 @@ describe('connection store sessions', () => {
       useQueryStore.setState({
         tabs: {
           'qt-1': makeTabState({
-            editMode: 'testdb.users',
-            editConnectionId: 'sess-1',
-            editingRowIndex: 0,
-            columns: [
-              { name: 'id', dataType: 'INT' },
-              { name: 'name', dataType: 'VARCHAR' },
-            ],
-            rows: [[1, 'Alice']],
-            rowLimit: 1000,
-            editState: {
-              rowKey: { id: 1 },
-              originalValues: { id: 1, name: 'Alice' },
-              currentValues: { id: 1, name: 'Updated' },
-              modifiedColumns: new Set(['name']),
-              isNewRow: false,
-            },
-            editTableMetadata: {
-              'testdb.users': {
-                database: 'testdb',
-                table: 'users',
-                columns: [],
-                primaryKey: {
-                  keyColumns: ['id'],
-                  hasAutoIncrement: true,
-                  isUniqueKeyFallback: false,
+            view: {
+              editTarget: {
+                tableName: 'testdb.users',
+                tables: {
+                  'testdb.users': {
+                    database: 'testdb',
+                    table: 'users',
+                    columns: [],
+                    primaryKey: {
+                      keyColumns: ['id'],
+                      hasAutoIncrement: true,
+                      isUniqueKeyFallback: false,
+                    },
+                    foreignKeys: [],
+                  },
                 },
-                foreignKeys: [],
+              },
+              slot: {
+                connectionId: 'sess-1',
+                columns: [
+                  { name: 'id', dataType: 'INT' },
+                  { name: 'name', dataType: 'VARCHAR' },
+                ],
+              },
+              edit: {
+                rowIndex: 0,
+                state: {
+                  rowKey: { id: 1 },
+                  originalValues: { id: 1, name: 'Alice' },
+                  currentValues: { id: 1, name: 'Updated' },
+                  modifiedColumns: new Set(['name']),
+                  isNewRow: false,
+                },
               },
             },
+            rows: [[1, 'Alice']],
+            rowLimit: 1000,
           }),
         },
       })

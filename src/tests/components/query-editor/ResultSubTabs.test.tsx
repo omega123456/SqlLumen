@@ -1,9 +1,9 @@
-import { resultState } from '../../helpers/legacy-result-fields'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { ResultSubTabs } from '../../../components/query-editor/ResultSubTabs'
 import { useQueryStore } from '../../../stores/query-store'
-import type { SingleResultState } from '../../../stores/query-store'
+import type { ResultPatch, SingleResultState } from '../../../stores/query-store'
+import { resultWith } from '../../helpers/query-store-fixtures'
 import { makeTabState, withRows } from '../../helpers/query-test-utils'
 
 beforeEach(() => {
@@ -12,8 +12,8 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn()
 })
 
-function makeResult(overrides: Record<string, unknown> = {}): SingleResultState {
-  return resultState(overrides)
+function makeResult(overrides: ResultPatch = {}): SingleResultState {
+  return resultWith(overrides)
 }
 
 describe('ResultSubTabs', () => {
@@ -30,7 +30,10 @@ describe('ResultSubTabs', () => {
   it('renders nothing when results has exactly one entry', () => {
     useQueryStore.setState({
       tabs: {
-        'tab-1': makeTabState({ status: 'success', columns: [{ name: 'id', dataType: 'INT' }] }),
+        'tab-1': makeTabState({
+          status: 'success',
+          view: { slot: { columns: [{ name: 'id', dataType: 'INT' }] } },
+        }),
       },
     })
     const { container } = render(<ResultSubTabs tabId="tab-1" />)

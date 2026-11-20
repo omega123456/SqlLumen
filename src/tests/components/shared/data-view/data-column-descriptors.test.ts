@@ -3,6 +3,7 @@ import { renderHook } from '@testing-library/react'
 import { useDataColumnDescriptors } from '../../../../components/shared/data-view/data-column-descriptors'
 import { DEFAULT_EDIT_TARGET } from '../../../../stores/data-view/data-view-defaults'
 import type { ColumnMeta } from '../../../../types/schema'
+import type { DataColumnMetadata } from '../../../../components/shared/data-view/data-view-source'
 import { makeForeignKeyColumn, makeTableColumnMeta } from '../../../helpers/column-meta-fixtures'
 
 const resultColumns: ColumnMeta[] = [
@@ -24,7 +25,7 @@ const bindings = new Map([
   [2, 'owner_id'],
 ])
 
-function renderDescriptors(editMode: string | null) {
+function renderDescriptors(editMode: string | null, metadata: DataColumnMetadata | null = null) {
   return renderHook(() =>
     useDataColumnDescriptors({
       columns: resultColumns,
@@ -49,8 +50,9 @@ function renderDescriptors(editMode: string | null) {
           [3, false],
         ]),
         foreignKeys: [makeForeignKeyColumn({ columnName: 'owner_id' })],
-        bindings: bindings,
+        bindings: editMode ? bindings : new Map(),
       },
+      metadata: metadata,
       columnWidths: { col_1: 180 },
     })
   ).result.current.descriptors
@@ -87,5 +89,24 @@ describe('useDataColumnDescriptors', () => {
 
     expect(descriptors[2].foreignKey?.referencedTable).toBe('users')
     expect(descriptors[3].foreignKey).toBeUndefined()
+  })
+
+  it('resolves key and foreign-key metadata from the source when nothing is editable', () => {
+    const withoutMetadata = renderDescriptors(null)
+    expect(withoutMetadata[0].isPrimaryKey).toBe(false)
+    expect(withoutMetadata[2].foreignKey).toBeUndefined()
+
+    const descriptors = renderDescriptors(null, {
+      tableColumns: tableColumns,
+      foreignKeys: [makeForeignKeyColumn({ columnName: 'owner_id' })],
+    })
+    expect(descriptors[0].isPrimaryKey).toBe(true)
+    expect(descriptors[2].foreignKey?.referencedTable).toBe('users')
+    expect(descriptors.map((descriptor) => descriptor.editable)).toEqual([
+      false,
+      false,
+      false,
+      false,
+    ])
   })
 })

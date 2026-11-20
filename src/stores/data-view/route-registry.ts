@@ -46,10 +46,12 @@ export interface DataViewViewRequests {
 export interface DataViewWrites {
   cellProjection: CellProjection
   afterInsert: (ref: DataViewSurfaceRef, inserted: InsertedColumnValue[]) => Promise<boolean>
+  staleResultAdvice: string
 }
 
 export interface DataViewLifecycle {
   onExpired: (ref: DataViewSurfaceRef) => void
+  onEditClosed?: (ref: DataViewSurfaceRef) => void
 }
 
 export interface StoredBlobTable {

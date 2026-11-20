@@ -1,4 +1,4 @@
-import { resultState } from '../../helpers/legacy-result-fields'
+import { resultWith } from '../../helpers/query-store-fixtures'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -28,12 +28,12 @@ describe('BottomPanelTabs', () => {
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
-            resultState({
+            resultWith({
               resultStatus: 'success',
               ...withRows([[1]]),
               view: { slot: { columns: [{ name: 'id', dataType: 'INT' }], totalRows: 1 } },
             }),
-            resultState({ resultStatus: 'error', errorMessage: 'broken' }),
+            resultWith({ resultStatus: 'error', errorMessage: 'broken' }),
           ],
           activeResultIndex: 0,
           activeBottomPanelItem: { type: 'result' },
@@ -114,8 +114,8 @@ describe('BottomPanelTabs', () => {
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
-            resultState({ resultStatus: 'success' }),
-            resultState({ resultStatus: 'success' }),
+            resultWith({ resultStatus: 'success' }),
+            resultWith({ resultStatus: 'success' }),
           ],
           activeResultIndex: 0,
           activeBottomPanelItem: { type: 'result' },
@@ -152,7 +152,7 @@ describe('BottomPanelTabs', () => {
           prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'conn-1',
-          results: [resultState({ resultStatus: 'success' })],
+          results: [resultWith({ resultStatus: 'success' })],
           activeResultIndex: 0,
           activeBottomPanelItem: { type: 'table-data', tabId: 'table-1' },
           executionStartedAt: null,
