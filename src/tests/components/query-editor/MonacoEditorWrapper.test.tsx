@@ -105,6 +105,7 @@ const mockEditorInstance = {
     id === 'editor.action.startFindReplaceAction' ? { run: mockFindReplaceRun } : null
   ),
   updateOptions: vi.fn(),
+  createDecorationsCollection: vi.fn(() => ({ set: vi.fn(), clear: vi.fn() })),
 }
 
 // Track props passed to the mock Editor component
@@ -462,7 +463,7 @@ describe('MonacoEditorWrapper', () => {
 
       // onDidChangeCursorPosition should NOT have been called in override mode
       expect(mockEditorInstance.onDidChangeCursorPosition).not.toHaveBeenCalled()
-      expect(mockEditorInstance.onDidChangeCursorSelection).not.toHaveBeenCalled()
+      expect(mockEditorInstance.onDidChangeCursorSelection).toHaveBeenCalledTimes(1)
     })
 
     it('uses override readOnly prop instead of status-based computation', () => {
@@ -834,13 +835,13 @@ describe('MonacoEditorWrapper', () => {
     it('disposes the content-change listener when the editor is disposed', () => {
       render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
 
-      expect(mockEditorInstance.onDidChangeModelContent).toHaveBeenCalledTimes(1)
-
       // Trigger editor dispose
       const handleDispose = registeredDisposeHandlers[0]
       handleDispose()
 
-      expect(mockContentChangeDispose).toHaveBeenCalledTimes(1)
+      expect(mockContentChangeDispose).toHaveBeenCalledTimes(
+        mockEditorInstance.onDidChangeModelContent.mock.calls.length
+      )
     })
 
     it('disposes the selection-change listener when the editor is disposed', () => {
@@ -849,7 +850,9 @@ describe('MonacoEditorWrapper', () => {
       const handleDispose = registeredDisposeHandlers[0]
       handleDispose()
 
-      expect(mockSelectionDispose).toHaveBeenCalledTimes(1)
+      expect(mockSelectionDispose).toHaveBeenCalledTimes(
+        mockEditorInstance.onDidChangeCursorSelection.mock.calls.length
+      )
     })
   })
 

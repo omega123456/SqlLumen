@@ -52,7 +52,7 @@ const DARK: MonacoPalette = {
   lineNumber: '#6e7681',
   currentLine: '#ffffff0a',
   accent: '#4cc2ff',
-  selection: '#4cc2ff26',
+  selection: '#4cc2ff4d',
   card: '#2c2c2c',
   cardText: '#ffffff',
   flyoutStroke: '#00000059',
@@ -79,7 +79,7 @@ const LIGHT: MonacoPalette = {
   lineNumber: '#8c8c8c',
   currentLine: '#00000009',
   accent: '#0067c0',
-  selection: '#0067c01c',
+  selection: '#0067c03d',
   card: '#ffffff',
   cardText: '#1b1b1b',
   flyoutStroke: '#0000001a',
@@ -135,9 +135,6 @@ function editorColors(palette: MonacoPalette): Monaco.editor.IColors {
     'editor.lineHighlightBorder': '#00000000',
     'editor.selectionBackground': palette.selection,
     'editor.inactiveSelectionBackground': palette.selection,
-    'editor.selectionHighlightBackground': palette.neutralSelected,
-    'editor.wordHighlightBackground': palette.neutralSelected,
-    'editor.wordHighlightStrongBackground': palette.neutralSelected,
     'editorCursor.foreground': palette.accent,
     ...Object.fromEntries(
       BRACKET_HIGHLIGHT_LEVELS.map((level) => [

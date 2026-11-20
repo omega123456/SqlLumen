@@ -7,6 +7,7 @@ import {
   syncAttachedContextToEditor,
   type StandaloneEditor,
 } from './editor-store-bindings'
+import { bindCaretOccurrenceHighlight } from './caret-occurrence-highlight'
 import {
   addFindReplaceAction,
   registerShortcutCommands,
@@ -40,6 +41,7 @@ function bindEditorEvents(
   inputs: EditorMountInputs
 ): MonacoType.IDisposable[] {
   const { tabId, isOverrideMode } = inputs
+  const caretOccurrenceDisposables = bindCaretOccurrenceHighlight(editor, monacoInstance)
   const syncSelectedText = () => {
     if (isOverrideMode) return
     useQueryStore.getState().setSelectedText(tabId, selectedTextOf(editor))
@@ -57,7 +59,12 @@ function bindEditorEvents(
     syncAttachedContextToEditor(editor, tabId)
   })
   const findReplaceActionDisposable = addFindReplaceAction(editor, monacoInstance)
-  return [...queryStoreDisposables, findReplaceActionDisposable, contentChangeDisposable]
+  return [
+    ...queryStoreDisposables,
+    ...caretOccurrenceDisposables,
+    findReplaceActionDisposable,
+    contentChangeDisposable,
+  ]
 }
 
 const MONACO_THEME_SCOPE_CLASS = 'monaco-component'

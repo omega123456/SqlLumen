@@ -170,6 +170,7 @@ describe('editor focus on mount', () => {
     addCommand: vi.fn(),
     addAction: vi.fn(() => ({ dispose: vi.fn() })),
     updateOptions: vi.fn(),
+    createDecorationsCollection: vi.fn(() => ({ set: vi.fn(), clear: vi.fn() })),
   }
 
   function createRichMonacoEditorMock() {
@@ -296,6 +297,7 @@ describe('AI sidebar open state (Monaco layout)', () => {
     addCommand: vi.fn(),
     addAction: vi.fn(() => ({ dispose: vi.fn() })),
     updateOptions: vi.fn(),
+    createDecorationsCollection: vi.fn(() => ({ set: vi.fn(), clear: vi.fn() })),
     focus: vi.fn(),
   }
 

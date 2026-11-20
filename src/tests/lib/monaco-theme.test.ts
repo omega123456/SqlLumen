@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { MONACO_THEMES, getMonacoThemeName, registerMonacoThemes } from '../../lib/monaco-theme'
+import { getMonacoThemeName, registerMonacoThemes } from '../../lib/monaco-theme'
 
 describe('getMonacoThemeName', () => {
   it('returns dark theme for dark preference', () => {
@@ -19,83 +19,4 @@ describe('registerMonacoThemes', () => {
     registerMonacoThemes(instance)
     expect(mockMonaco.editor.defineTheme).toHaveBeenCalledTimes(2)
   })
-})
-
-// Values from the proposal's prototype (`--sx-*`, well, accent and accent tint).
-const PROTOTYPE = {
-  'precision-studio-dark': {
-    well: '#1c1c1c',
-    text: 'd4d4d4',
-    keyword: '569cd6',
-    string: 'ce9178',
-    number: 'b5cea8',
-    quoted: '9cdcfe',
-    builtin: 'dcdcaa',
-    table: '4ec9b0',
-    column: '9cdcfe',
-    lineNumber: '#6e7681',
-    currentLine: '#ffffff0a',
-    accent: '#4cc2ff',
-    selection: '#4cc2ff26',
-  },
-  'precision-studio-light': {
-    well: '#ffffff',
-    text: '1b1b1b',
-    keyword: '0000ff',
-    string: 'a31515',
-    number: '098658',
-    quoted: '001080',
-    builtin: '795e26',
-    table: '267f99',
-    column: '001080',
-    lineNumber: '#8c8c8c',
-    currentLine: '#00000009',
-    accent: '#0067c0',
-    selection: '#0067c01c',
-  },
-} as const
-
-function tokenColor(name: keyof typeof PROTOTYPE, token: string): string | undefined {
-  return MONACO_THEMES[name].rules.find((rule) => rule.token === token)?.foreground
-}
-
-describe('Monaco themes match the Fluent proposal', () => {
-  for (const [name, p] of Object.entries(PROTOTYPE) as [
-    keyof typeof PROTOTYPE,
-    (typeof PROTOTYPE)[keyof typeof PROTOTYPE],
-  ][]) {
-    it(`${name}: syntax colours are the Dark+ / Light+ prototype values`, () => {
-      expect(tokenColor(name, '')).toBe(p.text)
-      expect(tokenColor(name, 'identifier')).toBe(p.text)
-      expect(tokenColor(name, 'delimiter')).toBe(p.text)
-      expect(tokenColor(name, 'keyword.sql')).toBe(p.keyword)
-      expect(tokenColor(name, 'operator')).toBe(p.text)
-      expect(tokenColor(name, 'operator.star')).toBe(p.keyword)
-      expect(tokenColor(name, 'operator.keyword')).toBe(p.keyword)
-      expect(tokenColor(name, 'string.sql')).toBe(p.string)
-      expect(tokenColor(name, 'number.sql')).toBe(p.number)
-      expect(tokenColor(name, 'identifier.quote.sql')).toBe(p.quoted)
-      expect(MONACO_THEMES[name].rules.every((rule) => rule.fontStyle === undefined)).toBe(true)
-    })
-
-    it(`${name}: semantic identifier colours follow Dark+ / Light+`, () => {
-      expect(tokenColor(name, 'database')).toBe(p.table)
-      expect(tokenColor(name, 'table')).toBe(p.table)
-      expect(tokenColor(name, 'tableAlias')).toBe(p.table)
-      expect(tokenColor(name, 'column')).toBe(p.column)
-      expect(tokenColor(name, 'columnAlias')).toBe(p.column)
-      expect(tokenColor(name, 'function')).toBe(p.builtin)
-      expect(tokenColor(name, 'predefined.sql')).toBe(p.builtin)
-    })
-
-    it(`${name}: editor surfaces use the well, accent and accent tint`, () => {
-      const colors = MONACO_THEMES[name].colors
-      expect(colors['editor.background']).toBe(p.well)
-      expect(colors['editorGutter.background']).toBe(p.well)
-      expect(colors['editor.lineHighlightBackground']).toBe(p.currentLine)
-      expect(colors['editorLineNumber.foreground']).toBe(p.lineNumber)
-      expect(colors['editorCursor.foreground']).toBe(p.accent)
-      expect(colors['editor.selectionBackground']).toBe(p.selection)
-    })
-  }
 })

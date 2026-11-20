@@ -1,0 +1,8 @@
+/* Monaco replaces ':' in decoration class names with spaces, so a dark: utility never reaches this decoration */
+.monaco-editor .word-occurrence-fill {
+  background-color: var(--color-light-fill-word-occurrence);
+}
+
+.dark .monaco-editor .word-occurrence-fill {
+  background-color: var(--color-dark-fill-word-occurrence);
+}

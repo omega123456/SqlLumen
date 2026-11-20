@@ -22,6 +22,8 @@ const STATIC_EDITOR_OPTIONS: MonacoType.editor.IStandaloneEditorConstructionOpti
   renderLineHighlightOnlyWhenFocus: true,
   overviewRulerLanes: 0,
   hideCursorInOverviewRuler: true,
+  occurrencesHighlight: 'off',
+  selectionHighlight: false,
   scrollbar: {
     vertical: 'auto',
     horizontal: 'auto',
