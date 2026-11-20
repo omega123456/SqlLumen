@@ -2,7 +2,7 @@
 
 A fast, lightweight **desktop MySQL and MariaDB client** for **Windows, macOS, and Linux**. SqlLumen pairs an object browser, a Monaco-based SQL editor, and a tabbed workspace with large-result handling, background data transfers, and an optional AI assistant. It is a native [Tauri](https://tauri.app/) 2 app: **database work runs in Rust**, and the React 19 UI talks to it over typed IPC.
 
-[feature-tour.webm](https://github.com/user-attachments/assets/f318bf9b-de73-4b57-b056-9d1151d0b6f1)
+[feature-tour.webm](https://github.com/user-attachments/assets/880d8494-3bfb-4e23-8316-ba2e578af400)
 
 ## Contents
 
