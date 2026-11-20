@@ -16,6 +16,7 @@ import { MAX_BULK_DELETE_ROWS } from '../../lib/data-view-limits'
 import { countRanges } from '../../lib/view-ranges'
 import { logFrontend } from '../../lib/app-log-commands'
 import { toErrorMessage } from '../../lib/error-message'
+import { buildDeletePrimaryKeyValues, type CellProjection } from '../../lib/row-write-payloads'
 import { showErrorToast, showSuccessToast } from '../toast-store'
 import type { DataViewPatch, DataViewState, DataViewSurfaceRef } from './data-view-types'
 import { CLOSED_EDIT_PATCH } from './data-view-defaults'
@@ -35,9 +36,13 @@ interface RowDeletionPlan {
   tableInfo: QueryTableEditInfo
   keyColumns: string[]
   keyColumnIndices: number[]
+  projection: CellProjection
 }
 
-function resolveRowDeletionPlan(view: DataViewState): RowDeletionPlan | null {
+function resolveRowDeletionPlan(
+  ref: DataViewSurfaceRef,
+  view: DataViewState
+): RowDeletionPlan | null {
   const tableName = view.editTarget.tableName
   if (!tableName) {
     showErrorToast('Delete failed', 'Enable edit mode to delete rows from the database.')
@@ -66,15 +71,23 @@ function resolveRowDeletionPlan(view: DataViewState): RowDeletionPlan | null {
     tableInfo: tableInfo,
     keyColumns: keyColumns,
     keyColumnIndices: keyColumnIndices,
+    projection: routeOf(ref).writes.cellProjection,
   }
 }
 
 function primaryKeyValuesOf(plan: RowDeletionPlan, row: unknown[]): Record<string, unknown> {
-  const primaryKeyValues: Record<string, unknown> = {}
+  const cellValues: Record<string, unknown> = {}
   plan.keyColumns.forEach((column, columnIndex) => {
-    primaryKeyValues[column] = row[plan.keyColumnIndices[columnIndex]]
+    cellValues[column] = row[plan.keyColumnIndices[columnIndex]]
   })
-  return primaryKeyValues
+  const converted = buildDeletePrimaryKeyValues({
+    keyColumns: plan.keyColumns,
+    tableColumns: plan.tableInfo.columns,
+    values: cellValues,
+    projection: plan.projection,
+  })
+  if (!converted.ok) throw new Error(converted.error)
+  return converted.values
 }
 
 interface RowDeletion {
@@ -256,10 +269,9 @@ async function tombstoneDeletedRows(
   outcome: RowDeletionOutcome
 ): Promise<boolean> {
   const { ref, view } = deletion
-  const latestView = readView(ref) ?? view
   try {
     const removed = await removeDeletedRowsFromView({
-      slot: slotRefOf(ref, latestView),
+      slot: slotRefOf(ref, view),
       baseViewVersion: routeOf(ref).viewRequests.latestKnownVersion(ref),
       deletedBaseIndices: outcome.deletedBaseIndices,
     })
@@ -301,7 +313,7 @@ export async function deleteRows(ref: DataViewSurfaceRef): Promise<number> {
   const targetRanges = deleteTargetRangesOf(view)
   if (targetRanges.length === 0) return 0
 
-  const plan = resolveRowDeletionPlan(view)
+  const plan = resolveRowDeletionPlan(ref, view)
   if (!plan) return 0
 
   if (hasStaleCheckedRows(view)) {

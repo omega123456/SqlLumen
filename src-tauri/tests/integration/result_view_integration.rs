@@ -60,11 +60,15 @@ fn stored(columns: Vec<ColumnMeta>, rows: Vec<Vec<Value>>) -> StoredResult {
     })
 }
 
-fn insert(state: &AppState, columns: Vec<ColumnMeta>, rows: Vec<Vec<Value>>) {
+fn insert_slot(state: &AppState, result: StoredResult) {
     state.result_cache.insert(
         sqllumen_lib::mysql::result_cache::CacheKey::new(CONN, TAB),
-        vec![stored(columns, rows)],
+        vec![result],
     );
+}
+
+fn insert(state: &AppState, columns: Vec<ColumnMeta>, rows: Vec<Vec<Value>>) {
+    insert_slot(state, stored(columns, rows));
 }
 
 /// id / name / score rows used by most view tests.
@@ -113,10 +117,8 @@ fn noop_slot_write(
         .expect("modifier")
 }
 
-fn people_state() -> AppState {
-    let state = common::test_app_state();
-    insert(
-        &state,
+fn people_result() -> StoredResult {
+    stored(
         vec![
             col("id", "INT"),
             col("name", "VARCHAR"),
@@ -128,8 +130,17 @@ fn people_state() -> AppState {
             vec![json!(3), json!("Bob"), json!(5)],
             vec![json!(4), json!("dave"), json!(100)],
         ],
-    );
+    )
+}
+
+fn state_with_slot(result: StoredResult) -> AppState {
+    let state = common::test_app_state();
+    insert_slot(&state, result);
     state
+}
+
+fn people_state() -> AppState {
+    state_with_slot(people_result())
 }
 
 fn set_view(state: &AppState, base: u64, value: Value) -> Result<Vec<u32>, String> {
@@ -847,15 +858,27 @@ fn append_result_row_extends_identity_and_sorted_views_and_bumps_the_version() {
 }
 
 #[test]
-fn append_result_row_is_refused_for_a_stale_view_and_at_the_row_ceiling() {
+fn append_result_row_is_refused_for_a_stale_view() {
     let state = people_state();
     let stale = append_row(&state, 7, json!([5, "eve", 7])).expect_err("stale base version");
     assert!(stale.starts_with(VIEW_SUPERSEDED_PREFIX), "{stale}");
 
-    state.result_cache.set_row_ceiling(4);
-    let full = append_row(&state, 1, json!([5, "eve", 7])).expect_err("ceiling reached");
+}
+
+#[test]
+fn append_result_row_is_refused_at_the_slot_row_ceiling_not_the_current_global_one() {
+    let mut full_result = people_result();
+    full_result.row_ceiling = 4;
+    let full_state = state_with_slot(full_result);
+    let full = append_row(&full_state, 1, json!([5, "eve", 7])).expect_err("ceiling reached");
     assert!(full.starts_with(ROW_CEILING_REACHED_PREFIX), "{full}");
-    assert_eq!(slot(&state).rows.len(), 4);
+    assert_eq!(slot(&full_state).rows.len(), 4);
+
+    let roomy_state = people_state();
+    roomy_state.result_cache.set_row_ceiling(4);
+    let appended = append_row(&roomy_state, 1, json!([5, "eve", 7]))
+        .expect("the slot's own ceiling has room");
+    assert_eq!(appended.total_rows, 5);
 }
 
 #[test]

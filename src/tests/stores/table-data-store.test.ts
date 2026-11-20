@@ -8,6 +8,7 @@ import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-s
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { frontendCacheLifecycle } from '../../lib/frontend-cache-lifecycle'
 import { getResultSurface } from '../../lib/result-window-cache'
+import { envelopeForBytes } from '../../lib/blob-utils'
 import { tableSurfaceRef, useTableDataStore } from '../../stores/table-data-store'
 import { routeOf } from '../../stores/data-view/route-registry'
 import { applyFilters, setSelectedRow, sortView } from '../../stores/data-view/view-actions'
@@ -208,6 +209,25 @@ describe('useTableDataStore — page fetches', () => {
     expect(tab().page.error).toContain('Access denied')
   })
 
+  it('closes a clean edit when a fetch starts and starts no edit until the new page lands', async () => {
+    await loadTablePage(TAB_ID, PAGE)
+    startEditingRow(REF, 0)
+    const page = deferredPage()
+    ipc.override('fetch_table_page', () => page.pending)
+
+    const fetching = useTableDataStore.getState().refreshData(TAB_ID)
+    expect(tab().view.edit.state).toBeNull()
+    startEditingRow(REF, 1)
+    insertDraftRow(REF)
+    expect(tab().view.edit.state).toBeNull()
+    expect(tab().view.edit.draftRow).toBeNull()
+
+    page.resolvePage(tablePageResponse({ ...PAGE, queryId: 'table-page-2' }))
+    await fetching
+    startEditingRow(REF, 1)
+    expect(tab().view.edit.rowIndex).toBe(1)
+  })
+
   it('drops a fetch that completes after the tab was cleaned up and evicts its slot', async () => {
     const page = deferredPage()
     ipc.override('fetch_table_page', () => page.pending)
@@ -352,6 +372,19 @@ describe('useTableDataStore — rows inserted on the table route', () => {
 
     await vi.waitFor(() => expect(ipc.payloads('fetch_table_page')).toHaveLength(2))
   })
+
+  it('warns that the saved row is not shown when the page is at the row ceiling', async () => {
+    await loadTablePage(TAB_ID, PAGE)
+    ipc.override('append_result_row', () => {
+      throw new Error('row_ceiling_reached: ceiling=2')
+    })
+
+    await expect(saveInsertedRow()).resolves.toBe(true)
+
+    await expectToast('warning', "The page is at the row limit, so the new row isn't shown.")
+    expect(ipc.payloads('fetch_table_page')).toHaveLength(1)
+    expect(useToastStore.getState().toasts.map((toast) => toast.variant)).not.toContain('success')
+  })
 })
 
 describe('useTableDataStore — expired pages', () => {
@@ -403,6 +436,60 @@ describe('useTableDataStore — rows deleted on the table route', () => {
 
     await expect(deleteRows(REF)).resolves.toBe(1)
 
+    await expectToast(
+      'error',
+      "1 row deleted, but the result couldn't be updated. Reload the table to refresh."
+    )
+  })
+
+  it('deletes a row with a binary primary key by its bytes, not its hex text', async () => {
+    const binaryKeyColumns = [
+      makeTableColumnMeta({
+        name: 'id',
+        dataType: 'VARBINARY',
+        isPrimaryKey: true,
+        isBinary: true,
+      }),
+      makeTableColumnMeta({ name: 'name', dataType: 'VARCHAR', isNullable: true }),
+    ]
+    await loadTablePage(TAB_ID, {
+      columns: binaryKeyColumns,
+      rows: [['0x0102', 'Alice']],
+      primaryKey: { ...PRIMARY_KEY, hasAutoIncrement: false },
+    })
+    setSelectedRow(REF, 0)
+    ipc.override('delete_table_row', () => undefined)
+    ipc.override('remove_result_rows', () => ({ viewVersion: 2, viewRowCount: 0, totalRows: 0 }))
+
+    await expect(deleteRows(REF)).resolves.toBe(1)
+
+    expect(ipc.payloads('delete_table_row')).toEqual([
+      expect.objectContaining({
+        primaryKeyValues: { id: envelopeForBytes(new Uint8Array([1, 2])) },
+      }),
+    ])
+  })
+
+  it('never tombstones a page that was refetched while its rows were being deleted', async () => {
+    await loadTablePage(TAB_ID, PAGE)
+    setSelectedRow(REF, 0)
+    let finishDelete: () => void = () => {}
+    ipc.override('delete_table_row', () => new Promise<void>((resolve) => (finishDelete = resolve)))
+    ipc.override('remove_result_rows', () => {
+      throw new Error('stale_query')
+    })
+
+    const deletion = deleteRows(REF)
+    await vi.waitFor(() => expect(ipc.payloads('delete_table_row')).toHaveLength(1))
+    ipc.override('fetch_table_page', () => tablePageResponse({ ...PAGE, queryId: 'table-page-2' }))
+    await useTableDataStore.getState().refreshData(TAB_ID)
+    finishDelete()
+    await deletion
+
+    expect(ipc.payloads('remove_result_rows')).toEqual([
+      expect.objectContaining({ queryId: 'table-page-1' }),
+    ])
+    expect(tab().view.slot.viewVersion).toBe(1)
     await expectToast(
       'error',
       "1 row deleted, but the result couldn't be updated. Reload the table to refresh."

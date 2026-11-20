@@ -40,12 +40,13 @@ export function useDataToolbar(source: DataViewSource, readiness: DataToolbarRea
   })
   const hasNoColumns = view.slot.columns.length === 0
   const isEditing = view.edit.state !== null
+  const isFilterDisabled = hasNoColumns || isEditing || isBusy
   return {
     view: view,
     viewActions: viewActions,
     rowActions: rowActions,
     isBusy: isBusy,
-    isFilterDisabled: hasNoColumns || isEditing,
+    isFilterDisabled: isFilterDisabled,
     isCopySelectedDisabled: isCopySelectedDisabled({
       hasData: readiness.hasData,
       checkedCount: checkedCount,

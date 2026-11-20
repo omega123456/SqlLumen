@@ -54,7 +54,6 @@ pub fn append_result_row_impl(
     request: &AppendResultRowRequest,
 ) -> Result<AppendResultRowResult, String> {
     let slot_key = &request.slot;
-    let row_ceiling = state.result_cache.row_ceiling();
     let expected_invalidation_version = state
         .result_cache
         .current_invalidation_version(&slot_key.connection_id, &slot_key.tab_id);
@@ -62,8 +61,8 @@ pub fn append_result_row_impl(
     if slot.view_version != request.base_view_version {
         return Err(superseded(slot.view_version));
     }
-    if slot.rows.len() >= row_ceiling {
-        return Err(row_ceiling_reached(row_ceiling));
+    if slot.rows.len() >= slot.row_ceiling {
+        return Err(row_ceiling_reached(slot.row_ceiling));
     }
     let row: SharedRow = Arc::from(request.row.as_slice());
 

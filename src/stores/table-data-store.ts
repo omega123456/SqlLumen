@@ -34,6 +34,7 @@ export interface TableDataStore {
   cancelLoad: (tabId: string) => Promise<void>
   refreshData: (tabId: string) => Promise<void>
   setPageSize: (tabId: string, newPageSize: number) => Promise<void>
+  refreshEditTarget: (tabId: string) => void
   markTableDataSurfaceActive: (tabId: string) => Promise<void>
   markTableDataSurfaceInactive: (tabId: string) => void
   evictInactiveTableDataRows: (tabId: string) => void

@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useTableDataStore } from '../../../stores/table-data-store'
+import { useIsConnectionReadOnly } from '../../../stores/connection-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
 import type { TableDataTab } from '../../../types/schema'
 
@@ -28,12 +29,21 @@ function useInitialTableLoad(tab: TableDataTab, isActive: boolean) {
   }, [tabId, connectionId, database, table, objectType, isActive, initTab, loadTableData])
 }
 
+function useEditTargetFollowsReadOnly(tab: TableDataTab) {
+  const isConnectionReadOnly = useIsConnectionReadOnly(tab.connectionId)
+  const refreshEditTarget = useTableDataStore((state) => state.refreshEditTarget)
+  useEffect(() => {
+    refreshEditTarget(tab.id)
+  }, [isConnectionReadOnly, refreshEditTarget, tab.id])
+}
+
 export function useTableDataTabLifecycle(lifecycle: TableDataTabLifecycle) {
   const { tab, isActive, hasPendingNavigation, isExportDialogOpen } = lifecycle
   const tabId = tab.id
   const setBlockingNavigation = useWorkspaceStore((state) => state.setBlockingNavigation)
   const closeExportDialog = useTableDataStore((state) => state.closeExportDialog)
   useInitialTableLoad(tab, isActive)
+  useEditTargetFollowsReadOnly(tab)
 
   useEffect(() => {
     setBlockingNavigation(tabId, hasPendingNavigation)

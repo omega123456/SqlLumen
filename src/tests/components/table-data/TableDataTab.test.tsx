@@ -120,13 +120,22 @@ describe('TableDataTab', () => {
     expect(screen.queryByTestId('btn-discard')).not.toBeInTheDocument()
   })
 
-  it('shows the read-only badge on a read-only connection', async () => {
+  it('shows the read-only badge and makes editing follow the read-only flag live', async () => {
+    const editTableName = () => useTableDataStore.getState().tabs[TAB_ID]?.view.editTarget.tableName
     setupTestConnection(true)
     render(<TableDataTab tab={makeTab()} />)
 
     await waitForTableDataLoaded()
 
     expect(screen.getByTestId('readonly-badge')).toBeInTheDocument()
+    expect(editTableName()).toBeNull()
+
+    act(() => setupTestConnection(false))
+    await waitFor(() => expect(editTableName()).toBe('mydb.users'))
+
+    act(() => setupTestConnection(true))
+    await waitFor(() => expect(editTableName()).toBeNull())
+    expect(ipc.payloads('fetch_table_page')).toHaveLength(1)
   })
 
   it('shows the load error with a retry that reloads the table', async () => {

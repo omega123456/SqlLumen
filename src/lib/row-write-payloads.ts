@@ -73,6 +73,22 @@ const PRIMARY_KEY_VALUE_CONVERSION: Record<CellProjection, PrimaryKeyValueConver
   blobPlaceholders: convertBinaryPrimaryKeyValuesToEnvelopes,
 }
 
+export interface DeletePrimaryKeyInputs {
+  keyColumns: string[]
+  tableColumns: TableDataColumnMeta[]
+  values: Record<string, unknown>
+  projection: CellProjection
+}
+
+export function buildDeletePrimaryKeyValues({
+  keyColumns,
+  tableColumns,
+  values,
+  projection,
+}: DeletePrimaryKeyInputs): ConvertBinaryPkValuesResult {
+  return PRIMARY_KEY_VALUE_CONVERSION[projection](keyColumns, tableColumns, values)
+}
+
 function coercedUpdatedValues(
   editState: RowEditState,
   tableColumns: TableDataColumnMeta[]

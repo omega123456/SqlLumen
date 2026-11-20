@@ -52,6 +52,7 @@ export interface DataViewWrites {
 export interface DataViewLifecycle {
   onExpired: (ref: DataViewSurfaceRef) => void
   onEditClosed?: (ref: DataViewSurfaceRef) => void
+  isReplacingSlot?: (ref: DataViewSurfaceRef) => boolean
 }
 
 export interface StoredBlobTable {

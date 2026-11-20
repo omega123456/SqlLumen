@@ -4,6 +4,7 @@ import { getTableForeignKeys } from '../../lib/schema-commands'
 import { cancelQuery as cancelQueryCmd, evictResults } from '../../lib/query-commands'
 import { dropTabResultWindows, seedResultWindow } from '../../lib/result-window-cache'
 import { mapSingleColumnForeignKeys } from '../../lib/foreign-key-utils'
+import { hasPendingRowChanges } from '../../lib/row-edit-state'
 import { logFrontend } from '../../lib/app-log-commands'
 import { describeQueryFailure, toErrorMessage } from '../../lib/error-message'
 import { showErrorToast, showSuccessToast } from '../toast-store'
@@ -162,7 +163,6 @@ function fetchedPageViewPatch(fetched: FetchedPage, meta: TableDataMeta): DataVi
     checked: { ranges: [], viewVersion: result.viewVersion },
     spec: { applying: null, error: null },
     window: { pendingRange: null, failedRange: null },
-    edit: DEFAULT_EDIT_SESSION,
     editTarget: tableEditTargetOf(tab.table, meta),
     residency: {
       rows: residencyAfterFetch(fetched.isStillVisible, tab.view.residency.rows),
@@ -214,11 +214,18 @@ function recordPageFetchFailure(tabId: string, error: unknown) {
   })
 }
 
+function warnIfPendingEditIsDropped(tabId: string, tab: TableDataTabState) {
+  if (!hasPendingRowChanges(tab.view.edit.state)) return
+  logFrontend('warn', `[table-data] a page fetch for tab ${tabId} dropped unsaved row changes`)
+}
+
 function startPageFetch(tabId: string, tab: TableDataTabState, page: number) {
   const isDifferentPage = tab.page.currentPage !== page
+  const scrollPatch = isDifferentPage ? RESET_SCROLL : {}
+  warnIfPendingEditIsDropped(tabId, tab)
   patchTableTab(tabId, {
     page: { isLoading: true, isCancelling: false, error: null },
-    view: isDifferentPage ? RESET_SCROLL : undefined,
+    view: { ...scrollPatch, edit: DEFAULT_EDIT_SESSION },
   })
 }
 
@@ -282,6 +289,14 @@ export async function refreshData(tabId: string): Promise<void> {
   await fetchPage(tabId, { page: tab.page.currentPage, select: null })
 }
 
+export function refreshEditTarget(tabId: string): void {
+  const tab = tableTabOf(tabId)
+  if (!tab) return
+  const hasLoadedPage = tab.view.slot.queryId !== null
+  if (!hasLoadedPage) return
+  patchTableTab(tabId, { view: { editTarget: tableEditTargetOf(tab.table, tab.meta) } })
+}
+
 export async function setPageSize(tabId: string, newPageSize: number): Promise<void> {
   patchTableTab(tabId, { page: { pageSize: newPageSize }, view: RESET_SCROLL })
   await fetchPage(tabId, { page: FIRST_TABLE_PAGE, select: null })
@@ -296,5 +311,6 @@ export function pageActions() {
     cancelLoad,
     refreshData,
     setPageSize,
+    refreshEditTarget,
   }
 }

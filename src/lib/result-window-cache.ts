@@ -69,12 +69,18 @@ export const VIEW_SUPERSEDED_PREFIX = 'view_superseded:'
 
 export const RESULTS_EXPIRED_TOKEN = 'results_expired'
 
+export const ROW_CEILING_REACHED_PREFIX = 'row_ceiling_reached:'
+
 export function isViewStaleError(error: unknown): boolean {
   return toErrorMessage(error).startsWith(VIEW_STALE_PREFIX)
 }
 
 export function isResultsExpiredError(error: unknown): boolean {
   return toErrorMessage(error).includes(RESULTS_EXPIRED_TOKEN)
+}
+
+export function isRowCeilingReachedError(error: unknown): boolean {
+  return toErrorMessage(error).startsWith(ROW_CEILING_REACHED_PREFIX)
 }
 
 export function isAbortError(error: unknown): boolean {

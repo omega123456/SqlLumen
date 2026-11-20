@@ -98,6 +98,10 @@ function editedRowPatch(
   }
 }
 
+function isSlotBeingReplaced(ref: DataViewSurfaceRef): boolean {
+  return routeOf(ref).lifecycle.isReplacingSlot?.(ref) ?? false
+}
+
 function isEditingRowAt(view: DataViewState, rowIndex: number): boolean {
   return view.edit.state !== null && view.edit.rowIndex === rowIndex
 }
@@ -106,6 +110,7 @@ export function ensureEditState(ref: DataViewSurfaceRef, rowIndex: number): Data
   const view = readView(ref)
   if (!view) return null
   if (isEditingRowAt(view, rowIndex)) return view
+  if (isSlotBeingReplaced(ref)) return null
 
   const cached = rowAt(ref, view, rowIndex)
   if (!cached) return null
@@ -116,6 +121,7 @@ export function ensureEditState(ref: DataViewSurfaceRef, rowIndex: number): Data
 }
 
 export function startEditingRow(ref: DataViewSurfaceRef, rowIndex: number, cachedRow?: CachedRow) {
+  if (isSlotBeingReplaced(ref)) return
   const view = readView(ref)
   if (!view) return
   const cached = cachedRow ?? rowAt(ref, view, rowIndex)
@@ -289,6 +295,7 @@ export function openDraftRow(
   ref: DataViewSurfaceRef,
   { view, draft, keyColumns }: DraftRowRequest
 ) {
+  if (isSlotBeingReplaced(ref)) return
   const draftRowIndex = view.slot.viewRowCount
   updateView(ref, {
     selection: { rowIndex: draftRowIndex },

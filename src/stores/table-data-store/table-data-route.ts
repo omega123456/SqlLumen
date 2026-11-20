@@ -1,11 +1,16 @@
 import type { ResultViewSpec } from '../../types/schema'
 import type { InsertedColumnValue } from '../../lib/table-data-commands'
 import { appendResultRow } from '../../lib/query-commands'
-import { appendResultWindowRow, applyResultView } from '../../lib/result-window-cache'
+import {
+  appendResultWindowRow,
+  applyResultView,
+  isRowCeilingReachedError,
+} from '../../lib/result-window-cache'
 import { projectSavedCellValue } from '../../lib/row-write-payloads'
 import { hasPendingRowChanges } from '../../lib/row-edit-state'
 import { logFrontend } from '../../lib/app-log-commands'
 import { toErrorMessage } from '../../lib/error-message'
+import { showWarningToast } from '../toast-store'
 import {
   registerDataViewRoute,
   type DataViewSelector,
@@ -78,6 +83,19 @@ async function refetchCurrentPage(tabId: string, error: unknown): Promise<boolea
   return true
 }
 
+function warnInsertedRowNotShown(): boolean {
+  showWarningToast(
+    'Row saved',
+    "The page is at the row limit, so the new row isn't shown. Go to another page or raise the results row limit to see it."
+  )
+  return false
+}
+
+async function recoverFromRefusedAppend(tabId: string, error: unknown): Promise<boolean> {
+  if (isRowCeilingReachedError(error)) return warnInsertedRowNotShown()
+  return refetchCurrentPage(tabId, error)
+}
+
 async function appendInsertedRow(
   ref: DataViewSurfaceRef,
   inserted: InsertedColumnValue[]
@@ -113,7 +131,7 @@ async function appendInsertedRow(
     })
     return true
   } catch (error) {
-    return refetchCurrentPage(ref.tabId, error)
+    return recoverFromRefusedAppend(ref.tabId, error)
   }
 }
 
@@ -189,6 +207,7 @@ export function registerTableDataRoute() {
     lifecycle: {
       onExpired: expireTablePage,
       onEditClosed: (ref) => refetchExpiredPageWhenSettled(ref.tabId),
+      isReplacingSlot: (ref) => tableTabOf(ref.tabId)?.page.isLoading ?? false,
     },
     blobs: {
       storedTable: tablePageBlobTable,
