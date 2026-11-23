@@ -1,5 +1,5 @@
 use crate::timestamps::unix_seconds_now;
-use rusqlite::{params, Connection, OptionalExtension, Result};
+use rusqlite::{Connection, OptionalExtension, Result, params};
 
 pub fn save_schema_cache_snapshot(
     conn: &Connection,

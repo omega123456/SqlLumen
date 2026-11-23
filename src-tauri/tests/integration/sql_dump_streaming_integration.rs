@@ -9,7 +9,7 @@ use std::io::Cursor;
 use std::sync::{Arc, RwLock};
 
 use sqllumen_lib::commands::sql_dump::stream_to_dump;
-use sqllumen_lib::export::sql_dump::{SqlDumpValue, INSERT_BATCH_SIZE};
+use sqllumen_lib::export::sql_dump::{INSERT_BATCH_SIZE, SqlDumpValue};
 use sqllumen_lib::state::{DumpJobProgress, DumpJobStatus};
 
 /// Create a fresh progress map with a single test job entry.

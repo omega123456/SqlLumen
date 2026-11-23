@@ -6,9 +6,9 @@ use std::time::Duration;
 use mysql_async::{DriverError, Opts};
 use sqllumen_lib::db::ssl_mode::SslMode;
 use sqllumen_lib::mysql::connection_options::{
+    ACCESS_DENIED_ERROR_CODES, CLIENT_IDENTITY_INCOMPLETE_MESSAGE, ConnectFailure, ConnectTimedOut,
     connect_preferring_tls, connect_timed_out_error, connect_timeout, falls_back_to_plaintext,
-    mysql_opts, ConnectFailure, ConnectTimedOut, ACCESS_DENIED_ERROR_CODES,
-    CLIENT_IDENTITY_INCOMPLETE_MESSAGE,
+    mysql_opts,
 };
 use sqllumen_lib::mysql::pool::{ConnectionParams, SslSettings};
 use std::sync::Mutex;
@@ -376,7 +376,7 @@ mod coverage_stubs {
 mod sockets {
     use super::*;
     use crate::common::mock_session::mock_pool_with_params;
-    use crate::common::silent_listener::{closed_port, SilentListener};
+    use crate::common::silent_listener::{SilentListener, closed_port};
     use sqllumen_lib::mysql::connection_options::connect_within_timeout;
     use std::time::Instant;
 
@@ -431,7 +431,7 @@ mod sockets {
 mod tls_handshakes {
     use super::*;
     use crate::common::mock_mysql_server::{MockMySqlServer, MockScript};
-    use crate::common::tls_fixtures::{server_tls_config, ClientCertificates, ServerCertificate};
+    use crate::common::tls_fixtures::{ClientCertificates, ServerCertificate, server_tls_config};
     use sqllumen_lib::mysql::connection_options::{connect_with_params, connect_within_timeout};
 
     async fn tls_server(
@@ -567,7 +567,7 @@ mod editor_session_timeout {
     use crate::common::mock_session::{
         mock_connection_params, mock_pool, register_mock_connection,
     };
-    use crate::common::silent_listener::{closed_port, SilentListener};
+    use crate::common::silent_listener::{SilentListener, closed_port};
     use sqllumen_lib::state::AppState;
     use std::time::Instant;
 

@@ -25,7 +25,7 @@ async fn fetch_metadata_rows(
     pool: &crate::mysql::pool::BackgroundPool,
     query: MetadataQuery,
 ) -> Result<Vec<DecodedRow>, String> {
-    use crate::mysql::logged_query::{fetch_decoded_pooled, LoggedStatement};
+    use crate::mysql::logged_query::{LoggedStatement, fetch_decoded_pooled};
 
     fetch_decoded_pooled(pool, LoggedStatement::text(&query.sql))
         .await

@@ -3,10 +3,10 @@
 use crate::common;
 
 use crate::common::utc_timestamps::utc_timestamp;
-use jiff::{civil, SignedDuration, Timestamp};
+use jiff::{SignedDuration, Timestamp, civil};
 use sqllumen_lib::commands::logs::{export_logs_impl, list_logs_impl};
 use sqllumen_lib::db::migrations::run_log_migrations;
-use sqllumen_lib::logging::log_store::{insert_log_entries, NewLogEntry, LOG_PAGE_SIZE};
+use sqllumen_lib::logging::log_store::{LOG_PAGE_SIZE, NewLogEntry, insert_log_entries};
 use sqllumen_lib::timestamps::{days_before, log_timestamp};
 use tempfile::tempdir;
 
@@ -74,10 +74,11 @@ fn list_logs_impl_applies_threshold_and_paging() {
     assert_eq!(first_page.page_size, LOG_PAGE_SIZE);
     assert_eq!(first_page.total, 65);
     assert_eq!(first_page.entries.len() as i64, LOG_PAGE_SIZE);
-    assert!(first_page
+    let every_entry_is_error = first_page
         .entries
         .iter()
-        .all(|entry| entry.level == "ERROR"));
+        .all(|entry| entry.level == "ERROR");
+    assert!(every_entry_is_error);
     assert_eq!(
         first_page
             .entries

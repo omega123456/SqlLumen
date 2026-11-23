@@ -3,11 +3,11 @@ use std::fmt;
 use std::sync::{Arc, Mutex};
 use tracing::Level;
 use tracing::Subscriber;
+use tracing_subscriber::Registry;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::Registry;
 
 #[derive(Clone)]
 struct Captured {
@@ -66,8 +66,7 @@ where
         .with(CaptureLayer::new(events.clone()));
     let _guard = subscriber.set_default();
     f();
-    let out = events.lock().unwrap().clone();
-    out
+    events.lock().unwrap().clone()
 }
 
 #[test]

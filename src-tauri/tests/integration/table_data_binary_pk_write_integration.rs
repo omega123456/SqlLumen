@@ -14,11 +14,11 @@
 mod binary_pk_write_integration {
     use crate::common::blob_step_helpers::{connect_mock_pool, len_step, val_step};
     use crate::common::mock_mysql_server::{MockCell, MockMySqlServer, MockQueryStep};
-    use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+    use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
     use serde_json::json;
     use sqllumen_lib::mysql::table_data::{
-        decode_blob_envelope, delete_table_row_impl, fetch_blob_value_impl, update_table_row_impl,
-        BlobBind,
+        BlobBind, decode_blob_envelope, delete_table_row_impl, fetch_blob_value_impl,
+        update_table_row_impl,
     };
     use std::collections::HashMap;
 

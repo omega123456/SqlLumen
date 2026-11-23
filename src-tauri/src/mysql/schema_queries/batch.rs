@@ -2,7 +2,7 @@
 use crate::mysql::cell_values::DecodedRow;
 #[cfg(not(coverage))]
 use crate::mysql::logged_query::{
-    fetch_decoded_pooled, placeholder_list, text_values, LoggedStatement,
+    LoggedStatement, fetch_decoded_pooled, placeholder_list, text_values,
 };
 #[cfg(not(coverage))]
 use crate::mysql::pool::BackgroundPool;
@@ -10,7 +10,7 @@ use crate::mysql::query_executor::{TriggerMeta, ViewMeta};
 use std::collections::HashMap;
 
 #[cfg(not(coverage))]
-use super::connection_keys::{aggregate_index_rows, IndexRowColumns};
+use super::connection_keys::{IndexRowColumns, aggregate_index_rows};
 use super::{ForeignKeyInfo, IndexInfo};
 
 #[cfg(not(coverage))]

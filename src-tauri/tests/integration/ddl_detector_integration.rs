@@ -1,4 +1,4 @@
-use sqllumen_lib::mysql::ddl_detector::{detect_ddl_tables, DdlDetectionResult};
+use sqllumen_lib::mysql::ddl_detector::{DdlDetectionResult, detect_ddl_tables};
 
 fn table(database: Option<&str>, table: &str) -> (Option<String>, String) {
     (database.map(str::to_string), table.to_string())

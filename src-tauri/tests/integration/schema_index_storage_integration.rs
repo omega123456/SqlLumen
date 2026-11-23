@@ -963,9 +963,11 @@ fn test_delete_all_signatures_scoped_to_connection() {
 
     storage::delete_all_signatures(&conn, "conn-A").expect("wipe A");
 
-    assert!(storage::get_signatures_for_connection(&conn, "conn-A")
-        .expect("read A")
-        .is_empty());
+    assert!(
+        storage::get_signatures_for_connection(&conn, "conn-A")
+            .expect("read A")
+            .is_empty()
+    );
     assert_eq!(
         storage::get_signatures_for_connection(&conn, "conn-B")
             .expect("read B")
@@ -979,7 +981,9 @@ fn test_delete_all_signatures_scoped_to_connection() {
 fn test_upsert_signatures_empty_batch_is_noop() {
     let conn = setup_db(4);
     storage::upsert_signatures(&conn, "conn-1", &[]).expect("empty upsert should succeed");
-    assert!(storage::get_signatures_for_connection(&conn, "conn-1")
-        .expect("read")
-        .is_empty());
+    assert!(
+        storage::get_signatures_for_connection(&conn, "conn-1")
+            .expect("read")
+            .is_empty()
+    );
 }

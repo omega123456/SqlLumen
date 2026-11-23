@@ -13,20 +13,20 @@ use std::time::{Duration, Instant};
 
 use opensrv_mysql::ErrorKind;
 use serde_json::json;
-use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
+use sqllumen_lib::commands::connections::{SaveConnectionInput, save_connection_impl};
 use sqllumen_lib::commands::mysql::open_connection_impl;
 use sqllumen_lib::commands::settings::{load_results_max_rows, set_setting_impl};
 use sqllumen_lib::mysql::query_executor::{
-    cancel_query_impl, execute_call_query_impl, execute_multi_query_impl, execute_query_impl,
-    reexecute_single_result_impl, FullExportBlockedReason, RunDatabase, StoredResult,
+    FullExportBlockedReason, RunDatabase, StoredResult, cancel_query_impl, execute_call_query_impl,
+    execute_multi_query_impl, execute_query_impl, reexecute_single_result_impl,
 };
 use sqllumen_lib::mysql::result_view::ResultViewSpec;
 use sqllumen_lib::state::AppState;
 
 use crate::common;
 use crate::common::editor_session_fixtures::{
-    call_query, database_step, editor_query, n_column, n_row, n_stream, single_row_step,
-    EDITOR_TAB, KILL_FIRST_EDITOR_SESSION,
+    EDITOR_TAB, KILL_FIRST_EDITOR_SESSION, call_query, database_step, editor_query, n_column,
+    n_row, n_stream, single_row_step,
 };
 use crate::common::log_capture::LogCaptureGuard;
 use crate::common::mock_mysql_server::{
@@ -200,9 +200,11 @@ async fn a_failed_kill_falls_back_to_draining_and_is_still_a_truncated_success()
     assert!(result.truncated);
     assert_eq!(result.total_rows, 5);
     assert_eq!(server.kill_count(), 0, "the KILL was refused");
-    assert!(capture
-        .contents()
-        .contains("KILL QUERY failed; draining the rest of the result instead"));
+    assert!(
+        capture
+            .contents()
+            .contains("KILL QUERY failed; draining the rest of the result instead")
+    );
     assert_eq!(
         stored(&state, &conn, 0).run_database,
         RunDatabase::NoDatabase

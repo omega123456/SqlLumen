@@ -7,9 +7,9 @@ use crate::state::AppState;
 use super::embedding_to_bytes;
 use super::storage::{global_vec_table_name, group_vec_table_name, vec_table_name};
 use super::types::{AiMemory, MemoryScope};
-use super::{read_embedding_config, EmbeddingConfig};
+use super::{EmbeddingConfig, read_embedding_config};
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 
 struct ScoredMemory {
     memory: AiMemory,

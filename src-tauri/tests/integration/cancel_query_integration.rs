@@ -293,8 +293,8 @@ mod mock_cancel {
         state.registry.insert(connection_id.to_string(), entry);
     }
 
-    async fn start_mock_accepting_kill(
-    ) -> (MockMySqlServer, sqllumen_lib::mysql::pool::BackgroundPool) {
+    async fn start_mock_accepting_kill()
+    -> (MockMySqlServer, sqllumen_lib::mysql::pool::BackgroundPool) {
         let server = MockMySqlServer::start_script(vec![]).await;
 
         let pool = crate::common::mock_session::mock_pool(server.port);

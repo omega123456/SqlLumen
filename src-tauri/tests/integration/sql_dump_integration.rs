@@ -5,7 +5,7 @@
 
 use crate::common;
 
-use sqllumen_lib::export::sql_dump::{self, DumpOptions, SqlDumpValue, INSERT_BATCH_SIZE};
+use sqllumen_lib::export::sql_dump::{self, DumpOptions, INSERT_BATCH_SIZE, SqlDumpValue};
 use sqllumen_lib::state::{DumpJobProgress, DumpJobStatus};
 
 // ── Header/Footer generation ──────────────────────────────────────────────
@@ -41,7 +41,7 @@ fn test_write_footer_restores_settings() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_dump_whose_connection_fails_ends_failed() {
     use sqllumen_lib::commands::sql_dump::{
-        get_dump_progress_impl, start_sql_dump_impl, DumpObjectType, DumpTableEntry, StartDumpInput,
+        DumpObjectType, DumpTableEntry, StartDumpInput, get_dump_progress_impl, start_sql_dump_impl,
     };
     use std::time::{Duration, Instant};
 

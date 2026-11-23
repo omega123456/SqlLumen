@@ -2,8 +2,8 @@ use rusqlite::{Connection, Result};
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    load_table_chunk, multi_query_search_with_hints, GraphExpansion, ScoredTable, SearchConfigExt,
-    SearchQueries, SearchResult,
+    GraphExpansion, ScoredTable, SearchConfigExt, SearchQueries, SearchResult, load_table_chunk,
+    multi_query_search_with_hints,
 };
 use crate::schema_index::graph;
 

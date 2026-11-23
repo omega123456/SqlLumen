@@ -6,7 +6,7 @@
 
 use rusqlite::Connection;
 use sqllumen_lib::init_sqlite_vec;
-use sqllumen_lib::schema_index::search::{multi_query_search_configured, SearchConfig};
+use sqllumen_lib::schema_index::search::{SearchConfig, multi_query_search_configured};
 use sqllumen_lib::schema_index::storage;
 
 use crate::common;

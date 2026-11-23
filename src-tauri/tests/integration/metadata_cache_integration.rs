@@ -2,8 +2,8 @@ use crate::common;
 
 use sqllumen_lib::mysql::metadata_cache::MetadataCache;
 use sqllumen_lib::mysql::metadata_cache::{
-    evict_metadata_cache_for_connection, evict_metadata_cache_for_database,
-    evict_metadata_cache_for_tables, MetadataCacheInvalidatedPayload,
+    MetadataCacheInvalidatedPayload, evict_metadata_cache_for_connection,
+    evict_metadata_cache_for_database, evict_metadata_cache_for_tables,
 };
 use sqllumen_lib::mysql::table_data::{PrimaryKeyInfo, TableDataColumnMeta};
 use std::sync::Arc;
@@ -113,11 +113,13 @@ fn evict_table_removes_only_requested_entry() {
         )),
         None
     );
-    assert!(cache
-        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-            "conn-1", "app_db", "orders"
-        ))
-        .is_some());
+    assert!(
+        cache
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "conn-1", "app_db", "orders"
+            ))
+            .is_some()
+    );
 }
 
 #[test]
@@ -158,11 +160,13 @@ fn evict_connection_removes_all_entries_for_that_connection() {
         )),
         None
     );
-    assert!(cache
-        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-            "conn-2", "app_db", "users"
-        ))
-        .is_some());
+    assert!(
+        cache
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "conn-2", "app_db", "users"
+            ))
+            .is_some()
+    );
 }
 
 #[test]
@@ -221,13 +225,15 @@ fn concurrent_access_is_safe() {
                 },
             );
 
-            assert!(cache
-                .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-                    "conn-1",
-                    "app_db",
-                    &table_name
-                ))
-                .is_some());
+            assert!(
+                cache
+                    .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                        "conn-1",
+                        "app_db",
+                        &table_name
+                    ))
+                    .is_some()
+            );
         }));
     }
 
@@ -236,13 +242,15 @@ fn concurrent_access_is_safe() {
     }
 
     for index in 0..8 {
-        assert!(cache
-            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-                "conn-1",
-                "app_db",
-                &format!("users_{index}")
-            ))
-            .is_some());
+        assert!(
+            cache
+                .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                    "conn-1",
+                    "app_db",
+                    &format!("users_{index}")
+                ))
+                .is_some()
+        );
     }
 }
 
@@ -281,18 +289,22 @@ fn evict_metadata_cache_for_tables_uses_default_database_for_unqualified_names()
             tables: vec!["app_db.users".to_string()],
         }
     );
-    assert!(state
-        .metadata_cache
-        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-            "conn-1", "app_db", "users"
-        ))
-        .is_none());
-    assert!(state
-        .metadata_cache
-        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-            "conn-1", "other_db", "users"
-        ))
-        .is_some());
+    assert!(
+        state
+            .metadata_cache
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "conn-1", "app_db", "users"
+            ))
+            .is_none()
+    );
+    assert!(
+        state
+            .metadata_cache
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "conn-1", "other_db", "users"
+            ))
+            .is_some()
+    );
 }
 
 #[test]
@@ -330,20 +342,24 @@ fn evict_metadata_cache_for_tables_falls_back_to_connection_when_database_is_unk
             tables: vec![],
         }
     );
-    assert!(state
-        .metadata_cache
-        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-            "conn-1", "app_db", "users"
-        ))
-        .is_none());
-    assert!(state
-        .metadata_cache
-        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-            "conn-1",
-            "analytics",
-            "events"
-        ))
-        .is_none());
+    assert!(
+        state
+            .metadata_cache
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "conn-1", "app_db", "users"
+            ))
+            .is_none()
+    );
+    assert!(
+        state
+            .metadata_cache
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "conn-1",
+                "analytics",
+                "events"
+            ))
+            .is_none()
+    );
 }
 
 #[test]
@@ -374,20 +390,24 @@ fn evict_metadata_cache_for_database_removes_only_matching_database() {
             tables: vec!["app_db.users".to_string()],
         }
     );
-    assert!(state
-        .metadata_cache
-        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-            "conn-1", "app_db", "users"
-        ))
-        .is_none());
-    assert!(state
-        .metadata_cache
-        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-            "conn-1",
-            "analytics",
-            "events"
-        ))
-        .is_some());
+    assert!(
+        state
+            .metadata_cache
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "conn-1", "app_db", "users"
+            ))
+            .is_none()
+    );
+    assert!(
+        state
+            .metadata_cache
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "conn-1",
+                "analytics",
+                "events"
+            ))
+            .is_some()
+    );
 }
 
 #[test]
@@ -418,16 +438,20 @@ fn evict_metadata_cache_for_connection_removes_all_entries_for_connection() {
             tables: vec![],
         }
     );
-    assert!(state
-        .metadata_cache
-        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-            "conn-1", "app_db", "users"
-        ))
-        .is_none());
-    assert!(state
-        .metadata_cache
-        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-            "conn-2", "app_db", "users"
-        ))
-        .is_some());
+    assert!(
+        state
+            .metadata_cache
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "conn-1", "app_db", "users"
+            ))
+            .is_none()
+    );
+    assert!(
+        state
+            .metadata_cache
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "conn-2", "app_db", "users"
+            ))
+            .is_some()
+    );
 }

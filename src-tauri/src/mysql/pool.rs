@@ -5,7 +5,7 @@ use mysql_async::{Conn, Opts, OptsBuilder, PoolConstraints, PoolOpts};
 
 use crate::db::ssl_mode::SslMode;
 use crate::mysql::connection_options::{
-    checkout_within_timeout, connect_preferring_tls, connect_timeout, ConnectFailure,
+    ConnectFailure, checkout_within_timeout, connect_preferring_tls, connect_timeout,
 };
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -122,7 +122,7 @@ impl BackgroundPool {
 
     #[cfg(not(coverage))]
     pub async fn checkout_for_transfer(&self) -> Result<Conn, String> {
-        use crate::mysql::logged_query::{execute, LoggedStatement};
+        use crate::mysql::logged_query::{LoggedStatement, execute};
 
         let mut conn = self.checkout().await.map_err(|error| error.to_string())?;
         execute(&mut conn, LoggedStatement::text(TRANSFER_TIME_ZONE_SQL))
@@ -139,7 +139,7 @@ impl BackgroundPool {
 
     #[cfg(not(coverage))]
     pub async fn kill_query(&self, kill: KillQuery) -> Result<(), KillQueryFailure> {
-        use crate::mysql::logged_query::{execute, LoggedStatement};
+        use crate::mysql::logged_query::{LoggedStatement, execute};
 
         let mut conn = checkout_within_timeout(&self.pool, kill.checkout_timeout)
             .await
@@ -263,7 +263,7 @@ async fn opened_test_pool(pool: BackgroundPool) -> OpenedPool {
 }
 
 async fn read_server_version(conn: &mut Conn) -> String {
-    use crate::mysql::logged_query::{fetch_first_decoded, LoggedStatement};
+    use crate::mysql::logged_query::{LoggedStatement, fetch_first_decoded};
 
     let statement = LoggedStatement::text(SERVER_VERSION_SQL);
     let version = match fetch_first_decoded(conn, statement).await {

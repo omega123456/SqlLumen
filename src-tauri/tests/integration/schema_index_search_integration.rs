@@ -4,16 +4,16 @@
 use rusqlite::Connection;
 use sqllumen_lib::init_sqlite_vec;
 use sqllumen_lib::schema_index::search::{
+    RetrievalHints, SearchConfig, SearchConfigExt, SearchResult, TableHint, TableRef,
     apply_graph_expansion, multi_query_search, multi_query_search_configured,
-    multi_query_search_extended, multi_query_search_with_hints, RetrievalHints, SearchConfig,
-    SearchConfigExt, SearchResult, TableHint, TableRef,
+    multi_query_search_extended, multi_query_search_with_hints,
 };
 use sqllumen_lib::schema_index::storage;
 use sqllumen_lib::schema_index::types::{ChunkInsert, ChunkType, FkEdge};
 
 use crate::common;
 use crate::common::schema_index_chunks::{
-    insert_default_table_chunk, insert_table_chunk, TestTableChunk, DEFAULT_CONNECTION_ID,
+    DEFAULT_CONNECTION_ID, TestTableChunk, insert_default_table_chunk, insert_table_chunk,
 };
 
 const DIM: usize = 4;

@@ -32,9 +32,9 @@ mod coverage_stubs {
     use crate::common::mock_mysql_server::MockMySqlServer;
     use crate::common::mock_session::mock_connection;
     use sqllumen_lib::mysql::logged_query::{
-        execute, execute_pooled, fetch_all, fetch_all_pooled, fetch_decoded, fetch_first,
-        fetch_first_decoded, fetch_first_pooled, stream, stream_bound, stream_text,
-        UNAVAILABLE_IN_COVERAGE_MESSAGE,
+        UNAVAILABLE_IN_COVERAGE_MESSAGE, execute, execute_pooled, fetch_all, fetch_all_pooled,
+        fetch_decoded, fetch_first, fetch_first_decoded, fetch_first_pooled, stream, stream_bound,
+        stream_text,
     };
 
     fn is_unavailable(error: &mysql_async::Error) -> bool {
@@ -108,8 +108,8 @@ mod against_the_fake_server {
     use sqllumen_lib::mysql::cell_values::DecodedRow;
     use sqllumen_lib::mysql::connection_options::{connect_within_timeout, mysql_opts};
     use sqllumen_lib::mysql::logged_query::{
-        execute, execute_pooled, fetch_all, fetch_all_pooled, fetch_first, fetch_first_pooled,
-        query_multi_result, stream_bound, stream_text, LoggedRowStream,
+        LoggedRowStream, execute, execute_pooled, fetch_all, fetch_all_pooled, fetch_first,
+        fetch_first_pooled, query_multi_result, stream_bound, stream_text,
     };
     use sqllumen_lib::mysql::pool::{ConnectionParams, SslSettings};
     use std::time::Duration;

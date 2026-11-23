@@ -11,7 +11,7 @@ use sqllumen_lib::schema_index::search::multi_query_search;
 use sqllumen_lib::schema_index::storage;
 
 use crate::common;
-use crate::common::schema_index_chunks::{insert_table_chunk, TestTableChunk};
+use crate::common::schema_index_chunks::{TestTableChunk, insert_table_chunk};
 
 const DIM: usize = 4;
 

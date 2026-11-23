@@ -352,8 +352,8 @@ pub fn should_cancel(progress: &CopyJobProgress) -> bool {
 
 #[cfg(not(coverage))]
 pub use engine::{
+    CopyConnections, CopyJob, CopyJobMap, DatabaseEncoding, ResolvedTargetPool, SourceTable,
     count_source_rows, ensure_target_database, open_pool_for_profile, read_max_allowed_packet,
     read_source_charset, resolve_target_pool, run_copy, run_target_statement,
-    target_database_exists, CopyConnections, CopyJob, CopyJobMap, DatabaseEncoding,
-    ResolvedTargetPool, SourceTable,
+    target_database_exists,
 };

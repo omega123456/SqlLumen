@@ -4,7 +4,7 @@ use std::sync::Arc;
 use mysql_async::prelude::ColumnIndex;
 use mysql_async::{Column, Value};
 
-use super::{decode_owned_values, CellValue};
+use super::{CellValue, decode_owned_values};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DecodedRow {

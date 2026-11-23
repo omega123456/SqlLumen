@@ -3,10 +3,10 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::mysql::cell_values::DecodedRow;
-use crate::mysql::logged_query::{fetch_decoded_pooled, LoggedStatement};
+use crate::mysql::logged_query::{LoggedStatement, fetch_decoded_pooled};
 use crate::mysql::pool::BackgroundPool;
 
-use super::mysql_fetch::{decode_number, decode_string, is_system_schema, TableKey};
+use super::mysql_fetch::{TableKey, decode_number, decode_string, is_system_schema};
 
 const SYSTEM_SCHEMA_FILTER: &str =
     "TABLE_SCHEMA NOT IN ('information_schema','mysql','performance_schema','sys')";

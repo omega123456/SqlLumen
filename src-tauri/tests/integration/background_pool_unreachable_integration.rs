@@ -4,14 +4,14 @@
 
 use std::time::{Duration, Instant};
 
-use sqllumen_lib::commands::processlist::{kill_queries_impl, KillQueriesRequest};
+use sqllumen_lib::commands::processlist::{KillQueriesRequest, kill_queries_impl};
 use sqllumen_lib::commands::sql_dump::{
-    get_import_progress_impl, start_sql_import_impl, StartImportInput,
+    StartImportInput, get_import_progress_impl, start_sql_import_impl,
 };
 use sqllumen_lib::mysql::connection_options::connect_timed_out_error;
 use sqllumen_lib::mysql::logged_query::{
-    execute_pooled, fetch_first_decoded_pooled, fetch_first_pooled, placeholder_list, text_values,
-    LoggedStatement,
+    LoggedStatement, execute_pooled, fetch_first_decoded_pooled, fetch_first_pooled,
+    placeholder_list, text_values,
 };
 use sqllumen_lib::mysql::pool::{KillQuery, KillQueryFailure};
 use sqllumen_lib::state::{AppState, ImportJobProgress, ImportJobStatus};
@@ -19,7 +19,7 @@ use sqllumen_lib::state::{AppState, ImportJobProgress, ImportJobStatus};
 use crate::common;
 use crate::common::log_capture::LogCaptureGuard;
 use crate::common::mock_session::{
-    register_mock_pool, unreachable_pool, MOCK_CONNECT_TIMEOUT_SECS,
+    MOCK_CONNECT_TIMEOUT_SECS, register_mock_pool, unreachable_pool,
 };
 
 const CONNECTION_ID: &str = "conn-unreachable";

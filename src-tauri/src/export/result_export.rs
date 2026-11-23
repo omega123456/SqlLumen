@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant, SystemTime};
 
 use serde::Deserialize;
 
+use super::ExportFormat;
 use super::job_retention::cleanup_terminal_jobs;
 use super::stream_writer::{RowSink, RowSinkSpec, RowWrite, XLSX_SHEET_ROW_LIMIT};
-use super::ExportFormat;
 use crate::mysql::query_executor::RunDatabase;
 use crate::mysql::result_view::ResultSlotKey;
 use crate::state::{

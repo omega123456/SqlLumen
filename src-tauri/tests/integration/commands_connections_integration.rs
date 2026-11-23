@@ -4,8 +4,8 @@ use crate::common;
 use sqllumen_lib::db::ssl_mode::SslMode;
 
 use sqllumen_lib::commands::connections::{
-    delete_connection_impl, get_connection_impl, list_connections_impl, save_connection_impl,
-    update_connection_impl, UpdateConnectionInput,
+    UpdateConnectionInput, delete_connection_impl, get_connection_impl, list_connections_impl,
+    save_connection_impl, update_connection_impl,
 };
 use sqllumen_lib::credentials;
 

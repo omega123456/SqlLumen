@@ -5,7 +5,7 @@ pub async fn execute_multi_query_internal(
     run: &crate::mysql::session::TabRun,
     batch: StatementBatch<'_>,
 ) -> Result<BatchResults, String> {
-    use crate::mysql::query_executor::{is_read_only_allowed, READ_ONLY_VIOLATION_MESSAGE};
+    use crate::mysql::query_executor::{READ_ONLY_VIOLATION_MESSAGE, is_read_only_allowed};
 
     let connection_id = run.connection_id.as_str();
     let mut guard = crate::mysql::session::acquire_for_run(state, run).await?;

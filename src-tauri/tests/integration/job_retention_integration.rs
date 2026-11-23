@@ -1,6 +1,6 @@
 //! Terminal-job retention shared by dump, import, copy and result-export job maps.
 
-use sqllumen_lib::export::job_retention::{cleanup_terminal_jobs, TERMINAL_JOB_RETENTION};
+use sqllumen_lib::export::job_retention::{TERMINAL_JOB_RETENTION, cleanup_terminal_jobs};
 use sqllumen_lib::state::{
     CopyJobProgress, CopyJobStatus, DumpJobProgress, DumpJobStatus, ImportJobProgress,
     ImportJobStatus,

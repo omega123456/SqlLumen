@@ -1,6 +1,6 @@
 #[cfg(not(coverage))]
 use crate::mysql::logged_query::{
-    fetch_decoded_pooled, fetch_first_decoded_pooled, LoggedStatement,
+    LoggedStatement, fetch_decoded_pooled, fetch_first_decoded_pooled,
 };
 #[cfg(not(coverage))]
 use crate::mysql::pool::BackgroundPool;

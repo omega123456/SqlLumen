@@ -8,9 +8,9 @@ use std::sync::Arc;
 use mysql_async::consts::{ColumnFlags, ColumnType};
 use mysql_async::{Column, Value};
 use sqllumen_lib::mysql::cell_values::{
-    cell_json, column_type_display_name, debug_text, decode_cell, decode_owned_cell,
-    float_as_mysql_prints_it, grid_cell_json, json_from_i64, json_from_u64, minus_sign, CellValue,
-    DecodedRow, GridCellVariant, JS_SAFE_INTEGER_MAX,
+    CellValue, DecodedRow, GridCellVariant, JS_SAFE_INTEGER_MAX, cell_json,
+    column_type_display_name, debug_text, decode_cell, decode_owned_cell, float_as_mysql_prints_it,
+    grid_cell_json, json_from_i64, json_from_u64, minus_sign,
 };
 
 const COLUMN_TYPE_TOKEN: &str = "MYSQL_TYPE_";
@@ -502,7 +502,7 @@ mod temporals {
 
 mod strings_and_binary {
     use super::*;
-    use base64::{engine::general_purpose::STANDARD, Engine};
+    use base64::{Engine, engine::general_purpose::STANDARD};
 
     #[test]
     fn text_types_decode_as_text() {

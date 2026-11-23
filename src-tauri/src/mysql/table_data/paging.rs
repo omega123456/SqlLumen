@@ -1,8 +1,7 @@
 use super::*;
 
 #[cfg(not(coverage))]
-const COLUMN_METADATA_SQL: &str =
-    "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, \
+const COLUMN_METADATA_SQL: &str = "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, \
                    COLUMN_DEFAULT, EXTRA \
                    FROM INFORMATION_SCHEMA.COLUMNS \
                    WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? \

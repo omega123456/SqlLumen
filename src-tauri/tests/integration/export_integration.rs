@@ -10,7 +10,7 @@ use sqllumen_lib::export::{ExportFormat, ExportOptions};
 use sqllumen_lib::mysql::query_executor::{ColumnMeta, StoredResult};
 use sqllumen_lib::mysql::registry::ConnectionRegistry;
 use sqllumen_lib::mysql::result_view::{
-    remove_result_rows_impl, set_result_view_impl, ResultViewSpec,
+    ResultViewSpec, remove_result_rows_impl, set_result_view_impl,
 };
 use sqllumen_lib::state::AppState;
 use std::io::{self, Write};

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use rust_xlsxwriter::{Format, Workbook};
 
-use super::{csv_writer, json_writer, sql_writer, xlsx_writer, ExportFormat};
+use super::{ExportFormat, csv_writer, json_writer, sql_writer, xlsx_writer};
 
 pub const XLSX_SHEET_ROW_LIMIT: u32 = 1_048_576;
 

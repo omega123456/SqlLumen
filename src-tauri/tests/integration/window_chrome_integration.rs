@@ -2,11 +2,11 @@ use sqllumen_lib::commands::window_chrome::{
     get_window_backdrop_impl, set_window_theme_impl, window_theme_error,
 };
 use sqllumen_lib::window_chrome::{
-    apply_backdrop, backdrop_for_build, backdrop_for_window, current_backdrop, native_theme,
-    WindowBackdrop, MICA_MIN_BUILD,
+    MICA_MIN_BUILD, WindowBackdrop, apply_backdrop, backdrop_for_build, backdrop_for_window,
+    current_backdrop, native_theme,
 };
-use tauri::test::{mock_builder, mock_context, noop_assets, MockRuntime};
 use tauri::Theme;
+use tauri::test::{MockRuntime, mock_builder, mock_context, noop_assets};
 
 fn build_window() -> (tauri::App<MockRuntime>, tauri::WebviewWindow<MockRuntime>) {
     let app = mock_builder()

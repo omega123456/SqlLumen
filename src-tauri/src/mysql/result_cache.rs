@@ -6,11 +6,11 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
+use moka::Expiry;
 use moka::notification::RemovalCause;
 use moka::sync::Cache;
-use moka::Expiry;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use sha2::{Digest, Sha256};
 
 use super::query_executor::StoredResult;

@@ -2,7 +2,7 @@
 //! move, and group cascade.
 
 use crate::common::insert_memory_vector_or_panic;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use sqllumen_lib::ai_memory::storage;
 use sqllumen_lib::ai_memory::types::{AiMemory, MemoryOwner, MemoryScope, MemoryVector};
 use sqllumen_lib::db::migrations::run_migrations;
@@ -265,24 +265,28 @@ fn scoped_helpers_error_when_owner_missing() {
     let conn = setup_db();
     // Connection and Group scopes require an owner id; passing None must error
     // before touching the database (covers the owner-validation branches).
-    assert!(storage::insert_memory_scoped(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Connection,
-            owner_id: None
-        },
-        "x"
-    )
-    .is_err());
-    assert!(storage::insert_memory_scoped(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Group,
-            owner_id: None
-        },
-        "x"
-    )
-    .is_err());
+    assert!(
+        storage::insert_memory_scoped(
+            &conn,
+            sqllumen_lib::ai_memory::types::MemoryOwner {
+                scope: MemoryScope::Connection,
+                owner_id: None
+            },
+            "x"
+        )
+        .is_err()
+    );
+    assert!(
+        storage::insert_memory_scoped(
+            &conn,
+            sqllumen_lib::ai_memory::types::MemoryOwner {
+                scope: MemoryScope::Group,
+                owner_id: None
+            },
+            "x"
+        )
+        .is_err()
+    );
     assert!(storage::list_memories_scoped(&conn, MemoryScope::Connection, None).is_err());
     assert!(storage::list_memories_scoped(&conn, MemoryScope::Group, None).is_err());
     assert!(storage::get_memory_texts_scoped(&conn, MemoryScope::Connection, None).is_err());
@@ -503,9 +507,10 @@ fn connection_rows_and_vectors_preserved_under_new_table_name() {
 use crate::common;
 
 use sqllumen_lib::commands::ai_memory::{
-    delete_memory_impl, list_connection_memories_impl, list_global_memories_impl,
-    list_group_memories_impl, move_memory_prepare, reembed_targets, resolve_save_owner,
-    resolve_search_owners, save_memory_impl, MemoryMovePlan, MoveMemoryRequest, SavedMemory,
+    MemoryMovePlan, MoveMemoryRequest, SavedMemory, delete_memory_impl,
+    list_connection_memories_impl, list_global_memories_impl, list_group_memories_impl,
+    move_memory_prepare, reembed_targets, resolve_save_owner, resolve_search_owners,
+    save_memory_impl,
 };
 use sqllumen_lib::db::connection_groups::insert_group;
 use sqllumen_lib::db::connections::insert_connection;
@@ -678,9 +683,11 @@ fn granular_list_commands_return_correct_level() {
         1
     );
     // A connection with nothing returns empty.
-    assert!(list_connection_memories_impl(&state, "conn-2")
-        .unwrap()
-        .is_empty());
+    assert!(
+        list_connection_memories_impl(&state, "conn-2")
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]
@@ -731,9 +738,11 @@ fn delete_memory_impl_per_scope_removes_row_and_vector() {
     .unwrap();
 
     let conn = state.db.lock().unwrap();
-    assert!(storage::list_group_memories(&conn, "g-1")
-        .unwrap()
-        .is_empty());
+    assert!(
+        storage::list_group_memories(&conn, "g-1")
+            .unwrap()
+            .is_empty()
+    );
     assert!(storage::list_global_memories(&conn).unwrap().is_empty());
 }
 
@@ -945,18 +954,24 @@ fn reembed_targets_covers_global_groups_and_connections() {
 
     let targets = reembed_targets(&state).unwrap();
     // Global + one group + one connection.
-    assert!(targets
-        .iter()
-        .any(|target| target.scope == MemoryScope::Global
-            && target.owner_id.is_none()
-            && target.owner_key == "global"));
-    assert!(targets
-        .iter()
-        .any(|target| target.scope == MemoryScope::Group
-            && target.owner_id.as_deref() == Some(group_id.as_str())
-            && target.owner_key == format!("group_{group_id}")));
-    assert!(targets
-        .iter()
-        .any(|target| target.scope == MemoryScope::Connection
-            && target.owner_id.as_deref() == Some(conn_id.as_str())));
+    assert!(
+        targets
+            .iter()
+            .any(|target| target.scope == MemoryScope::Global
+                && target.owner_id.is_none()
+                && target.owner_key == "global")
+    );
+    assert!(
+        targets
+            .iter()
+            .any(|target| target.scope == MemoryScope::Group
+                && target.owner_id.as_deref() == Some(group_id.as_str())
+                && target.owner_key == format!("group_{group_id}"))
+    );
+    assert!(
+        targets
+            .iter()
+            .any(|target| target.scope == MemoryScope::Connection
+                && target.owner_id.as_deref() == Some(conn_id.as_str()))
+    );
 }

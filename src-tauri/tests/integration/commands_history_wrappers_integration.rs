@@ -144,8 +144,7 @@ async fn fetch_table_data_validates_page_size_and_connection() {
     let zero_page = fetch_table_rows(&state, request(fetch_page_request(SESSION_ID, 0)));
     assert_eq!(zero_page.await.unwrap_err(), "page_size must be at least 1");
 
-    let missing =
-        fetch_table_rows(&state, request(fetch_page_request(MISSING_SESSION_ID, 50)));
+    let missing = fetch_table_rows(&state, request(fetch_page_request(MISSING_SESSION_ID, 50)));
     assert_eq!(missing.await.unwrap_err(), "Connection 'missing' not found");
 }
 
@@ -231,9 +230,11 @@ async fn memory_search_requires_a_known_session() {
         "query": "orders",
         "limit": 5,
     }));
-    assert!(search_session_memories(&state, &search_request)
-        .await
-        .is_err());
+    assert!(
+        search_session_memories(&state, &search_request)
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]
@@ -357,9 +358,11 @@ mod coverage_stubs {
     async fn schema_wrappers_return_read_only_errors() {
         let state = read_only_state();
         let drop_database = request(json!({ "connectionId": SESSION_ID, "name": "shop" }));
-        assert!(drop_database_with_history(&state, &drop_database)
-            .await
-            .is_err());
+        assert!(
+            drop_database_with_history(&state, &drop_database)
+                .await
+                .is_err()
+        );
 
         let table = request(json!({
             "connectionId": SESSION_ID,
@@ -403,9 +406,11 @@ mod coverage_stubs {
             "body": "CREATE VIEW `v` AS SELECT 1",
             "mode": "create",
         }));
-        assert!(save_object_with_history(&state, invalid_request)
-            .await
-            .is_err());
+        assert!(
+            save_object_with_history(&state, invalid_request)
+                .await
+                .is_err()
+        );
 
         wait_for_history_rows(&state, 4).await;
     }
@@ -435,9 +440,11 @@ mod coverage_stubs {
             "database": "shop",
             "ddl": "  ",
         }));
-        assert!(apply_table_ddl_with_history(&state, &empty_ddl)
-            .await
-            .is_err());
+        assert!(
+            apply_table_ddl_with_history(&state, &empty_ddl)
+                .await
+                .is_err()
+        );
 
         wait_for_history_rows(&state, 3).await;
     }

@@ -1,11 +1,11 @@
-use rusqlite::{params, Connection, Result};
+use rusqlite::{Connection, Result, params};
 use std::collections::{HashMap, HashSet};
 
 use super::lexical::{
-    collect_lexical_table_matches, extract_direct_table_candidates, extract_identifier_tokens,
-    load_segment_df, LexicalSignals,
+    LexicalSignals, collect_lexical_table_matches, extract_direct_table_candidates,
+    extract_identifier_tokens, load_segment_df,
 };
-use super::{row_to_search_result, SearchConfig, SearchQueries, SearchResult};
+use super::{SearchConfig, SearchQueries, SearchResult, row_to_search_result};
 use crate::schema_index::embedding_to_bytes;
 
 const RRF_K: f64 = 60.0;

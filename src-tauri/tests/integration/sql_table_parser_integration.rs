@@ -4,7 +4,7 @@
 //! including FROM clauses, JOIN types, subqueries, aliases, backtick quoting,
 //! schema qualification, and deduplication.
 
-use sqllumen_lib::mysql::sql_table_parser::{extract_tables, TableReference};
+use sqllumen_lib::mysql::sql_table_parser::{TableReference, extract_tables};
 
 // ── Helper ─────────────────────────────────────────────────────────────────────
 
@@ -584,8 +584,9 @@ fn subquery_in_join_position() {
 #[test]
 fn parenthesized_non_subquery_in_join() {
     // Parenthesized expression that isn't a subquery in JOIN position
-    let result =
-        extract_tables("SELECT * FROM users JOIN (orders INNER JOIN products ON orders.product_id = products.id) ON users.id = orders.user_id");
+    let result = extract_tables(
+        "SELECT * FROM users JOIN (orders INNER JOIN products ON orders.product_id = products.id) ON users.id = orders.user_id",
+    );
     // Parser skips parenthesized groups gracefully
     assert_eq!(result, vec![tref("users")]);
 }

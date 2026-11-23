@@ -1,6 +1,6 @@
 use super::*;
 use crate::mysql::cell_values::DecodedRow;
-use crate::mysql::logged_query::{execute, fetch_first_decoded, stream, LoggedStatement};
+use crate::mysql::logged_query::{LoggedStatement, execute, fetch_first_decoded, stream};
 use crate::mysql::pool::{self, BackgroundPool};
 use crate::mysql::registry::StoredConnectionParams;
 use crate::mysql::schema_queries::{query_ddl_on_connection, safe_identifier};

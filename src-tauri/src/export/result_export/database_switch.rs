@@ -4,7 +4,7 @@ pub(super) async fn use_database_on(
     conn: &mut mysql_async::Conn,
     database: &str,
 ) -> Result<(), mysql_async::Error> {
-    use crate::mysql::logged_query::{execute, LoggedStatement};
+    use crate::mysql::logged_query::{LoggedStatement, execute};
 
     let sql = match crate::mysql::schema_queries::safe_identifier(database) {
         Ok(identifier) => format!("USE {identifier}"),

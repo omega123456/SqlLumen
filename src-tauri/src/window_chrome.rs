@@ -68,40 +68,12 @@ mod platform {
 mod platform {
     use tauri::window::{Effect, EffectsBuilder};
     use tauri::{Runtime, WebviewWindow};
-    use windows::core::w;
-    use windows::Win32::System::Registry::{RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ};
+    use windows_version::OsVersion;
 
     use super::WindowBackdrop;
 
     pub fn windows_build() -> Option<u32> {
-        let mut buffer = [0u16; 16];
-        let mut size = (buffer.len() * std::mem::size_of::<u16>()) as u32;
-        let status = unsafe {
-            RegGetValueW(
-                HKEY_LOCAL_MACHINE,
-                w!(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion"),
-                w!("CurrentBuildNumber"),
-                RRF_RT_REG_SZ,
-                None,
-                Some(buffer.as_mut_ptr().cast()),
-                Some(&mut size as *mut u32),
-            )
-        };
-        if status.is_err() {
-            tracing::warn!(
-                ?status,
-                "could not read the Windows build number; using the solid backdrop"
-            );
-            return None;
-        }
-        let length = buffer
-            .iter()
-            .position(|&unit| unit == 0)
-            .unwrap_or(buffer.len());
-        String::from_utf16_lossy(&buffer[..length])
-            .trim()
-            .parse()
-            .ok()
+        Some(OsVersion::current().build)
     }
 
     pub fn apply_mica<R: Runtime>(window: &WebviewWindow<R>) -> WindowBackdrop {

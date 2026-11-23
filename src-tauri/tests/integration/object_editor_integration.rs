@@ -8,9 +8,9 @@ use crate::common;
 use sqllumen_lib::mysql::pool::SslSettings;
 
 use sqllumen_lib::commands::object_editor::{
-    drop_object_impl, get_object_body_impl, get_routine_parameters_impl,
-    get_routine_parameters_with_return_type_impl, parse_ddl_name, save_object_impl,
-    validate_view_ddl_prefix, ParsedDdlName, SaveObjectRequest,
+    ParsedDdlName, SaveObjectRequest, drop_object_impl, get_object_body_impl,
+    get_routine_parameters_impl, get_routine_parameters_with_return_type_impl, parse_ddl_name,
+    save_object_impl, validate_view_ddl_prefix,
 };
 use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
 use sqllumen_lib::state::AppState;
@@ -1144,9 +1144,9 @@ mod ipc_paths {
     use crate::common::mock_mysql_server::MockMySqlServer;
     use serde::de::DeserializeOwned;
     use serde_json::json;
-    use sqllumen_lib::mysql::pool::{create_pool, ConnectionParams};
+    use sqllumen_lib::mysql::pool::{ConnectionParams, create_pool};
     use tauri::ipc::{CallbackFn, InvokeBody};
-    use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
+    use tauri::test::{INVOKE_KEY, get_ipc_response, mock_builder, mock_context, noop_assets};
     use tauri::webview::InvokeRequest;
 
     #[derive(Debug, serde::Deserialize)]

@@ -1,6 +1,6 @@
 use crate::timestamps::{days_before, stored_timestamp, stored_timestamp_now};
 use jiff::Timestamp;
-use rusqlite::{params, Connection, Result};
+use rusqlite::{Connection, Result, params};
 use serde::{Deserialize, Serialize};
 
 const HISTORY_RETENTION_DAYS: i64 = 90;

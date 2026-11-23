@@ -4,24 +4,24 @@
 
 use std::collections::HashMap;
 
-use serde_json::{json, Value};
-use sqllumen_lib::commands::export::{export_results_impl, ExportResultsRequest};
+use serde_json::{Value, json};
+use sqllumen_lib::commands::export::{ExportResultsRequest, export_results_impl};
 use sqllumen_lib::commands::requests::ConnectionTabRequest;
 use sqllumen_lib::export::result_export::validate_full_export;
 use sqllumen_lib::export::{ExportFormat, ExportOptions};
 use sqllumen_lib::mysql::query_executor::{
-    evict_results_impl, reexecute_single_result_impl, update_result_cell_impl, StoredResult,
-    StoredResultOrigin, UpdateResultCellRequest,
+    StoredResult, StoredResultOrigin, UpdateResultCellRequest, evict_results_impl,
+    reexecute_single_result_impl, update_result_cell_impl,
 };
 use sqllumen_lib::mysql::result_cache::{CacheKey, VersionedValue};
 use sqllumen_lib::mysql::result_view::{
-    fetch_result_window_impl, remove_result_rows_impl, set_result_view_impl,
     FetchResultWindowRequest, RemoveResultRowsRequest, ResultSlotKey, SetResultViewRequest,
-    TABLE_PAGE_REFUSED_MESSAGE,
+    TABLE_PAGE_REFUSED_MESSAGE, fetch_result_window_impl, remove_result_rows_impl,
+    set_result_view_impl,
 };
 use sqllumen_lib::mysql::table_data::{
-    clamp_table_page_size, table_page_stored_result, PrimaryKeyInfo, TableDataColumnMeta,
-    TableDataResponse, TablePageSlotSource, TABLE_PAGE_RESULT_INDEX,
+    PrimaryKeyInfo, TABLE_PAGE_RESULT_INDEX, TableDataColumnMeta, TableDataResponse,
+    TablePageSlotSource, clamp_table_page_size, table_page_stored_result,
 };
 use sqllumen_lib::state::AppState;
 
@@ -241,9 +241,11 @@ fn a_late_table_page_is_refused_after_the_slot_was_evicted() {
         expected_invalidation_version: captured,
         value: vec![stored_users_page(1_000)],
     };
-    assert!(!state
-        .result_cache
-        .insert_if_current(CacheKey::new(CONN, TAB), write));
+    assert!(
+        !state
+            .result_cache
+            .insert_if_current(CacheKey::new(CONN, TAB), write)
+    );
     assert!(!state.result_cache.get(CONN, TAB).is_available());
 }
 
@@ -266,7 +268,7 @@ mod page_fetch {
     };
     use opensrv_mysql::{ColumnFlags, ColumnType};
     use sqllumen_lib::commands::table_data::{
-        fetch_table_page_impl, TABLE_PAGE_SUPERSEDED_MESSAGE,
+        TABLE_PAGE_SUPERSEDED_MESSAGE, fetch_table_page_impl,
     };
     use sqllumen_lib::mysql::table_data::FetchTableDataRequest;
 

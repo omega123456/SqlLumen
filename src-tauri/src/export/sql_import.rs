@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use crate::commands::query_history_bridge;
 use crate::db::history::NewHistoryEntry;
-use crate::mysql::logged_query::{execute, ExecuteOutcome, LoggedStatement};
+use crate::mysql::logged_query::{ExecuteOutcome, LoggedStatement, execute};
 use crate::mysql::pool::BackgroundPool;
 use crate::mysql::sql_chars::{
     has_char_at, has_text_at, has_text_at_ignore_ascii_case, is_ascii_whitespace_at,

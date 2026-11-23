@@ -4,23 +4,23 @@
 //! finished jobs and the connection-scoped cancel lookup.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sqllumen_lib::commands::mysql::close_connection_impl;
-use sqllumen_lib::export::job_retention::{cleanup_terminal_jobs, TERMINAL_JOB_RETENTION};
+use sqllumen_lib::export::ExportFormat;
+use sqllumen_lib::export::job_retention::{TERMINAL_JOB_RETENTION, cleanup_terminal_jobs};
 use sqllumen_lib::export::result_export::{
-    cancel_result_export_impl, cancel_result_exports_for_connection,
-    get_result_export_progress_impl, is_cancel_requested, register_job, request_cancel,
-    run_result_export_job, running_job_ids_for_connection, set_job_thread,
-    start_result_export_impl, temp_path_for, validate_full_export, wait_for_cancel_kills,
-    ExportOutcome, ExportPipeline, PreparedResultExport, StartResultExportInput,
-    FULL_EXPORT_UNAVAILABLE_MESSAGE, PROGRESS_REPORT_EVERY_ROWS,
+    ExportOutcome, ExportPipeline, FULL_EXPORT_UNAVAILABLE_MESSAGE, PROGRESS_REPORT_EVERY_ROWS,
+    PreparedResultExport, StartResultExportInput, cancel_result_export_impl,
+    cancel_result_exports_for_connection, get_result_export_progress_impl, is_cancel_requested,
+    register_job, request_cancel, run_result_export_job, running_job_ids_for_connection,
+    set_job_thread, start_result_export_impl, temp_path_for, validate_full_export,
+    wait_for_cancel_kills,
 };
 use sqllumen_lib::export::stream_writer::RowWrite;
-use sqllumen_lib::export::ExportFormat;
 use sqllumen_lib::mysql::query_executor::{
     ColumnMeta, FullExportBlockedReason, RunDatabase, StoredResult,
 };
@@ -389,9 +389,11 @@ async fn the_wait_for_a_stuck_cancel_kill_times_out() {
         .expect("a KILL target");
 
     assert!(!wait_for_cancel_kills(&cancel, "job-1", Duration::from_millis(20)).await);
-    assert!(capture
-        .contents()
-        .contains("a cancel KILL QUERY is still in flight"));
+    assert!(
+        capture
+            .contents()
+            .contains("a cancel KILL QUERY is still in flight")
+    );
 }
 
 #[test]

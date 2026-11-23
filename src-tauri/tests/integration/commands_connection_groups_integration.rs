@@ -8,7 +8,7 @@ use sqllumen_lib::commands::connection_groups::{
     update_connection_group_impl,
 };
 use sqllumen_lib::commands::connections::{
-    get_connection_impl, save_connection_impl, SaveConnectionInput,
+    SaveConnectionInput, get_connection_impl, save_connection_impl,
 };
 
 #[test]

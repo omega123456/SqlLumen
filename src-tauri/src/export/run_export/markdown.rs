@@ -1,8 +1,8 @@
+use super::RunOutcome;
 use super::csv_files::ResultFileRecord;
 use super::registry::RunDescription;
-use super::RunOutcome;
 use crate::mysql::query_executor::{
-    get_first_keyword, returns_result_set, strip_non_executable_comments, StoredResult,
+    StoredResult, get_first_keyword, returns_result_set, strip_non_executable_comments,
 };
 
 const BLOCK_SEPARATOR: &str = "\n\n";

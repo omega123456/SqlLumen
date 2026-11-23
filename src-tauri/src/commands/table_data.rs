@@ -1,6 +1,6 @@
 use crate::commands::query_history_bridge::{
-    log_history_record, resolve_connection_context, run_with_history, single_row_count,
-    HistoryRecord, HistoryStatement,
+    HistoryRecord, HistoryStatement, log_history_record, resolve_connection_context,
+    run_with_history, single_row_count,
 };
 use crate::db::history::NewHistoryEntry;
 use crate::mysql::result_cache::{CacheKey, VersionedValue};

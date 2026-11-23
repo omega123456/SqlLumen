@@ -1,45 +1,30 @@
-//! Covers `logging::init_logging`, filter reload, and double-init error (one test — global subscriber).
+//! Covers `logging::init_logging`, filter reload, and double-init error (nextest runs each test in its own process, so each may install the global subscriber once).
 
 use crate::common;
+use std::path::PathBuf;
+use tempfile::TempDir;
 
-struct RustLogGuard {
-    previous: Option<String>,
-}
+const RUST_LOG_DIRECTIVES: &str = "warn";
 
-impl RustLogGuard {
-    fn isolate() -> Self {
-        let previous = std::env::var("RUST_LOG").ok();
-        std::env::remove_var("RUST_LOG");
-        Self { previous }
-    }
-}
-
-impl Drop for RustLogGuard {
-    fn drop(&mut self) {
-        match &self.previous {
-            Some(v) => {
-                std::env::set_var("RUST_LOG", v);
-            }
-            None => {
-                std::env::remove_var("RUST_LOG");
-            }
-        }
-    }
-}
-
-#[test]
-fn init_logging_and_reload_helpers() {
-    let _g = RustLogGuard::isolate();
-    let dir = tempfile::tempdir().expect("tempdir");
+fn initialized_log_db_path(dir: &TempDir) -> PathBuf {
     let log_db_path = dir.path().join("sqllumen-logs.db");
     // Mirror production startup ordering: the logs database is initialized
     // (migrations applied + auto-vacuum conversion) once before logging is wired
     // up. The log-writer thread then opens the already-migrated database with a
     // plain open + pragmas via `open_log_database`.
-    let _logs_conn = sqllumen_lib::logging::log_store::initialize_log_database(&log_db_path)
+    sqllumen_lib::logging::log_store::initialize_log_database(&log_db_path)
         .expect("initialize log db");
-    let init = sqllumen_lib::logging::init_logging(&log_db_path).expect("init logging");
-    assert!(!init.rust_log_env_set);
+    log_db_path
+}
+
+#[test]
+fn init_logging_and_reload_helpers() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let log_db_path = initialized_log_db_path(&dir);
+    let init = sqllumen_lib::logging::init_logging(&log_db_path, None).expect("init logging");
+    let filter_reload = init
+        .settings_filter_reload
+        .expect("settings drive the filter when RUST_LOG is unset");
 
     // Emit a tracing event to exercise BracketLevelFormat::format_event
     tracing::info!(target: "sqllumen_lib::logging", "logging init integration test event");
@@ -75,13 +60,13 @@ fn init_logging_and_reload_helpers() {
         "warn",
     )
     .expect("set log.level");
-    sqllumen_lib::logging::apply_log_level_from_settings(&conn, &init.filter_reload);
+    sqllumen_lib::logging::apply_log_level_from_settings(&conn, &filter_reload);
 
-    sqllumen_lib::logging::reload_log_level_from_setting_value(Some(&init.filter_reload), "error");
+    sqllumen_lib::logging::reload_log_level_from_setting_value(Some(&filter_reload), "error");
     sqllumen_lib::logging::reload_log_level_from_setting_value(None, "trace");
-    sqllumen_lib::logging::reload_log_level_from_setting_value(Some(&init.filter_reload), "bogus");
+    sqllumen_lib::logging::reload_log_level_from_setting_value(Some(&filter_reload), "bogus");
 
-    let second = sqllumen_lib::logging::init_logging(&log_db_path);
+    let second = sqllumen_lib::logging::init_logging(&log_db_path, None);
     let err = match second {
         Err(e) => e,
         Ok(_) => panic!("second init should fail"),
@@ -90,4 +75,14 @@ fn init_logging_and_reload_helpers() {
         err.contains("subscriber") || err.contains("already"),
         "unexpected err: {err}"
     );
+}
+
+#[test]
+fn init_logging_with_rust_log_keeps_the_filter_away_from_settings() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let log_db_path = initialized_log_db_path(&dir);
+    let init = sqllumen_lib::logging::init_logging(&log_db_path, Some(RUST_LOG_DIRECTIVES))
+        .expect("init logging");
+
+    assert!(init.settings_filter_reload.is_none());
 }

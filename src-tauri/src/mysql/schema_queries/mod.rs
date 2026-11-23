@@ -19,9 +19,9 @@ pub use catalog::{
     validate_charset, validate_collation,
 };
 pub use connection_keys::{query_all_foreign_keys, query_all_indexes};
+pub use routines::RoutineParameterRow;
 #[cfg(not(coverage))]
 pub(crate) use routines::query_routine_parameters_inner;
-pub use routines::RoutineParameterRow;
 #[cfg(not(coverage))]
 pub use routines::{
     query_routine_exists, query_routine_parameters, query_routine_parameters_with_return_type,

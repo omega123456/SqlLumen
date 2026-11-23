@@ -110,16 +110,16 @@ pub async fn acquire(state: &AppState, connection_id: &str) -> Result<SessionGua
 
     let mut guard = slot(state, connection_id).lock_owned().await;
 
-    if let Some(session) = guard.as_mut() {
-        if let Err(error) = session.conn.ping().await {
-            tracing::warn!(
-                connection_id,
-                thread_id = session.thread_id,
-                ?error,
-                "editor session lost; session state discarded, reconnecting"
-            );
-            *guard = None;
-        }
+    if let Some(session) = guard.as_mut()
+        && let Err(error) = session.conn.ping().await
+    {
+        tracing::warn!(
+            connection_id,
+            thread_id = session.thread_id,
+            ?error,
+            "editor session lost; session state discarded, reconnecting"
+        );
+        *guard = None;
     }
 
     if guard.is_none() {
@@ -221,7 +221,7 @@ pub async fn use_database(
     connection_id: &str,
     database: &str,
 ) -> Result<(), String> {
-    use crate::mysql::logged_query::{execute, LoggedStatement};
+    use crate::mysql::logged_query::{LoggedStatement, execute};
 
     let Some(slot) = existing_slot(state, connection_id) else {
         return Ok(());
@@ -272,9 +272,9 @@ pub async fn close(state: &AppState, connection_id: &str) {
     let Ok(mut guard) = slot.try_lock() else {
         return;
     };
-    if let Some(session) = guard.take() {
-        if let Err(error) = session.conn.disconnect().await {
-            tracing::warn!(connection_id, ?error, "editor session disconnect failed");
-        }
+    if let Some(session) = guard.take()
+        && let Err(error) = session.conn.disconnect().await
+    {
+        tracing::warn!(connection_id, ?error, "editor session disconnect failed");
     }
 }

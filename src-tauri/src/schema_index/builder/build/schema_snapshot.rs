@@ -5,15 +5,15 @@ use std::time::Instant;
 
 use super::super::super::storage;
 use super::super::super::types::{BuildPhase, BuildProgress, TableDdlInput};
+use super::super::SignatureDecision;
 use super::super::mysql_fetch::{
-    fetch_all_user_routines, fetch_all_user_tables, fetch_all_user_views,
-    fetch_create_tables_parallel, fetch_row_counts, DdlFetchProgress, DdlSource, TableKey,
+    DdlFetchProgress, DdlSource, TableKey, fetch_all_user_routines, fetch_all_user_tables,
+    fetch_all_user_views, fetch_create_tables_parallel, fetch_row_counts,
 };
 use super::super::table_signatures::fetch_all_table_signatures;
-use super::super::SignatureDecision;
 use super::super::{decide_signature_action, is_signature_unchanged, table_chunk_key};
 use super::pending_chunk::{RoutineDefinition, ViewDefinition};
-use super::{elapsed_millis, ensure_not_cancelled, BuildContext, BUILD_CANCELLED};
+use super::{BUILD_CANCELLED, BuildContext, elapsed_millis, ensure_not_cancelled};
 
 pub(super) struct TableSignatures {
     pub(super) current: HashMap<TableKey, String>,

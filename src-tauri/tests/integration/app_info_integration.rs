@@ -1,7 +1,4 @@
-use sqllumen_lib::commands::app_info::{get_app_info_impl, AppInfo};
-use std::sync::Mutex;
-
-static RUST_LOG_LOCK: Mutex<()> = Mutex::new(());
+use sqllumen_lib::commands::app_info::{AppInfo, get_app_info_impl};
 
 fn get_app_info_without_handle() -> AppInfo {
     get_app_info_impl::<tauri::test::MockRuntime>(&None)
@@ -20,33 +17,10 @@ fn test_get_app_info_without_app_handle() {
 }
 
 #[test]
-fn test_rust_log_override_detection() {
-    let _guard = RUST_LOG_LOCK.lock().expect("RUST_LOG lock");
-    // Save original state
-    let original = std::env::var("RUST_LOG").ok();
-
-    // Set RUST_LOG and check detection
-    std::env::set_var("RUST_LOG", "debug");
+fn test_rust_log_override_reflects_the_process_environment() {
     let info = get_app_info_without_handle();
-    assert!(
-        info.rust_log_override,
-        "rust_log_override should be true when RUST_LOG is set"
-    );
-
-    // Remove RUST_LOG and check detection
-    std::env::remove_var("RUST_LOG");
-    let info = get_app_info_without_handle();
-    assert!(
-        !info.rust_log_override,
-        "rust_log_override should be false when RUST_LOG is not set"
-    );
-
-    // Restore original
-    if let Some(val) = original {
-        std::env::set_var("RUST_LOG", val);
-    } else {
-        std::env::remove_var("RUST_LOG");
-    }
+    let rust_log_set = std::env::var("RUST_LOG").is_ok();
+    assert_eq!(info.rust_log_override, rust_log_set);
 }
 
 #[test]

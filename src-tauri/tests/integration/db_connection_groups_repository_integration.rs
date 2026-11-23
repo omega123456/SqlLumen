@@ -4,9 +4,9 @@ use crate::common;
 use sqllumen_lib::db::ssl_mode::SslMode;
 
 use sqllumen_lib::db::connection_groups::{
-    delete_group, get_group, insert_group, list_groups, update_group, GroupChanges,
+    GroupChanges, delete_group, get_group, insert_group, list_groups, update_group,
 };
-use sqllumen_lib::db::connections::{get_connection, insert_connection, NewConnectionData};
+use sqllumen_lib::db::connections::{NewConnectionData, get_connection, insert_connection};
 
 #[test]
 fn test_insert_group_returns_uuid() {

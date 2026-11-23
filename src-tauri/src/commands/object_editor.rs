@@ -2,12 +2,12 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::commands::query_history_bridge::{
-    log_history_batch, log_history_record, run_with_history, single_row_count, HistoryRecord,
-    HistoryStatement,
+    HistoryRecord, HistoryStatement, log_history_batch, log_history_record, run_with_history,
+    single_row_count,
 };
 use crate::commands::requests::{RoutineRequest, SchemaObjectRequest};
 #[cfg(not(coverage))]
-use crate::mysql::logged_query::{execute, ExecuteOutcome, LoggedStatement};
+use crate::mysql::logged_query::{ExecuteOutcome, LoggedStatement, execute};
 #[cfg(not(coverage))]
 use crate::mysql::pool::BackgroundPool;
 use crate::mysql::schema_queries;

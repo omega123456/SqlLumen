@@ -113,7 +113,7 @@ where
 const LATE_KILL_ABSORBING_SQL: &str = "DO 0";
 
 pub(crate) async fn absorb_late_kill(conn: &mut mysql_async::Conn, connection_id: &str) {
-    use crate::mysql::logged_query::{execute, LoggedStatement};
+    use crate::mysql::logged_query::{LoggedStatement, execute};
 
     let absorbing_statement = LoggedStatement::text(LATE_KILL_ABSORBING_SQL);
     match execute(conn, absorbing_statement).await {
@@ -137,7 +137,7 @@ pub(crate) async fn absorb_late_kill(conn: &mut mysql_async::Conn, connection_id
 pub(crate) async fn read_session_database(
     conn: &mut mysql_async::Conn,
 ) -> Result<crate::mysql::query_executor::RunDatabase, String> {
-    use crate::mysql::logged_query::{fetch_first, LoggedStatement};
+    use crate::mysql::logged_query::{LoggedStatement, fetch_first};
 
     match fetch_first(conn, LoggedStatement::text("SELECT DATABASE()")).await {
         Ok(first_row) => first_row_database(first_row),

@@ -1,10 +1,10 @@
 use crate::commands::query_history_bridge::{
-    log_history_batch, run_with_history, HistoryRecord, HistoryStatement,
+    HistoryRecord, HistoryStatement, log_history_batch, run_with_history,
 };
 use crate::commands::requests::{DatabaseRequest, SchemaObjectRequest, TableRequest};
 use crate::mysql::metadata_cache::{
-    evict_metadata_cache_for_connection, evict_metadata_cache_for_database,
-    evict_metadata_cache_for_tables, TableEviction,
+    TableEviction, evict_metadata_cache_for_connection, evict_metadata_cache_for_database,
+    evict_metadata_cache_for_tables,
 };
 #[cfg(not(coverage))]
 use crate::mysql::pool::BackgroundPool;

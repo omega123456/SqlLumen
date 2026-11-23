@@ -1,7 +1,7 @@
 //! Stored and logged timestamp text (`timestamps.rs`).
 
 use crate::common::utc_timestamps::utc_timestamp;
-use jiff::{civil, Timestamp};
+use jiff::{Timestamp, civil};
 use sqllumen_lib::timestamps::{
     days_before, log_timestamp, log_timestamp_now, stored_timestamp, stored_timestamp_now,
     unix_seconds_now,

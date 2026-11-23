@@ -9,7 +9,7 @@ use sqllumen_lib::commands::session_snapshots::{
 };
 use sqllumen_lib::db::migrations::run_migrations;
 use sqllumen_lib::db::session_snapshots::{
-    delete_snapshot, get_state_json, insert_and_prune, list_summaries, NewSnapshot,
+    NewSnapshot, delete_snapshot, get_state_json, insert_and_prune, list_summaries,
 };
 
 fn test_conn() -> Connection {

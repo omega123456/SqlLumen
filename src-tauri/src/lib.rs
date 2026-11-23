@@ -35,7 +35,7 @@ pub fn http_client() -> reqwest::Client {
 
 use db::connection::open_database;
 use db::migrations::{
-    run_migrations, MIGRATION_CONNECTION_CASCADE_CLEANUP, MIGRATION_VACUUM_STATE_MAIN,
+    MIGRATION_CONNECTION_CASCADE_CLEANUP, MIGRATION_VACUUM_STATE_MAIN, run_migrations,
 };
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
@@ -75,6 +75,16 @@ pub fn resolved_app_data_dir(base: &Path) -> PathBuf {
 
 pub fn is_empty_path(path: &Path) -> bool {
     path.as_os_str().is_empty()
+}
+
+pub fn ensure_parent_directory(file_path: &Path) -> std::io::Result<()> {
+    let Some(parent) = file_path.parent() else {
+        return Ok(());
+    };
+    if is_empty_path(parent) {
+        return Ok(());
+    }
+    std::fs::create_dir_all(parent)
 }
 
 pub fn is_not_found_error(error: &std::io::Error) -> bool {

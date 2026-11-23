@@ -10,7 +10,7 @@
 use crate::common;
 use sqllumen_lib::db::ssl_mode::SslMode;
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use sqllumen_lib::commands::connections::delete_connection_impl;
 use sqllumen_lib::db::connections::{self, NewConnectionData};
 use sqllumen_lib::db::migrations::run_migrations;

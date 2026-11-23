@@ -147,11 +147,7 @@ pub fn read_file_impl(path: &str) -> Result<String, String> {
 
 pub fn write_file_impl(path: &str, content: &str) -> Result<(), String> {
     let file_path = std::path::Path::new(path);
-    if let Some(parent) = file_path.parent() {
-        if !crate::is_empty_path(parent) {
-            std::fs::create_dir_all(parent)
-                .map_err(|error| format!("Failed to create directories: {error}"))?;
-        }
-    }
+    crate::ensure_parent_directory(file_path)
+        .map_err(|error| format!("Failed to create directories: {error}"))?;
     std::fs::write(file_path, content).map_err(|error| format!("Failed to write file: {error}"))
 }

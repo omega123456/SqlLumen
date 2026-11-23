@@ -1,9 +1,9 @@
 //! `list_exportable_objects_impl` against the in-process mock MySQL server.
 
 use opensrv_mysql::ErrorKind;
-use sqllumen_lib::commands::sql_dump::list_exportable_objects_impl;
 #[cfg(not(coverage))]
 use sqllumen_lib::commands::sql_dump::DumpObjectType;
+use sqllumen_lib::commands::sql_dump::list_exportable_objects_impl;
 
 use crate::common;
 use crate::common::mock_mysql_server::{MockCell, MockMySqlServer, MockQueryStep};

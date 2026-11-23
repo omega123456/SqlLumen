@@ -1,7 +1,7 @@
 #[cfg(not(coverage))]
 use crate::mysql::cell_values::DecodedRow;
 #[cfg(not(coverage))]
-use crate::mysql::logged_query::{fetch_decoded_pooled, LoggedStatement};
+use crate::mysql::logged_query::{LoggedStatement, fetch_decoded_pooled};
 #[cfg(not(coverage))]
 use crate::mysql::pool::BackgroundPool;
 use std::collections::HashMap;

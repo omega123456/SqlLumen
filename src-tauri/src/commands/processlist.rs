@@ -2,7 +2,7 @@ use crate::commands::query_history_bridge::resolve_connection_context;
 use crate::db::history::NewHistoryEntry;
 use crate::mysql::cell_values::DecodedRow;
 use crate::mysql::logged_query::{
-    execute_pooled, fetch_decoded_pooled, fetch_first_decoded_pooled, LoggedStatement,
+    LoggedStatement, execute_pooled, fetch_decoded_pooled, fetch_first_decoded_pooled,
 };
 use crate::mysql::pool::BackgroundPool;
 use crate::state::AppState;

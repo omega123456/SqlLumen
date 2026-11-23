@@ -59,7 +59,7 @@ pub(super) async fn execute_single_select_statement(
     context: &DecodeContext<'_>,
 ) -> Result<StatementOutcome, String> {
     use crate::mysql::query_executor::{
-        sql_with_auto_limit, statement_blocked_reason, StoredResult, StoredResultParts,
+        StoredResult, StoredResultParts, sql_with_auto_limit, statement_blocked_reason,
     };
 
     let SelectStatement {

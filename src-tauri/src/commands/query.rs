@@ -11,20 +11,19 @@ use crate::commands::run_blocking_with_state;
 use crate::db::history::NewHistoryEntry;
 #[cfg(not(coverage))]
 use crate::mysql::query_executor::{
-    analyze_query_for_edit_impl, cancel_query_impl, evict_results_impl,
-    fetch_schema_metadata_full_impl, fetch_schema_metadata_impl, read_file_impl,
-    reexecute_single_result_impl, touch_results_impl, update_result_cell_impl, write_file_impl,
     AnalyzeQueryForEditRequest, ExecuteCallQueryRequest, ExecuteMultiQueryRequest,
     ExecuteQueryRequest, ExecuteQueryResult, MultiQueryResult, MultiQueryResultItem,
     QueryTableEditInfo, ReexecuteSingleResultRequest, SchemaMetadata, SchemaMetadataFull,
-    UpdateResultCellRequest,
+    UpdateResultCellRequest, analyze_query_for_edit_impl, cancel_query_impl, evict_results_impl,
+    fetch_schema_metadata_full_impl, fetch_schema_metadata_impl, read_file_impl,
+    reexecute_single_result_impl, touch_results_impl, update_result_cell_impl, write_file_impl,
 };
 #[cfg(not(coverage))]
 use crate::mysql::result_view::{
-    append_result_row_impl, fetch_result_window_impl, remove_result_rows_impl,
-    set_result_view_impl, AppendResultRowRequest, AppendResultRowResult, FetchResultWindowRequest,
+    AppendResultRowRequest, AppendResultRowResult, FetchResultWindowRequest,
     FetchResultWindowResult, RemoveResultRowsRequest, RemoveResultRowsResult, SetResultViewRequest,
-    SetResultViewResult,
+    SetResultViewResult, append_result_row_impl, fetch_result_window_impl, remove_result_rows_impl,
+    set_result_view_impl,
 };
 #[cfg(not(coverage))]
 use crate::state::AppState;

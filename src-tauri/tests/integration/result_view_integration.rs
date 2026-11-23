@@ -11,23 +11,23 @@ use sqllumen_lib::mysql::pool::SslSettings;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sqllumen_lib::commands::settings::{
-    load_results_max_rows, parse_results_max_rows, RESULTS_MAX_ROWS_DEFAULT,
+    RESULTS_MAX_ROWS_DEFAULT, load_results_max_rows, parse_results_max_rows,
 };
 use sqllumen_lib::mysql::query_executor::{
-    compare_json_values, effective_row_limit, has_locking_clause, statement_blocked_reason,
-    update_result_cell_impl, ColumnMeta, ExecuteQueryResult, FullExportBlockedReason,
-    MultiQueryResultItem, RunDatabase, SharedRow, StoredResult,
+    ColumnMeta, ExecuteQueryResult, FullExportBlockedReason, MultiQueryResultItem, RunDatabase,
+    SharedRow, StoredResult, compare_json_values, effective_row_limit, has_locking_clause,
+    statement_blocked_reason, update_result_cell_impl,
 };
 use sqllumen_lib::mysql::result_cache::{SlotWrite, SlotWriteTarget};
 use sqllumen_lib::mysql::result_view::{
-    append_result_row_impl, apply_initial_view, commit_result_view, fetch_result_window_impl,
-    first_window, is_tinyint_boolean_alias, js_number, js_number_to_string, js_string,
-    js_string_to_number, like_pattern_to_regex, normalize_tinyint_value, prepare_result_view,
-    remove_result_rows_impl, resolve_spec, set_result_view_impl, slice_window, view_len,
-    AppendResultRowRequest, ResultViewSpec, SpecMode, FIRST_WINDOW_ROWS, MAX_WINDOW_ROWS,
-    ROW_CEILING_REACHED_PREFIX, STALE_QUERY_MESSAGE, VIEW_SUPERSEDED_PREFIX,
+    AppendResultRowRequest, FIRST_WINDOW_ROWS, MAX_WINDOW_ROWS, ROW_CEILING_REACHED_PREFIX,
+    ResultViewSpec, STALE_QUERY_MESSAGE, SpecMode, VIEW_SUPERSEDED_PREFIX, append_result_row_impl,
+    apply_initial_view, commit_result_view, fetch_result_window_impl, first_window,
+    is_tinyint_boolean_alias, js_number, js_number_to_string, js_string, js_string_to_number,
+    like_pattern_to_regex, normalize_tinyint_value, prepare_result_view, remove_result_rows_impl,
+    resolve_spec, set_result_view_impl, slice_window, view_len,
 };
 use sqllumen_lib::state::AppState;
 
@@ -433,9 +433,11 @@ fn filter_like_is_case_insensitive_escapes_literals_and_crosses_newlines() {
     assert_eq!(ids("%two"), vec![0], "% matches across newlines");
     assert_eq!(ids("x_y"), vec![3], "_ matches a newline");
     assert_eq!(ids("a.c"), vec![1], ". is literal");
-    assert!(like_pattern_to_regex("(a+)[b]")
-        .expect("escaped")
-        .is_match("(A+)[B]"));
+    assert!(
+        like_pattern_to_regex("(a+)[b]")
+            .expect("escaped")
+            .is_match("(A+)[B]")
+    );
 }
 
 #[test]
@@ -862,7 +864,6 @@ fn append_result_row_is_refused_for_a_stale_view() {
     let state = people_state();
     let stale = append_row(&state, 7, json!([5, "eve", 7])).expect_err("stale base version");
     assert!(stale.starts_with(VIEW_SUPERSEDED_PREFIX), "{stale}");
-
 }
 
 #[test]
@@ -876,8 +877,8 @@ fn append_result_row_is_refused_at_the_slot_row_ceiling_not_the_current_global_o
 
     let roomy_state = people_state();
     roomy_state.result_cache.set_row_ceiling(4);
-    let appended = append_row(&roomy_state, 1, json!([5, "eve", 7]))
-        .expect("the slot's own ceiling has room");
+    let appended =
+        append_row(&roomy_state, 1, json!([5, "eve", 7])).expect("the slot's own ceiling has room");
     assert_eq!(appended.total_rows, 5);
 }
 

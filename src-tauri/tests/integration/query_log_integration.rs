@@ -10,7 +10,7 @@ use jiff::civil;
 #[cfg(not(coverage))]
 use opensrv_mysql::{ColumnFlags, ColumnType};
 #[cfg(not(coverage))]
-use sqllumen_lib::mysql::logged_query::{fetch_all_pooled, LoggedStatement};
+use sqllumen_lib::mysql::logged_query::{LoggedStatement, fetch_all_pooled};
 use sqllumen_lib::mysql::query_log;
 
 #[tokio::test]

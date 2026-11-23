@@ -3,7 +3,7 @@
 use crate::common::test_app_state;
 #[cfg(any(test, feature = "test-utils"))]
 use sqllumen_lib::mysql::health::attempt_reconnect_once_for_test;
-use sqllumen_lib::mysql::health::{backoff_duration, ConnectionStatusChangedPayload};
+use sqllumen_lib::mysql::health::{ConnectionStatusChangedPayload, backoff_duration};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 

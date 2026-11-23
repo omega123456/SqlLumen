@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, Result};
+use rusqlite::{Connection, Result, params};
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 

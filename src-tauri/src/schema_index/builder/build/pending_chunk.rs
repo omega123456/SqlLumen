@@ -1,5 +1,5 @@
 use super::super::super::types::{BuildConfig, ChunkInsert, ChunkType};
-use super::super::{compute_hash, GeneratedTableChunk};
+use super::super::{GeneratedTableChunk, compute_hash};
 
 const EMBEDDING_PREVIEW_CHARS: usize = 500;
 const PROCEDURE_ROUTINE_TYPE: &str = "PROCEDURE";

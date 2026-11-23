@@ -164,14 +164,16 @@ async fn test_invalidate_metadata_cache_impl_clears_connection_entries() {
         sqllumen_lib::commands::schema::invalidate_metadata_cache_impl(&state, "test-conn");
 
     assert!(result.is_ok());
-    assert!(state
-        .metadata_cache
-        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-            "test-conn",
-            "db",
-            "tbl"
-        ))
-        .is_none());
+    assert!(
+        state
+            .metadata_cache
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "test-conn",
+                "db",
+                "tbl"
+            ))
+            .is_none()
+    );
 }
 
 #[tokio::test]
@@ -433,14 +435,16 @@ mod coverage_stubs {
         let result = invalidate_metadata_cache_impl(&state, "test-conn");
 
         assert!(result.is_ok());
-        assert!(state
-            .metadata_cache
-            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-                "test-conn",
-                "db",
-                "tbl"
-            ))
-            .is_none());
+        assert!(
+            state
+                .metadata_cache
+                .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                    "test-conn",
+                    "db",
+                    "tbl"
+                ))
+                .is_none()
+        );
     }
 
     #[test]

@@ -4,8 +4,8 @@ use crate::common;
 use sqllumen_lib::db::ssl_mode::SslMode;
 
 use sqllumen_lib::db::connections::{
-    delete_connection, get_connection, insert_connection, list_connections, record_connected,
-    update_connection, NewConnectionData, UpdateConnectionData,
+    NewConnectionData, UpdateConnectionData, delete_connection, get_connection, insert_connection,
+    list_connections, record_connected, update_connection,
 };
 
 fn sample_new_connection() -> NewConnectionData {

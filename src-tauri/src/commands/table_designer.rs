@@ -1,6 +1,6 @@
-use crate::mysql::ddl_detector::{detect_ddl_tables, DdlDetectionResult};
+use crate::mysql::ddl_detector::{DdlDetectionResult, detect_ddl_tables};
 use crate::mysql::metadata_cache::{
-    evict_metadata_cache_for_connection, evict_metadata_cache_for_tables, TableEviction,
+    TableEviction, evict_metadata_cache_for_connection, evict_metadata_cache_for_tables,
 };
 use crate::mysql::table_designer::{
     self, DesignerTableProperties, DesignerTableSchema, GenerateDdlRequest, GenerateDdlResponse,
@@ -8,12 +8,12 @@ use crate::mysql::table_designer::{
 use crate::state::AppState;
 use serde::Deserialize;
 
-use crate::commands::query_history_bridge::{run_with_history, HistoryStatement};
+use crate::commands::query_history_bridge::{HistoryStatement, run_with_history};
 #[cfg(not(coverage))]
 use crate::mysql::cell_values::DecodedRow;
 #[cfg(not(coverage))]
 use crate::mysql::logged_query::{
-    execute_pooled, fetch_decoded_pooled, fetch_first_decoded_pooled, LoggedStatement,
+    LoggedStatement, execute_pooled, fetch_decoded_pooled, fetch_first_decoded_pooled,
 };
 #[cfg(not(coverage))]
 use crate::mysql::pool::BackgroundPool;

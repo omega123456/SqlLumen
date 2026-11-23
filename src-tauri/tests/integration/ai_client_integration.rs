@@ -10,9 +10,9 @@ use sqllumen_lib::ai::client::{
     should_retry_chat_without_reasoning, should_use_responses_api,
 };
 use sqllumen_lib::ai::types::{
-    parse_sse_line, AiChatRequest, AiTransport, ApiChatRequest, ApiMessage, ApiResponsesRequest,
-    ApiStreamChunk, ChunkKind, IpcMessage, ReasoningConfig, SseParsed, StreamChunkEvent,
-    StreamDoneEvent, StreamErrorEvent,
+    AiChatRequest, AiTransport, ApiChatRequest, ApiMessage, ApiResponsesRequest, ApiStreamChunk,
+    ChunkKind, IpcMessage, ReasoningConfig, SseParsed, StreamChunkEvent, StreamDoneEvent,
+    StreamErrorEvent, parse_sse_line,
 };
 
 // ── IPC type serialization (camelCase) ────────────────────────────────────
@@ -356,7 +356,7 @@ mod wiremock_tests {
     }
 
     fn streamed_content_tokens(body: &str) -> Vec<String> {
-        use sqllumen_lib::ai::types::{parse_sse_line, SseParsed};
+        use sqllumen_lib::ai::types::{SseParsed, parse_sse_line};
         body.lines()
             .map(parse_sse_line)
             .take_while(|parsed| !matches!(parsed, Ok(SseParsed::Done)))
@@ -1387,8 +1387,8 @@ mod stream_integration {
     }
 
     #[tokio::test]
-    async fn falls_back_to_chat_completions_when_responses_stream_uses_chat_completions_payload_shape(
-    ) {
+    async fn falls_back_to_chat_completions_when_responses_stream_uses_chat_completions_payload_shape()
+     {
         let server = MockServer::start().await;
 
         Mock::given(method("POST"))

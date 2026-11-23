@@ -8,7 +8,7 @@ pub struct AppInfo {
 }
 
 pub fn get_app_info_impl<R: tauri::Runtime>(_app_handle: &Option<tauri::AppHandle<R>>) -> AppInfo {
-    let rust_log_override = std::env::var("RUST_LOG").is_ok();
+    let rust_log_override = crate::logging::rust_log_directives().is_some();
 
     let app_version = env!("CARGO_PKG_VERSION").to_string();
 

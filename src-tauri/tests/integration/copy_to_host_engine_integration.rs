@@ -16,16 +16,16 @@
 //! against a live server elsewhere.
 
 use sqllumen_lib::export::copy_to_host::{
+    BatchLimits, COPY_BATCH_ROW_CAP, CopyObjectType, CopyOptions, CopySelection,
+    FALLBACK_PACKET_BYTES, FK_CHECKS_DISABLE, FK_CHECKS_ENABLE, InsertMode, RenderedRow,
     apply_create_if_not_exists, batch_byte_budget, begin_object, complete_object,
     drop_if_exists_statement, has_cross_database_non_table_copy, new_running_progress,
     plan_batches, qualified_drop_if_exists_statement, qualify_table_ddl_schema, render_row,
     rewrite_non_table_ddl_schema, should_cancel, strip_definer,
     validate_cross_database_non_table_copy, validate_mysql_identifier_token,
-    validate_selection_for_options, BatchLimits, CopyObjectType, CopyOptions, CopySelection,
-    InsertMode, RenderedRow, COPY_BATCH_ROW_CAP, FALLBACK_PACKET_BYTES, FK_CHECKS_DISABLE,
-    FK_CHECKS_ENABLE,
+    validate_selection_for_options,
 };
-use sqllumen_lib::export::sql_dump::{value_byte_len, value_to_literal, SqlDumpValue};
+use sqllumen_lib::export::sql_dump::{SqlDumpValue, value_byte_len, value_to_literal};
 use sqllumen_lib::state::CopyJobStatus;
 
 // ── DEFINER stripping ─────────────────────────────────────────────────────
@@ -781,8 +781,10 @@ fn test_copy_engine_keeps_internal_pool_fallback() {
 #[test]
 fn test_copy_engine_fully_qualifies_target_table_statements() {
     let source = include_str!("../../src/export/copy_to_host/engine/table_copy.rs");
-    assert!(source
-        .contains("qualified_drop_if_exists_statement(object_type, target_database, &escaped)"));
+    assert!(
+        source
+            .contains("qualified_drop_if_exists_statement(object_type, target_database, &escaped)")
+    );
     assert!(source.contains("TRUNCATE TABLE {safe_target_db}.{safe_target_table}"));
     assert!(source.contains("{safe_target_db}.{safe_target_table}"));
     assert!(source.contains("qualify_table_ddl_schema(ddl, target_database, name)"));
@@ -809,8 +811,8 @@ mod copy_run_sessions {
     };
     use opensrv_mysql::{ColumnFlags, ColumnType};
     use sqllumen_lib::export::copy_to_host::{
-        new_running_progress, run_copy, CopyJob, CopyOptions, CopySelection, CopyToHostParams,
-        InsertMode,
+        CopyJob, CopyOptions, CopySelection, CopyToHostParams, InsertMode, new_running_progress,
+        run_copy,
     };
     use sqllumen_lib::state::CopyJobStatus;
     use std::collections::HashMap;

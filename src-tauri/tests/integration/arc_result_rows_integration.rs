@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// A representative rows buffer mixing every value kind the cache/spill path
 /// must round-trip: integers, floats, strings, nulls, and booleans.

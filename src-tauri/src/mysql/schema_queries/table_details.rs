@@ -1,15 +1,15 @@
 use crate::mysql::cell_values::DecodedRow;
 #[cfg(not(coverage))]
 use crate::mysql::logged_query::{
-    fetch_decoded_pooled, fetch_first_decoded_pooled, LoggedStatement,
+    LoggedStatement, fetch_decoded_pooled, fetch_first_decoded_pooled,
 };
 #[cfg(not(coverage))]
 use crate::mysql::pool::BackgroundPool;
 use std::collections::HashMap;
 
 use super::{
-    safe_identifier, ColumnInfo, ForeignKeyInfo, IndexInfo, SchemaInfoResponse, SchemaObjectRef,
-    TableMetadata,
+    ColumnInfo, ForeignKeyInfo, IndexInfo, SchemaInfoResponse, SchemaObjectRef, TableMetadata,
+    safe_identifier,
 };
 
 #[cfg(not(coverage))]

@@ -378,7 +378,7 @@ fn test_pool_creation_with_live_mysql() {
 
     let rt = tokio::runtime::Runtime::new().expect("should create tokio runtime");
     rt.block_on(async {
-        use sqllumen_lib::mysql::logged_query::{fetch_first_decoded_pooled, LoggedStatement};
+        use sqllumen_lib::mysql::logged_query::{LoggedStatement, fetch_first_decoded_pooled};
 
         let pool = live_pool(&url);
         let row = fetch_first_decoded_pooled(&pool, LoggedStatement::text("SELECT VERSION()"))
@@ -420,7 +420,7 @@ fn test_create_pool_with_live_mysql() {
 
     let rt = tokio::runtime::Runtime::new().expect("should create tokio runtime");
     rt.block_on(async {
-        use sqllumen_lib::mysql::pool::{create_pool, ConnectionParams};
+        use sqllumen_lib::mysql::pool::{ConnectionParams, create_pool};
 
         let params = ConnectionParams {
             host: host.to_string(),
@@ -529,7 +529,7 @@ async fn insert_table_row_impl_refetches_unsigned_bigint_autoincrement_pk() {
     let db_name = target.database_name;
 
     use sqllumen_lib::mysql::metadata_cache::MetadataCache;
-    use sqllumen_lib::mysql::table_data::{insert_table_row_impl, PrimaryKeyInfo};
+    use sqllumen_lib::mysql::table_data::{PrimaryKeyInfo, insert_table_row_impl};
     use std::collections::HashMap;
 
     let pool = live_pool(&url);
@@ -632,13 +632,13 @@ fn mysql_test_target(test_name: &str) -> Option<MySqlTestTarget> {
 mod pool_lifecycle {
     use crate::common;
     use crate::common::mock_mysql_server::{MockMySqlServer, MockScript};
-    use crate::common::silent_listener::{closed_port, SilentListener};
-    use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
+    use crate::common::silent_listener::{SilentListener, closed_port};
+    use sqllumen_lib::commands::connections::{SaveConnectionInput, save_connection_impl};
     use sqllumen_lib::commands::mysql::{
-        close_connection_impl, open_connection_impl, OpenConnectionErrorKind, OpenConnectionPayload,
+        OpenConnectionErrorKind, OpenConnectionPayload, close_connection_impl, open_connection_impl,
     };
     use sqllumen_lib::mysql::pool::{
-        background_pool_options, IDLE_CONNECTION_TTL, MAX_CONNECTION_LIFETIME,
+        IDLE_CONNECTION_TTL, MAX_CONNECTION_LIFETIME, background_pool_options,
     };
     use sqllumen_lib::state::AppState;
     use std::time::{Duration, Instant};

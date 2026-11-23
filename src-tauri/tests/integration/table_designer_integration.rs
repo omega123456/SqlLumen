@@ -4,9 +4,10 @@ use sqllumen_lib::commands::table_designer::{
 #[cfg(coverage)]
 use sqllumen_lib::mysql::pool::SslSettings;
 use sqllumen_lib::mysql::table_designer::{
-    derive_charset_from_collation, generate_alter_table_ddl, generate_create_table_ddl,
-    validate_schema, DefaultValueModel, DesignerColumnDef, DesignerForeignKeyDef, DesignerIndexDef,
+    DefaultValueModel, DesignerColumnDef, DesignerForeignKeyDef, DesignerIndexDef,
     DesignerTableProperties, DesignerTableSchema, GenerateDdlRequest, GenerateDdlResponse,
+    derive_charset_from_collation, generate_alter_table_ddl, generate_create_table_ddl,
+    validate_schema,
 };
 
 use crate::common;
@@ -446,9 +447,11 @@ fn test_alter_column_rename_warning() {
 
     let GenerateDdlResponse { ddl, warnings } =
         generate_alter_table_ddl(&original, &current, "appdb");
-    assert!(warnings
-        .iter()
-        .any(|warning| warning.contains("Column 'old_name' was renamed to 'new_name'")));
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains("Column 'old_name' was renamed to 'new_name'"))
+    );
     assert!(ddl.contains("DROP COLUMN `old_name`"));
     assert!(ddl.contains("ADD COLUMN `new_name` INT NOT NULL FIRST"));
 }
@@ -650,18 +653,22 @@ fn invalidate_metadata_cache_for_applied_table_ddl_evicts_detected_tables() {
         },
     );
 
-    assert!(state
-        .metadata_cache
-        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-            "conn-1", "appdb", "users"
-        ))
-        .is_none());
-    assert!(state
-        .metadata_cache
-        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-            "conn-1", "otherdb", "users"
-        ))
-        .is_some());
+    assert!(
+        state
+            .metadata_cache
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "conn-1", "appdb", "users"
+            ))
+            .is_none()
+    );
+    assert!(
+        state
+            .metadata_cache
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "conn-1", "otherdb", "users"
+            ))
+            .is_some()
+    );
 }
 
 #[test]
@@ -692,18 +699,22 @@ fn invalidate_metadata_cache_for_applied_table_ddl_falls_back_to_connection_on_p
         },
     );
 
-    assert!(state
-        .metadata_cache
-        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-            "conn-1", "appdb", "users"
-        ))
-        .is_none());
-    assert!(state
-        .metadata_cache
-        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-            "conn-1", "appdb", "orders"
-        ))
-        .is_none());
+    assert!(
+        state
+            .metadata_cache
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "conn-1", "appdb", "users"
+            ))
+            .is_none()
+    );
+    assert!(
+        state
+            .metadata_cache
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "conn-1", "appdb", "orders"
+            ))
+            .is_none()
+    );
 }
 
 #[tokio::test]
@@ -1393,15 +1404,15 @@ mod command_wrapper_integration {
     use rusqlite::Connection;
     use serde::de::DeserializeOwned;
     use serde_json::json;
-    use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
-    use sqllumen_lib::db::ssl_mode::SslMode;
-    use sqllumen_lib::commands::mysql::{open_connection_impl, OpenConnectionResult};
+    use sqllumen_lib::commands::connections::{SaveConnectionInput, save_connection_impl};
+    use sqllumen_lib::commands::mysql::{OpenConnectionResult, open_connection_impl};
     use sqllumen_lib::commands::table_designer::load_table_for_designer_impl;
+    use sqllumen_lib::db::ssl_mode::SslMode;
     use sqllumen_lib::mysql::registry::ConnectionRegistry;
     use sqllumen_lib::state::AppState;
     use std::sync::{Arc, Mutex};
     use tauri::ipc::{CallbackFn, InvokeBody};
-    use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
+    use tauri::test::{INVOKE_KEY, get_ipc_response, mock_builder, mock_context, noop_assets};
     use tauri::webview::InvokeRequest;
 
     fn test_state() -> AppState {
@@ -1976,9 +1987,11 @@ mod coverage_stubs {
         })
         .await;
         assert!(missing_original.is_err());
-        assert!(missing_original
-            .unwrap_err()
-            .contains("Original schema is required"));
+        assert!(
+            missing_original
+                .unwrap_err()
+                .contains("Original schema is required")
+        );
 
         let invalid_mode = generate_table_ddl_impl(GenerateDdlRequest {
             original_schema: None,
@@ -1988,9 +2001,11 @@ mod coverage_stubs {
         })
         .await;
         assert!(invalid_mode.is_err());
-        assert!(invalid_mode
-            .unwrap_err()
-            .contains("Unsupported DDL generation mode"));
+        assert!(
+            invalid_mode
+                .unwrap_err()
+                .contains("Unsupported DDL generation mode")
+        );
     }
 
     #[tokio::test]
@@ -2077,18 +2092,22 @@ mod coverage_stubs {
             },
         );
 
-        assert!(state
-            .metadata_cache
-            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-                "conn-1", "appdb", "users"
-            ))
-            .is_none());
-        assert!(state
-            .metadata_cache
-            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-                "conn-1", "otherdb", "users"
-            ))
-            .is_some());
+        assert!(
+            state
+                .metadata_cache
+                .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                    "conn-1", "appdb", "users"
+                ))
+                .is_none()
+        );
+        assert!(
+            state
+                .metadata_cache
+                .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                    "conn-1", "otherdb", "users"
+                ))
+                .is_some()
+        );
     }
 
     #[test]
@@ -2119,17 +2138,21 @@ mod coverage_stubs {
             },
         );
 
-        assert!(state
-            .metadata_cache
-            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-                "conn-1", "appdb", "users"
-            ))
-            .is_none());
-        assert!(state
-            .metadata_cache
-            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-                "conn-1", "appdb", "orders"
-            ))
-            .is_none());
+        assert!(
+            state
+                .metadata_cache
+                .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                    "conn-1", "appdb", "users"
+                ))
+                .is_none()
+        );
+        assert!(
+            state
+                .metadata_cache
+                .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                    "conn-1", "appdb", "orders"
+                ))
+                .is_none()
+        );
     }
 }

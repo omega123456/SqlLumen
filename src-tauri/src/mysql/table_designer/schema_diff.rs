@@ -272,10 +272,10 @@ pub(super) fn diff_table_options(
     if is_changed_to_non_empty(&original.collation, &current.collation) {
         clauses.push(format!("COLLATE={}", current.collation));
     }
-    if original.auto_increment != current.auto_increment {
-        if let Some(auto_increment) = current.auto_increment {
-            clauses.push(format!("AUTO_INCREMENT={auto_increment}"));
-        }
+    if original.auto_increment != current.auto_increment
+        && let Some(auto_increment) = current.auto_increment
+    {
+        clauses.push(format!("AUTO_INCREMENT={auto_increment}"));
     }
     if is_changed_to_non_empty(&original.row_format, &current.row_format) {
         clauses.push(format!("ROW_FORMAT={}", current.row_format));

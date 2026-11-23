@@ -4,14 +4,14 @@ use std::time::Instant;
 use super::super::super::storage;
 use super::super::super::types::{BuildConfig, FkEdge, FkInput, TableDdlInput};
 use super::super::chunk_generation::foreign_key_edges;
-use super::super::mysql_fetch::{fetch_create_table, TableKey};
-use super::super::{generate_all_chunks, GeneratedChunks, GeneratedFkChunk, GeneratedTableChunk};
-use super::embedding::{request_embeddings, store_inserted_batch, EmbeddedBatch};
+use super::super::mysql_fetch::{TableKey, fetch_create_table};
+use super::super::{GeneratedChunks, GeneratedFkChunk, GeneratedTableChunk, generate_all_chunks};
+use super::embedding::{EmbeddedBatch, request_embeddings, store_inserted_batch};
 use super::full_build::build_index;
 use super::pending_chunk::{
-    chunk_keys, count_foreign_key_chunks, count_table_chunks, PendingChunk,
+    PendingChunk, chunk_keys, count_foreign_key_chunks, count_table_chunks,
 };
-use super::{elapsed_millis, BuildContext, IndexBuildResources, EMBED_BATCH_SIZE};
+use super::{BuildContext, EMBED_BATCH_SIZE, IndexBuildResources, elapsed_millis};
 
 const REBUILD_CANCELLED: &str = "Rebuild cancelled";
 

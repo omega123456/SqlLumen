@@ -5,13 +5,13 @@ use crate::common;
 use crate::common::utc_timestamps::utc_timestamp;
 use jiff::fmt::temporal::DateTimePrinter;
 use jiff::tz::Offset;
-use jiff::{civil, Timestamp};
+use jiff::{Timestamp, civil};
 use sqllumen_lib::commands::history::{
     clear_history_impl, delete_history_entry_impl, list_history_impl,
 };
 use sqllumen_lib::db::history::{self, NewHistoryEntry};
 use sqllumen_lib::timestamps::{days_before, stored_timestamp};
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 fn insert_sample_entries(state: &sqllumen_lib::state::AppState, connection_id: &str, count: usize) {
     let conn = state.db.lock().expect("db lock");

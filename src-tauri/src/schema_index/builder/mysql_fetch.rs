@@ -4,7 +4,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::mysql::cell_values::DecodedRow;
 use crate::mysql::logged_query::{
-    fetch_decoded_pooled, fetch_first_decoded_pooled, LoggedStatement,
+    LoggedStatement, fetch_decoded_pooled, fetch_first_decoded_pooled,
 };
 use crate::mysql::pool::BackgroundPool;
 

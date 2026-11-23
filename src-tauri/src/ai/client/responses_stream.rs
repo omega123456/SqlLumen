@@ -14,8 +14,8 @@ use super::responses_text::{
     responses_event_response_id,
 };
 use super::{
-    build_streaming_client, is_flush_due, read_error_body, take_complete_line, HttpTarget,
-    ResponsesStreamError, StreamEmitter, STREAM_CANCELLED_MESSAGE,
+    HttpTarget, ResponsesStreamError, STREAM_CANCELLED_MESSAGE, StreamEmitter,
+    build_streaming_client, is_flush_due, read_error_body, take_complete_line,
 };
 
 const REASONING_DONE_EVENTS: [&str; 3] = [

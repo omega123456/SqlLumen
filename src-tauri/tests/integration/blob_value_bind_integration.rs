@@ -6,10 +6,10 @@
 //! `decode_blob_envelope` and `validate_blob_envelopes`, which are tested here.
 
 mod blob_envelope_decoding {
-    use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+    use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
     use serde_json::json;
     use sqllumen_lib::mysql::table_data::{
-        decode_blob_envelope, validate_blob_envelopes, BlobBind,
+        BlobBind, decode_blob_envelope, validate_blob_envelopes,
     };
     use std::collections::HashMap;
 

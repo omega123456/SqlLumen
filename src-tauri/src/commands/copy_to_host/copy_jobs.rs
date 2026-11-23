@@ -39,7 +39,7 @@ pub(super) fn resolve_hosts(
                 return Err(format!(
                     "Target connection '{}' not found",
                     params.target_connection_id
-                ))
+                ));
             }
             Err(error) => return Err(error.to_string()),
         }

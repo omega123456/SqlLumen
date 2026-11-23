@@ -4,7 +4,7 @@ use crate::common::mock_mysql_server::{MockCell, MockColumnDef, MockMySqlServer,
 use opensrv_mysql::{ColumnFlags, ColumnType};
 use rusqlite::Connection;
 use sqllumen_lib::mysql::pool::SslSettings;
-use sqllumen_lib::mysql::query_executor::{fetch_schema_metadata_full_impl, TriggerMeta, ViewMeta};
+use sqllumen_lib::mysql::query_executor::{TriggerMeta, ViewMeta, fetch_schema_metadata_full_impl};
 use sqllumen_lib::mysql::registry::{
     ConnectionRegistry, ConnectionStatus, RegistryEntry, StoredConnectionParams,
 };
@@ -129,7 +129,10 @@ fn full_metadata_schemata_step() -> MockQueryStep {
     MockQueryStep::with_rows(
         "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME NOT IN ('information_schema','performance_schema','sys','mysql') ORDER BY SCHEMA_NAME",
         vec![text_col("SCHEMA_NAME")],
-        vec![vec![MockCell::Bytes(b"app")], vec![MockCell::Bytes(b"analytics")]],
+        vec![
+            vec![MockCell::Bytes(b"app")],
+            vec![MockCell::Bytes(b"analytics")],
+        ],
     )
 }
 
@@ -234,7 +237,10 @@ fn full_metadata_views_step() -> MockQueryStep {
         "SELECT TABLE_SCHEMA, TABLE_NAME FROM information_schema.VIEWS WHERE TABLE_SCHEMA IN (?, ?) AND TABLE_SCHEMA NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys') ORDER BY TABLE_SCHEMA, TABLE_NAME",
         vec![text_col("TABLE_SCHEMA"), text_col("TABLE_NAME")],
         vec![
-            vec![MockCell::Bytes(b"analytics"), MockCell::Bytes(b"daily_events")],
+            vec![
+                MockCell::Bytes(b"analytics"),
+                MockCell::Bytes(b"daily_events"),
+            ],
             vec![MockCell::Bytes(b"app"), MockCell::Bytes(b"active_users")],
         ],
     )
@@ -246,8 +252,14 @@ fn full_metadata_triggers_step() -> MockQueryStep {
         "SELECT TRIGGER_SCHEMA, TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA IN (?, ?) AND TRIGGER_SCHEMA NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys') ORDER BY TRIGGER_SCHEMA, TRIGGER_NAME",
         vec![text_col("TRIGGER_SCHEMA"), text_col("TRIGGER_NAME")],
         vec![
-            vec![MockCell::Bytes(b"analytics"), MockCell::Bytes(b"after_events_insert")],
-            vec![MockCell::Bytes(b"app"), MockCell::Bytes(b"before_users_insert")],
+            vec![
+                MockCell::Bytes(b"analytics"),
+                MockCell::Bytes(b"after_events_insert"),
+            ],
+            vec![
+                MockCell::Bytes(b"app"),
+                MockCell::Bytes(b"before_users_insert"),
+            ],
         ],
     )
 }

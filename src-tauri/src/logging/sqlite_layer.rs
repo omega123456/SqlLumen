@@ -1,11 +1,11 @@
-use crate::logging::log_store::{insert_log_entries, open_log_database, prune_logs, NewLogEntry};
+use crate::logging::log_store::{NewLogEntry, insert_log_entries, open_log_database, prune_logs};
 use crate::timestamps::log_timestamp_now;
 use jiff::Timestamp;
 use std::fmt;
 use std::path::Path;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError};
-use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 use tracing::field::{Field, Visit};

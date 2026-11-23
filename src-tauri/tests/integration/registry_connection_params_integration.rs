@@ -3,9 +3,9 @@
 use crate::common;
 use sqllumen_lib::db::ssl_mode::SslMode;
 
-use sqllumen_lib::db::connections::{get_connection, insert_connection, NewConnectionData};
+use sqllumen_lib::db::connections::{NewConnectionData, get_connection, insert_connection};
 use sqllumen_lib::mysql::pool::SslSettings;
-use sqllumen_lib::mysql::registry::{StoredConnectionParams, DEFAULT_CONNECT_TIMEOUT_SECS};
+use sqllumen_lib::mysql::registry::{DEFAULT_CONNECT_TIMEOUT_SECS, StoredConnectionParams};
 
 fn saved_connection(
     connect_timeout_secs: Option<i64>,

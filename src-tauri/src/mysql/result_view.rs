@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::mysql::cell_values::minus_sign;
-use crate::mysql::query_executor::{compare_json_values, ColumnMeta, SharedRow, StoredResult};
+use crate::mysql::query_executor::{ColumnMeta, SharedRow, StoredResult, compare_json_values};
 use crate::mysql::result_cache::{CachedResultEntry, SlotWrite, SlotWriteTarget};
 use crate::state::AppState;
 

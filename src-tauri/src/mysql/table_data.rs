@@ -1,6 +1,6 @@
 use crate::mysql::cell_values::is_binary_data_type;
 #[cfg(not(coverage))]
-use crate::mysql::cell_values::{grid_cell_json, CellValue, DecodedRow, GridCellVariant};
+use crate::mysql::cell_values::{CellValue, DecodedRow, GridCellVariant, grid_cell_json};
 #[cfg(not(coverage))]
 use crate::mysql::logged_query::LoggedStatement;
 use crate::mysql::metadata_cache::{MetadataCache, MetadataTableKey, TableKeyMetadata};

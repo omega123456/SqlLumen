@@ -3,13 +3,13 @@
 use crate::common;
 use sqllumen_lib::mysql::pool::SslSettings;
 
+use sqllumen_lib::commands::schema_index::{
+    IndexErrorPayload, IndexStatusResponse, IndexedTableInfo, get_index_status_impl,
+    list_indexed_tables_impl, semantic_search_impl,
+};
 #[cfg(coverage)]
 use sqllumen_lib::commands::schema_index::{
     build_schema_index_impl, force_rebuild_schema_index_impl, invalidate_schema_index_impl,
-};
-use sqllumen_lib::commands::schema_index::{
-    get_index_status_impl, list_indexed_tables_impl, semantic_search_impl, IndexErrorPayload,
-    IndexStatusResponse, IndexedTableInfo,
 };
 use sqllumen_lib::db::settings;
 use sqllumen_lib::init_sqlite_vec;
@@ -592,9 +592,11 @@ async fn semantic_search_no_model_configured() {
     .await;
 
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .contains("No embedding model configured"));
+    assert!(
+        result
+            .unwrap_err()
+            .contains("No embedding model configured")
+    );
 }
 
 #[tokio::test]

@@ -6,15 +6,15 @@ use std::path::{Path, PathBuf};
 
 use jiff::tz::TimeZone;
 use jiff::{Timestamp, ToSpan};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sqllumen_lib::export::run_export::{
-    claim_run, final_document, get_run_export_progress_impl, runs_directory, start_run_export_impl,
-    sweep_run_folders, ConnectionSummary, FinalReport, ResultFileKey, RunDescription,
-    RunExportOptions, RunExportStart, RunFiles, RunFinish, RunOutcome, RunPhase,
-    StartRunExportRequest, RUN_FILE_NAME, RUN_FOLDER_RETENTION_DAYS, RUN_NOT_STARTED_MESSAGE,
+    ConnectionSummary, FinalReport, RUN_FILE_NAME, RUN_FOLDER_RETENTION_DAYS,
+    RUN_NOT_STARTED_MESSAGE, ResultFileKey, RunDescription, RunExportOptions, RunExportStart,
+    RunFiles, RunFinish, RunOutcome, RunPhase, StartRunExportRequest, claim_run, final_document,
+    get_run_export_progress_impl, runs_directory, start_run_export_impl, sweep_run_folders,
 };
 use sqllumen_lib::mysql::query_executor::{
-    execute_multi_query_impl, ColumnMeta, ExecuteMultiQueryRequest, StoredResult, StoredResultParts,
+    ColumnMeta, ExecuteMultiQueryRequest, StoredResult, StoredResultParts, execute_multi_query_impl,
 };
 use sqllumen_lib::mysql::session::TabRun;
 use sqllumen_lib::state::AppState;
@@ -99,8 +99,10 @@ fn start_creates_an_owner_only_folder_with_a_running_run_file_and_queued_progres
         "{document}"
     );
     assert!(document.contains("| Database | none |"), "{document}");
-    assert!(document
-        .contains("## 2. UPDATE: waiting\n\n```sql\nUPDATE t SET a = 1\n```\n\nNot run yet."));
+    assert!(
+        document
+            .contains("## 2. UPDATE: waiting\n\n```sql\nUPDATE t SET a = 1\n```\n\nNot run yet.")
+    );
     let progress = get_run_export_progress_impl(&state, &started.run_id).expect("registered run");
     assert_eq!(progress.phase, RunPhase::Queued);
     assert_eq!(progress.statement_number, 1);
@@ -224,14 +226,18 @@ fn a_cancelled_run_keeps_the_partial_file_and_says_where_it_stopped() {
     session.write_row(&[json!(1)]).expect("write");
     session.write_row(&[json!(2)]).expect("write");
 
-    assert!(state
-        .editor_sessions
-        .runs
-        .request_cancel(&TabRun::new(CONNECTION, TAB)));
-    assert!(!state
-        .editor_sessions
-        .runs
-        .request_cancel(&TabRun::new(CONNECTION, "other-tab")));
+    assert!(
+        state
+            .editor_sessions
+            .runs
+            .request_cancel(&TabRun::new(CONNECTION, TAB))
+    );
+    assert!(
+        !state
+            .editor_sessions
+            .runs
+            .request_cancel(&TabRun::new(CONNECTION, "other-tab"))
+    );
     let results = vec![failed(0, "Query cancelled")];
     let summary = claim.finish(&RunFinish {
         results: &results,
@@ -490,20 +496,20 @@ mod against_mock_server {
     use std::time::Duration;
 
     use opensrv_mysql::ErrorKind;
-    use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
+    use sqllumen_lib::commands::connections::{SaveConnectionInput, save_connection_impl};
     use sqllumen_lib::commands::mysql::open_connection_impl;
     use sqllumen_lib::commands::requests::ConnectionTabRequest;
     use sqllumen_lib::export::run_export::{
-        start_run_export_impl, RunExportOptions, RunExportStart, RunOutcome, StartRunExportRequest,
+        RunExportOptions, RunExportStart, RunOutcome, StartRunExportRequest, start_run_export_impl,
     };
     use sqllumen_lib::mysql::query_executor::{
-        cancel_query_impl, execute_multi_query_impl, ExecuteMultiQueryRequest, MultiQueryResult,
+        ExecuteMultiQueryRequest, MultiQueryResult, cancel_query_impl, execute_multi_query_impl,
     };
     use sqllumen_lib::state::AppState;
 
     use super::{execute_owned, read, run_folder, wait_until_query_runs};
     use crate::common::editor_session_fixtures::{
-        database_step, n_column, n_row, n_stream, single_row_step, EDITOR_TAB,
+        EDITOR_TAB, database_step, n_column, n_row, n_stream, single_row_step,
     };
     use crate::common::mock_mysql_server::{
         MockMySqlServer, MockQueryStep, MockScript, MockStreamRows, MockStreamStep,

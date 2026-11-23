@@ -6,11 +6,11 @@ use sqllumen_lib::mysql::pool::SslSettings;
 #[cfg(not(coverage))]
 use sqllumen_lib::mysql::table_data::fetch_table_pk_cached;
 use sqllumen_lib::mysql::table_data::{
-    format_bytes, is_generated_column_extra, parse_enum_values, parse_set_values,
+    ExportTableOptions, FilterCondition, PrimaryKeyInfo, SortInfo, TableDataColumnMeta,
+    translate_filter_model, translate_filter_model_with_columns,
 };
 use sqllumen_lib::mysql::table_data::{
-    translate_filter_model, translate_filter_model_with_columns, ExportTableOptions,
-    FilterCondition, PrimaryKeyInfo, SortInfo, TableDataColumnMeta,
+    format_bytes, is_generated_column_extra, parse_enum_values, parse_set_values,
 };
 
 use crate::common;
@@ -101,16 +101,16 @@ mod type_aware_filter_integration {
     use rusqlite::Connection;
     use serde::de::DeserializeOwned;
     use serde_json::json;
-    use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
-    use sqllumen_lib::db::ssl_mode::SslMode;
-    use sqllumen_lib::commands::mysql::{open_connection_impl, OpenConnectionResult};
+    use sqllumen_lib::commands::connections::{SaveConnectionInput, save_connection_impl};
+    use sqllumen_lib::commands::mysql::{OpenConnectionResult, open_connection_impl};
     use sqllumen_lib::commands::table_data as table_data_commands;
+    use sqllumen_lib::db::ssl_mode::SslMode;
     use sqllumen_lib::mysql::pool::set_test_pool_factory;
     use sqllumen_lib::mysql::registry::ConnectionRegistry;
     use sqllumen_lib::state::AppState;
     use std::sync::{Arc, Mutex};
     use tauri::ipc::{CallbackFn, InvokeBody};
-    use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
+    use tauri::test::{INVOKE_KEY, get_ipc_response, mock_builder, mock_context, noop_assets};
     use tauri::webview::InvokeRequest;
 
     fn test_state() -> AppState {
@@ -711,7 +711,7 @@ mod fetch_cancellation_integration {
     use opensrv_mysql::{ColumnFlags, ColumnType};
     use sqllumen_lib::mysql::pool::TRANSFER_TIME_ZONE_SQL;
     use sqllumen_lib::mysql::table_data::{
-        export_table_data_impl, fetch_table_data_impl, ExportTableOptions,
+        ExportTableOptions, export_table_data_impl, fetch_table_data_impl,
     };
     use std::collections::HashMap;
 
@@ -1125,7 +1125,7 @@ mod command_wrapper_coverage {
     use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
     use sqllumen_lib::state::AppState;
     use tauri::ipc::{CallbackFn, InvokeBody};
-    use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
+    use tauri::test::{INVOKE_KEY, get_ipc_response, mock_builder, mock_context, noop_assets};
     use tauri::webview::InvokeRequest;
     use tokio_util::sync::CancellationToken;
 
@@ -1283,9 +1283,11 @@ mod command_wrapper_coverage {
                 }),
             )
             .expect_err("page size zero should error");
-        assert!(zero_page_size_err
-            .to_string()
-            .contains("page_size must be at least 1"));
+        assert!(
+            zero_page_size_err
+                .to_string()
+                .contains("page_size must be at least 1")
+        );
 
         let missing_connection_err =
             invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataResponse>(

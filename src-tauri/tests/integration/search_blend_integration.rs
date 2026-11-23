@@ -8,11 +8,11 @@
 
 use rusqlite::Connection;
 use sqllumen_lib::init_sqlite_vec;
-use sqllumen_lib::schema_index::search::{multi_query_search_configured, SearchConfig};
+use sqllumen_lib::schema_index::search::{SearchConfig, multi_query_search_configured};
 use sqllumen_lib::schema_index::storage;
 
 use crate::common;
-use crate::common::schema_index_chunks::{insert_table_chunk, TestTableChunk};
+use crate::common::schema_index_chunks::{TestTableChunk, insert_table_chunk};
 
 const DIM: usize = 4;
 

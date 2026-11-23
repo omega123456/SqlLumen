@@ -5,7 +5,7 @@ pub(super) async fn execute_schema_statement(
     pool: &BackgroundPool,
     sql: &str,
 ) -> Result<(), mysql_async::Error> {
-    use crate::mysql::logged_query::{execute_pooled, LoggedStatement};
+    use crate::mysql::logged_query::{LoggedStatement, execute_pooled};
 
     execute_pooled(pool, LoggedStatement::text(sql)).await?;
     Ok(())

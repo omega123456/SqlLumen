@@ -389,8 +389,8 @@ fn vec_schema_version_is_2() {
 // ── compact_ddl_for_llm ─────────────────────────────────────────────────
 
 use sqllumen_lib::schema_index::builder::{
-    compact_ddl_for_llm, extract_column_comments, extract_table_comment,
-    generate_text_for_embedding, TableEmbeddingDescription,
+    TableEmbeddingDescription, compact_ddl_for_llm, extract_column_comments, extract_table_comment,
+    generate_text_for_embedding,
 };
 
 #[test]

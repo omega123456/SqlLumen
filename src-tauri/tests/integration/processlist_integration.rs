@@ -16,7 +16,7 @@ use crate::common::mock_mysql_server::{MockCell, MockColumnDef, MockMySqlServer,
 #[cfg(not(coverage))]
 use opensrv_mysql::{ColumnFlags, ColumnType, ErrorKind};
 #[cfg(not(coverage))]
-use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
+use sqllumen_lib::commands::connections::{SaveConnectionInput, save_connection_impl};
 #[cfg(not(coverage))]
 use sqllumen_lib::commands::history::list_history_impl;
 #[cfg(not(coverage))]
@@ -469,11 +469,13 @@ async fn test_kill_queries_uses_rds_stored_procedure() {
     .expect("kill queries should return result list");
 
     assert!(!results[0].success);
-    assert!(results[0]
-        .error
-        .as_deref()
-        .unwrap_or_default()
-        .contains("Used mysql.rds_kill"));
+    assert!(
+        results[0]
+            .error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Used mysql.rds_kill")
+    );
 
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     let page = list_history_impl(
@@ -551,11 +553,13 @@ async fn test_kill_queries_returns_per_id_failures() {
     assert_eq!(results.len(), 2);
     assert!(results[0].success);
     assert!(!results[1].success);
-    assert!(results[1]
-        .error
-        .as_deref()
-        .unwrap_or_default()
-        .contains("Cannot kill query 99"));
+    assert!(
+        results[1]
+            .error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Cannot kill query 99")
+    );
 }
 
 #[cfg(not(coverage))]

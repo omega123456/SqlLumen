@@ -9,7 +9,7 @@
 
 use crate::common::mock_mysql_server::{MockCell, MockColumnDef, MockMySqlServer, MockQueryStep};
 use opensrv_mysql::{ColumnFlags, ColumnType};
-use sqllumen_lib::mysql::pool::{set_test_pool_factory, BackgroundPool};
+use sqllumen_lib::mysql::pool::{BackgroundPool, set_test_pool_factory};
 
 use crate::common::mock_session::{mock_connection_input, mock_pool_with_params};
 

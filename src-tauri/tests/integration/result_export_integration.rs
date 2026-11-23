@@ -17,23 +17,23 @@ use std::time::{Duration, Instant};
 
 use opensrv_mysql::ErrorKind;
 use serde_json::json;
-use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
+use sqllumen_lib::commands::connections::{SaveConnectionInput, save_connection_impl};
 use sqllumen_lib::commands::mysql::{close_connection_impl, open_connection_impl};
-use sqllumen_lib::export::result_export::{
-    cancel_result_export_impl, get_result_export_progress_impl, run_result_export_job,
-    start_result_export_impl, temp_path_for, StartResultExportInput,
-    FULL_EXPORT_UNAVAILABLE_MESSAGE,
-};
 use sqllumen_lib::export::ExportFormat;
+use sqllumen_lib::export::result_export::{
+    FULL_EXPORT_UNAVAILABLE_MESSAGE, StartResultExportInput, cancel_result_export_impl,
+    get_result_export_progress_impl, run_result_export_job, start_result_export_impl,
+    temp_path_for,
+};
 use sqllumen_lib::mysql::query_executor::{
-    execute_call_query_impl, execute_query_impl, ColumnMeta, RunDatabase, StoredResult,
+    ColumnMeta, RunDatabase, StoredResult, execute_call_query_impl, execute_query_impl,
 };
 use sqllumen_lib::state::{AppState, ResultExportJobProgress, ResultExportStatus};
 
 use crate::common;
 use crate::common::editor_session_fixtures::{
-    call_query, database_step, editor_query, n_column, n_row, n_stream, single_row_step,
-    EDITOR_TAB, KILL_FIRST_EDITOR_SESSION,
+    EDITOR_TAB, KILL_FIRST_EDITOR_SESSION, call_query, database_step, editor_query, n_column,
+    n_row, n_stream, single_row_step,
 };
 use crate::common::log_capture::LogCaptureGuard;
 use crate::common::mock_mysql_server::{
@@ -384,9 +384,11 @@ async fn a_null_previous_database_skips_the_restore_with_a_warning() {
         .filter(|q| q.starts_with("USE"))
         .collect();
     assert_eq!(uses, vec!["USE shop".to_string()], "no restore USE");
-    assert!(capture
-        .contents()
-        .contains("the session had no database before the export"));
+    assert!(
+        capture
+            .contents()
+            .contains("the session had no database before the export")
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -585,10 +587,11 @@ async fn a_failed_database_switch_fails_the_export_without_rerunning() {
     let done = finish(&state, &job_id, handle).await;
 
     assert_eq!(done.status, ResultExportStatus::Failed);
-    assert!(done
-        .error
-        .expect("error")
-        .contains("Couldn't switch to database 'shop'"));
+    assert!(
+        done.error
+            .expect("error")
+            .contains("Couldn't switch to database 'shop'")
+    );
     assert!(!texts(&server).iter().any(|q| q == "SELECT n FROM big"));
 }
 

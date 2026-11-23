@@ -2,7 +2,7 @@
 
 use std::io;
 use std::pin::Pin;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 use tokio::io::{AsyncRead, ReadBuf};
 
 const PACKET_HEADER_LENGTH: usize = 4;

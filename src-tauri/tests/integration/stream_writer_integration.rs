@@ -7,12 +7,12 @@ use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sqllumen_lib::export::stream_writer::RowSinkSpec;
 use sqllumen_lib::export::stream_writer::{
     RowSink, RowWrite, XLSX_SHEET_ROW_LIMIT, XLSX_WIDTH_SAMPLE_ROWS,
 };
-use sqllumen_lib::export::{csv_writer, json_writer, sql_writer, xlsx_writer, ExportFormat};
+use sqllumen_lib::export::{ExportFormat, csv_writer, json_writer, sql_writer, xlsx_writer};
 
 fn columns() -> Vec<String> {
     vec![

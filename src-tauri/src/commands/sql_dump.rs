@@ -4,12 +4,12 @@ use std::collections::HashMap;
 use std::io::{Seek, Write};
 
 use crate::export::job_retention::cleanup_terminal_jobs;
-use crate::export::sql_dump::{self, DumpOptions, SqlDumpValue, INSERT_BATCH_SIZE};
+use crate::export::sql_dump::{self, DumpOptions, INSERT_BATCH_SIZE, SqlDumpValue};
 use crate::export::sql_import;
 use crate::mysql::cell_values::DecodedRow;
+use crate::mysql::logged_query::{LoggedStatement, fetch_decoded_pooled};
 #[cfg(not(coverage))]
 use crate::mysql::logged_query::{decoded_row_stream, fetch_decoded, stream};
-use crate::mysql::logged_query::{fetch_decoded_pooled, LoggedStatement};
 use crate::mysql::pool::BackgroundPool;
 use crate::state::{AppState, DumpJobProgress, DumpJobStatus, ImportJobProgress, ImportJobStatus};
 

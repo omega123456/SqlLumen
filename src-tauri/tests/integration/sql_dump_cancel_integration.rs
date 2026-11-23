@@ -1,7 +1,7 @@
 //! `cancel_dump_impl`: flags the job and kills the dump's running MySQL thread.
 
 use sqllumen_lib::commands::sql_dump::{
-    cancel_dump_impl, get_dump_progress_impl, CancelDumpRequest,
+    CancelDumpRequest, cancel_dump_impl, get_dump_progress_impl,
 };
 use sqllumen_lib::state::{AppState, DumpJobProgress, DumpJobStatus};
 

@@ -4,9 +4,9 @@
 mod fetch_blob_value_against_mock {
     use crate::common::blob_step_helpers::{connect_mock_pool, len_step, val_step};
     use crate::common::mock_mysql_server::{MockCell, MockMySqlServer};
-    use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+    use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
     use serde_json::json;
-    use sqllumen_lib::mysql::table_data::{fetch_blob_value_impl, BLOB_FETCH_CAP};
+    use sqllumen_lib::mysql::table_data::{BLOB_FETCH_CAP, fetch_blob_value_impl};
 
     const LEN_SQL: &str =
         "SELECT OCTET_LENGTH(`photo`) AS `len` FROM `app_db`.`assets` WHERE `id` = ? LIMIT 1";
@@ -150,9 +150,9 @@ mod fetch_blob_value_against_mock {
 }
 
 mod blob_file_bytes_integration {
-    use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+    use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
     use sqllumen_lib::mysql::table_data::{
-        read_file_bytes_impl, write_file_bytes_impl, BLOB_FETCH_CAP,
+        BLOB_FETCH_CAP, read_file_bytes_impl, write_file_bytes_impl,
     };
 
     fn temp_path(name: &str) -> std::path::PathBuf {

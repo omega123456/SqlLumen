@@ -1,5 +1,5 @@
 #[cfg(not(coverage))]
-use crate::mysql::logged_query::{execute_pooled, LoggedStatement};
+use crate::mysql::logged_query::{LoggedStatement, execute_pooled};
 #[cfg(any(not(coverage), test, feature = "test-utils"))]
 use crate::mysql::pool;
 #[cfg(any(not(coverage), test, feature = "test-utils"))]

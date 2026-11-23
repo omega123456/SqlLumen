@@ -2,7 +2,7 @@ use super::*;
 use crate::mysql::query_executor::{
     ColumnMeta, StoredResult, StoredResultOrigin, StoredResultParts,
 };
-use crate::mysql::result_view::{first_window, view_len, ResultWindow};
+use crate::mysql::result_view::{ResultWindow, first_window, view_len};
 
 pub const TABLE_PAGE_RESULT_INDEX: usize = 0;
 

@@ -4,7 +4,7 @@ use sqllumen_lib::mysql::pool::SslSettings;
 use sqllumen_lib::commands::session::select_database_impl;
 use sqllumen_lib::commands::session::set_test_select_database_hook;
 use sqllumen_lib::credentials;
-use sqllumen_lib::mysql::pool::{set_test_pool_factory, BackgroundPool, ConnectionParams};
+use sqllumen_lib::mysql::pool::{BackgroundPool, ConnectionParams, set_test_pool_factory};
 use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
 use sqllumen_lib::state::AppState;
 use std::sync::Mutex;
@@ -306,7 +306,7 @@ mod pool_swap {
         mock_connection_params, mock_pool, register_mock_connection,
     };
     use sqllumen_lib::mysql::health::attempt_reconnect_once_for_test;
-    use sqllumen_lib::mysql::logged_query::{fetch_first, LoggedStatement};
+    use sqllumen_lib::mysql::logged_query::{LoggedStatement, fetch_first};
 
     const SWAP_CONNECTION_ID: &str = "conn-swap";
 

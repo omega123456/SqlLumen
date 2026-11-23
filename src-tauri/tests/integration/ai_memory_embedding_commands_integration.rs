@@ -6,9 +6,9 @@ use std::sync::{Arc, Mutex};
 use serde_json::json;
 use sqllumen_lib::ai_memory::types::{MemoryReembedProgress, MemoryScope};
 use sqllumen_lib::commands::ai_memory::{
-    list_connection_memories_impl, list_global_memories_impl, list_group_memories_impl,
-    move_memory_full, reembed_all_scopes, save_memory_full, search_session_memories,
-    MoveMemoryRequest, SaveMemoryRequest, SearchMemoriesRequest,
+    MoveMemoryRequest, SaveMemoryRequest, SearchMemoriesRequest, list_connection_memories_impl,
+    list_global_memories_impl, list_group_memories_impl, move_memory_full, reembed_all_scopes,
+    save_memory_full, search_session_memories,
 };
 use sqllumen_lib::db::connection_groups::insert_group;
 use sqllumen_lib::db::connections::insert_connection;

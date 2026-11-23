@@ -72,13 +72,14 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
     let logs_conn = crate::logging::log_store::initialize_log_database(&log_db_path).map_err(
         |error| -> Box<dyn Error> { format!("failed to initialize log database: {error}").into() },
     )?;
-    let logging_init = crate::logging::init_logging(&log_db_path)
+    let rust_log = crate::logging::rust_log_directives();
+    let logging_init = crate::logging::init_logging(&log_db_path, rust_log.as_deref())
         .map_err(|error| -> Box<dyn Error> { error.into() })?;
     let conn =
         crate::initialize_database(&dir).map_err(|error| -> Box<dyn Error> { error.into() })?;
 
-    if !logging_init.rust_log_env_set {
-        crate::logging::apply_log_level_from_settings(&conn, &logging_init.filter_reload);
+    if let Some(filter_reload) = &logging_init.settings_filter_reload {
+        crate::logging::apply_log_level_from_settings(&conn, filter_reload);
     }
 
     let caches = create_shared_caches(&conn, dir.join(SPILL_DIRECTORY_NAME));
@@ -86,7 +87,7 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
     spawn_run_folder_sweep();
     tracing::info!(
         target: "sqllumen_lib",
-        rust_log_env_set = logging_init.rust_log_env_set,
+        rust_log_env_set = rust_log.is_some(),
         log_db_path = %log_db_path.display(),
         "logging initialized"
     );
@@ -131,7 +132,10 @@ fn remove_leftover_spill_directory(spill_dir: &Path) {
 fn create_shared_caches(conn: &Connection, spill_dir: PathBuf) -> SharedCaches {
     remove_leftover_spill_directory(&spill_dir);
     let shared_cache_ttl = Arc::new(AtomicU64::new(load_cache_ttl_seconds(conn)));
-    let result_cache = Arc::new(ResultCache::new_with_shared_ttl(shared_cache_ttl, spill_dir));
+    let result_cache = Arc::new(ResultCache::new_with_shared_ttl(
+        shared_cache_ttl,
+        spill_dir,
+    ));
     result_cache.set_row_ceiling(commands::settings::load_results_max_rows(conn));
     SharedCaches { result_cache }
 }
@@ -178,7 +182,7 @@ fn build_app_state(
         app_handle: Some(app_handle.clone()),
         result_cache: parts.caches.result_cache,
         metadata_cache: crate::mysql::metadata_cache::MetadataCache::new(),
-        log_filter_reload: Mutex::new(Some(logging_init.filter_reload)),
+        log_filter_reload: Mutex::new(logging_init.settings_filter_reload),
         running_queries: tokio::sync::RwLock::new(HashMap::new()),
         editor_sessions: Default::default(),
         dump_jobs: Arc::new(RwLock::new(HashMap::new())),

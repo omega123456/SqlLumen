@@ -1,10 +1,10 @@
 use crate::timestamps::{days_before, log_timestamp};
 use jiff::{SignedDuration, Timestamp};
-use rusqlite::{params, Connection, Result};
+use rusqlite::{Connection, Result, params};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-use crate::db::migrations::{run_log_migrations, MIGRATION_VACUUM_STATE_LOGS};
+use crate::db::migrations::{MIGRATION_VACUUM_STATE_LOGS, run_log_migrations};
 
 pub const LOG_DB_FILE_NAME: &str = "sqllumen-logs.db";
 pub const LOG_PAGE_SIZE: i64 = 20;

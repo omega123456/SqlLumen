@@ -5296,6 +5296,7 @@ dependencies = [
  "mach2",
  "moka",
  "mysql_async",
+ "nu-ansi-term",
  "opensrv-mysql",
  "refinery",
  "regex",
@@ -5329,7 +5330,7 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "uuid",
- "windows",
+ "windows-version",
  "wiremock",
  "zip 9.0.5",
 ]

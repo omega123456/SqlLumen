@@ -59,7 +59,10 @@ fn base_tables_step() -> MockQueryStep {
     MockQueryStep::with_rows(
         "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME",
         vec![text_col("TABLE_NAME")],
-        vec![vec![MockCell::Bytes(b"orders")], vec![MockCell::Bytes(b"users")]],
+        vec![
+            vec![MockCell::Bytes(b"orders")],
+            vec![MockCell::Bytes(b"users")],
+        ],
     )
 }
 
@@ -369,7 +372,12 @@ fn routine_return_parameters_step() -> MockQueryStep {
             int_col("ORDINAL_POSITION"),
         ],
         vec![
-            vec![MockCell::Null, MockCell::Bytes(b"VARCHAR(255)"), MockCell::Null, MockCell::I64(0)],
+            vec![
+                MockCell::Null,
+                MockCell::Bytes(b"VARCHAR(255)"),
+                MockCell::Null,
+                MockCell::I64(0),
+            ],
             vec![
                 MockCell::Bytes(b"p_name"),
                 MockCell::Bytes(b"VARCHAR(255)"),

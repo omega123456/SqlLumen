@@ -1,6 +1,6 @@
 //! Cache lookup status shared by result and table-data cache IPC responses.
 
-use sqllumen_lib::mysql::cache_status::{cache_status_json, CacheStatus};
+use sqllumen_lib::mysql::cache_status::{CacheStatus, cache_status_json};
 use sqllumen_lib::mysql::result_cache::CacheGet;
 
 #[test]

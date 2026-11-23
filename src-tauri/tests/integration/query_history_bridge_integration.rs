@@ -250,18 +250,22 @@ async fn invalidate_metadata_cache_for_executed_sql_uses_default_database_for_un
         "ALTER TABLE users ADD COLUMN email VARCHAR(255)",
     );
 
-    assert!(state
-        .metadata_cache
-        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-            "sess-ddl", "test_db", "users"
-        ))
-        .is_none());
-    assert!(state
-        .metadata_cache
-        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-            "sess-ddl", "other_db", "users"
-        ))
-        .is_some());
+    assert!(
+        state
+            .metadata_cache
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "sess-ddl", "test_db", "users"
+            ))
+            .is_none()
+    );
+    assert!(
+        state
+            .metadata_cache
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "sess-ddl", "other_db", "users"
+            ))
+            .is_some()
+    );
 }
 
 #[tokio::test]
@@ -297,22 +301,26 @@ async fn invalidate_metadata_cache_for_executed_sql_evicts_all_rename_targets() 
         "RENAME TABLE test_db.orders TO test_db.orders_archive",
     );
 
-    assert!(state
-        .metadata_cache
-        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-            "sess-rename",
-            "test_db",
-            "orders"
-        ))
-        .is_none());
-    assert!(state
-        .metadata_cache
-        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-            "sess-rename",
-            "test_db",
-            "orders_archive"
-        ))
-        .is_none());
+    assert!(
+        state
+            .metadata_cache
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "sess-rename",
+                "test_db",
+                "orders"
+            ))
+            .is_none()
+    );
+    assert!(
+        state
+            .metadata_cache
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "sess-rename",
+                "test_db",
+                "orders_archive"
+            ))
+            .is_none()
+    );
 }
 
 // ── Coverage-mode tests for bridge functions ─────────────────────────────
@@ -508,18 +516,22 @@ mod coverage_bridge_tests {
         .await
         .expect("bridge should succeed");
 
-        assert!(state
-            .metadata_cache
-            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-                "sess-ddl", "test_db", "users"
-            ))
-            .is_none());
-        assert!(state
-            .metadata_cache
-            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-                "sess-ddl", "other_db", "users"
-            ))
-            .is_some());
+        assert!(
+            state
+                .metadata_cache
+                .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                    "sess-ddl", "test_db", "users"
+                ))
+                .is_none()
+        );
+        assert!(
+            state
+                .metadata_cache
+                .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                    "sess-ddl", "other_db", "users"
+                ))
+                .is_some()
+        );
     }
 
     #[tokio::test]
@@ -566,22 +578,26 @@ mod coverage_bridge_tests {
         .await
         .expect("bridge should succeed");
 
-        assert!(state
-            .metadata_cache
-            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-                "sess-multi-ddl",
-                "test_db",
-                "users"
-            ))
-            .is_none());
-        assert!(state
-            .metadata_cache
-            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-                "sess-multi-ddl",
-                "test_db",
-                "orders"
-            ))
-            .is_none());
+        assert!(
+            state
+                .metadata_cache
+                .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                    "sess-multi-ddl",
+                    "test_db",
+                    "users"
+                ))
+                .is_none()
+        );
+        assert!(
+            state
+                .metadata_cache
+                .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                    "sess-multi-ddl",
+                    "test_db",
+                    "orders"
+                ))
+                .is_none()
+        );
     }
 
     // ── execute_multi_query_bridge: error path ────────────────────────────

@@ -2,8 +2,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use crate::export::stream_writer::{RowSink, RowSinkSpec};
 use crate::export::ExportFormat;
+use crate::export::stream_writer::{RowSink, RowSinkSpec};
 use crate::mysql::cell_values::{cached_binary_cell_as_hex, is_binary_data_type};
 use crate::mysql::query_executor::ColumnMeta;
 

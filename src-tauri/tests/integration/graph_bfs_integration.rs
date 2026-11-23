@@ -8,7 +8,7 @@ use sqllumen_lib::schema_index::storage::{self, IndexedTableRef};
 use sqllumen_lib::schema_index::types::FkEdge;
 
 use crate::common;
-use crate::common::schema_index_chunks::{insert_table_chunk, TestTableChunk};
+use crate::common::schema_index_chunks::{TestTableChunk, insert_table_chunk};
 
 const DIM: usize = 4;
 

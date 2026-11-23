@@ -5,7 +5,7 @@ use crate::ai_memory::reembed::ReembedTarget;
 use crate::ai_memory::types::{
     AiMemory, MemoryMove, MemoryOwner, MemoryReembedProgress, MemoryScope, MemoryVector,
 };
-use crate::ai_memory::{read_embedding_config, storage, EmbeddingConfig};
+use crate::ai_memory::{EmbeddingConfig, read_embedding_config, storage};
 use crate::ai_memory::{reembed, search};
 use crate::db::{connection_groups, connections};
 use crate::schema_index::embeddings::{self, EmbeddingInput};

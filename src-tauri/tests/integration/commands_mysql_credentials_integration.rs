@@ -6,13 +6,13 @@ use sqllumen_lib::commands::connection_groups::{
     update_connection_group_impl,
 };
 use sqllumen_lib::commands::connections::{
-    delete_connection_impl, get_connection_impl, list_connections_impl, save_connection_impl,
-    update_connection_impl, SaveConnectionInput, UpdateConnectionInput,
+    SaveConnectionInput, UpdateConnectionInput, delete_connection_impl, get_connection_impl,
+    list_connections_impl, save_connection_impl, update_connection_impl,
 };
 use sqllumen_lib::commands::mysql::{
-    close_connection_impl, get_connection_status_impl, list_open_connection_sessions_impl,
-    open_connection_impl, test_connection_impl, OpenConnectionPayload, OpenConnectionResult,
-    TestConnectionInput,
+    OpenConnectionPayload, OpenConnectionResult, TestConnectionInput, close_connection_impl,
+    get_connection_status_impl, list_open_connection_sessions_impl, open_connection_impl,
+    test_connection_impl,
 };
 use sqllumen_lib::commands::settings::{get_all_settings_impl, get_setting_impl, set_setting_impl};
 use sqllumen_lib::credentials::{self};
@@ -24,7 +24,7 @@ use sqllumen_lib::mysql::health::attempt_reconnect_once_for_test;
 use sqllumen_lib::mysql::health::spawn_health_monitor;
 use sqllumen_lib::mysql::pool::SslSettings;
 use sqllumen_lib::mysql::pool::{
-    create_pool, set_test_pool_factory, BackgroundPool, ConnectionParams,
+    BackgroundPool, ConnectionParams, create_pool, set_test_pool_factory,
 };
 use sqllumen_lib::mysql::registry::{
     ConnectionRegistry, ConnectionStatus, RegistryEntry, StoredConnectionParams,
@@ -35,12 +35,12 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 #[cfg(not(coverage))]
 use std::time::Duration;
-use tauri::ipc::{CallbackFn, InvokeBody};
-use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
-use tauri::webview::InvokeRequest;
 #[cfg(coverage)]
 use tauri::AppHandle;
 use tauri::Manager;
+use tauri::ipc::{CallbackFn, InvokeBody};
+use tauri::test::{INVOKE_KEY, get_ipc_response, mock_builder, mock_context, noop_assets};
+use tauri::webview::InvokeRequest;
 use tokio_util::sync::CancellationToken;
 
 use crate::common;
@@ -531,14 +531,16 @@ fn update_connection_impl_surfaces_password_update_errors() {
 fn settings_impls_surface_poisoned_lock_errors() {
     let state = poisoned_state();
     assert!(get_setting_impl(&state, "theme").is_err());
-    assert!(set_setting_impl(
-        &state,
-        &sqllumen_lib::commands::settings::SetSettingRequest {
-            key: "theme".to_string(),
-            value: "dark".to_string()
-        }
-    )
-    .is_err());
+    assert!(
+        set_setting_impl(
+            &state,
+            &sqllumen_lib::commands::settings::SetSettingRequest {
+                key: "theme".to_string(),
+                value: "dark".to_string()
+            }
+        )
+        .is_err()
+    );
     assert!(get_all_settings_impl(&state).is_err());
 }
 
@@ -552,14 +554,16 @@ fn settings_impls_surface_database_errors() {
     }
 
     assert!(get_setting_impl(&state, "theme").is_err());
-    assert!(set_setting_impl(
-        &state,
-        &sqllumen_lib::commands::settings::SetSettingRequest {
-            key: "theme".to_string(),
-            value: "dark".to_string()
-        }
-    )
-    .is_err());
+    assert!(
+        set_setting_impl(
+            &state,
+            &sqllumen_lib::commands::settings::SetSettingRequest {
+                key: "theme".to_string(),
+                value: "dark".to_string()
+            }
+        )
+        .is_err()
+    );
     assert!(get_all_settings_impl(&state).is_err());
 }
 
@@ -613,15 +617,17 @@ fn connection_group_impls_surface_poisoned_lock_errors() {
     let state = poisoned_state();
     assert!(create_connection_group_impl(&state, "Group").is_err());
     assert!(list_connection_groups_impl(&state).is_err());
-    assert!(update_connection_group_impl(
-        &state,
-        &sqllumen_lib::commands::connection_groups::UpdateConnectionGroupRequest {
-            id: "id".to_string(),
-            name: "Group".to_string(),
-            color: None,
-        }
-    )
-    .is_err());
+    assert!(
+        update_connection_group_impl(
+            &state,
+            &sqllumen_lib::commands::connection_groups::UpdateConnectionGroupRequest {
+                id: "id".to_string(),
+                name: "Group".to_string(),
+                color: None,
+            }
+        )
+        .is_err()
+    );
     assert!(delete_connection_group_impl(&state, "id").is_err());
 }
 
@@ -647,14 +653,16 @@ fn connection_impls_cover_missing_row_and_lock_errors() {
     assert!(save_connection_impl(&poisoned, sample_save_input(None)).is_err());
     assert!(get_connection_impl(&poisoned, "id").is_err());
     assert!(list_connections_impl(&poisoned).is_err());
-    assert!(update_connection_impl(
-        &poisoned,
-        sqllumen_lib::commands::connections::UpdateConnectionRequest {
-            id: "id".to_string(),
-            data: update_input(None)
-        }
-    )
-    .is_err());
+    assert!(
+        update_connection_impl(
+            &poisoned,
+            sqllumen_lib::commands::connections::UpdateConnectionRequest {
+                id: "id".to_string(),
+                data: update_input(None)
+            }
+        )
+        .is_err()
+    );
     assert!(delete_connection_impl(&poisoned, "id").is_err());
 
     let broken_state = test_state();
@@ -909,10 +917,12 @@ fn closed_port_test_connection_input() -> TestConnectionInput {
 async fn test_connection_impl_reports_connection_failures() {
     let result = test_connection_impl(closed_port_test_connection_input()).await;
     assert!(!result.success);
-    assert!(result
-        .error_message
-        .expect("error should exist")
-        .starts_with("Connection failed:"));
+    assert!(
+        result
+            .error_message
+            .expect("error should exist")
+            .starts_with("Connection failed:")
+    );
 }
 
 #[cfg(not(coverage))]
@@ -959,10 +969,12 @@ async fn test_connection_impl_surfaces_keychain_errors_for_saved_password() {
     let result = test_connection_impl(input).await;
 
     assert!(!result.success);
-    assert!(result
-        .error_message
-        .expect("error should exist")
-        .contains(&retrieve_password_prefix()));
+    assert!(
+        result
+            .error_message
+            .expect("error should exist")
+            .contains(&retrieve_password_prefix())
+    );
 }
 
 #[tokio::test]
@@ -1079,18 +1091,22 @@ async fn close_connection_impl_evicts_metadata_cache_for_closed_connection() {
         .await
         .expect("close should succeed");
 
-    assert!(state
-        .metadata_cache
-        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-            "conn-1", "test_db", "users"
-        ))
-        .is_none());
-    assert!(state
-        .metadata_cache
-        .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
-            "conn-2", "test_db", "users"
-        ))
-        .is_some());
+    assert!(
+        state
+            .metadata_cache
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "conn-1", "test_db", "users"
+            ))
+            .is_none()
+    );
+    assert!(
+        state
+            .metadata_cache
+            .get(&sqllumen_lib::mysql::metadata_cache::MetadataTableKey::new(
+                "conn-2", "test_db", "users"
+            ))
+            .is_some()
+    );
 }
 
 #[tokio::test]
@@ -1131,11 +1147,13 @@ async fn close_connection_impl_decrements_schema_index_ref_count_without_cancell
         !build_token.is_cancelled(),
         "shared profile token should stay active"
     );
-    assert!(!state
-        .session_profile_map
-        .lock()
-        .expect("session_profile_map lock should succeed")
-        .contains_key("conn-1"));
+    assert!(
+        !state
+            .session_profile_map
+            .lock()
+            .expect("session_profile_map lock should succeed")
+            .contains_key("conn-1")
+    );
     assert_eq!(
         state
             .session_ref_counts
@@ -1145,11 +1163,13 @@ async fn close_connection_impl_decrements_schema_index_ref_count_without_cancell
             .copied(),
         Some(1)
     );
-    assert!(state
-        .index_build_tokens
-        .lock()
-        .expect("index_build_tokens lock should succeed")
-        .contains_key("profile-1"));
+    assert!(
+        state
+            .index_build_tokens
+            .lock()
+            .expect("index_build_tokens lock should succeed")
+            .contains_key("profile-1")
+    );
 }
 
 #[tokio::test]
@@ -1190,21 +1210,27 @@ async fn close_connection_impl_cleans_schema_index_tracking_when_last_session_cl
         build_token.is_cancelled(),
         "last profile token should be cancelled"
     );
-    assert!(!state
-        .session_profile_map
-        .lock()
-        .expect("session_profile_map lock should succeed")
-        .contains_key("conn-1"));
-    assert!(!state
-        .session_ref_counts
-        .lock()
-        .expect("session_ref_counts lock should succeed")
-        .contains_key("profile-1"));
-    assert!(!state
-        .index_build_tokens
-        .lock()
-        .expect("index_build_tokens lock should succeed")
-        .contains_key("profile-1"));
+    assert!(
+        !state
+            .session_profile_map
+            .lock()
+            .expect("session_profile_map lock should succeed")
+            .contains_key("conn-1")
+    );
+    assert!(
+        !state
+            .session_ref_counts
+            .lock()
+            .expect("session_ref_counts lock should succeed")
+            .contains_key("profile-1")
+    );
+    assert!(
+        !state
+            .index_build_tokens
+            .lock()
+            .expect("index_build_tokens lock should succeed")
+            .contains_key("profile-1")
+    );
 }
 
 #[tokio::test]
@@ -1226,11 +1252,13 @@ async fn close_connection_impl_removes_session_mapping_even_without_ref_count_en
         .await
         .expect("close should succeed");
 
-    assert!(!state
-        .session_profile_map
-        .lock()
-        .expect("session_profile_map lock should succeed")
-        .contains_key("conn-1"));
+    assert!(
+        !state
+            .session_profile_map
+            .lock()
+            .expect("session_profile_map lock should succeed")
+            .contains_key("conn-1")
+    );
 }
 
 #[tokio::test]

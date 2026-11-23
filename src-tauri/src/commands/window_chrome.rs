@@ -1,4 +1,4 @@
-use crate::window_chrome::{current_backdrop, native_theme, WindowBackdrop};
+use crate::window_chrome::{WindowBackdrop, current_backdrop, native_theme};
 
 pub fn set_window_theme_impl<R: tauri::Runtime>(
     window: &tauri::WebviewWindow<R>,

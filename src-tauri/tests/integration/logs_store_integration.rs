@@ -1,10 +1,10 @@
 use crate::common::utc_timestamps::utc_timestamp;
-use jiff::{civil, SignedDuration, Timestamp};
+use jiff::{SignedDuration, Timestamp, civil};
 use rusqlite::Connection;
 use sqllumen_lib::db::migrations::run_log_migrations;
 use sqllumen_lib::logging::log_store::{
-    export_logs_in_range, initialize_log_database, insert_log_entries, list_logs,
-    open_log_database, prune_logs, LogEntry, LOG_PAGE_SIZE,
+    LOG_PAGE_SIZE, LogEntry, export_logs_in_range, initialize_log_database, insert_log_entries,
+    list_logs, open_log_database, prune_logs,
 };
 use sqllumen_lib::timestamps::{days_before, log_timestamp};
 use tempfile::tempdir;
@@ -99,10 +99,12 @@ fn list_logs_pages_newest_first_with_threshold_and_universe_cap() {
     assert_eq!(first_page.entries.len() as i64, LOG_PAGE_SIZE);
     assert_eq!(first_message(&first_page), Some("message-957"));
     assert_eq!(last_message(&first_page), Some("message-900"));
-    assert!(first_page
-        .entries
-        .iter()
-        .all(|entry| entry.level == "ERROR"));
+    assert!(
+        first_page
+            .entries
+            .iter()
+            .all(|entry| entry.level == "ERROR")
+    );
 
     let last_page = list_logs(
         &conn,

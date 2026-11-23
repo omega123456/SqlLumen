@@ -5,7 +5,7 @@ use crate::state::AppState;
 
 use super::storage;
 use super::types::{MemoryReembedProgress, MemoryScope, MemoryVector};
-use super::{read_embedding_config, EmbeddingConfig};
+use super::{EmbeddingConfig, read_embedding_config};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReembedTarget {

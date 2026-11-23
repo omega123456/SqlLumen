@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
 
 use crate::export::copy_to_host::{
-    new_running_progress, validate_selection_for_options, CopyToHostParams,
+    CopyToHostParams, new_running_progress, validate_selection_for_options,
 };
 use crate::export::job_retention::cleanup_terminal_jobs;
 use crate::mysql::cell_values::DecodedRow;
-use crate::mysql::logged_query::{fetch_decoded_pooled, LoggedStatement};
+use crate::mysql::logged_query::{LoggedStatement, fetch_decoded_pooled};
 use crate::mysql::pool::BackgroundPool;
 use crate::state::{AppState, CopyJobProgress};
 

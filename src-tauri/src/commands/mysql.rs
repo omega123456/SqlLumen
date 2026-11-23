@@ -7,7 +7,7 @@ use crate::mysql::cell_values::DecodedRow;
 #[cfg(not(coverage))]
 use crate::mysql::health;
 #[cfg(not(coverage))]
-use crate::mysql::logged_query::{fetch_first, LoggedStatement};
+use crate::mysql::logged_query::{LoggedStatement, fetch_first};
 use crate::mysql::metadata_cache::evict_metadata_cache_for_connection;
 #[cfg(not(coverage))]
 use crate::mysql::pool;
@@ -420,10 +420,10 @@ fn release_profile_session_reference(state: &AppState, profile_id: &str) -> bool
 }
 
 fn cancel_profile_index_build(state: &AppState, profile_id: &str) {
-    if let Ok(mut tokens) = state.index_build_tokens.lock() {
-        if let Some(token) = tokens.remove(profile_id) {
-            token.cancel();
-        }
+    if let Ok(mut tokens) = state.index_build_tokens.lock()
+        && let Some(token) = tokens.remove(profile_id)
+    {
+        token.cancel();
     }
     if let Ok(mut counts) = state.session_ref_counts.lock() {
         counts.remove(profile_id);

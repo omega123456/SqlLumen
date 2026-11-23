@@ -20,7 +20,7 @@ pub(super) fn is_blob_envelope(object: &serde_json::Map<String, serde_json::Valu
 }
 
 pub fn decode_blob_envelope(value: &serde_json::Value) -> Option<Result<BlobBind, String>> {
-    use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+    use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 
     let obj = value.as_object()?;
     if !is_blob_envelope(obj) {
@@ -32,7 +32,7 @@ pub fn decode_blob_envelope(value: &serde_json::Value) -> Option<Result<BlobBind
         None => {
             return Some(Err(
                 "Blob envelope is missing a string `kind` field".to_string()
-            ))
+            ));
         }
     };
 
@@ -45,7 +45,7 @@ pub fn decode_blob_envelope(value: &serde_json::Value) -> Option<Result<BlobBind
                 None => {
                     return Some(Err(
                         "Blob envelope of kind `bytes` is missing the `base64` field".to_string(),
-                    ))
+                    ));
                 }
             };
             match B64.decode(b64) {
@@ -191,7 +191,7 @@ pub async fn fetch_blob_value_impl(
 }
 
 pub fn read_file_bytes_impl(path: &str) -> Result<String, String> {
-    use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+    use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 
     let file_path = std::path::Path::new(path);
     let metadata = std::fs::metadata(file_path).map_err(|error| {
@@ -212,20 +212,14 @@ pub fn read_file_bytes_impl(path: &str) -> Result<String, String> {
 }
 
 fn ensure_parent_directory(file_path: &std::path::Path) -> Result<(), String> {
-    let Some(parent) = file_path.parent() else {
-        return Ok(());
-    };
-    if crate::is_empty_path(parent) {
-        return Ok(());
-    }
-    std::fs::create_dir_all(parent).map_err(|error| {
+    crate::ensure_parent_directory(file_path).map_err(|error| {
         tracing::error!(path = %file_path.display(), error = %error, "Failed to create parent dirs for blob write");
         format!("Failed to create directories: {error}")
     })
 }
 
 pub fn write_file_bytes_impl(path: &str, base64: &str) -> Result<(), String> {
-    use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+    use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 
     let bytes = B64.decode(base64).map_err(|error| {
         tracing::error!(path = %path, error = %error, "Invalid base64 supplied to blob write");

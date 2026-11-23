@@ -5,7 +5,7 @@
 
 use std::io::Write;
 
-use sqllumen_lib::commands::sql_dump::{finish_dump_file, DumpLoopOutcome, DumpStop};
+use sqllumen_lib::commands::sql_dump::{DumpLoopOutcome, DumpStop, finish_dump_file};
 
 const FOOTER_LAST_LINE: &str = "/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;";
 const LOOP_FAILURE: &str = "Failed to write data for 'orders': disk full";
@@ -96,7 +96,7 @@ mod against_the_mock_server {
 
     use opensrv_mysql::{ColumnFlags, ColumnType, ErrorKind};
     use sqllumen_lib::commands::sql_dump::{
-        get_dump_progress_impl, start_sql_dump_impl, DumpObjectType, DumpTableEntry, StartDumpInput,
+        DumpObjectType, DumpTableEntry, StartDumpInput, get_dump_progress_impl, start_sql_dump_impl,
     };
     use sqllumen_lib::export::sql_dump::DumpOptions;
     use sqllumen_lib::state::{AppState, DumpJobProgress, DumpJobStatus};

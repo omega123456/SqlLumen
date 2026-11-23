@@ -1,13 +1,14 @@
 //! Minimal in-process MySQL protocol mock (opensrv) shared by integration tests.
 
 use async_trait::async_trait;
+use jiff::SignedDuration;
 use jiff::civil;
 use jiff::fmt::temporal::DateTimePrinter;
-use jiff::SignedDuration;
 use opensrv_mysql::{
-    plain_run_with_options, secure_run_with_options, AsyncMysqlIntermediary, AsyncMysqlShim,
-    Column, ColumnFlags, ColumnType, ErrorKind, InitWriter, IntermediaryOptions, OkResponse,
-    ParamParser, QueryResultWriter, RowWriter, StatementMetaWriter, StatusFlags, ToMysqlValue,
+    AsyncMysqlIntermediary, AsyncMysqlShim, Column, ColumnFlags, ColumnType, ErrorKind, InitWriter,
+    IntermediaryOptions, OkResponse, ParamParser, QueryResultWriter, RowWriter,
+    StatementMetaWriter, StatusFlags, ToMysqlValue, plain_run_with_options,
+    secure_run_with_options,
 };
 use opensrv_rustls::ServerConfig;
 

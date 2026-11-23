@@ -2,7 +2,7 @@
 
 use crate::common::test_app_state;
 use sqllumen_lib::mysql::query_executor::{
-    analyze_query_for_edit_impl, update_result_cell_impl, ColumnMeta, StoredResult,
+    ColumnMeta, StoredResult, analyze_query_for_edit_impl, update_result_cell_impl,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -104,9 +104,11 @@ fn update_result_cell_result_not_found() {
         },
     );
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .contains("No results found for tab 'nonexistent-tab'"));
+    assert!(
+        result
+            .unwrap_err()
+            .contains("No results found for tab 'nonexistent-tab'")
+    );
 }
 
 #[test]
@@ -464,7 +466,7 @@ mod edit_analysis_database {
     };
     use opensrv_mysql::{ColumnFlags, ColumnType};
     use sqllumen_lib::mysql::query_executor::{
-        analyze_query_for_edit_impl, AnalyzeQueryForEditRequest, QueryTableEditInfo,
+        AnalyzeQueryForEditRequest, QueryTableEditInfo, analyze_query_for_edit_impl,
     };
     use sqllumen_lib::state::AppState;
     use std::time::{Duration, Instant};

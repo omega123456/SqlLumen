@@ -250,7 +250,7 @@ fn test_is_read_only_executable_comment() {
 
 #[test]
 fn test_base64_standard_encode_samples() {
-    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
     assert_eq!(STANDARD.encode(b"Man"), "TWFu");
     assert_eq!(STANDARD.encode(b"Ma"), "TWE=");
     assert_eq!(STANDARD.encode(b"M"), "TQ==");

@@ -8,19 +8,19 @@ use super::super::super::types::{
 };
 use super::super::chunk_generation::foreign_key_edges;
 use super::super::{
-    diff_chunks, generate_all_chunks_with_row_counts, split_identifier_segments, ChunkDiff,
-    GeneratedChunks, GeneratedFkChunk, GeneratedTableChunk,
+    ChunkDiff, GeneratedChunks, GeneratedFkChunk, GeneratedTableChunk, diff_chunks,
+    generate_all_chunks_with_row_counts, split_identifier_segments,
 };
-use super::embedding::{request_embeddings, store_upserted_batch, EmbeddedBatch};
+use super::embedding::{EmbeddedBatch, request_embeddings, store_upserted_batch};
 use super::pending_chunk::{
-    chunk_keys, count_foreign_key_chunks, count_table_chunks, PendingChunk,
+    PendingChunk, chunk_keys, count_foreign_key_chunks, count_table_chunks,
 };
 use super::progress::{EmbeddingProgressStart, EmbeddingProgressTracker};
 use super::schema_snapshot::{
-    read_schema_objects, read_table_ddls, SchemaObjects, TableSignatures,
+    SchemaObjects, TableSignatures, read_schema_objects, read_table_ddls,
 };
-use super::vector_storage::{prepare_vector_storage, VectorStorageTarget};
-use super::{elapsed_millis, BuildContext, IndexBuildResources, BUILD_CANCELLED, EMBED_BATCH_SIZE};
+use super::vector_storage::{VectorStorageTarget, prepare_vector_storage};
+use super::{BUILD_CANCELLED, BuildContext, EMBED_BATCH_SIZE, IndexBuildResources, elapsed_millis};
 
 struct StagedChunks {
     pending: Vec<PendingChunk>,

@@ -17,10 +17,10 @@ pub fn lock_db(state: &AppState) -> Result<MutexGuard<'_, Connection>, String> {
 }
 
 pub fn resolve_session_profile(state: &AppState, session_id: &str) -> Result<String, String> {
-    if let Ok(map) = state.session_profile_map.lock() {
-        if let Some(pid) = map.get(session_id) {
-            return Ok(pid.clone());
-        }
+    if let Ok(map) = state.session_profile_map.lock()
+        && let Some(pid) = map.get(session_id)
+    {
+        return Ok(pid.clone());
     }
 
     state

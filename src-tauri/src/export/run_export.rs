@@ -16,12 +16,12 @@ mod run_folder;
 mod sweep;
 
 pub use csv_files::{ResultFileKey, ResultFileRecord, RunFiles, WriteFailure};
-pub use markdown::{final_document, running_document, FinalReport};
+pub use markdown::{FinalReport, final_document, running_document};
 pub use registry::{
     ConnectionSummary, RunDescription, RunRegistry, RunSession, RunSessionParts, RunSnapshot,
 };
 pub use run_folder::runs_directory;
-pub use sweep::{sweep_run_folders, RUN_FOLDER_RETENTION_DAYS};
+pub use sweep::{RUN_FOLDER_RETENTION_DAYS, sweep_run_folders};
 
 pub const RUN_FILE_NAME: &str = "run.md";
 pub const RUN_NOT_STARTED_MESSAGE: &str = "This run is no longer available. Run again.";

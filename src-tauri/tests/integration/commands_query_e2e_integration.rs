@@ -16,26 +16,26 @@ use opensrv_mysql::{ColumnFlags, ColumnType, ErrorKind};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
+use sqllumen_lib::commands::connections::{SaveConnectionInput, save_connection_impl};
 use sqllumen_lib::commands::mysql::{
-    close_connection_impl, open_connection_impl, OpenConnectionResult,
+    OpenConnectionResult, close_connection_impl, open_connection_impl,
 };
 use sqllumen_lib::commands::requests::ConnectionTabRequest;
 use sqllumen_lib::commands::session::{
-    select_database_impl, set_test_select_database_hook, SelectDatabaseRequest,
+    SelectDatabaseRequest, select_database_impl, set_test_select_database_hook,
 };
 use sqllumen_lib::mysql::query_executor::{
-    cancel_query_impl, execute_call_query_impl, execute_multi_query_impl, execute_query_impl,
-    reexecute_single_result_impl, ExecuteCallQueryRequest, ExecuteMultiQueryRequest,
-    ExecuteQueryRequest, ExecuteQueryResult, MultiQueryResult, MultiQueryResultItem,
-    ReexecuteSingleResultRequest,
+    ExecuteCallQueryRequest, ExecuteMultiQueryRequest, ExecuteQueryRequest, ExecuteQueryResult,
+    MultiQueryResult, MultiQueryResultItem, ReexecuteSingleResultRequest, cancel_query_impl,
+    execute_call_query_impl, execute_multi_query_impl, execute_query_impl,
+    reexecute_single_result_impl,
 };
 use sqllumen_lib::mysql::session::QUEUED_RUN_CANCELLED_MESSAGE;
 use sqllumen_lib::state::AppState;
-use tauri::ipc::{CallbackFn, InvokeBody};
-use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
-use tauri::webview::InvokeRequest;
 use tauri::Manager;
+use tauri::ipc::{CallbackFn, InvokeBody};
+use tauri::test::{INVOKE_KEY, get_ipc_response, mock_builder, mock_context, noop_assets};
+use tauri::webview::InvokeRequest;
 
 fn build_query_commands_app() -> (
     tauri::App<tauri::test::MockRuntime>,
@@ -710,14 +710,18 @@ async fn execute_multi_query_ipc_uses_row_limit_and_serializes_rows_without_tota
     assert_eq!(result.results.len(), 2);
     let serialized = serde_json::to_value(&result).expect("result should serialize");
     assert!(serialized.pointer("/results/0/firstWindow/rows").is_some());
-    assert!(serialized
-        .pointer("/results/0/firstWindow/baseIndices")
-        .is_some());
+    assert!(
+        serialized
+            .pointer("/results/0/firstWindow/baseIndices")
+            .is_some()
+    );
     assert!(serialized.pointer("/results/0/rows").is_none());
     assert!(serialized.pointer("/results/1/firstWindow/rows").is_some());
-    assert!(serialized
-        .pointer("/results/1/firstWindow/baseIndices")
-        .is_some());
+    assert!(
+        serialized
+            .pointer("/results/1/firstWindow/baseIndices")
+            .is_some()
+    );
     assert!(serialized.pointer("/results/1/rows").is_none());
     assert!(serialized.pointer("/results/0/totalPages").is_none());
 }
@@ -750,9 +754,11 @@ async fn execute_call_query_ipc_uses_row_limit_and_serializes_rows_without_total
     assert_eq!(result.results.len(), 1);
     let serialized = serde_json::to_value(&result).expect("result should serialize");
     assert!(serialized.pointer("/results/0/firstWindow/rows").is_some());
-    assert!(serialized
-        .pointer("/results/0/firstWindow/baseIndices")
-        .is_some());
+    assert!(
+        serialized
+            .pointer("/results/0/firstWindow/baseIndices")
+            .is_some()
+    );
     assert!(serialized.pointer("/results/0/rows").is_none());
     assert!(serialized.pointer("/results/0/totalPages").is_none());
 }

@@ -1,6 +1,6 @@
 use crate::ai::types::{
-    parse_sse_line, AiChatRequest, AiTransport, ApiChatRequest, ApiMessage, ApiStreamChunk,
-    SseParsed,
+    AiChatRequest, AiTransport, ApiChatRequest, ApiMessage, ApiStreamChunk, SseParsed,
+    parse_sse_line,
 };
 use futures::StreamExt;
 use tauri::Runtime;
@@ -8,12 +8,12 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use super::reasoning::{
-    apply_no_think_to_last_user_message, chat_reasoning_compat_fields, reasoning_effort_level,
-    should_retry_chat_without_reasoning, ChatReasoningCompat,
+    ChatReasoningCompat, apply_no_think_to_last_user_message, chat_reasoning_compat_fields,
+    reasoning_effort_level, should_retry_chat_without_reasoning,
 };
 use super::{
-    build_streaming_client, is_flush_due, normalise_to_chat_completions_url, read_error_body,
-    take_complete_line, HttpTarget, StreamEmitter, STREAM_CANCELLED_MESSAGE,
+    HttpTarget, STREAM_CANCELLED_MESSAGE, StreamEmitter, build_streaming_client, is_flush_due,
+    normalise_to_chat_completions_url, read_error_body, take_complete_line,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]

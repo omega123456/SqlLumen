@@ -1,7 +1,7 @@
 //! Vacuum core (`db/vacuum.rs`).
 
 use rusqlite::Connection;
-use sqllumen_lib::db::vacuum::{vacuum_if_stale, VACUUM_STALENESS_SECS};
+use sqllumen_lib::db::vacuum::{VACUUM_STALENESS_SECS, vacuum_if_stale};
 
 /// Open an in-memory connection with a seeded `_vacuum_state` table.
 fn conn_with_vacuum_state(last_vacuum_at: &str) -> Connection {

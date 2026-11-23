@@ -350,10 +350,8 @@ pub fn finish_dump_file(
         Err(DumpStop::Cancelled) => (None, DumpLoopOutcome::Cancelled),
         Err(DumpStop::Failed(error)) => (Some(error), DumpLoopOutcome::Finished),
     };
-    if use_transaction {
-        if let Err(error) = sql_dump::write_transaction_end(file) {
-            first_error.get_or_insert(format!("Failed to write transaction end: {error}"));
-        }
+    if use_transaction && let Err(error) = sql_dump::write_transaction_end(file) {
+        first_error.get_or_insert(format!("Failed to write transaction end: {error}"));
     }
     if let Err(error) = sql_dump::write_footer(file) {
         first_error.get_or_insert(format!("Failed to write footer: {error}"));

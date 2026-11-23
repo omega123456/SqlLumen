@@ -2,8 +2,8 @@ use rusqlite::{Connection, Result};
 use std::collections::HashMap;
 
 use super::{
-    multi_query_search_configured, RetrievalHints, SearchConfigExt, SearchQueries, SearchResult,
-    TableHint,
+    RetrievalHints, SearchConfigExt, SearchQueries, SearchResult, TableHint,
+    multi_query_search_configured,
 };
 
 const EDITOR_TABLE_HINT_WEIGHT: f64 = 0.5;

@@ -1,8 +1,8 @@
 use std::sync::OnceLock;
 use tracing::Subscriber;
+use tracing_subscriber::fmt::FmtContext;
 use tracing_subscriber::fmt::format::{Format, FormatEvent, FormatFields, Full, Writer};
 use tracing_subscriber::fmt::time::SystemTime;
-use tracing_subscriber::fmt::FmtContext;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::reload;
@@ -19,21 +19,33 @@ static SQLITE_LOG_WRITER_GUARD: OnceLock<sqlite_layer::SqliteLogWriterGuard> = O
 pub type LogFilterReloadHandle = reload::Handle<EnvFilter, Registry>;
 
 pub struct LoggingInit {
-    pub filter_reload: LogFilterReloadHandle,
-    pub rust_log_env_set: bool,
+    pub settings_filter_reload: Option<LogFilterReloadHandle>,
 }
 
+const RUST_LOG: &str = "RUST_LOG";
+
 const SUPPORTED_LOG_LEVELS: [&str; 5] = ["trace", "debug", "info", "warn", "error"];
+
+pub fn rust_log_directives() -> Option<String> {
+    std::env::var(RUST_LOG).ok()
+}
 
 fn default_env_filter() -> EnvFilter {
     EnvFilter::new("info")
 }
 
-fn env_filter_from_rust_log() -> Option<EnvFilter> {
-    if std::env::var("RUST_LOG").is_err() {
+fn env_filter_from_rust_log(rust_log: Option<&str>) -> Option<EnvFilter> {
+    EnvFilter::try_new(rust_log?).ok()
+}
+
+fn filter_reload_for_settings(
+    rust_log: Option<&str>,
+    reload_handle: LogFilterReloadHandle,
+) -> Option<LogFilterReloadHandle> {
+    if rust_log.is_some() {
         return None;
     }
-    EnvFilter::try_from_default_env().ok()
+    Some(reload_handle)
 }
 
 pub fn parse_log_level_setting(setting: &str) -> Option<EnvFilter> {
@@ -45,36 +57,30 @@ pub fn parse_log_level_setting(setting: &str) -> Option<EnvFilter> {
 }
 
 pub fn apply_log_level_from_settings(conn: &rusqlite::Connection, handle: &LogFilterReloadHandle) {
-    if std::env::var("RUST_LOG").is_ok() {
-        return;
-    }
     let Ok(Some(raw)) = crate::db::settings::get_setting(conn, LOG_LEVEL_SETTING_KEY) else {
         return;
     };
-    if let Some(filter) = parse_log_level_setting(&raw) {
-        if let Err(error) = handle.reload(filter) {
-            tracing::warn!(
-                target: "sqllumen_lib::logging",
-                "failed to reload log filter from settings: {error}"
-            );
-        }
+    if let Some(filter) = parse_log_level_setting(&raw)
+        && let Err(error) = handle.reload(filter)
+    {
+        tracing::warn!(
+            target: "sqllumen_lib::logging",
+            "failed to reload log filter from settings: {error}"
+        );
     }
 }
 
 pub fn reload_log_level_from_setting_value(handle: Option<&LogFilterReloadHandle>, value: &str) {
-    if std::env::var("RUST_LOG").is_ok() {
-        return;
-    }
     let Some(reload_handle) = handle else {
         return;
     };
-    if let Some(filter) = parse_log_level_setting(value) {
-        if let Err(error) = reload_handle.reload(filter) {
-            tracing::warn!(
-                target: "sqllumen_lib::logging",
-                "failed to reload log filter: {error}"
-            );
-        }
+    if let Some(filter) = parse_log_level_setting(value)
+        && let Err(error) = reload_handle.reload(filter)
+    {
+        tracing::warn!(
+            target: "sqllumen_lib::logging",
+            "failed to reload log filter: {error}"
+        );
     }
 }
 
@@ -144,26 +150,20 @@ impl BracketLevelFormat {
     }
 }
 
-fn build_initial_filter() -> EnvFilter {
-    env_filter_from_rust_log().unwrap_or_else(default_env_filter)
+fn build_initial_filter(rust_log: Option<&str>) -> EnvFilter {
+    env_filter_from_rust_log(rust_log).unwrap_or_else(default_env_filter)
 }
 
 #[cfg(target_os = "windows")]
 fn try_enable_windows_ansi_stderr() {
-    use std::os::windows::io::AsRawHandle;
-    const ENABLE_VIRTUAL_TERMINAL_PROCESSING: u32 = 0x0004;
-    extern "system" {
-        fn GetConsoleMode(hConsoleHandle: *mut core::ffi::c_void, lpMode: *mut u32) -> i32;
-        fn SetConsoleMode(hConsoleHandle: *mut core::ffi::c_void, dwMode: u32) -> i32;
-    }
-    // SAFETY: the stderr handle comes from the stdlib and SetConsoleMode only runs after GetConsoleMode succeeds on it.
-    unsafe {
-        let handle = std::io::stderr().as_raw_handle() as *mut core::ffi::c_void;
-        let mut mode: u32 = 0;
-        if GetConsoleMode(handle, &mut mode) != 0 {
-            SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
-        }
-    }
+    let Err(error_code) = nu_ansi_term::enable_ansi_support() else {
+        return;
+    };
+    tracing::debug!(
+        target: "sqllumen_lib::logging",
+        error_code,
+        "could not enable ANSI colours on the Windows console"
+    );
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -173,18 +173,17 @@ fn stderr_wants_color() -> bool {
     std::env::var_os("NO_COLOR").is_none()
 }
 
-pub fn init_logging(log_db_path: &std::path::Path) -> Result<LoggingInit, String> {
-    let rust_log_env_set = std::env::var("RUST_LOG").is_ok();
-
-    try_enable_windows_ansi_stderr();
-
+pub fn init_logging(
+    log_db_path: &std::path::Path,
+    rust_log: Option<&str>,
+) -> Result<LoggingInit, String> {
     let sqlite_layer::SqliteLogging {
         layer: sqlite_layer,
         guard: sqlite_guard,
     } = sqlite_layer::init_sqlite_layer(log_db_path)?;
     let _ = SQLITE_LOG_WRITER_GUARD.set(sqlite_guard);
 
-    let initial_filter = build_initial_filter();
+    let initial_filter = build_initial_filter(rust_log);
     let (reload_layer, reload_handle) = reload::Layer::new(initial_filter);
 
     let stderr_layer = tracing_subscriber::fmt::layer()
@@ -198,8 +197,9 @@ pub fn init_logging(log_db_path: &std::path::Path) -> Result<LoggingInit, String
         .try_init()
         .map_err(|_| "tracing subscriber already initialized".to_string())?;
 
+    try_enable_windows_ansi_stderr();
+
     Ok(LoggingInit {
-        filter_reload: reload_handle,
-        rust_log_env_set,
+        settings_filter_reload: filter_reload_for_settings(rust_log, reload_handle),
     })
 }

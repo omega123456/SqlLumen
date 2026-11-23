@@ -13,21 +13,21 @@ mod binary_projection_integration {
     use rusqlite::Connection;
     use serde::de::DeserializeOwned;
     use serde_json::json;
-    use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
-    use sqllumen_lib::commands::mysql::{open_connection_impl, OpenConnectionResult};
+    use sqllumen_lib::commands::connections::{SaveConnectionInput, save_connection_impl};
+    use sqllumen_lib::commands::mysql::{OpenConnectionResult, open_connection_impl};
     use sqllumen_lib::commands::table_data as table_data_commands;
     use sqllumen_lib::db::ssl_mode::SslMode;
     use sqllumen_lib::mysql::metadata_cache::MetadataCache;
     use sqllumen_lib::mysql::pool::set_test_pool_factory;
     use sqllumen_lib::mysql::registry::ConnectionRegistry;
     use sqllumen_lib::mysql::table_data::{
-        insert_table_row_impl, PrimaryKeyInfo, TableDataResponse,
+        PrimaryKeyInfo, TableDataResponse, insert_table_row_impl,
     };
     use sqllumen_lib::state::AppState;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
     use tauri::ipc::{CallbackFn, InvokeBody};
-    use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
+    use tauri::test::{INVOKE_KEY, get_ipc_response, mock_builder, mock_context, noop_assets};
     use tauri::webview::InvokeRequest;
 
     fn test_state() -> AppState {
@@ -739,8 +739,8 @@ mod binary_projection_integration {
                     name: "id",
                     coltype: ColumnType::MYSQL_TYPE_LONG,
                     colflags: ColumnFlags::NOT_NULL_FLAG
-                    | ColumnFlags::PRI_KEY_FLAG
-                    | ColumnFlags::UNSIGNED_FLAG,
+                        | ColumnFlags::PRI_KEY_FLAG
+                        | ColumnFlags::UNSIGNED_FLAG,
                 },
                 MockColumnDef {
                     name: "payload",

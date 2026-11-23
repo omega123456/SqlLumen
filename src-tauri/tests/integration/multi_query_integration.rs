@@ -10,10 +10,10 @@ use sqllumen_lib::commands::export::export_results_impl;
 use sqllumen_lib::export::{ExportFormat, ExportOptions};
 #[cfg(coverage)]
 use sqllumen_lib::mysql::pool::SslSettings;
-use sqllumen_lib::mysql::query_executor::{update_result_cell_impl, ColumnMeta, StoredResult};
+use sqllumen_lib::mysql::query_executor::{ColumnMeta, StoredResult, update_result_cell_impl};
 use sqllumen_lib::mysql::result_cache::CacheKey;
 use sqllumen_lib::mysql::result_view::{
-    fetch_result_window_impl, set_result_view_impl, ResultViewSpec,
+    ResultViewSpec, fetch_result_window_impl, set_result_view_impl,
 };
 use std::collections::HashMap;
 
@@ -730,11 +730,13 @@ mod coverage_multi_query {
         assert_eq!(result.results.len(), 2);
         assert!(result.results[0].error.is_none());
         assert!(result.results[1].error.is_some());
-        assert!(result.results[1]
-            .error
-            .as_ref()
-            .unwrap()
-            .contains("read-only"));
+        assert!(
+            result.results[1]
+                .error
+                .as_ref()
+                .unwrap()
+                .contains("read-only")
+        );
     }
 
     #[tokio::test]
@@ -1213,9 +1215,9 @@ mod coverage_call_query {
 // ── Serialization parity tests ───────────────────────────────────────────────
 
 mod serialization_parity {
-    use mysql_async::consts::{ColumnFlags, ColumnType};
     use mysql_async::Column;
-    use sqllumen_lib::mysql::cell_values::{cell_json, decode_cell, JS_SAFE_INTEGER_MAX};
+    use mysql_async::consts::{ColumnFlags, ColumnType};
+    use sqllumen_lib::mysql::cell_values::{JS_SAFE_INTEGER_MAX, cell_json, decode_cell};
     use sqllumen_lib::mysql::multi_result::is_call_statement;
 
     const BINARY_CHARACTER_SET: u16 = 63;
@@ -1423,7 +1425,7 @@ mod serialization_parity {
 
     #[test]
     fn blob_binary_base64_encoded() {
-        use base64::{engine::general_purpose::STANDARD, Engine};
+        use base64::{Engine, engine::general_purpose::STANDARD};
         let bytes = &[0xDE, 0xAD, 0xBE, 0xEF];
         let result =
             serialize_bytes_value(bytes, ColumnType::MYSQL_TYPE_BLOB, ColumnFlags::BINARY_FLAG);
@@ -1821,21 +1823,25 @@ mod serialization_parity {
     fn uint_boundary_safe_integer() {
         // At boundary — number
         let val = mysql_async::Value::UInt(JS_SAFE_INTEGER_MAX as u64);
-        assert!(serialize_mysql_value(
-            &val,
-            ColumnType::MYSQL_TYPE_LONGLONG,
-            ColumnFlags::UNSIGNED_FLAG
-        )
-        .is_number());
+        assert!(
+            serialize_mysql_value(
+                &val,
+                ColumnType::MYSQL_TYPE_LONGLONG,
+                ColumnFlags::UNSIGNED_FLAG
+            )
+            .is_number()
+        );
 
         // Above boundary — string
         let val = mysql_async::Value::UInt(JS_SAFE_INTEGER_MAX as u64 + 1);
-        assert!(serialize_mysql_value(
-            &val,
-            ColumnType::MYSQL_TYPE_LONGLONG,
-            ColumnFlags::UNSIGNED_FLAG
-        )
-        .is_string());
+        assert!(
+            serialize_mysql_value(
+                &val,
+                ColumnType::MYSQL_TYPE_LONGLONG,
+                ColumnFlags::UNSIGNED_FLAG
+            )
+            .is_string()
+        );
     }
 
     #[test]
@@ -1867,7 +1873,7 @@ mod serialization_parity {
 
     #[test]
     fn serialize_bytes_binary_string_types() {
-        use base64::{engine::general_purpose::STANDARD, Engine};
+        use base64::{Engine, engine::general_purpose::STANDARD};
         let bytes = &[0x00, 0x01, 0x02];
 
         // STRING + BINARY → BINARY (base64)
